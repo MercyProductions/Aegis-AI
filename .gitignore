@@ -1,0 +1,47 @@
+# Build output
+x64/
+build/
+out/
+dist/
+.vs/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+
+# Visual Studio / native artifacts
+*.obj
+*.pdb
+*.idb
+*.ilk
+*.iobj
+*.ipdb
+*.lib
+*.exp
+*.tlog/
+*.lastbuildstate
+*.VC.db
+*.VC.VC.opendb
+*.user
+*.suo
+
+# Runtime captures and generated diagnostics
+smoke-artifacts/
+logs/
+crash-dumps/
+*.log
+
+# Local environment and secrets
+.env
+.env.*
+*.local
+*.key
+*.pem
+*.pfx
+*.p12
+
+# OS/editor noise
+Thumbs.db
+Desktop.ini
+.DS_Store
+.idea/
+.vscode/
