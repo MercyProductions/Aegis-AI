@@ -7,6 +7,7 @@
 #include <array>
 #include <cctype>
 #include <cstdint>
+#include <cstddef>
 #include <cstring>
 #include <cmath>
 #include <ctime>
@@ -21,6 +22,10 @@
 
 namespace aegis {
 namespace {
+
+constexpr size_t kQueuedUserMessageLimit = 100;
+constexpr int kAutopilotDefaultPassLimit = 50;
+constexpr int kAutopilotMaxPassLimit = 250;
 
 template <size_t N>
 void SetBuffer(std::array<char, N>& buffer, const std::string& value)
@@ -77,6 +82,280 @@ bool ContainsAnyTerm(const std::string& lowered, const std::vector<std::string>&
     return false;
 }
 
+bool StartsWithAnyTerm(const std::string& lowered, const std::vector<std::string>& terms)
+{
+    for (const std::string& term : terms) {
+        if (lowered.starts_with(term)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool ContainsWindowsPathPattern(const std::string& text)
+{
+    for (size_t i = 0; i + 2 < text.size(); ++i) {
+        const unsigned char drive = static_cast<unsigned char>(text[i]);
+        if (std::isalpha(drive) && text[i + 1] == ':' && (text[i + 2] == '\\' || text[i + 2] == '/')) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool PathLooksLikeExistingProject(const std::string& path)
+{
+    const std::string trimmed = Trim(path);
+    if (trimmed.empty()) {
+        return false;
+    }
+
+    std::error_code ec;
+    const std::filesystem::path root(Utf8ToWide(trimmed));
+    if (!std::filesystem::exists(root, ec) || !std::filesystem::is_directory(root, ec)) {
+        return false;
+    }
+
+    const std::vector<std::filesystem::path> project_markers = {
+        L".aegis/project.json",
+        L"package.json",
+        L"pnpm-lock.yaml",
+        L"yarn.lock",
+        L"Cargo.toml",
+        L"pyproject.toml",
+        L"requirements.txt",
+        L"CMakeLists.txt",
+        L"Makefile",
+        L"app",
+        L"src",
+        L"components",
+        L"pages",
+        L"main.cpp",
+        L"main.py"
+    };
+    for (const std::filesystem::path& marker : project_markers) {
+        if (std::filesystem::exists(root / marker, ec)) {
+            return true;
+        }
+    }
+
+    for (const auto& entry : std::filesystem::directory_iterator(root, ec)) {
+        if (ec) {
+            break;
+        }
+        if (!entry.is_regular_file(ec)) {
+            continue;
+        }
+        const std::string extension = Lower(WideToUtf8(entry.path().extension().wstring()));
+        if (extension == ".sln" || extension == ".csproj" || extension == ".vcxproj") {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool ShouldRouteToProjectBuilder(const std::string& prompt)
+{
+    const std::string lowered = Lower(Trim(prompt));
+    if (lowered.empty()) {
+        return false;
+    }
+
+    if (lowered.find("project builder") != std::string::npos ||
+        lowered.find("scaffold") != std::string::npos ||
+        lowered.find("starter project") != std::string::npos ||
+        lowered.find("new project") != std::string::npos) {
+        return true;
+    }
+
+    const bool creation = ContainsAnyTerm(lowered, {
+        "build", "create", "generate", "make", "set up", "setup", "start",
+        "complete", "finish", "build out", "flesh out", "develop", "implement", "ship"
+    });
+    if (!creation) {
+        return false;
+    }
+
+    const bool from_scratch = ContainsAnyTerm(lowered, {
+        "from scratch", "full project", "full app", "full application", "full website",
+        "full site", "whole app", "whole website", "whole site", "complete project",
+        "complete app", "complete website", "complete site"
+    });
+    const bool explicit_location = ContainsWindowsPathPattern(prompt) || ContainsAnyTerm(lowered, {
+        " at this path", " at this location", " in this folder", " in this directory",
+        " inside this folder", " inside this directory"
+    });
+    const bool question_like = StartsWithAnyTerm(lowered, {
+        "how ", "what ", "why ", "where ", "when ", "who ", "which ",
+        "explain ", "tell me ", "can you explain", "could you explain"
+    });
+    const bool explicit_create_request = ContainsAnyTerm(lowered, {
+        "create", "generate", "make me", "make a", "make an", "set up", "setup",
+        "implement", "complete", "finish", "write me", "write a", "write an", "build me"
+    });
+    if (question_like && !explicit_location && !from_scratch && !explicit_create_request) {
+        return false;
+    }
+    const bool project_noun = ContainsAnyTerm(lowered, {
+        " project", " app", " application", " website", " web app", " api",
+        " backend", " frontend", " dashboard", " cli", " command-line",
+        " service", " tool", " program", " software", " executable", " exe",
+        " desktop", " mobile", " game", " plugin", " extension", " bot",
+        " driver", " kernel driver", " dll", " library", " shared library",
+        " database", " data app"
+    });
+    const bool single_file_request = ContainsAnyTerm(lowered, {
+        " file", " single file", " one file", " script file"
+    });
+    if (!(from_scratch || project_noun || (explicit_location && !single_file_request))) {
+        return false;
+    }
+
+    if (!from_scratch && ContainsAnyTerm(lowered, {
+            "current project", "existing project", "this project", "this app",
+            "fix", "debug", "repair", "update this", "change this", "add to this"
+        })) {
+        return false;
+    }
+
+    return true;
+}
+
+bool IsExplicitCppProjectCreationRequest(const std::string& prompt)
+{
+    const std::string lowered = Lower(Trim(prompt));
+    if (lowered.empty()) {
+        return false;
+    }
+
+    const bool cpp_stack = ContainsAnyTerm(lowered, {
+        "c++", "cpp", "cmake", "msbuild", "sln", "visual studio",
+        "console app", "console project", "native app", "native project"
+    });
+    const bool creation = ContainsAnyTerm(lowered, {
+        "build", "create", "generate", "make", "set up", "setup", "write me",
+        "write a", "complete", "rebuild"
+    });
+    const bool concrete_output = ContainsAnyTerm(lowered, {
+        "hello world", "prints hello", "print hello", "press enter",
+        "user input", "console", "executable", "exe", "project", "app"
+    });
+    return cpp_stack && creation && concrete_output;
+}
+
+bool IsBuildOrRunFollowUp(const std::string& prompt)
+{
+    const std::string lowered = Lower(Trim(prompt));
+    return ContainsAnyTerm(lowered, {
+        "build it", "build this", "build the project", "run it", "run this",
+        "compile", "compiled", "validate", "validation", "test it", "test this",
+        "you didnt build", "you didn't build", "didnt build", "didn't build",
+        "not built", "not build", "fix the build", "build and run", "run the app"
+    });
+}
+
+bool PromptRequestsImmediateBuild(const std::string& prompt)
+{
+    const std::string lowered = Lower(Trim(prompt));
+    return ContainsAnyTerm(lowered, {
+        "also build", "and build", "build it", "build this", "build the project",
+        "attempt to build", "compile it", "compile this", "run it", "run this",
+        "run the app", "test it", "test this", "validate it", "validate this"
+    });
+}
+
+bool WorkspaceLooksLikeCppProject(const std::string& path)
+{
+    const std::string trimmed = Trim(path);
+    if (trimmed.empty()) {
+        return false;
+    }
+
+    std::error_code ec;
+    const std::filesystem::path root(Utf8ToWide(trimmed));
+    if (!std::filesystem::exists(root, ec) || !std::filesystem::is_directory(root, ec)) {
+        return false;
+    }
+
+    const std::vector<std::filesystem::path> markers = {
+        L"CMakeLists.txt",
+        L"src/main.cpp",
+        L"main.cpp"
+    };
+    for (const std::filesystem::path& marker : markers) {
+        if (std::filesystem::exists(root / marker, ec)) {
+            return true;
+        }
+    }
+
+    for (const auto& entry : std::filesystem::recursive_directory_iterator(root, ec)) {
+        if (ec) {
+            break;
+        }
+        if (!entry.is_regular_file(ec)) {
+            continue;
+        }
+        const std::string extension = Lower(WideToUtf8(entry.path().extension().wstring()));
+        if (extension == ".sln" || extension == ".vcxproj" || extension == ".cpp" || extension == ".cxx" || extension == ".cc") {
+            return true;
+        }
+    }
+    return false;
+}
+
+std::string DefaultValidationCommandForWorkspace(const std::string& path)
+{
+    const std::string trimmed = Trim(path);
+    if (trimmed.empty()) {
+        return {};
+    }
+
+    std::error_code ec;
+    const std::filesystem::path root(Utf8ToWide(trimmed));
+    if (!std::filesystem::exists(root, ec) || !std::filesystem::is_directory(root, ec)) {
+        return {};
+    }
+    if (std::filesystem::exists(root / L"build.py", ec)) {
+        return "python build.py";
+    }
+    if (std::filesystem::exists(root / L"CMakeLists.txt", ec)) {
+        return "python build.py";
+    }
+    for (const auto& entry : std::filesystem::directory_iterator(root, ec)) {
+        if (ec) {
+            break;
+        }
+        if (!entry.is_regular_file(ec)) {
+            continue;
+        }
+        const std::string extension = Lower(WideToUtf8(entry.path().extension().wstring()));
+        if (extension == ".sln") {
+            return "msbuild \"" + WideToUtf8(entry.path().filename().wstring()) + "\" /m /p:Configuration=Release";
+        }
+        if (extension == ".vcxproj") {
+            return "msbuild \"" + WideToUtf8(entry.path().filename().wstring()) + "\" /m /p:Configuration=Release";
+        }
+    }
+    return {};
+}
+
+std::string BuildWorkspaceContinuityDirective(const std::string& workspace, const std::string& validation_command)
+{
+    std::ostringstream body;
+    body << "Project continuity directive:\n";
+    body << "- Continue the existing project in `" << workspace << "`; do not create an unrelated starter in another folder.\n";
+    body << "- Preserve the detected C++/CMake/MSBuild console-app stack. Do not replace it with a website, Python app, Node app, or generic template.\n";
+    body << "- Inspect the existing source, solution, project, and `.aegis` files before editing.\n";
+    body << "- Build and run validation for the current project, then repair concrete compiler/build/runtime errors if any are captured.\n";
+    if (!validation_command.empty()) {
+        body << "- Preferred validation command: `" << validation_command << "`.\n";
+        if (validation_command == "python build.py") {
+            body << "- If `build.py` is missing from a C++/CMake workspace, create a portable Python build runner first; do not fall back to chained shell commands.\n";
+        }
+    }
+    return body.str();
+}
+
 std::string ExtractWindowsPathFromPrompt(const std::string& text)
 {
     for (size_t i = 0; i + 2 < text.size(); ++i) {
@@ -98,7 +377,11 @@ std::string ExtractWindowsPathFromPrompt(const std::string& text)
         const std::string lowered = Lower(candidate);
         size_t stop = std::string::npos;
         const std::vector<std::string> stop_phrases = {
-            " please", " and then ", " then ", " so ", " but ", " because ", " with ", " using ", " for me", " if "
+            " here ", " i want", " i need", " i'm ", " im ", " can you", " could you", " please",
+            " and then ", " then ", " so ", " but ", " because ", " with ", " using ", " for me", " if ",
+            " create ", " build ", " make ", " generate ", " scaffold ", " set up ", " setup ",
+            " start ", " write ", " add ", " implement ", " complete ", " finish ", " develop ",
+            " ship ", " update ", " modify ", " work on "
         };
         for (const std::string& phrase : stop_phrases) {
             const size_t found = lowered.find(phrase, 3);
@@ -127,11 +410,13 @@ bool ShouldAutoApplyPrompt(const std::string& text)
 {
     const std::string lowered = Lower(text);
     const std::vector<std::string> action_terms = {
-        "create", "build", "make", "generate", "scaffold", "write", "add", "implement", "set up", "setup"
+        "create", "build", "make", "generate", "scaffold", "write", "add", "implement",
+        "set up", "setup", "complete", "finish", "build out", "flesh out", "develop", "ship"
     };
     const std::vector<std::string> artifact_terms = {
         "website", "web site", "app", "page", "file", "project", "component", "dashboard", "api", "script",
-        "template", "tool", "folder"
+        "template", "tool", "folder", "driver", "kernel driver", "dll", "library", "shared library",
+        "database", "game", "plugin", "extension", "exe", "executable", "service"
     };
     const std::vector<std::string> read_only_terms = {
         "review", "explain", "summarize", "analyze", "look at", "what is", "why"
@@ -217,6 +502,145 @@ std::string Shorten(const std::string& value, size_t max_len)
     return value.substr(0, max_len - 3) + "...";
 }
 
+std::string FormatOptionalInt(int value, bool present)
+{
+    return present ? std::to_string(value) : "-";
+}
+
+std::string FormatCostUsd(double value, bool present)
+{
+    if (!present) {
+        return "-";
+    }
+
+    std::ostringstream out;
+    out << "$" << std::fixed << std::setprecision(value > 0.0 && value < 0.01 ? 4 : 2) << value;
+    return out.str();
+}
+
+std::string FormatPercent(double value, bool present = true)
+{
+    if (!present) {
+        return "-";
+    }
+
+    std::ostringstream out;
+    out << std::fixed << std::setprecision(1) << (value * 100.0) << "%";
+    return out.str();
+}
+
+std::string FormatNumber(double value, bool present = true, int precision = 1)
+{
+    if (!present) {
+        return "-";
+    }
+
+    std::ostringstream out;
+    out << std::fixed << std::setprecision(precision) << value;
+    return out.str();
+}
+
+std::string JoinList(const std::vector<std::string>& values, const std::string& separator = ", ")
+{
+    std::ostringstream joined;
+    for (size_t i = 0; i < values.size(); ++i) {
+        if (i > 0) {
+            joined << separator;
+        }
+        joined << values[i];
+    }
+    return joined.str();
+}
+
+bool HasAnyLoweredTerm(const std::vector<std::string>& values, const std::vector<std::string>& terms)
+{
+    return ContainsAnyTerm(Lower(JoinList(values, " ")), terms);
+}
+
+bool CanBenchmarkManagedModel(const ManagedModelInfo& model)
+{
+    if (!model.local || !model.enabled || model.provider_id.empty() || (!model.installed && !model.configured)) {
+        return false;
+    }
+    const bool has_chat_family = HasAnyLoweredTerm(model.capabilities, {"chat", "code", "reasoning", "judge"}) ||
+        HasAnyLoweredTerm(model.roles, {"chat", "code", "reasoning", "judge", "architecture", "debug", "review"});
+    const bool embeddings_only = HasAnyLoweredTerm(model.capabilities, {"embedding"}) && !HasAnyLoweredTerm(model.capabilities, {"chat"});
+    return has_chat_family && !embeddings_only;
+}
+
+bool HasActiveBenchmarkJob(const ModelBenchmarkSnapshot& snapshot)
+{
+    return std::any_of(snapshot.jobs.begin(), snapshot.jobs.end(), [](const ModelBenchmarkJobInfo& job) {
+        return job.status == "queued" || job.status == "running" || job.status == "cancel_requested";
+    });
+}
+
+const ModelBenchmarkJobInfo* FindBenchmarkJob(const ModelBenchmarkSnapshot& snapshot, const std::string& job_id)
+{
+    if (job_id.empty()) {
+        return nullptr;
+    }
+    const auto it = std::find_if(snapshot.jobs.begin(), snapshot.jobs.end(), [&job_id](const ModelBenchmarkJobInfo& job) {
+        return job.id == job_id;
+    });
+    return it == snapshot.jobs.end() ? nullptr : &(*it);
+}
+
+std::string FirstActiveBenchmarkJobId(const ModelBenchmarkSnapshot& snapshot)
+{
+    const auto it = std::find_if(snapshot.jobs.begin(), snapshot.jobs.end(), [](const ModelBenchmarkJobInfo& job) {
+        return job.status == "queued" || job.status == "running" || job.status == "cancel_requested";
+    });
+    return it == snapshot.jobs.end() ? std::string{} : it->id;
+}
+
+std::string BenchmarkJobToastTitle(const ModelBenchmarkJobInfo& job)
+{
+    if (job.status == "completed") {
+        return "Benchmark completed";
+    }
+    if (job.status == "canceled") {
+        return "Benchmark canceled";
+    }
+    if (job.status == "failed") {
+        return "Benchmark failed";
+    }
+    if (job.status == "interrupted") {
+        return "Benchmark interrupted";
+    }
+    return "Benchmark updated";
+}
+
+std::string BenchmarkJobToastTone(const ModelBenchmarkJobInfo& job)
+{
+    if (job.status == "completed") {
+        return "success";
+    }
+    if (job.status == "failed" || job.status == "interrupted") {
+        return "error";
+    }
+    return "info";
+}
+
+std::vector<std::string> BenchmarkSuitesForManagedModel(const ManagedModelInfo& model)
+{
+    std::vector<std::string> suites;
+    if (HasAnyLoweredTerm(model.capabilities, {"chat"}) || HasAnyLoweredTerm(model.roles, {"chat", "fallback"})) {
+        suites.push_back("chat");
+    }
+    if (HasAnyLoweredTerm(model.capabilities, {"code"}) || HasAnyLoweredTerm(model.roles, {"code", "debug", "review", "refactor"})) {
+        suites.push_back("code");
+    }
+    if (HasAnyLoweredTerm(model.capabilities, {"reasoning", "judge"}) ||
+        HasAnyLoweredTerm(model.roles, {"reasoning", "architecture", "judge"})) {
+        suites.push_back("reasoning");
+    }
+    if (suites.empty()) {
+        suites.push_back("chat");
+    }
+    return suites;
+}
+
 std::string CheckpointDisplayTime(const CheckpointSummaryInfo& checkpoint)
 {
     if (checkpoint.created_at.size() >= 19) {
@@ -228,6 +652,16 @@ std::string CheckpointDisplayTime(const CheckpointSummaryInfo& checkpoint)
         return checkpoint.id.substr(0, 8) + " " + checkpoint.id.substr(9, 6) + " UTC";
     }
     return checkpoint.id;
+}
+
+std::string CompactTimestamp(const std::string& value)
+{
+    if (value.size() >= 19) {
+        std::string stamp = value.substr(0, 19);
+        std::replace(stamp.begin(), stamp.end(), 'T', ' ');
+        return stamp;
+    }
+    return value.empty() ? "-" : value;
 }
 
 bool ValidationPassed(const CommandRun& run)
@@ -277,6 +711,129 @@ std::string BuildValidationRepairPrompt(const AgentResponse& response)
     }
     prompt << "\nUse checkpoints and rollback if a repair attempt makes validation worse.";
     return prompt.str();
+}
+
+std::string BuildVerificationRepairPrompt(const VerificationResult& result)
+{
+    const CommandRun& failure = result.first_failure;
+    const std::string output = Shorten(ValidationCombinedOutput(failure), 6000);
+
+    std::ostringstream prompt;
+    prompt << "Fix the first failing Full Verify step in this workspace. Inspect the relevant files, make the smallest safe patch, apply it, and rerun the failed command before continuing.\n\n";
+    prompt << "Verification status: " << (result.status.empty() ? "unknown" : result.status) << "\n";
+    prompt << "Failed command: " << (failure.command.empty() ? "[not provided]" : failure.command) << "\n";
+    if (failure.has_exit_code) {
+        prompt << "Exit code: " << failure.exit_code << "\n";
+    }
+    if (failure.timed_out) {
+        prompt << "Timed out: true\n";
+    }
+    if (!failure.category.empty()) {
+        prompt << "Failure category: " << failure.category << "\n";
+    }
+    if (!failure.summary.empty()) {
+        prompt << "Failure summary: " << failure.summary << "\n";
+    } else if (!failure.reason.empty()) {
+        prompt << "Failure reason: " << failure.reason << "\n";
+    }
+
+    if (!result.steps.empty()) {
+        prompt << "\nFull Verify pipeline:\n";
+        const int step_count = std::min(12, static_cast<int>(result.steps.size()));
+        for (int i = 0; i < step_count; ++i) {
+            const VerificationStepInfo& step = result.steps[static_cast<size_t>(i)];
+            prompt << "- " << (step.phase.empty() ? step.category : step.phase)
+                   << " [" << (step.status.empty() ? "planned" : step.status) << "] "
+                   << (step.command.empty() ? step.label : step.command);
+            if (step.required) {
+                prompt << " (required)";
+            }
+            prompt << "\n";
+        }
+    }
+
+    if (!output.empty()) {
+        prompt << "\nFailed command output:\n" << output << "\n";
+    }
+    prompt << "\nUse checkpoints and rollback if a repair attempt makes validation worse. After the failed command passes, run Full Verify again.";
+    return prompt.str();
+}
+
+std::string BuildVerificationReport(
+    const VerificationResult& result,
+    const std::vector<VerificationRepairActivity>& activities)
+{
+    std::ostringstream report;
+    report << "# Aegis Full Verification Report\n\n";
+    report << "Workspace: " << (result.workspace_root.empty() ? "(not reported)" : result.workspace_root) << "\n";
+    report << "Status: " << (result.status.empty() ? "skipped" : result.status) << "\n";
+    if (!result.task_id.empty()) {
+        report << "Task ID: " << result.task_id << "\n";
+    }
+
+    if (result.has_first_failure) {
+        const CommandRun& failure = result.first_failure;
+        report << "\n## First Failure\n\n";
+        report << "Command: " << (failure.command.empty() ? "(not reported)" : failure.command) << "\n";
+        if (failure.has_exit_code) {
+            report << "Exit code: " << failure.exit_code << "\n";
+        }
+        if (!failure.category.empty()) {
+            report << "Category: " << failure.category << "\n";
+        }
+        report << "Summary: " << (failure.summary.empty() ? failure.reason : failure.summary) << "\n";
+        const std::string output = Shorten(ValidationCombinedOutput(failure), 4000);
+        if (!output.empty()) {
+            report << "\n```text\n" << output << "\n```\n";
+        }
+    }
+
+    if (!result.steps.empty()) {
+        report << "\n## Pipeline Steps\n\n";
+        for (const VerificationStepInfo& step : result.steps) {
+            report << "- [" << (step.status.empty() ? "planned" : step.status) << "] "
+                   << (step.phase.empty() ? step.category : step.phase)
+                   << " | " << (step.command.empty() ? step.label : step.command);
+            if (step.required) {
+                report << " | required";
+            }
+            std::string summary;
+            if (step.has_run) {
+                summary = step.run.summary.empty() ? step.run.reason : step.run.summary;
+            } else {
+                summary = step.reason;
+            }
+            if (!summary.empty()) {
+                report << " | " << summary;
+            }
+            report << "\n";
+        }
+    }
+
+    if (!activities.empty()) {
+        report << "\n## Repair Activity\n\n";
+        for (const VerificationRepairActivity& activity : activities) {
+            report << "- " << (activity.created_at.empty() ? "--:--" : activity.created_at)
+                   << " [" << (activity.status.empty() ? "info" : activity.status) << "] "
+                   << (activity.title.empty() ? "Verification" : activity.title);
+            if (!activity.detail.empty()) {
+                report << " - " << activity.detail;
+            }
+            if (!activity.command.empty()) {
+                report << " | " << activity.command;
+            }
+            report << "\n";
+        }
+    }
+
+    if (!result.warnings.empty()) {
+        report << "\n## Warnings\n\n";
+        for (const std::string& warning : result.warnings) {
+            report << "- " << warning << "\n";
+        }
+    }
+
+    return report.str();
 }
 
 bool IsCreativePreviewFormat(const std::string& format)
@@ -355,6 +912,103 @@ std::string JoinPalette(const std::vector<std::string>& palette)
     return joined.str();
 }
 
+std::string WorkspaceProfileSearchText(const WorkspaceProjectManifestInfo& manifest)
+{
+    std::ostringstream text;
+    text << manifest.preset_id << " "
+         << manifest.preset_label << " "
+         << manifest.framework << " "
+         << manifest.language << " "
+         << JoinPalette(manifest.tags);
+    return Lower(text.str());
+}
+
+std::string SuggestedRouteForWorkspaceProfile(const WorkspaceProjectManifestInfo& manifest)
+{
+    const std::string text = WorkspaceProfileSearchText(manifest);
+    if (text.find("mobile") != std::string::npos ||
+        text.find("expo") != std::string::npos ||
+        text.find("react-native") != std::string::npos ||
+        text.find("react native") != std::string::npos) {
+        return "mobile";
+    }
+    if (text.find("desktop") != std::string::npos ||
+        text.find("electron") != std::string::npos ||
+        text.find("tauri") != std::string::npos) {
+        return "desktop";
+    }
+    if (text.find("windows") != std::string::npos ||
+        text.find("win32") != std::string::npos) {
+        return "windows";
+    }
+    if (text.find("web") != std::string::npos ||
+        text.find("react") != std::string::npos ||
+        text.find("next") != std::string::npos ||
+        text.find("vite") != std::string::npos ||
+        text.find("django") != std::string::npos ||
+        text.find("fastapi") != std::string::npos ||
+        text.find("express") != std::string::npos ||
+        text.find("api") != std::string::npos) {
+        return "web";
+    }
+    if (text.find("cli") != std::string::npos ||
+        text.find("automation") != std::string::npos ||
+        text.find("python") != std::string::npos ||
+        text.find("rust") != std::string::npos ||
+        text.find("go") != std::string::npos) {
+        return "data";
+    }
+    return "general";
+}
+
+std::string RouteLabelForWorkspaceProfile(const std::string& route)
+{
+    if (route == "web") {
+        return "Web Route";
+    }
+    if (route == "mobile") {
+        return "Mobile Route";
+    }
+    if (route == "desktop") {
+        return "Desktop Route";
+    }
+    if (route == "windows") {
+        return "Windows Route";
+    }
+    if (route == "data") {
+        return "Data Route";
+    }
+    return "Code Route";
+}
+
+std::string BuildWorkspaceFirstPassPrompt(const WorkspaceProjectManifestInfo& manifest)
+{
+    const std::string title = manifest.title.empty()
+        ? (manifest.project_name.empty() ? "this project" : manifest.project_name)
+        : manifest.title;
+    std::ostringstream prompt;
+    prompt << "Use the Aegis project manifest for " << title << ".\n\n"
+           << "Stack: " << (manifest.framework.empty() ? "unknown" : manifest.framework)
+           << " / " << (manifest.language.empty() ? "unknown" : manifest.language) << "\n";
+    if (!manifest.install_command.empty()) {
+        prompt << "Install command: " << manifest.install_command << "\n";
+    }
+    if (!manifest.validation_command.empty()) {
+        prompt << "Validation command: " << manifest.validation_command << "\n";
+    }
+    if (!manifest.handoff_goal.empty()) {
+        prompt << "Goal: " << manifest.handoff_goal << "\n";
+    }
+    if (!manifest.first_pass.empty()) {
+        prompt << "\nFirst-pass checklist:\n";
+        for (const std::string& step : manifest.first_pass) {
+            prompt << "- " << step << "\n";
+        }
+    }
+    prompt << "\nInspect the workspace, choose the safest useful first product slice, make focused changes when clear, and use the saved validation profile when validation is appropriate.";
+    return prompt.str();
+}
+
 std::vector<std::string> SplitCommaList(const std::string& value)
 {
     std::vector<std::string> out;
@@ -367,6 +1021,248 @@ std::vector<std::string> SplitCommaList(const std::string& value)
         }
     }
     return out;
+}
+
+struct ProviderBlueprint {
+    const char* id;
+    const char* label;
+    const char* api;
+    const char* endpoint;
+    const char* default_model;
+    const char* capabilities;
+    const char* roles;
+    const char* env_var;
+    const char* privacy;
+    const char* notes;
+    bool local;
+};
+
+const ProviderBlueprint kProviderBlueprints[] = {
+    {
+        "openai:primary",
+        "OpenAI Primary",
+        "openai",
+        "https://api.openai.com/v1",
+        "Configure in backend adapter",
+        "chat, code, reasoning, research, vision, tools, structured_json, embeddings, judge",
+        "chat, code, reasoning, research, vision, judge, fallback",
+        "OPENAI_API_KEY",
+        "cloud-allowed",
+        "Use the official OpenAI SDK and Responses API in the backend adapter. Store the key in OPENAI_API_KEY or OS credential storage, never in provider notes.",
+        false
+    },
+    {
+        "anthropic:claude",
+        "Anthropic Claude",
+        "anthropic",
+        "https://api.anthropic.com",
+        "Configure in backend adapter",
+        "chat, code, reasoning, tools, vision",
+        "chat, code, reasoning, review, fallback",
+        "ANTHROPIC_API_KEY",
+        "cloud-allowed",
+        "Use as a second high-quality reasoning and code-review lane. Keep provider-specific request handling in the backend adapter.",
+        false
+    },
+    {
+        "local:ollama",
+        "Ollama Local",
+        "ollama",
+        "http://127.0.0.1:11434",
+        "qwen2.5-coder:7b",
+        "chat, code, embeddings",
+        "chat, code, fallback",
+        "",
+        "local-only",
+        "Local-first provider for private project context, fast drafts, offline fallback, and low-cost coding loops.",
+        true
+    },
+    {
+        "local:lmstudio",
+        "LM Studio Local",
+        "openai-compatible",
+        "http://127.0.0.1:1234/v1",
+        "Pick a loaded local model",
+        "chat, code, structured_json",
+        "chat, code, fallback",
+        "",
+        "local-only",
+        "OpenAI-compatible local endpoint. Good for testing router logic without sending workspace context to the cloud.",
+        true
+    },
+    {
+        "openrouter:router",
+        "OpenRouter Router",
+        "openai-compatible",
+        "https://openrouter.ai/api/v1",
+        "Pick per route",
+        "chat, code, reasoning, research, creative, vision",
+        "chat, code, reasoning, research, creative, fallback",
+        "OPENROUTER_API_KEY",
+        "cloud-allowed",
+        "Optional aggregator lane for experiments and fallback diversity. Gate private workspace context through privacy presets before sending.",
+        false
+    },
+    {
+        "perplexity:research",
+        "Perplexity Research",
+        "perplexity",
+        "https://api.perplexity.ai",
+        "Configure in backend adapter",
+        "chat, research, search",
+        "research, search, fallback",
+        "PERPLEXITY_API_KEY",
+        "cloud-allowed",
+        "Specialist lane for web-grounded research answers. Keep it separate from code-editing and file-write tools.",
+        false
+    },
+    {
+        "local:judge",
+        "Local Judge",
+        "ollama",
+        "http://127.0.0.1:11434",
+        "small local evaluator",
+        "chat, code, judge",
+        "judge, fallback",
+        "",
+        "local-only",
+        "Dedicated local evaluator for quick response checks, patch sanity, and private preference scoring.",
+        true
+    }
+};
+
+int ProviderBlueprintCount()
+{
+    return static_cast<int>(sizeof(kProviderBlueprints) / sizeof(kProviderBlueprints[0]));
+}
+
+const ProviderBlueprint& ModelProviderBlueprintAt(int index)
+{
+    return kProviderBlueprints[std::clamp(index, 0, ProviderBlueprintCount() - 1)];
+}
+
+ModelRegistryProviderInfo BuildProviderFromBlueprint(int index)
+{
+    const ProviderBlueprint& blueprint = ModelProviderBlueprintAt(index);
+    ModelRegistryProviderInfo provider;
+    provider.id = blueprint.id;
+    provider.label = blueprint.label;
+    provider.api = blueprint.api;
+    provider.endpoint = blueprint.endpoint;
+    const std::string model_hint = blueprint.default_model == nullptr ? "" : blueprint.default_model;
+    provider.model_name = model_hint.find(' ') == std::string::npos ? model_hint : "";
+    provider.secret_env = blueprint.env_var;
+    provider.local = blueprint.local;
+    provider.enabled = true;
+    provider.configured = blueprint.local && !provider.model_name.empty();
+    provider.capabilities = SplitCommaList(blueprint.capabilities);
+    provider.roles = SplitCommaList(blueprint.roles);
+    provider.cost_tier = blueprint.local ? "low" : "unknown";
+    provider.health = provider.configured ? "ready" : "needs-model";
+
+    std::ostringstream notes;
+    notes << blueprint.notes;
+    if (blueprint.default_model != nullptr && blueprint.default_model[0] != '\0') {
+        notes << " Model hint: " << blueprint.default_model << ".";
+    }
+    if (blueprint.env_var != nullptr && blueprint.env_var[0] != '\0') {
+        notes << " Secret env: " << blueprint.env_var << ".";
+    }
+    notes << " Privacy: " << blueprint.privacy << ".";
+    provider.notes = notes.str();
+    return provider;
+}
+
+std::string ProviderBlueprintSetupText(const ProviderBlueprint& blueprint)
+{
+    std::ostringstream text;
+    text << blueprint.label << "\n";
+    text << "Provider id: " << blueprint.id << "\n";
+    text << "API: " << blueprint.api << "\n";
+    text << "Endpoint: " << blueprint.endpoint << "\n";
+    text << "Default model hint: " << blueprint.default_model << "\n";
+    text << "Capabilities: " << blueprint.capabilities << "\n";
+    text << "Roles: " << blueprint.roles << "\n";
+    text << "Privacy: " << blueprint.privacy << "\n";
+    if (blueprint.env_var != nullptr && blueprint.env_var[0] != '\0') {
+        text << "Secret: set " << blueprint.env_var << " in the environment or OS credential storage.\n";
+    } else {
+        text << "Secret: none required for this local endpoint.\n";
+    }
+    text << "Notes: " << blueprint.notes << "\n";
+    text << "Do not paste API keys into Aegis provider notes.";
+    return text.str();
+}
+
+bool PaletteContainsExact(const std::vector<std::string>& values, const std::string& wanted)
+{
+    const std::string target = Lower(Trim(wanted));
+    if (target.empty()) {
+        return false;
+    }
+    for (const std::string& value : values) {
+        if (Lower(Trim(value)) == target) {
+            return true;
+        }
+    }
+    return false;
+}
+
+struct AgentRouteBlueprint {
+    const char* role;
+    const char* label;
+    const char* capability;
+    const char* recommended;
+};
+
+const AgentRouteBlueprint kAgentRouteBlueprints[] = {
+    {"chat", "Chat", "chat", "OpenAI, Claude, or local"},
+    {"code", "Code", "code", "OpenAI, Claude, Ollama"},
+    {"reasoning", "Reasoning", "reasoning", "OpenAI or Claude"},
+    {"research", "Research", "research", "OpenAI, Perplexity, OpenRouter"},
+    {"vision", "Vision", "vision", "OpenAI or Claude"},
+    {"creative", "Creative", "creative", "OpenAI or OpenRouter"},
+    {"embeddings", "Embeddings", "embeddings", "OpenAI or local"},
+    {"judge", "Judge", "judge", "Local judge or OpenAI"},
+    {"fallback", "Fallback", "chat", "Any stable enabled model"}
+};
+
+bool ProviderMatchesRoute(const ModelRegistryProviderInfo& provider, const AgentRouteBlueprint& route)
+{
+    return PaletteContainsExact(provider.roles, route.role) || PaletteContainsExact(provider.capabilities, route.capability);
+}
+
+int CountProvidersForRoute(const ModelRegistrySnapshot& registry, const AgentRouteBlueprint& route, bool configured_only)
+{
+    int count = 0;
+    for (const ModelRegistryProviderInfo& provider : registry.providers) {
+        if (!provider.enabled || !ProviderMatchesRoute(provider, route)) {
+            continue;
+        }
+        if (configured_only && !provider.configured) {
+            continue;
+        }
+        ++count;
+    }
+    return count;
+}
+
+std::string ProviderLabelsForRoute(const ModelRegistrySnapshot& registry, const AgentRouteBlueprint& route, bool configured_only)
+{
+    std::vector<std::string> labels;
+    for (const ModelRegistryProviderInfo& provider : registry.providers) {
+        if (!provider.enabled || !ProviderMatchesRoute(provider, route)) {
+            continue;
+        }
+        if (configured_only && !provider.configured) {
+            continue;
+        }
+        labels.push_back(provider.label.empty() ? provider.id : provider.label);
+        if (labels.size() >= 3) {
+            break;
+        }
+    }
+    return labels.empty() ? "-" : JoinPalette(labels);
 }
 
 std::string WorkspacePathLower(std::string path)
@@ -516,6 +1412,9 @@ std::vector<ValidationSuggestionInfo> BuildProjectValidationSuggestions(const st
     const std::string solution = FirstWorkspaceFileWithExtension(files, ".sln");
     const bool has_vcxproj = HasWorkspaceFileWithExtension(files, ".vcxproj");
     const bool has_csproj = HasWorkspaceFileWithExtension(files, ".csproj");
+    if (HasNamedWorkspaceFile(files, {"build.py"})) {
+        AddValidationSuggestion(suggestions, "python build.py", "Project build runner", "native/build", "Workspace build.py detected; use the project-owned configure/build/test entrypoint.");
+    }
     if (HasNamedWorkspaceFile(files, {"build.ps1"})) {
         AddValidationSuggestion(suggestions, "powershell -ExecutionPolicy Bypass -File .\\build.ps1", "PowerShell build", "windows", "Workspace build.ps1 detected; use the project-owned build entrypoint.");
     }
@@ -527,8 +1426,8 @@ std::vector<ValidationSuggestionInfo> BuildProjectValidationSuggestions(const st
         AddValidationSuggestion(suggestions, "dotnet test", "dotnet tests", "dotnet", "C# project detected; run the .NET test target.");
     }
 
-    if (HasNamedWorkspaceFile(files, {"CMakeLists.txt"})) {
-        AddValidationSuggestion(suggestions, "cmake --build build --config Release", "CMake build", "cpp", "CMake project detected; validate the configured build folder.");
+    if (HasNamedWorkspaceFile(files, {"CMakeLists.txt"}) && !HasNamedWorkspaceFile(files, {"build.py"})) {
+        AddValidationSuggestion(suggestions, "cmake -S . -B build && cmake --build build --config Release", "CMake configure + build", "cpp", "CMake project detected; configure and build from a fresh checkout.");
     }
     if (HasNamedWorkspaceFile(files, {"Cargo.toml"})) {
         AddValidationSuggestion(suggestions, "cargo test", "Rust tests", "rust", "Cargo project detected; run Rust unit and integration tests.");
@@ -1746,7 +2645,7 @@ void DrawSoftPanel(ImVec2 min, ImVec2 max, float rounding = 12.0f, bool accent =
 {
     ImDrawList* draw = ImGui::GetWindowDrawList();
     draw->AddRectFilled(min, max, Color(13, 19, 26, 0.94f), rounding);
-    draw->AddRect(min, max, accent ? Color(38, 221, 123, 0.90f) : Color(44, 54, 65, 0.78f), rounding, 0, accent ? 1.5f : 1.0f);
+    draw->AddRect(min, max, accent ? Color(248, 64, 82, 0.90f) : Color(44, 54, 65, 0.78f), rounding, 0, accent ? 1.5f : 1.0f);
 }
 
 void DrawPremiumBackground(ImDrawList* draw, ImVec2 min, ImVec2 max, float reveal = 1.0f)
@@ -1839,7 +2738,7 @@ bool BeginCard(const char* id, ImVec2 size, bool accent = false)
         Color(13, 19, 27, 0.94f),
         Color(9, 13, 20, 0.97f),
         Color(9, 15, 22, 0.97f));
-    draw->AddRect(pos, max, composer ? Color(38, 221, 123, 0.76f) : Color(57, 68, 82, accent ? 0.64f : 0.58f), 14.0f, 0, composer ? 1.35f : 1.0f);
+    draw->AddRect(pos, max, composer ? Color(248, 64, 82, 0.42f) : Color(57, 68, 82, accent ? 0.64f : 0.58f), 14.0f, 0, composer ? 1.15f : 1.0f);
     draw->AddLine(ImVec2(pos.x + 14.0f, pos.y + 1.0f), ImVec2(max.x - 14.0f, pos.y + 1.0f), Color(255, 255, 255, accent ? 0.08f : 0.06f), 1.0f);
 
     ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 14.0f);
@@ -1914,28 +2813,85 @@ bool IconOnlyButton(const char* id, IconGlyph icon, ImVec2 size, ImVec4 bg, ImVe
     return clicked;
 }
 
-bool ChromeButton(const char* id, const char* symbol, ImVec2 pos, ImVec2 size, ImVec4 hover, ImVec4 active, ImVec4 text_color)
+enum class ChromeGlyph
 {
-    (void)id;
-    ImGuiIO& io = ImGui::GetIO();
-    const bool hovered =
-        io.MousePos.x >= pos.x && io.MousePos.x <= pos.x + size.x &&
-        io.MousePos.y >= pos.y && io.MousePos.y <= pos.y + size.y;
-    const bool clicked = hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+    Minimize,
+    Maximize,
+    Restore,
+    Close
+};
+
+void DrawChromeGlyph(ImDrawList* draw, ChromeGlyph glyph, ImVec2 pos, ImVec2 size, ImU32 color)
+{
+    const float thickness = 1.65f;
+    if (glyph == ChromeGlyph::Minimize) {
+        const float y = pos.y + size.y * 0.66f;
+        draw->AddLine(ImVec2(pos.x + 11.0f, y), ImVec2(pos.x + size.x - 11.0f, y), color, thickness);
+        return;
+    }
+    if (glyph == ChromeGlyph::Maximize) {
+        draw->AddRect(
+            ImVec2(pos.x + 11.0f, pos.y + 8.0f),
+            ImVec2(pos.x + size.x - 11.0f, pos.y + size.y - 8.0f),
+            color,
+            2.0f,
+            0,
+            thickness);
+        return;
+    }
+    if (glyph == ChromeGlyph::Restore) {
+        draw->AddRect(
+            ImVec2(pos.x + 14.0f, pos.y + 7.0f),
+            ImVec2(pos.x + size.x - 9.5f, pos.y + size.y - 11.0f),
+            color,
+            2.0f,
+            0,
+            thickness);
+        draw->AddRectFilled(
+            ImVec2(pos.x + 10.5f, pos.y + 11.0f),
+            ImVec2(pos.x + size.x - 14.0f, pos.y + size.y - 7.0f),
+            Color(9, 12, 18));
+        draw->AddRect(
+            ImVec2(pos.x + 10.5f, pos.y + 11.0f),
+            ImVec2(pos.x + size.x - 14.0f, pos.y + size.y - 7.0f),
+            color,
+            2.0f,
+            0,
+            thickness);
+        return;
+    }
+
+    draw->AddLine(
+        ImVec2(pos.x + 11.0f, pos.y + 8.5f),
+        ImVec2(pos.x + size.x - 11.0f, pos.y + size.y - 8.5f),
+        color,
+        thickness);
+    draw->AddLine(
+        ImVec2(pos.x + size.x - 11.0f, pos.y + 8.5f),
+        ImVec2(pos.x + 11.0f, pos.y + size.y - 8.5f),
+        color,
+        thickness);
+}
+
+bool ChromeButton(const char* id, ChromeGlyph glyph, ImVec2 pos, ImVec2 size, ImVec4 hover, ImVec4 active, ImVec4 text_color)
+{
+    ImGui::SetCursorScreenPos(pos);
+    const bool clicked = ImGui::InvisibleButton(id, size);
+    const bool hovered = ImGui::IsItemHovered();
+    const bool held = ImGui::IsItemActive();
     ImDrawList* draw = ImGui::GetWindowDrawList();
     if (hovered) {
         ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
     }
-    if (hovered) {
+    if (held) {
+        draw->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y), ImGui::GetColorU32(Rgba(50, 57, 68, 0.98f)), 8.0f);
+    } else if (hovered) {
         draw->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y), ImGui::GetColorU32(active), 6.0f);
     } else {
         draw->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y), ImGui::GetColorU32(hover), 6.0f);
     }
-    const ImVec2 text_size = ImGui::CalcTextSize(symbol);
-    draw->AddText(
-        ImVec2(pos.x + (size.x - text_size.x) * 0.5f, pos.y + (size.y - text_size.y) * 0.5f - 1.0f),
-        ImGui::GetColorU32(text_color),
-        symbol);
+    draw->AddRect(pos, ImVec2(pos.x + size.x, pos.y + size.y), Color(255, 255, 255, hovered ? 0.16f : 0.07f), 6.0f, 0, 1.0f);
+    DrawChromeGlyph(draw, glyph, pos, size, ImGui::GetColorU32(text_color));
     return clicked;
 }
 
@@ -1943,17 +2899,19 @@ void DrawWindowControls()
 {
     const ImVec2 origin = ImGui::GetWindowPos();
     const ImVec2 window_size = ImGui::GetWindowSize();
-    const float top = origin.y + 8.0f;
-    const float right = origin.x + window_size.x - 10.0f;
-    const ImVec2 button_size(34.0f, 28.0f);
+    const float top = origin.y + 7.0f;
+    const float right = origin.x + window_size.x - 12.0f;
+    const ImVec2 button_size(36.0f, 30.0f);
+    const ImVec4 idle = Rgba(13, 18, 25, 0.72f);
+    const ChromeGlyph maximize_glyph = IsHostWindowMaximized() ? ChromeGlyph::Restore : ChromeGlyph::Maximize;
 
-    if (ChromeButton("chrome_minimize", "-", ImVec2(right - 112.0f, top), button_size, Rgba(0, 0, 0, 0.0f), Rgba(30, 39, 49, 0.95f), Rgba(215, 222, 231))) {
+    if (ChromeButton("chrome_minimize", ChromeGlyph::Minimize, ImVec2(right - 120.0f, top), button_size, idle, Rgba(30, 39, 49, 0.98f), Rgba(215, 222, 231))) {
         RequestWindowMinimize();
     }
-    if (ChromeButton("chrome_maximize", "[]", ImVec2(right - 74.0f, top), button_size, Rgba(0, 0, 0, 0.0f), Rgba(30, 39, 49, 0.95f), Rgba(215, 222, 231))) {
+    if (ChromeButton("chrome_maximize", maximize_glyph, ImVec2(right - 80.0f, top), button_size, idle, Rgba(30, 39, 49, 0.98f), Rgba(215, 222, 231))) {
         RequestWindowMaximizeRestore();
     }
-    if (ChromeButton("chrome_close", "X", ImVec2(right - 36.0f, top), button_size, Rgba(0, 0, 0, 0.0f), Rgba(190, 42, 58, 0.95f), Rgba(255, 255, 255))) {
+    if (ChromeButton("chrome_close", ChromeGlyph::Close, ImVec2(right - 40.0f, top), button_size, idle, Rgba(190, 42, 58, 0.98f), Rgba(255, 255, 255))) {
         RequestWindowClose();
     }
 }
@@ -1969,14 +2927,14 @@ bool NavButton(const char* id, IconGlyph icon, const char* label, bool selected)
     if (hovered) {
         ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
     }
-    const ImU32 bg = selected ? Color(13, 63, 44, 0.78f) : (hovered ? Color(25, 35, 45, 0.92f) : Color(0, 0, 0, 0));
+    const ImU32 bg = selected ? Color(68, 24, 31, 0.82f) : (hovered ? Color(32, 34, 40, 0.94f) : Color(0, 0, 0, 0));
     draw->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y), bg, 7.0f);
     if (selected) {
         const float pulse = 0.72f + Pulse(2.8f) * 0.28f;
-        draw->AddRectFilled(ImVec2(pos.x, pos.y + 7.0f), ImVec2(pos.x + 3.0f, pos.y + size.y - 7.0f), Color(38, 221, 123, pulse), 2.0f);
+        draw->AddRectFilled(ImVec2(pos.x, pos.y + 7.0f), ImVec2(pos.x + 3.0f, pos.y + size.y - 7.0f), Color(248, 64, 82, pulse), 2.0f);
         draw->AddRect(pos, ImVec2(pos.x + size.x, pos.y + size.y), Color(255, 255, 255, 0.055f), 7.0f);
     }
-    const ImVec4 color = selected ? Rgba(38, 221, 123) : Rgba(198, 205, 213);
+    const ImVec4 color = selected ? Rgba(255, 120, 132) : Rgba(198, 205, 213);
     DrawBitmapIcon(draw, icon, ImVec2(pos.x + 14.0f, pos.y + 12.0f), 16.0f, ImGui::GetColorU32(color));
     draw->AddText(ImVec2(pos.x + 40.0f, pos.y + 11.0f), ImGui::GetColorU32(color), label);
     return clicked;
@@ -2021,7 +2979,7 @@ void DrawProgress(float fraction, ImVec2 size, bool animated = false)
     const ImVec2 max(pos.x + size.x, pos.y + size.y);
     const ImVec2 fill_max(pos.x + size.x * fraction, pos.y + size.y);
     draw->AddRectFilled(pos, max, Color(24, 32, 42), size.y * 0.5f);
-    draw->AddRectFilledMultiColor(pos, fill_max, Color(30, 176, 99), Color(74, 222, 128), Color(38, 221, 123), Color(15, 118, 89));
+    draw->AddRectFilledMultiColor(pos, fill_max, Color(185, 28, 45), Color(248, 64, 82), Color(255, 120, 132), Color(127, 29, 39));
     draw->AddRect(pos, max, Color(255, 255, 255, 0.065f), size.y * 0.5f);
     if (animated && fraction > 0.04f) {
         const float shimmer = std::fmod(static_cast<float>(ImGui::GetTime()) * 0.85f, 1.0f);
@@ -2047,6 +3005,117 @@ std::string LatestUserPrompt(const std::vector<ChatMessage>& history)
         }
     }
     return "Analyze the current project and give me the highest-impact next steps.";
+}
+
+std::string BuildProjectScaffoldChatSummary(
+    const ProjectScaffoldPlanResult& plan,
+    const ProjectScaffoldResult& preview)
+{
+    std::ostringstream summary;
+    summary << "I routed this into the Project Builder and prepared a safe preview. No files have been written yet.\n\n";
+    summary << "Planned stack: " << (plan.preset.label.empty() ? plan.preset.id : plan.preset.label) << "\n";
+    summary << "Project name: " << (plan.project_name.empty() ? "aegis-app" : plan.project_name) << "\n";
+    summary << "Target: " << (plan.target_path.empty() ? preview.target_path : plan.target_path) << "\n";
+    summary << "Files in preview: " << preview.files.size() << "\n";
+    if (!plan.install_command.empty()) {
+        summary << "Install: `" << plan.install_command << "`\n";
+    }
+    if (!plan.validation_command.empty()) {
+        summary << "Validate: `" << plan.validation_command << "`\n";
+    }
+    if (!preview.roadmap_path.empty()) {
+        summary << "Roadmap: `" << preview.roadmap_path << "`\n";
+    }
+    if (!plan.plan_steps.empty()) {
+        summary << "\nExecution plan:\n";
+        for (const std::string& step : plan.plan_steps) {
+            summary << "- " << step << "\n";
+        }
+    }
+    if (!plan.risk_warnings.empty()) {
+        summary << "\nRisk notes:\n";
+        for (const std::string& warning : plan.risk_warnings) {
+            summary << "- " << warning << "\n";
+        }
+    }
+    if (!preview.diff_summary.empty()) {
+        summary << "\nDiff preview: " << JoinList(preview.diff_summary, ", ") << "\n";
+    }
+    if (!preview.stages.empty()) {
+        summary << "\nVisible build plan:\n";
+        for (const ProjectBuildStageInfo& stage : preview.stages) {
+            summary << "- " << (stage.status.empty() ? "planned" : stage.status)
+                    << ": " << (stage.label.empty() ? stage.id : stage.label);
+            if (!stage.detail.empty()) {
+                summary << " - " << stage.detail;
+            }
+            summary << "\n";
+        }
+    }
+    if (!plan.reasons.empty()) {
+        summary << "\nWhy this route:\n";
+        const size_t count = std::min<size_t>(plan.reasons.size(), 3);
+        for (size_t i = 0; i < count; ++i) {
+            summary << "- " << plan.reasons[i] << "\n";
+        }
+    }
+    summary << "\nThe Project Builder is open so you can inspect the plan, adjust fields, then click Create Project when ready.";
+    return summary.str();
+}
+
+std::string BuildProjectScaffoldResultSummary(const ProjectScaffoldResult& result)
+{
+    std::ostringstream summary;
+    summary << (result.message.empty() ? "Project Builder finished." : result.message) << "\n\n";
+    summary << "Target: " << result.target_path << "\n";
+    if (!result.checkpoint.empty()) {
+        summary << "Checkpoint: " << result.checkpoint << "\n";
+    }
+    if (!result.roadmap_path.empty()) {
+        summary << "Roadmap: `" << result.roadmap_path << "`\n";
+    }
+    if (!result.diff_summary.empty()) {
+        summary << "Diff: " << JoinList(result.diff_summary, ", ") << "\n";
+    }
+    if (!result.risk_warnings.empty()) {
+        summary << "\nRisk notes handled:\n";
+        for (const std::string& warning : result.risk_warnings) {
+            summary << "- " << warning << "\n";
+        }
+    }
+    if (!result.stages.empty()) {
+        summary << "\nBuild loop:\n";
+        for (const ProjectBuildStageInfo& stage : result.stages) {
+            summary << "- " << (stage.status.empty() ? "planned" : stage.status)
+                    << ": " << (stage.label.empty() ? stage.id : stage.label);
+            if (!stage.detail.empty()) {
+                summary << " - " << stage.detail;
+            }
+            summary << "\n";
+        }
+    }
+    if (result.has_validation) {
+        summary << "\nValidation: " << (ValidationPassed(result.validation) ? "passed" : "needs repair") << "\n";
+        if (!result.validation.summary.empty()) {
+            summary << result.validation.summary << "\n";
+        }
+        if (!result.validation.command.empty()) {
+            summary << "Command: `" << result.validation.command << "`\n";
+        }
+    }
+    if (!result.memory_paths.empty()) {
+        summary << "\nProject memory updated:\n";
+        for (const std::string& path : result.memory_paths) {
+            summary << "- `" << path << "`\n";
+        }
+    }
+    if (!result.next_steps.empty()) {
+        summary << "\nNext steps:\n";
+        for (const std::string& step : result.next_steps) {
+            summary << "- " << step << "\n";
+        }
+    }
+    return summary.str();
 }
 
 int ApproxTokensFromChars(size_t chars)
@@ -2172,6 +3241,11 @@ std::filesystem::path PatchExportPath()
     return AppDataDirectory() / "exports" / ("AegisPatch-" + TimestampForFileName() + ".patch");
 }
 
+std::filesystem::path VerificationReportDirectory()
+{
+    return AppDataDirectory() / "exports" / "verification";
+}
+
 std::filesystem::path CreativeExportDirectory()
 {
     return AppDataDirectory() / "exports" / "creative";
@@ -2202,6 +3276,49 @@ std::string SafeExportSegment(const std::string& value, const std::string& fallb
     return Shorten(out, 80);
 }
 
+std::filesystem::path VerificationReportExportPath(const VerificationResult& result)
+{
+    const std::string status = SafeExportSegment(result.status.empty() ? "verification" : result.status, "verification");
+    const std::string task = SafeExportSegment(result.task_id.empty() ? "task" : result.task_id, "task");
+    return VerificationReportDirectory() / ("AegisVerify-" + status + "-" + task + "-" + TimestampForFileName() + ".md");
+}
+
+std::vector<std::filesystem::path> RecentVerificationReportPaths(int max_count = 5)
+{
+    std::vector<std::pair<std::filesystem::path, std::filesystem::file_time_type>> reports;
+    std::error_code ec;
+    const std::filesystem::path directory = VerificationReportDirectory();
+    if (!std::filesystem::exists(directory, ec) || !std::filesystem::is_directory(directory, ec)) {
+        return {};
+    }
+
+    for (const std::filesystem::directory_entry& entry : std::filesystem::directory_iterator(directory, ec)) {
+        if (ec) {
+            break;
+        }
+        if (!entry.is_regular_file(ec)) {
+            continue;
+        }
+        const std::filesystem::path path = entry.path();
+        if (Lower(WideToUtf8(path.extension().wstring())) != ".md") {
+            continue;
+        }
+        reports.emplace_back(path, entry.last_write_time(ec));
+    }
+
+    std::sort(reports.begin(), reports.end(), [](const auto& lhs, const auto& rhs) {
+        return lhs.second > rhs.second;
+    });
+
+    std::vector<std::filesystem::path> paths;
+    const int count = std::min(std::max(0, max_count), static_cast<int>(reports.size()));
+    paths.reserve(static_cast<size_t>(count));
+    for (int i = 0; i < count; ++i) {
+        paths.push_back(reports[static_cast<size_t>(i)].first);
+    }
+    return paths;
+}
+
 std::filesystem::path CreativeJobExportPath(const MediaJobSummary& job)
 {
     const std::string kind = SafeExportSegment(job.kind, "creative");
@@ -2229,8 +3346,30 @@ std::string JsonQuoted(const std::string& value)
     return "\"" + EscapeJson(value) + "\"";
 }
 
+bool ConversationIsUserStartedPlaceholder(const std::vector<ChatMessage>& history);
+bool ConversationIsStartupPlaceholder(const std::vector<ChatMessage>& history);
+
+bool ConversationTitleLooksDefault(const std::string& title)
+{
+    const std::string trimmed = Trim(title);
+    return trimmed.empty() ||
+        trimmed == "New Aegis Chat" ||
+        ContainsCaseInsensitive(trimmed, "Aegis desktop is ready") ||
+        ContainsCaseInsensitive(trimmed, "Connect the backend") ||
+        ContainsCaseInsensitive(trimmed, "New chat started");
+}
+
+bool ConversationTitleShouldRefresh(const std::string& title, const std::vector<ChatMessage>& history)
+{
+    (void)history;
+    return ConversationTitleLooksDefault(title);
+}
+
 std::string ConversationTitleFromHistory(const std::vector<ChatMessage>& history)
 {
+    if (ConversationIsUserStartedPlaceholder(history) || ConversationIsStartupPlaceholder(history)) {
+        return "New Aegis Chat";
+    }
     for (const ChatMessage& message : history) {
         if (message.role == "user" && !Trim(message.content).empty()) {
             return Shorten(Trim(message.content), 72);
@@ -2246,12 +3385,98 @@ std::string ConversationTitleFromHistory(const std::vector<ChatMessage>& history
 
 std::string ConversationPreviewFromHistory(const std::vector<ChatMessage>& history)
 {
+    if (ConversationIsUserStartedPlaceholder(history)) {
+        return "Ready for the first prompt.";
+    }
+    if (ConversationIsStartupPlaceholder(history)) {
+        return "Ready for the first task.";
+    }
     for (auto it = history.rbegin(); it != history.rend(); ++it) {
         if (!Trim(it->content).empty()) {
             return Shorten(Trim(it->content), 120);
         }
     }
     return "No messages yet.";
+}
+
+bool ConversationHasUserMessage(const std::vector<ChatMessage>& history)
+{
+    return std::any_of(history.begin(), history.end(), [](const ChatMessage& message) {
+        return message.role == "user" && !Trim(message.content).empty();
+    });
+}
+
+bool ConversationIsUserStartedPlaceholder(const std::vector<ChatMessage>& history)
+{
+    if (history.size() != 1) {
+        return false;
+    }
+    const ChatMessage& message = history.front();
+    return message.role == "assistant" &&
+        ContainsCaseInsensitive(message.content, "New chat started");
+}
+
+bool ConversationIsStartupPlaceholder(const std::vector<ChatMessage>& history)
+{
+    if (history.size() != 1) {
+        return false;
+    }
+    const ChatMessage& message = history.front();
+    return message.role == "assistant" &&
+        ContainsCaseInsensitive(message.content, "Aegis desktop is ready") &&
+        ContainsCaseInsensitive(message.content, "send me the first task");
+}
+
+bool ConversationIsStaleStartupPlaceholderPayload(const JsonValue& root, const std::vector<ChatMessage>& history)
+{
+    if (ConversationIsStartupPlaceholder(history)) {
+        return true;
+    }
+    if (ConversationHasUserMessage(history)) {
+        return false;
+    }
+
+    const std::string title = root["title"].AsString();
+    const std::string preview = root["preview"].AsString();
+    return ContainsCaseInsensitive(title, "Aegis desktop is ready") ||
+        ContainsCaseInsensitive(preview, "Aegis desktop is ready") ||
+        ContainsCaseInsensitive(preview, "send me the first task");
+}
+
+bool JsonBoolFieldLooksTrue(const std::string& body, const std::string& field)
+{
+    const std::string needle = "\"" + field + "\"";
+    const size_t key = body.find(needle);
+    if (key == std::string::npos) {
+        return false;
+    }
+    const size_t colon = body.find(':', key + needle.size());
+    if (colon == std::string::npos) {
+        return false;
+    }
+    size_t cursor = colon + 1;
+    while (cursor < body.size() && std::isspace(static_cast<unsigned char>(body[cursor]))) {
+        ++cursor;
+    }
+    return body.compare(cursor, 4, "true") == 0;
+}
+
+bool RawConversationFileLooksLikeStaleStartupPlaceholder(const std::filesystem::path& path)
+{
+    std::ifstream file(path, std::ios::binary);
+    if (!file) {
+        return false;
+    }
+    const std::string body((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    if (JsonBoolFieldLooksTrue(body, "pinned")) {
+        return false;
+    }
+    if (body.find("\"role\":\"user\"") != std::string::npos ||
+        body.find("\"role\": \"user\"") != std::string::npos) {
+        return false;
+    }
+    return ContainsCaseInsensitive(body, "Aegis desktop is ready") &&
+        ContainsCaseInsensitive(body, "send me the first task");
 }
 
 std::vector<ChatMessage> ParseConversationMessages(const JsonValue& value)
@@ -2307,10 +3532,13 @@ void WriteConversationFile(
 
     const size_t max_messages = 200;
     const size_t start = history.size() > max_messages ? history.size() - max_messages : 0;
+    const std::string stored_title = ConversationTitleShouldRefresh(title, history)
+        ? ConversationTitleFromHistory(history)
+        : title;
     file << "{\n";
     file << "  \"version\":2,\n";
     file << "  \"id\":" << JsonQuoted(id) << ",\n";
-    file << "  \"title\":" << JsonQuoted(title.empty() ? ConversationTitleFromHistory(history) : title) << ",\n";
+    file << "  \"title\":" << JsonQuoted(stored_title) << ",\n";
     file << "  \"preview\":" << JsonQuoted(ConversationPreviewFromHistory(history)) << ",\n";
     file << "  \"saved_at\":" << JsonQuoted(NowTimeLabel()) << ",\n";
     file << "  \"pinned\":" << (pinned ? "true" : "false") << ",\n";
@@ -2384,7 +3612,7 @@ std::string BuildMessageWithAttachments(const std::string& message, const std::v
         return body.str();
     }
 
-    body << "\n\nAttached workspace file context:";
+    body << "\n\nAttached file context:";
     for (const FileContent& attachment : attachments) {
         std::string content = attachment.content;
         bool truncated = false;
@@ -2445,6 +3673,7 @@ AegisChatApp::AegisChatApp()
     SetBuffer(media_aspect_ratio_buffer_, "16:9");
     SetBuffer(media_style_buffer_, "premium native desktop product");
     SetBuffer(media_output_formats_buffer_, "");
+    SetBuffer(project_scaffold_name_buffer_, "aegis-app");
     login_status_.clear();
 }
 
@@ -2452,6 +3681,9 @@ AegisChatApp::~AegisChatApp()
 {
     if (active_task_.valid()) {
         active_task_.wait();
+    }
+    if (benchmark_poll_task_.valid()) {
+        benchmark_poll_task_.wait();
     }
     StopAudioPreview();
     ClearCreativeTextureCache();
@@ -2478,15 +3710,76 @@ void AegisChatApp::Initialize()
     }
 }
 
+void AegisChatApp::TickModelBenchmarkPolling(std::chrono::steady_clock::time_point now)
+{
+    if (benchmark_poll_task_.valid()) {
+        if (benchmark_poll_task_.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) {
+            return;
+        }
+
+        const bool had_active_job = HasActiveBenchmarkJob(model_benchmarks_);
+        const std::string active_job_id = FirstActiveBenchmarkJobId(model_benchmarks_);
+        try {
+            ModelBenchmarkSnapshot benchmarks = benchmark_poll_task_.get();
+            const ModelBenchmarkJobInfo* finished_job = FindBenchmarkJob(benchmarks, active_job_id);
+            const bool has_finished_job = finished_job != nullptr;
+            const ModelBenchmarkJobInfo finished_job_copy = has_finished_job ? *finished_job : ModelBenchmarkJobInfo{};
+            model_benchmarks_ = std::move(benchmarks);
+            const bool has_active_job = HasActiveBenchmarkJob(model_benchmarks_);
+            if (had_active_job && !has_active_job && has_finished_job) {
+                const std::string message = finished_job_copy.message.empty()
+                    ? ("Benchmark job " + finished_job_copy.status + ".")
+                    : finished_job_copy.message;
+                PushToast(BenchmarkJobToastTitle(finished_job_copy), message, BenchmarkJobToastTone(finished_job_copy), 5.0f);
+                if (status_.empty() || status_.find("Benchmark") != std::string::npos || status_.find("benchmark") != std::string::npos) {
+                    status_ = message;
+                }
+            }
+            next_benchmark_poll_ = now + (has_active_job ? std::chrono::seconds(2) : std::chrono::seconds(20));
+        } catch (const std::exception&) {
+            next_benchmark_poll_ = now + std::chrono::seconds(10);
+        }
+    }
+
+    if (!HasActiveBenchmarkJob(model_benchmarks_) || now < next_benchmark_poll_) {
+        return;
+    }
+
+    next_benchmark_poll_ = now + std::chrono::seconds(3);
+    AegisClient client = client_;
+    benchmark_poll_task_ = std::async(std::launch::async, [client]() mutable {
+        return client.GetModelBenchmarks();
+    });
+}
+
 void AegisChatApp::Tick()
 {
+    DrainStatusUpdates();
+    DrainStreamDeltas();
+    DrainAgentActivity();
+
     if (active_task_.valid() && active_task_.wait_for(std::chrono::milliseconds(0)) == std::future_status::ready) {
+        const std::string finishing_label = busy_label_;
         Completion completion;
         try {
             completion = active_task_.get();
         } catch (const std::exception& error) {
             const std::string message = error.what();
-            completion = [this, message]() { status_ = message; };
+            completion = [this, message]() {
+                status_ = message;
+                if (streaming_assistant_index_ >= 0 && streaming_assistant_index_ < static_cast<int>(history_.size())) {
+                    ChatMessage& streamed = history_[static_cast<size_t>(streaming_assistant_index_)];
+                    if (Trim(streamed.content).empty() || streamed.content == "Aegis is preparing a response...") {
+                        streamed.content = "Aegis could not complete this streamed response.";
+                    }
+                    streamed.content += "\n\nStream stopped: " + message;
+                    SaveConversationSnapshot();
+                }
+                streaming_assistant_index_ = -1;
+                streaming_assistant_has_delta_ = false;
+                streaming_preview_segment_start_ = 0;
+                streaming_preview_attempt_ = 0;
+            };
         }
 
         if (completion) {
@@ -2494,10 +3787,25 @@ void AegisChatApp::Tick()
                 completion();
             } catch (const std::exception& error) {
                 status_ = error.what();
+                if (streaming_assistant_index_ >= 0 && streaming_assistant_index_ < static_cast<int>(history_.size())) {
+                    ChatMessage& streamed = history_[static_cast<size_t>(streaming_assistant_index_)];
+                    if (Trim(streamed.content).empty() || streamed.content == "Aegis is preparing a response...") {
+                        streamed.content = "Aegis could not complete this streamed response.";
+                    }
+                    streamed.content += "\n\nStream stopped: " + std::string(error.what());
+                    SaveConversationSnapshot();
+                }
+                streaming_assistant_index_ = -1;
+                streaming_assistant_has_delta_ = false;
+                streaming_preview_segment_start_ = 0;
+                streaming_preview_attempt_ = 0;
             }
         }
         busy_ = false;
         busy_label_.clear();
+        if (!finishing_label.empty()) {
+            QueueAgentActivity("task", "Finished: " + finishing_label, "success");
+        }
     }
 
     const auto now = std::chrono::steady_clock::now();
@@ -2538,8 +3846,29 @@ void AegisChatApp::Tick()
         return;
     }
 
+    if (!busy_ && pending_full_verify_after_repair_) {
+        pending_full_verify_after_repair_ = false;
+        VerifyWorkspace();
+        return;
+    }
+    if (!busy_ && pending_verification_chain_repair_) {
+        pending_verification_chain_repair_ = false;
+        RepairLastValidationFailure(true);
+        return;
+    }
+    if (!busy_) {
+        AdvanceAutopilotIfReady();
+        if (busy_) {
+            return;
+        }
+    }
+
+    TrySendQueuedUserMessage();
+
+    TickModelBenchmarkPolling(now);
+
     if (!busy_ && now >= next_health_check_) {
-        next_health_check_ = now + std::chrono::seconds(10);
+        next_health_check_ = now + std::chrono::seconds(30);
         RefreshRuntime(false);
     }
 }
@@ -2588,15 +3917,26 @@ void AegisChatApp::Render()
     HandleKeyboardShortcuts();
     ImGui::PushStyleVar(ImGuiStyleVar_Alpha, dashboard_reveal);
     ImGui::SetCursorPos(ImVec2(0.0f, (1.0f - dashboard_reveal) * 18.0f));
-    if (ImGui::BeginTable("app_shell", 2, ImGuiTableFlags_NoSavedSettings)) {
-        ImGui::TableSetupColumn("Sidebar", ImGuiTableColumnFlags_WidthFixed, 276.0f);
+    const bool show_conversation_sidebar = app_size.x >= 1260.0f;
+    if (ImGui::BeginTable("app_shell", show_conversation_sidebar ? 3 : 2, ImGuiTableFlags_NoSavedSettings)) {
+        ImGui::TableSetupColumn("Sidebar", ImGuiTableColumnFlags_WidthFixed, show_conversation_sidebar ? 224.0f : 276.0f);
+        if (show_conversation_sidebar) {
+            ImGui::TableSetupColumn("Conversations", ImGuiTableColumnFlags_WidthFixed, 262.0f);
+        }
         ImGui::TableSetupColumn("Workspace", ImGuiTableColumnFlags_WidthStretch, 1.0f);
         ImGui::TableNextRow();
 
         ImGui::TableSetColumnIndex(0);
         RenderLeftPanel();
 
-        ImGui::TableSetColumnIndex(1);
+        int workspace_column = 1;
+        if (show_conversation_sidebar) {
+            ImGui::TableSetColumnIndex(1);
+            RenderConversationSidebar();
+            workspace_column = 2;
+        }
+
+        ImGui::TableSetColumnIndex(workspace_column);
         RenderTopBar();
         ImGui::Separator();
         RenderRuntimeBanner();
@@ -2694,6 +4034,26 @@ void AegisChatApp::Render()
         ImGui::EndPopup();
     }
 
+    if (ImGui::BeginPopupModal("Aegis Planning History", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::BeginChild("planning_history_modal_body", ImVec2(900.0f, 640.0f), false);
+        RenderPlanningHistoryModal();
+        ImGui::EndChild();
+        if (ImGui::Button("Close", ImVec2(-1.0f, 0.0f))) {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+
+    if (ImGui::BeginPopupModal("Aegis Policy Apply", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::BeginChild("policy_apply_modal_body", ImVec2(760.0f, 520.0f), false);
+        RenderPolicyApplyConfirmModal();
+        ImGui::EndChild();
+        if (ImGui::Button("Close", ImVec2(-1.0f, 0.0f))) {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+
     if (ImGui::BeginPopupModal("Aegis Build Queue", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::BeginChild("roadmap_modal_body", ImVec2(860.0f, 640.0f), false);
         RenderRoadmapModal();
@@ -2707,6 +4067,16 @@ void AegisChatApp::Render()
     if (ImGui::BeginPopupModal("Aegis Creative Studio", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::BeginChild("creative_studio_modal_body", ImVec2(920.0f, 640.0f), false);
         RenderCreativeStudioModal();
+        ImGui::EndChild();
+        if (ImGui::Button("Close", ImVec2(-1.0f, 0.0f))) {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+
+    if (ImGui::BeginPopupModal("Aegis Project Builder", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::BeginChild("project_builder_modal_body", ImVec2(900.0f, 660.0f), false);
+        RenderProjectBuilderModal();
         ImGui::EndChild();
         if (ImGui::Button("Close", ImVec2(-1.0f, 0.0f))) {
             ImGui::CloseCurrentPopup();
@@ -2823,6 +4193,7 @@ void AegisChatApp::StartTask(const std::string& label, std::function<Completion(
     busy_ = true;
     busy_label_ = label;
     status_ = label;
+    QueueAgentActivity("task", label, "running");
 
     active_task_ = std::async(std::launch::async, [work = std::move(work)]() mutable -> Completion {
         try {
@@ -2834,6 +4205,192 @@ void AegisChatApp::StartTask(const std::string& label, std::function<Completion(
             };
         }
     });
+}
+
+void AegisChatApp::QueueStatusUpdate(const std::string& status)
+{
+    const std::string trimmed = Trim(status);
+    if (trimmed.empty()) {
+        return;
+    }
+    std::lock_guard<std::mutex> lock(status_update_mutex_);
+    pending_status_updates_.push_back(trimmed);
+    QueueAgentActivity("status", trimmed, "running");
+}
+
+void AegisChatApp::DrainStatusUpdates()
+{
+    std::vector<std::string> updates;
+    {
+        std::lock_guard<std::mutex> lock(status_update_mutex_);
+        updates.swap(pending_status_updates_);
+    }
+    if (!updates.empty()) {
+        status_ = updates.back();
+    }
+}
+
+void AegisChatApp::QueueStreamDelta(const StreamDeltaInfo& delta)
+{
+    if (delta.delta.empty() && delta.preview_action != "reset") {
+        return;
+    }
+    std::lock_guard<std::mutex> lock(stream_delta_mutex_);
+    pending_stream_deltas_.push_back(delta);
+    if (!delta.message.empty()) {
+        QueueAgentActivity("stream", delta.message, "running");
+    }
+}
+
+void AegisChatApp::DrainStreamDeltas()
+{
+    std::vector<StreamDeltaInfo> deltas;
+    {
+        std::lock_guard<std::mutex> lock(stream_delta_mutex_);
+        deltas.swap(pending_stream_deltas_);
+    }
+    if (deltas.empty()) {
+        return;
+    }
+    if (streaming_assistant_index_ < 0 || streaming_assistant_index_ >= static_cast<int>(history_.size())) {
+        return;
+    }
+
+    ChatMessage& message = history_[static_cast<size_t>(streaming_assistant_index_)];
+    if (message.role != "assistant") {
+        return;
+    }
+    if (!streaming_assistant_has_delta_) {
+        message.content.clear();
+        streaming_assistant_has_delta_ = true;
+    }
+
+    for (const StreamDeltaInfo& delta : deltas) {
+        if (delta.source == "structured_reply_preview" && delta.preview_action == "reset") {
+            if (streaming_preview_attempt_ == delta.preview_attempt &&
+                streaming_preview_segment_start_ <= message.content.size()) {
+                message.content.erase(streaming_preview_segment_start_);
+            }
+            streaming_preview_attempt_ = 0;
+            streaming_preview_segment_start_ = message.content.size();
+            status_ = delta.message.empty()
+                ? "Retiring failed provider preview before trying the next route..."
+                : delta.message;
+            continue;
+        }
+
+        if (delta.delta.empty()) {
+            continue;
+        }
+
+        if (delta.source == "structured_reply_preview" &&
+            (streaming_preview_attempt_ != delta.preview_attempt || streaming_preview_attempt_ == 0)) {
+            streaming_preview_attempt_ = delta.preview_attempt;
+            streaming_preview_segment_start_ = message.content.size();
+        }
+
+        message.content += delta.delta;
+        if (delta.source == "structured_preview_reconciliation") {
+            status_ = "Reconciling streamed preview with final response...";
+        } else if (delta.source == "structured_reply_preview" && !delta.provider_label.empty()) {
+            status_ = "Receiving streamed preview from " + delta.provider_label;
+            if (!delta.model.empty()) {
+                status_ += " / " + delta.model;
+            }
+            status_ += "...";
+        } else {
+            status_ = "Receiving streamed response...";
+        }
+    }
+}
+
+void AegisChatApp::QueueAgentActivity(
+    const std::string& type,
+    const std::string& message,
+    const std::string& status,
+    const std::string& file_path,
+    const std::string& command)
+{
+    const std::string trimmed = Trim(message);
+    if (trimmed.empty()) {
+        return;
+    }
+
+    AgentActivityEvent event;
+    event.timestamp = NowTimeLabel();
+    event.type = type.empty() ? "activity" : type;
+    event.message = Shorten(trimmed, 220);
+    event.file_path = Shorten(file_path, 160);
+    event.command = Shorten(command, 160);
+    event.status = status.empty() ? "running" : status;
+
+    std::lock_guard<std::mutex> lock(agent_activity_mutex_);
+    pending_agent_activity_.push_back(std::move(event));
+}
+
+void AegisChatApp::DrainAgentActivity()
+{
+    std::vector<AgentActivityEvent> events;
+    {
+        std::lock_guard<std::mutex> lock(agent_activity_mutex_);
+        events.swap(pending_agent_activity_);
+    }
+    if (events.empty()) {
+        return;
+    }
+    for (AgentActivityEvent& event : events) {
+        agent_activity_.push_back(std::move(event));
+    }
+    constexpr size_t max_events = 160;
+    if (agent_activity_.size() > max_events) {
+        agent_activity_.erase(agent_activity_.begin(), agent_activity_.begin() + static_cast<std::ptrdiff_t>(agent_activity_.size() - max_events));
+    }
+}
+
+void AegisChatApp::QueueUserMessageForRetry(
+    const std::string& content,
+    const std::vector<FileContent>& attachments,
+    const std::string& reason)
+{
+    const std::string trimmed = Trim(content);
+    if (trimmed.empty() && attachments.empty()) {
+        return;
+    }
+
+    std::string display_content = trimmed.empty() ? "Use the attached workspace file(s) as context." : trimmed;
+    if (!attachments.empty()) {
+        display_content += "\n\n" + AttachmentSummary(attachments);
+    }
+    history_.push_back({"user", display_content + "\n\nQueued by Aegis: " + reason, NowTimeLabel()});
+    queued_user_messages_.push_back({trimmed, attachments});
+    if (queued_user_messages_.size() > kQueuedUserMessageLimit) {
+        queued_user_messages_.erase(queued_user_messages_.begin());
+    }
+    attachments_.clear();
+    message_buffer_.fill('\0');
+    SaveConversationSnapshot();
+    status_ = "Queued your message. Aegis will send it when the current operation is ready.";
+    QueueAgentActivity("queue", "Queued user prompt for retry: " + Shorten(trimmed, 96), "pending");
+}
+
+void AegisChatApp::TrySendQueuedUserMessage()
+{
+    if (busy_ || queued_user_messages_.empty()) {
+        return;
+    }
+
+    const bool backend_ready = health_.engine_ready || connection_state_ == "connected";
+    if (!backend_ready) {
+        return;
+    }
+
+    QueuedUserMessage queued = queued_user_messages_.front();
+    queued_user_messages_.erase(queued_user_messages_.begin());
+    QueueAgentActivity("queue", "Sending queued prompt now that Aegis is ready.", "running");
+    const std::string content = queued.attachments.empty()
+        ? queued.content
+        : BuildMessageWithAttachments(queued.content, queued.attachments);
+    SubmitMessage(content, false);
 }
 
 void AegisChatApp::AttemptLogin(bool demo_mode)
@@ -2867,18 +4424,49 @@ void AegisChatApp::AttemptLogin(bool demo_mode)
 
 void AegisChatApp::RefreshRuntime(bool allow_backend_start)
 {
+    const auto now = std::chrono::steady_clock::now();
+    if (busy_ || runtime_refresh_in_flight_) {
+        next_health_check_ = now + std::chrono::seconds(30);
+        return;
+    }
+    runtime_refresh_in_flight_ = true;
+    last_runtime_refresh_ = now;
+    connection_state_ = health_.engine_ready ? "reconnecting" : "offline";
+    connection_detail_ = allow_backend_start ? "Starting backend services." : "Checking backend health.";
+    QueueAgentActivity("connection", connection_detail_, "running");
+
     AegisClient client = client_;
     const std::string preferred_workspace = Trim(workspace_root_.empty() ? BufferString(workspace_buffer_.data()) : workspace_root_);
-    StartTask(allow_backend_start ? "Connecting to Aegis backend..." : "Refreshing backend status...", [this, client, allow_backend_start, preferred_workspace]() mutable {
-        RuntimeSnapshot snapshot = client.LoadRuntime(allow_backend_start, preferred_workspace);
+    StartTask(allow_backend_start ? "Connecting to Aegis backend..." : "Refreshing backend status...", [this, client, allow_backend_start, preferred_workspace]() mutable -> Completion {
+        RuntimeSnapshot snapshot;
+        try {
+            snapshot = client.LoadRuntime(allow_backend_start, preferred_workspace);
+        } catch (const std::exception& error) {
+            const std::string message = error.what();
+            return [this, message]() {
+                runtime_refresh_in_flight_ = false;
+                health_ = {};
+                connection_state_ = "failed";
+                connection_detail_ = message;
+                status_ = message;
+                QueueAgentActivity("connection", message, "failed");
+            };
+        }
         return [this, snapshot]() {
+            runtime_refresh_in_flight_ = false;
             if (!snapshot.ok) {
                 health_ = {};
+                connection_state_ = "failed";
+                connection_detail_ = snapshot.error.empty() ? "Backend is offline." : snapshot.error;
                 status_ = snapshot.error.empty() ? "Aegis backend is offline." : snapshot.error;
+                QueueAgentActivity("connection", connection_detail_, "failed");
                 return;
             }
             ApplyRuntimeSnapshot(snapshot);
+            connection_state_ = health_.engine_ready ? "connected" : "reconnecting";
+            connection_detail_ = health_.engine_ready ? "Backend connected." : "Backend responded but the engine is still warming up.";
             status_ = "Backend connected.";
+            QueueAgentActivity("connection", connection_detail_, health_.engine_ready ? "success" : "warning");
         };
     });
 }
@@ -2890,6 +4478,7 @@ void AegisChatApp::StartNewChat()
     }
     history_.clear();
     attachments_.clear();
+    conversation_search_buffer_.fill('\0');
     current_conversation_id_ = NewConversationId();
     current_conversation_title_ = "New Aegis Chat";
     current_conversation_pinned_ = false;
@@ -2903,8 +4492,11 @@ void AegisChatApp::StartNewChat()
     });
     last_response_ = {};
     has_response_ = false;
+    route_preview_ = {};
+    has_route_preview_ = false;
     selected_change_ = 0;
     selected_hunk_ = 0;
+    active_nav_ = "chat";
     status_ = "New chat started.";
     SaveConversationSnapshot();
     RefreshConversationLibrary();
@@ -2960,7 +4552,7 @@ void AegisChatApp::SaveConversationSnapshot()
     if (current_conversation_id_.empty()) {
         current_conversation_id_ = NewConversationId();
     }
-    if (current_conversation_title_.empty() || current_conversation_title_ == "New Aegis Chat") {
+    if (ConversationTitleShouldRefresh(current_conversation_title_, history_)) {
         current_conversation_title_ = ConversationTitleFromHistory(history_);
     }
 
@@ -2974,15 +4566,24 @@ void AegisChatApp::SaveConversationSnapshot()
         history_,
         workspace_root_,
         active_model);
-    WriteConversationFile(
-        ConversationLibraryPath(current_conversation_id_),
-        current_conversation_id_,
-        current_conversation_title_,
-        current_conversation_pinned_,
-        current_conversation_archived_,
-        history_,
-        workspace_root_,
-        active_model);
+    const std::filesystem::path library_path = ConversationLibraryPath(current_conversation_id_);
+    if (current_conversation_pinned_ ||
+        ConversationHasUserMessage(history_) ||
+        ConversationIsUserStartedPlaceholder(history_)) {
+        WriteConversationFile(
+            library_path,
+            current_conversation_id_,
+            current_conversation_title_,
+            current_conversation_pinned_,
+            current_conversation_archived_,
+            history_,
+            workspace_root_,
+            active_model);
+    } else {
+        std::error_code ec;
+        std::filesystem::remove(library_path, ec);
+    }
+    RefreshConversationLibrary();
 }
 
 void AegisChatApp::RefreshConversationLibrary()
@@ -2995,8 +4596,18 @@ void AegisChatApp::RefreshConversationLibrary()
         return;
     }
 
-    for (const std::filesystem::directory_entry& entry : std::filesystem::directory_iterator(dir, ec)) {
-        if (ec || !entry.is_regular_file(ec) || entry.path().extension() != L".json") {
+    std::error_code iterator_ec;
+    for (const std::filesystem::directory_entry& entry : std::filesystem::directory_iterator(dir, iterator_ec)) {
+        if (iterator_ec) {
+            break;
+        }
+        std::error_code entry_ec;
+        if (!entry.is_regular_file(entry_ec) || entry.path().extension() != L".json") {
+            continue;
+        }
+        if (RawConversationFileLooksLikeStaleStartupPlaceholder(entry.path())) {
+            std::error_code cleanup_ec;
+            std::filesystem::remove(entry.path(), cleanup_ec);
             continue;
         }
 
@@ -3005,11 +4616,20 @@ void AegisChatApp::RefreshConversationLibrary()
         if (!LoadConversationFilePayload(entry.path(), &root, &messages) || messages.empty()) {
             continue;
         }
+        const bool pinned = root["pinned"].AsBool(false);
+        if (!pinned && ConversationIsStaleStartupPlaceholderPayload(root, messages)) {
+            std::error_code cleanup_ec;
+            std::filesystem::remove(entry.path(), cleanup_ec);
+            continue;
+        }
+        if (!pinned && !ConversationHasUserMessage(messages) && !ConversationIsUserStartedPlaceholder(messages)) {
+            continue;
+        }
 
         LocalConversationSummary summary;
         summary.id = root["id"].AsString(entry.path().stem().string());
         summary.title = root["title"].AsString();
-        if (summary.title.empty()) {
+        if (ConversationTitleShouldRefresh(summary.title, messages)) {
             summary.title = ConversationTitleFromHistory(messages);
         }
         summary.preview = root["preview"].AsString();
@@ -3019,7 +4639,7 @@ void AegisChatApp::RefreshConversationLibrary()
         summary.saved_at = root["saved_at"].AsString();
         summary.path = WideToUtf8(entry.path().wstring());
         summary.message_count = static_cast<int>(messages.size());
-        summary.pinned = root["pinned"].AsBool(false);
+        summary.pinned = pinned;
         summary.archived = root["archived"].AsBool(false);
         summary.sort_key = FileSortKey(entry.path());
         conversations_.push_back(std::move(summary));
@@ -3254,6 +4874,114 @@ void AegisChatApp::ExportPatchFile()
     OpenExternalPath(path);
 }
 
+void AegisChatApp::ExportVerificationReport()
+{
+    if (!has_verification_result_) {
+        status_ = "Run Full Verify before exporting a verification report.";
+        PushToast("Verification report", status_, "warning");
+        return;
+    }
+
+    const std::filesystem::path path = VerificationReportExportPath(verification_result_);
+    std::error_code ec;
+    std::filesystem::create_directories(path.parent_path(), ec);
+
+    std::ofstream file(path, std::ios::binary | std::ios::trunc);
+    if (!file) {
+        status_ = "Could not export verification report.";
+        PushToast("Verification report failed", status_, "error");
+        return;
+    }
+
+    file << BuildVerificationReport(verification_result_, verification_repair_activities_);
+    file.close();
+
+    status_ = "Exported verification report: " + WideToUtf8(path.wstring());
+    PushToast("Verification report exported", WideToUtf8(path.filename().wstring()), "success");
+    OpenExternalPath(path);
+}
+
+void AegisChatApp::OpenVerificationReportsFolder()
+{
+    std::error_code ec;
+    const std::filesystem::path reports = VerificationReportDirectory();
+    std::filesystem::create_directories(reports, ec);
+    OpenExternalPath(reports);
+    status_ = "Opened verification reports folder.";
+}
+
+void AegisChatApp::AttachVerificationReport(const std::string& path)
+{
+    const std::string trimmed = Trim(path);
+    if (trimmed.empty()) {
+        status_ = "No verification report path was provided.";
+        return;
+    }
+    if (attachments_.size() >= 6) {
+        status_ = "Attachment tray is full. Remove a file before adding a report.";
+        return;
+    }
+
+    const std::filesystem::path report_path(Utf8ToWide(trimmed));
+    std::error_code ec;
+    if (!std::filesystem::exists(report_path, ec) || !std::filesystem::is_regular_file(report_path, ec)) {
+        status_ = "Verification report file was not found.";
+        PushToast("Report attach failed", status_, "error");
+        return;
+    }
+
+    std::ifstream file(report_path, std::ios::binary);
+    if (!file) {
+        status_ = "Could not read verification report.";
+        PushToast("Report attach failed", status_, "error");
+        return;
+    }
+    std::ostringstream buffer;
+    buffer << file.rdbuf();
+    std::string content = buffer.str();
+    if (Trim(content).empty()) {
+        status_ = "Verification report is empty.";
+        return;
+    }
+
+    const std::string report_text_path = WideToUtf8(report_path.wstring());
+    for (const FileContent& attachment : attachments_) {
+        if (attachment.path == report_text_path) {
+            status_ = "Verification report is already attached.";
+            return;
+        }
+    }
+
+    FileContent attachment;
+    attachment.workspace_root = WideToUtf8(VerificationReportDirectory().wstring());
+    attachment.path = report_text_path;
+    attachment.content = std::move(content);
+    attachments_.push_back(std::move(attachment));
+    status_ = "Attached verification report to the next message.";
+    PushToast("Report attached", WideToUtf8(report_path.filename().wstring()), "success");
+}
+
+void AegisChatApp::PruneVerificationReports(int keep_count)
+{
+    const int keep = std::max(1, keep_count);
+    const std::vector<std::filesystem::path> all_reports = RecentVerificationReportPaths(1000);
+    if (static_cast<int>(all_reports.size()) <= keep) {
+        status_ = "No old verification reports to prune.";
+        return;
+    }
+
+    int removed = 0;
+    for (int i = keep; i < static_cast<int>(all_reports.size()); ++i) {
+        std::error_code ec;
+        if (std::filesystem::remove(all_reports[static_cast<size_t>(i)], ec) && !ec) {
+            ++removed;
+        }
+    }
+
+    status_ = "Pruned " + std::to_string(removed) + " old verification report(s).";
+    PushToast("Reports pruned", status_, removed > 0 ? "success" : "warning");
+}
+
 void AegisChatApp::ExportSelectedMediaJob()
 {
     if (!has_selected_media_job_ || selected_media_job_.job_dir.empty()) {
@@ -3355,16 +5083,56 @@ void AegisChatApp::SaveRemoteConfigFromUi()
             models.active_endpoint = saved.model_endpoint;
             models.message = error.what();
         }
+        ModelRegistrySnapshot registry;
+        try {
+            registry = client.GetModelRegistry();
+        } catch (const std::exception& error) {
+            registry.active_model = saved.model_name;
+            registry.active_provider_id = saved.model_api + ":active";
+            registry.message = error.what();
+        }
+        ModelManagerSnapshot manager;
+        try {
+            manager = client.GetModelManager();
+        } catch (const std::exception& error) {
+            manager.active_model = saved.model_name;
+            manager.active_provider_id = registry.active_provider_id;
+            manager.message = error.what();
+        }
         std::string resolved_root;
         std::vector<WorkspaceFile> files = client.ListFiles(saved.default_workspace, client.Settings().max_files, &resolved_root);
+        WorkspaceProfileInfo workspace_profile;
+        bool has_workspace_profile = false;
+        std::string workspace_profile_error;
+        try {
+            workspace_profile = client.GetWorkspaceProfile(resolved_root);
+            has_workspace_profile = true;
+        } catch (const std::exception& error) {
+            workspace_profile_error = error.what();
+        }
         std::vector<TaskSummary> tasks = client.GetHistory(resolved_root, 8);
-        return [this, saved, models = std::move(models), resolved_root, files = std::move(files), tasks = std::move(tasks)]() {
+        return [this,
+                saved,
+                models = std::move(models),
+                registry = std::move(registry),
+                manager = std::move(manager),
+                resolved_root,
+                files = std::move(files),
+                workspace_profile = std::move(workspace_profile),
+                has_workspace_profile,
+                workspace_profile_error = std::move(workspace_profile_error),
+                tasks = std::move(tasks)]() {
             config_ = saved;
             models_ = models;
+            model_registry_ = registry;
+            model_manager_ = manager;
             has_config_ = true;
             workspace_root_ = resolved_root;
             config_.default_workspace = resolved_root;
             files_ = files;
+            workspace_profile_ = workspace_profile;
+            has_workspace_profile_snapshot_ = has_workspace_profile;
+            workspace_profile_error_ = workspace_profile_error;
             recent_tasks_ = tasks;
             mode_ = config_.default_mode;
             HydrateConfigBuffers();
@@ -3396,6 +5164,319 @@ void AegisChatApp::SelectModelFromInventory(const ModelInfo& model)
     SaveRemoteConfigFromUi();
 }
 
+void AegisChatApp::RefreshModelManager()
+{
+    AegisClient client = client_;
+    const std::string workspace = Trim(workspace_root_.empty() ? BufferString(workspace_buffer_.data()) : workspace_root_);
+    StartTask("Refreshing model manager...", [this, client, workspace]() mutable {
+        ModelManagerSnapshot manager = client.GetModelManager();
+        ModelInventory inventory = client.GetModels();
+        ModelRegistrySnapshot registry = client.GetModelRegistry();
+        ModelRegistryAuditInfo audit;
+        std::string audit_error;
+        bool audit_loaded = false;
+        try {
+            audit = client.GetModelRegistryAudit(workspace);
+            audit_loaded = true;
+        } catch (const std::exception& error) {
+            audit_error = error.what();
+        }
+        ModelRegistryCheckpointList checkpoints;
+        std::string checkpoint_error;
+        bool checkpoints_loaded = false;
+        try {
+            checkpoints = client.GetModelRegistryCheckpoints(8);
+            checkpoints_loaded = true;
+        } catch (const std::exception& error) {
+            checkpoint_error = error.what();
+        }
+        return [this,
+                manager = std::move(manager),
+                inventory = std::move(inventory),
+                registry = std::move(registry),
+                audit = std::move(audit),
+                audit_error = std::move(audit_error),
+                audit_loaded,
+                checkpoints = std::move(checkpoints),
+                checkpoint_error = std::move(checkpoint_error),
+                checkpoints_loaded]() {
+            model_manager_ = manager;
+            models_ = inventory;
+            model_registry_ = registry;
+            model_registry_audit_ = audit;
+            model_registry_audit_loaded_ = audit_loaded;
+            model_registry_audit_error_ = audit_error;
+            model_registry_checkpoints_ = checkpoints;
+            model_registry_checkpoints_loaded_ = checkpoints_loaded;
+            model_registry_checkpoints_error_ = checkpoint_error;
+            status_ = "Model manager refreshed.";
+        };
+    });
+}
+
+void AegisChatApp::RefreshModelBenchmarks()
+{
+    AegisClient client = client_;
+    const std::string workspace = Trim(workspace_root_.empty() ? BufferString(workspace_buffer_.data()) : workspace_root_);
+    StartTask("Refreshing model benchmarks...", [this, client, workspace]() mutable {
+        ModelBenchmarkSnapshot benchmarks = client.GetModelBenchmarks();
+        ModelRegistryBenchmarkPreviewInfo preview;
+        std::string preview_error;
+        bool preview_loaded = false;
+        try {
+            preview = client.GetBenchmarkRoutePreview(workspace);
+            preview_loaded = true;
+        } catch (const std::exception& error) {
+            preview_error = error.what();
+        }
+        return [this,
+                benchmarks = std::move(benchmarks),
+                preview = std::move(preview),
+                preview_error = std::move(preview_error),
+                preview_loaded]() {
+            model_benchmarks_ = benchmarks;
+            route_apply_preview_ = preview;
+            route_apply_preview_loaded_ = preview_loaded;
+            route_apply_preview_error_ = preview_error;
+            status_ = "Model benchmark scores refreshed.";
+        };
+    });
+}
+
+void AegisChatApp::RunQuickModelBenchmarks()
+{
+    RunModelBenchmarkPreset("quick local model benchmark", {"chat", "code", "reasoning"}, 4, 45.0);
+}
+
+void AegisChatApp::RunModelBenchmarkPreset(
+    const std::string& label,
+    const std::vector<std::string>& suite_ids,
+    int max_models,
+    double timeout_seconds,
+    const std::vector<std::string>& provider_ids)
+{
+    AegisClient client = client_;
+    StartTask("Running " + label + "...", [this, client, label, suite_ids, max_models, timeout_seconds, provider_ids]() mutable {
+        ModelBenchmarkJobInfo job = client.StartModelBenchmarkJob(suite_ids, max_models, true, timeout_seconds, provider_ids);
+        ModelBenchmarkSnapshot benchmarks = client.GetModelBenchmarks();
+        ModelRegistrySnapshot registry = client.GetModelRegistry();
+        return [this, label, job = std::move(job), benchmarks = std::move(benchmarks), registry = std::move(registry)]() {
+            model_benchmarks_ = benchmarks;
+            model_registry_ = registry;
+            status_ = "Started " + label + ": " + job.message;
+            PushToast("Benchmark started", job.message, "info");
+        };
+    });
+}
+
+void AegisChatApp::RunManagedModelBenchmark(const ManagedModelInfo& model)
+{
+    if (!CanBenchmarkManagedModel(model)) {
+        status_ = "This model is not benchmarkable yet. Use installed local chat/code/reasoning models.";
+        PushToast("Benchmark blocked", status_, "warning");
+        return;
+    }
+    const std::vector<std::string> suites = BenchmarkSuitesForManagedModel(model);
+    const std::string model_name = model.name.empty() ? model.provider_id : model.name;
+    RunModelBenchmarkPreset(
+        "targeted benchmark for " + Shorten(model_name, 42),
+        suites,
+        1,
+        60.0,
+        {model.provider_id});
+}
+
+void AegisChatApp::CancelModelBenchmarkJob(const ModelBenchmarkJobInfo& job)
+{
+    const std::string job_id = Trim(job.id);
+    if (job_id.empty()) {
+        status_ = "Benchmark job id is missing.";
+        PushToast("Cancel blocked", status_, "warning");
+        return;
+    }
+
+    AegisClient client = client_;
+    StartTask("Canceling benchmark job...", [this, client, job_id]() mutable {
+        ModelBenchmarkJobInfo canceled = client.CancelModelBenchmarkJob(job_id);
+        ModelBenchmarkSnapshot benchmarks = client.GetModelBenchmarks();
+        return [this, canceled = std::move(canceled), benchmarks = std::move(benchmarks)]() {
+            model_benchmarks_ = benchmarks;
+            status_ = canceled.message.empty() ? "Benchmark job cancel requested." : canceled.message;
+            PushToast("Benchmark cancel", status_, canceled.status == "canceled" ? "success" : "info");
+        };
+    });
+}
+
+void AegisChatApp::ApplyBenchmarkWinnersToRoutes()
+{
+    if (model_benchmarks_.provider_scores.empty()) {
+        status_ = "Run benchmark scores before applying route winners.";
+        PushToast("Benchmark routes", status_, "warning");
+        return;
+    }
+
+    AegisClient client = client_;
+    const std::string workspace = Trim(workspace_root_.empty() ? BufferString(workspace_buffer_.data()) : workspace_root_);
+    StartTask("Applying health-aware route winners...", [this, client, workspace]() mutable {
+        ModelRegistrySnapshot registry = client.ApplyBenchmarkWinnersToRegistry(workspace);
+        ModelRegistryAuditInfo audit = client.GetModelRegistryAudit();
+        ModelBenchmarkSnapshot benchmarks = client.GetModelBenchmarks();
+        ModelManagerSnapshot manager = client.GetModelManager();
+        ModelRegistryCheckpointList checkpoints = client.GetModelRegistryCheckpoints(8);
+        ModelRegistryBenchmarkPreviewInfo preview;
+        std::string preview_error;
+        bool preview_loaded = false;
+        try {
+            preview = client.GetBenchmarkRoutePreview(workspace);
+            preview_loaded = true;
+        } catch (const std::exception& error) {
+            preview_error = error.what();
+        }
+        return [this,
+                registry = std::move(registry),
+                audit = std::move(audit),
+                benchmarks = std::move(benchmarks),
+                manager = std::move(manager),
+                checkpoints = std::move(checkpoints),
+                preview = std::move(preview),
+                preview_error = std::move(preview_error),
+                preview_loaded]() {
+            model_registry_ = registry;
+            model_registry_audit_ = audit;
+            model_registry_audit_loaded_ = true;
+            model_registry_audit_error_.clear();
+            model_benchmarks_ = benchmarks;
+            model_manager_ = manager;
+            model_registry_checkpoints_ = checkpoints;
+            model_registry_checkpoints_loaded_ = true;
+            model_registry_checkpoints_error_.clear();
+            route_apply_preview_ = preview;
+            route_apply_preview_loaded_ = preview_loaded;
+            route_apply_preview_error_ = preview_error;
+            status_ = registry.message.empty() ? "Applied health-aware benchmark winners to routing roles." : registry.message;
+            PushToast("Healthy routes applied", status_, "success");
+        };
+    });
+}
+
+void AegisChatApp::ApplyRoutePolicyDiffToRoutes()
+{
+    const int role_change_count = static_cast<int>(std::count_if(
+        route_policy_diff_.role_proposals.begin(),
+        route_policy_diff_.role_proposals.end(),
+        [](const RoutePolicyRoleProposalInfo& proposal) {
+            return Lower(proposal.action) != "keep";
+        }));
+    const int provider_change_count = static_cast<int>(std::count_if(
+        route_policy_diff_.provider_proposals.begin(),
+        route_policy_diff_.provider_proposals.end(),
+        [](const RoutePolicyProviderProposalInfo& proposal) {
+            const std::string action = Lower(proposal.action);
+            return action != "hold" && action != "monitor";
+        }));
+    if (!route_policy_diff_loaded_ || (role_change_count + provider_change_count) <= 0) {
+        status_ = "Refresh Planning History before applying route policy changes.";
+        PushToast("Policy apply", status_, "warning");
+        return;
+    }
+
+    AegisClient client = client_;
+    const std::string workspace = Trim(workspace_root_.empty() ? BufferString(workspace_buffer_.data()) : workspace_root_);
+    StartTask("Applying safe route policy diff...", [this, client, workspace]() mutable {
+        ModelRegistrySnapshot registry = client.ApplyRoutePolicyDiffToRegistry(workspace, 200, 3, 0.55, false);
+        ModelRegistryAuditInfo audit = client.GetModelRegistryAudit();
+        ModelRegistryCheckpointList checkpoints = client.GetModelRegistryCheckpoints(8);
+        RoutePolicyDiffInfo policy_diff = client.GetRoutePolicyDiff(workspace, 200, 3);
+        RouteQualitySnapshot route_quality = client.GetRouteQuality(workspace, 200);
+        return [this,
+                registry = std::move(registry),
+                audit = std::move(audit),
+                checkpoints = std::move(checkpoints),
+                policy_diff = std::move(policy_diff),
+                route_quality = std::move(route_quality)]() {
+            model_registry_ = registry;
+            model_registry_audit_ = audit;
+            model_registry_audit_loaded_ = true;
+            model_registry_audit_error_.clear();
+            model_registry_checkpoints_ = checkpoints;
+            model_registry_checkpoints_loaded_ = true;
+            model_registry_checkpoints_error_.clear();
+            route_policy_diff_ = policy_diff;
+            route_policy_diff_loaded_ = true;
+            route_policy_diff_error_.clear();
+            route_quality_ = route_quality;
+            route_quality_loaded_ = true;
+            route_quality_error_.clear();
+            status_ = registry.message.empty() ? "Applied safe route policy diff." : registry.message;
+            PushToast("Policy applied", status_, "success");
+        };
+    });
+}
+
+void AegisChatApp::PullManagedModel(const ManagedModelInfo& model)
+{
+    const std::string model_name = Trim(model.name);
+    if (model_name.empty()) {
+        status_ = "Select a model with a valid name before pulling.";
+        PushToast("Model pull blocked", status_, "error");
+        return;
+    }
+
+    AegisClient client = client_;
+    StartTask("Starting model pull: " + Shorten(model_name, 48), [this, client, model_name]() mutable {
+        ModelOperationInfo operation = client.PullModel(model_name, 24.0);
+        ModelManagerSnapshot manager = client.GetModelManager();
+        return [this, operation = std::move(operation), manager = std::move(manager)]() {
+            model_manager_ = manager;
+            status_ = operation.message.empty()
+                ? "Started model pull: " + operation.model_name + "."
+                : operation.message + " " + operation.model_name + ".";
+            PushToast("Model pull started", operation.model_name, "success");
+        };
+    });
+}
+
+void AegisChatApp::DeleteManagedModel(const ManagedModelInfo& model)
+{
+    const std::string model_name = Trim(model.name);
+    if (model_name.empty()) {
+        status_ = "Select a local model with a valid name before removing it.";
+        PushToast("Model removal blocked", status_, "error");
+        return;
+    }
+    if (model.active) {
+        status_ = "The active model cannot be removed. Select another model first.";
+        PushToast("Model removal blocked", status_, "error");
+        return;
+    }
+
+    AegisClient client = client_;
+    StartTask("Removing model: " + Shorten(model_name, 48), [this, client, model_name]() mutable {
+        ModelOperationInfo operation = client.DeleteLocalModel(model_name);
+        ModelManagerSnapshot manager = client.GetModelManager();
+        ModelInventory inventory = client.GetModels();
+        ModelRegistrySnapshot registry = client.GetModelRegistry();
+        return [this, operation = std::move(operation), manager = std::move(manager), inventory = std::move(inventory), registry = std::move(registry)]() {
+            model_manager_ = manager;
+            models_ = inventory;
+            model_registry_ = registry;
+            status_ = operation.message.empty()
+                ? "Started model removal: " + operation.model_name + "."
+                : operation.message + " " + operation.model_name + ".";
+            PushToast("Model removal started", operation.model_name, "warning");
+        };
+    });
+}
+
+void AegisChatApp::HydrateModelProviderBlueprint(int index)
+{
+    const ModelRegistryProviderInfo provider = BuildProviderFromBlueprint(index);
+    HydrateModelProviderEditor(&provider, -1);
+    selected_model_provider_index_ = -1;
+    status_ = "Staged provider blueprint: " + provider.label + ".";
+    PushToast("Provider blueprint staged", provider.label, "info");
+}
+
 void AegisChatApp::HydrateModelProviderEditor(const ModelRegistryProviderInfo* provider, int index)
 {
     show_model_provider_editor_ = true;
@@ -3405,13 +5486,21 @@ void AegisChatApp::HydrateModelProviderEditor(const ModelRegistryProviderInfo* p
         SetBuffer(provider_label_buffer_, "Custom Provider");
         SetBuffer(provider_api_buffer_, "openai-compatible");
         SetBuffer(provider_endpoint_buffer_, "");
+        SetBuffer(provider_model_buffer_, "");
+        SetBuffer(provider_aliases_buffer_, "");
+        SetBuffer(provider_secret_env_buffer_, "");
         SetBuffer(provider_capabilities_buffer_, "chat, code");
         SetBuffer(provider_roles_buffer_, "chat, fallback");
+        SetBuffer(provider_cost_tier_buffer_, "unknown");
         SetBuffer(provider_health_buffer_, "planned");
         SetBuffer(provider_notes_buffer_, "Add endpoint and model routing notes here.");
         model_provider_local_ = false;
         model_provider_enabled_ = true;
         model_provider_configured_ = false;
+        model_provider_context_window_ = 0;
+        model_provider_rate_limit_rpm_ = 0;
+        model_provider_input_cost_per_million_ = 0.0f;
+        model_provider_output_cost_per_million_ = 0.0f;
         return;
     }
 
@@ -3419,13 +5508,21 @@ void AegisChatApp::HydrateModelProviderEditor(const ModelRegistryProviderInfo* p
     SetBuffer(provider_label_buffer_, provider->label.empty() ? provider->id : provider->label);
     SetBuffer(provider_api_buffer_, provider->api);
     SetBuffer(provider_endpoint_buffer_, provider->endpoint);
+    SetBuffer(provider_model_buffer_, provider->model_name);
+    SetBuffer(provider_aliases_buffer_, JoinPalette(provider->model_aliases));
+    SetBuffer(provider_secret_env_buffer_, provider->secret_env);
     SetBuffer(provider_capabilities_buffer_, JoinPalette(provider->capabilities));
     SetBuffer(provider_roles_buffer_, JoinPalette(provider->roles));
+    SetBuffer(provider_cost_tier_buffer_, provider->cost_tier.empty() ? "unknown" : provider->cost_tier);
     SetBuffer(provider_health_buffer_, provider->health.empty() ? "unknown" : provider->health);
     SetBuffer(provider_notes_buffer_, provider->notes);
     model_provider_local_ = provider->local;
     model_provider_enabled_ = provider->enabled;
     model_provider_configured_ = provider->configured;
+    model_provider_context_window_ = provider->context_window;
+    model_provider_rate_limit_rpm_ = provider->rate_limit_rpm;
+    model_provider_input_cost_per_million_ = static_cast<float>(provider->input_cost_per_million);
+    model_provider_output_cost_per_million_ = static_cast<float>(provider->output_cost_per_million);
 }
 
 void AegisChatApp::SaveModelProviderFromEditor()
@@ -3435,11 +5532,19 @@ void AegisChatApp::SaveModelProviderFromEditor()
     provider.label = BufferString(provider_label_buffer_.data());
     provider.api = BufferString(provider_api_buffer_.data());
     provider.endpoint = BufferString(provider_endpoint_buffer_.data());
+    provider.model_name = BufferString(provider_model_buffer_.data());
+    provider.model_aliases = SplitCommaList(BufferString(provider_aliases_buffer_.data()));
+    provider.secret_env = BufferString(provider_secret_env_buffer_.data());
     provider.local = model_provider_local_;
     provider.enabled = model_provider_enabled_;
     provider.configured = model_provider_configured_;
     provider.capabilities = SplitCommaList(BufferString(provider_capabilities_buffer_.data()));
     provider.roles = SplitCommaList(BufferString(provider_roles_buffer_.data()));
+    provider.cost_tier = BufferString(provider_cost_tier_buffer_.data());
+    provider.context_window = std::max(0, model_provider_context_window_);
+    provider.rate_limit_rpm = std::max(0, model_provider_rate_limit_rpm_);
+    provider.input_cost_per_million = std::max(0.0f, model_provider_input_cost_per_million_);
+    provider.output_cost_per_million = std::max(0.0f, model_provider_output_cost_per_million_);
     provider.health = BufferString(provider_health_buffer_.data());
     provider.notes = BufferString(provider_notes_buffer_.data());
 
@@ -3452,8 +5557,20 @@ void AegisChatApp::SaveModelProviderFromEditor()
     AegisClient client = client_;
     StartTask("Saving model provider...", [this, client, provider]() mutable {
         ModelRegistrySnapshot saved = client.SaveModelRegistryProvider(provider);
-        return [this, saved = std::move(saved), provider_id = provider.id]() {
+        ModelRegistryAuditInfo audit = client.GetModelRegistryAudit();
+        ModelRegistryCheckpointList checkpoints = client.GetModelRegistryCheckpoints(8);
+        return [this,
+                saved = std::move(saved),
+                audit = std::move(audit),
+                checkpoints = std::move(checkpoints),
+                provider_id = provider.id]() {
             model_registry_ = saved;
+            model_registry_audit_ = audit;
+            model_registry_audit_loaded_ = true;
+            model_registry_audit_error_.clear();
+            model_registry_checkpoints_ = checkpoints;
+            model_registry_checkpoints_loaded_ = true;
+            model_registry_checkpoints_error_.clear();
             selected_model_provider_index_ = -1;
             for (int i = 0; i < static_cast<int>(model_registry_.providers.size()); ++i) {
                 if (model_registry_.providers[i].id == provider_id) {
@@ -3485,12 +5602,147 @@ void AegisChatApp::DeleteSelectedModelProvider()
     AegisClient client = client_;
     StartTask("Deleting model provider...", [this, client, provider_id]() mutable {
         ModelRegistrySnapshot saved = client.DeleteModelRegistryProvider(provider_id);
-        return [this, saved = std::move(saved), provider_id]() {
+        ModelRegistryAuditInfo audit = client.GetModelRegistryAudit();
+        ModelRegistryCheckpointList checkpoints = client.GetModelRegistryCheckpoints(8);
+        return [this,
+                saved = std::move(saved),
+                audit = std::move(audit),
+                checkpoints = std::move(checkpoints),
+                provider_id]() {
             model_registry_ = saved;
+            model_registry_audit_ = audit;
+            model_registry_audit_loaded_ = true;
+            model_registry_audit_error_.clear();
+            model_registry_checkpoints_ = checkpoints;
+            model_registry_checkpoints_loaded_ = true;
+            model_registry_checkpoints_error_.clear();
             show_model_provider_editor_ = false;
             selected_model_provider_index_ = -1;
             status_ = "Deleted model provider: " + provider_id + ".";
             PushToast("Provider deleted", provider_id, "success");
+        };
+    });
+}
+
+void AegisChatApp::CreateModelRegistryCheckpoint()
+{
+    AegisClient client = client_;
+    StartTask("Creating model registry checkpoint...", [this, client]() mutable {
+        ModelRegistryCheckpointInfo checkpoint = client.CreateModelRegistryCheckpoint(
+            "Manual checkpoint from Aegis desktop before model routing changes.");
+        ModelRegistryCheckpointList checkpoints = client.GetModelRegistryCheckpoints(8);
+        return [this, checkpoint = std::move(checkpoint), checkpoints = std::move(checkpoints)]() {
+            model_registry_checkpoints_ = checkpoints;
+            model_registry_checkpoints_loaded_ = true;
+            model_registry_checkpoints_error_.clear();
+            selected_model_registry_checkpoint_diff_loaded_ = false;
+            selected_model_registry_checkpoint_diff_error_.clear();
+            has_pending_model_registry_restore_ = false;
+            status_ = "Created model registry checkpoint: " + Shorten(checkpoint.id, 32) + ".";
+            PushToast("Registry checkpoint created", checkpoint.reason.empty() ? checkpoint.id : checkpoint.reason, "success");
+        };
+    });
+}
+
+void AegisChatApp::LoadModelRegistryCheckpointDiff(const ModelRegistryCheckpointInfo& checkpoint)
+{
+    const std::string checkpoint_id = Trim(checkpoint.id);
+    if (checkpoint_id.empty()) {
+        status_ = "Checkpoint id is missing.";
+        PushToast("Registry diff blocked", status_, "warning");
+        return;
+    }
+
+    AegisClient client = client_;
+    StartTask("Loading model registry checkpoint details...", [this, client, checkpoint_id]() mutable {
+        ModelRegistryCheckpointDiffInfo diff = client.GetModelRegistryCheckpointDiff(checkpoint_id);
+        return [this, diff = std::move(diff)]() {
+            selected_model_registry_checkpoint_diff_ = diff;
+            selected_model_registry_checkpoint_diff_loaded_ = true;
+            selected_model_registry_checkpoint_diff_error_.clear();
+            status_ = "Loaded checkpoint details: " + Shorten(selected_model_registry_checkpoint_diff_.checkpoint.id, 32) + ".";
+        };
+    });
+}
+
+void AegisChatApp::RequestModelRegistryCheckpointRestore(const ModelRegistryCheckpointInfo& checkpoint)
+{
+    const std::string checkpoint_id = Trim(checkpoint.id);
+    if (checkpoint_id.empty()) {
+        status_ = "Checkpoint id is missing.";
+        PushToast("Registry restore blocked", status_, "warning");
+        return;
+    }
+
+    pending_model_registry_restore_ = checkpoint;
+    has_pending_model_registry_restore_ = true;
+    const bool details_loaded =
+        selected_model_registry_checkpoint_diff_loaded_ &&
+        selected_model_registry_checkpoint_diff_.checkpoint.id == checkpoint_id;
+    if (!details_loaded) {
+        LoadModelRegistryCheckpointDiff(checkpoint);
+        status_ = "Review checkpoint details, then confirm restore.";
+        PushToast("Review restore", "Loaded checkpoint details before restore.", "info");
+        return;
+    }
+
+    status_ = "Review checkpoint details, then confirm restore.";
+    PushToast("Restore pending", "Confirm restore from checkpoint details.", "warning");
+}
+
+void AegisChatApp::RestoreModelRegistryCheckpoint(const ModelRegistryCheckpointInfo& checkpoint)
+{
+    const std::string checkpoint_id = Trim(checkpoint.id);
+    if (checkpoint_id.empty()) {
+        status_ = "Checkpoint id is missing.";
+        PushToast("Registry restore blocked", status_, "warning");
+        return;
+    }
+
+    AegisClient client = client_;
+    const std::string workspace = Trim(workspace_root_.empty() ? BufferString(workspace_buffer_.data()) : workspace_root_);
+    StartTask("Restoring model registry checkpoint...", [this, client, checkpoint_id, workspace]() mutable {
+        ModelRegistrySnapshot registry = client.RestoreModelRegistryCheckpoint(checkpoint_id);
+        ModelRegistryAuditInfo audit = client.GetModelRegistryAudit();
+        ModelInventory inventory = client.GetModels();
+        ModelManagerSnapshot manager = client.GetModelManager();
+        ModelRegistryCheckpointList checkpoints = client.GetModelRegistryCheckpoints(8);
+        ModelRegistryBenchmarkPreviewInfo preview;
+        std::string preview_error;
+        bool preview_loaded = false;
+        try {
+            preview = client.GetBenchmarkRoutePreview(workspace);
+            preview_loaded = true;
+        } catch (const std::exception& error) {
+            preview_error = error.what();
+        }
+        return [this,
+                registry = std::move(registry),
+                audit = std::move(audit),
+                inventory = std::move(inventory),
+                manager = std::move(manager),
+                checkpoints = std::move(checkpoints),
+                preview = std::move(preview),
+                preview_error = std::move(preview_error),
+                preview_loaded,
+                checkpoint_id]() {
+            model_registry_ = registry;
+            model_registry_audit_ = audit;
+            model_registry_audit_loaded_ = true;
+            model_registry_audit_error_.clear();
+            models_ = inventory;
+            model_manager_ = manager;
+            model_registry_checkpoints_ = checkpoints;
+            model_registry_checkpoints_loaded_ = true;
+            model_registry_checkpoints_error_.clear();
+            route_apply_preview_ = preview;
+            route_apply_preview_loaded_ = preview_loaded;
+            route_apply_preview_error_ = preview_error;
+            selected_model_registry_checkpoint_diff_loaded_ = false;
+            selected_model_registry_checkpoint_diff_error_.clear();
+            has_pending_model_registry_restore_ = false;
+            status_ = registry.message.empty() ? "Restored model registry checkpoint: " + checkpoint_id + "." : registry.message;
+            PushToast("Registry restored", checkpoint_id, "success");
         };
     });
 }
@@ -3541,21 +5793,515 @@ void AegisChatApp::RenderValidationSuggestionTable(
     ImGui::PopID();
 }
 
+void AegisChatApp::BeginAutopilotSession(const std::string& goal)
+{
+    autopilot_active_ = true;
+    autopilot_stop_requested_ = false;
+    autopilot_finishing_ = false;
+    autopilot_waiting_for_result_ = true;
+    autopilot_dependency_verify_attempted_ = false;
+    autopilot_rounds_completed_ = 0;
+    autopilot_min_rounds_ = std::max(3, autopilot_min_rounds_);
+    autopilot_max_rounds_ = std::max({kAutopilotDefaultPassLimit, autopilot_min_rounds_, autopilot_max_rounds_});
+    autopilot_goal_ = Shorten(Trim(goal), 1200);
+    apply_changes_ = true;
+    run_validation_ = true;
+    project_scaffold_run_install_ = true;
+    project_scaffold_run_validation_ = true;
+    max_repairs_ = std::max(max_repairs_, 5);
+    verification_include_install_ = true;
+    verification_continue_on_failure_ = true;
+    verification_auto_repair_chain_ = true;
+    verification_chain_repairs_remaining_ = 0;
+    RefreshAutopilotSuggestions();
+    status_ = "Autopilot started. Aegis will continue until a clean stopping point or wrap-up request.";
+}
+
+void AegisChatApp::RequestAutopilotWrapUp()
+{
+    if (!autopilot_active_) {
+        autopilot_enabled_ = false;
+        status_ = "Autopilot is not running.";
+        return;
+    }
+    autopilot_stop_requested_ = true;
+    RefreshAutopilotSuggestions();
+    status_ = busy_
+        ? "Autopilot will wrap up after the current pass finishes."
+        : "Autopilot wrap-up requested.";
+    if (!busy_) {
+        AdvanceAutopilotIfReady();
+    }
+}
+
+void AegisChatApp::StartAutopilotFromCurrentContext()
+{
+    if (busy_) {
+        status_ = "Autopilot can start after the current response finishes.";
+        return;
+    }
+
+    const std::string typed_goal = Trim(std::string(message_buffer_.data()));
+    if (!typed_goal.empty()) {
+        SubmitMessage();
+        return;
+    }
+
+    std::string goal = LatestUserPrompt(history_);
+    if (Trim(goal).empty()) {
+        status_ = "Enter a goal or send a project request before starting Autopilot.";
+        return;
+    }
+
+    BeginAutopilotSession(goal);
+    SubmitAutopilotPrompt(
+        BuildAutopilotContinuationPrompt("Start the autonomous build session from the latest project goal."),
+        true,
+        true,
+        "Autopilot is starting the build session...");
+}
+
+const CommandRun* AegisChatApp::AutopilotCurrentFailure() const
+{
+    if (has_verification_result_ &&
+        verification_result_.has_first_failure &&
+        !ValidationPassed(verification_result_.first_failure)) {
+        return &verification_result_.first_failure;
+    }
+    if (has_response_ && ValidationFailed(last_response_)) {
+        return &last_response_.validation;
+    }
+    if (project_scaffold_has_result_ &&
+        project_scaffold_result_.has_validation &&
+        !ValidationPassed(project_scaffold_result_.validation)) {
+        return &project_scaffold_result_.validation;
+    }
+    return nullptr;
+}
+
+bool AegisChatApp::AutopilotHasValidationFailure() const
+{
+    return AutopilotCurrentFailure() != nullptr;
+}
+
+bool AegisChatApp::AutopilotFailureLooksDependency() const
+{
+    const CommandRun* failure = AutopilotCurrentFailure();
+    if (failure == nullptr) {
+        return false;
+    }
+
+    const std::string text = Lower(
+        failure->category + "\n" +
+        failure->summary + "\n" +
+        failure->reason + "\n" +
+        failure->stdout_text + "\n" +
+        failure->stderr_text);
+    return ContainsAnyTerm(text, {
+        "dependency",
+        "dependencies",
+        "npm install",
+        "pnpm install",
+        "yarn install",
+        "bun install",
+        "node_modules",
+        "cannot find module",
+        "could not resolve",
+        "module not found",
+        "missing package",
+        "missing dependency",
+        "no interface 'jsx.intrinsicelements'",
+        "cannot find namespace 'react'",
+        "cannot find type definition file"
+    });
+}
+
+bool AegisChatApp::AutopilotHasCleanValidation() const
+{
+    if (has_verification_result_ && Lower(verification_result_.status) == "passed") {
+        return true;
+    }
+    if (has_response_ && last_response_.has_validation && ValidationPassed(last_response_.validation)) {
+        return true;
+    }
+    return project_scaffold_has_result_ &&
+        project_scaffold_result_.has_validation &&
+        ValidationPassed(project_scaffold_result_.validation);
+}
+
+bool AegisChatApp::AutopilotRecentPassHadNoWork() const
+{
+    if (!has_response_) {
+        return false;
+    }
+    if (last_response_.has_validation && !ValidationPassed(last_response_.validation)) {
+        return false;
+    }
+    return last_response_.changes.empty() &&
+        last_response_.applied.empty() &&
+        last_response_.repair_attempts.empty();
+}
+
+bool AegisChatApp::AutopilotShouldContinueForQuality() const
+{
+    if (!has_response_) {
+        return false;
+    }
+    return last_response_.completion_quality.should_continue;
+}
+
+std::string AegisChatApp::AutopilotQualityReason() const
+{
+    if (!has_response_) {
+        return "";
+    }
+    if (!last_response_.completion_quality.reasons.empty()) {
+        return last_response_.completion_quality.reasons.front();
+    }
+    if (!last_response_.completion_quality.next_actions.empty()) {
+        return last_response_.completion_quality.next_actions.front();
+    }
+    if (!last_response_.completion_quality.status.empty()) {
+        return "Completion quality is " + last_response_.completion_quality.status + ".";
+    }
+    return "";
+}
+
+void AegisChatApp::RefreshAutopilotSuggestions()
+{
+    autopilot_suggestions_.clear();
+    if (autopilot_active_) {
+        autopilot_suggestions_.push_back(autopilot_stop_requested_ ? "Preparing graceful wrap-up" : "Wrap up after current pass");
+        autopilot_suggestions_.push_back("Run full verify before final handoff");
+    } else {
+        autopilot_suggestions_.push_back("Enable Autopilot for long project work");
+    }
+
+    if (AutopilotHasValidationFailure()) {
+        autopilot_suggestions_.push_back("Repair the current validation failure");
+        autopilot_suggestions_.push_back("Review captured build output");
+    } else if (AutopilotShouldContinueForQuality()) {
+        autopilot_suggestions_.push_back("Continue completion quality pass");
+        if (has_response_ && !last_response_.completion_quality.next_actions.empty()) {
+            autopilot_suggestions_.push_back(Shorten(last_response_.completion_quality.next_actions.front(), 80));
+        }
+    } else if (AutopilotHasCleanValidation()) {
+        autopilot_suggestions_.push_back("Add tests or polish the first usable slice");
+        autopilot_suggestions_.push_back("Create final changelog and next steps");
+    } else {
+        autopilot_suggestions_.push_back("Inspect roadmap and continue next feature");
+        autopilot_suggestions_.push_back("Generate validation coverage");
+    }
+
+    constexpr size_t max_suggestions = 5;
+    while (autopilot_suggestions_.size() > max_suggestions) {
+        autopilot_suggestions_.pop_back();
+    }
+}
+
+std::string AegisChatApp::BuildAutopilotContinuationPrompt(const std::string& reason) const
+{
+    const std::string workspace = Trim(workspace_root_.empty() ? BufferString(workspace_buffer_.data()) : workspace_root_);
+    std::ostringstream prompt;
+    prompt << "Autopilot is enabled for this existing project and existing workspace. Continue the assigned project without waiting for another continue command.\n\n";
+    prompt << "Original goal:\n" << (autopilot_goal_.empty() ? "Continue improving the selected workspace." : autopilot_goal_) << "\n\n";
+    prompt << "Workspace: " << (workspace.empty() ? "[use active workspace]" : workspace) << "\n";
+    prompt << "Autopilot pass: " << (autopilot_rounds_completed_ + 1) << " of " << autopilot_max_rounds_ << "\n";
+    if (!reason.empty()) {
+        prompt << "Reason for this pass: " << reason << "\n";
+    }
+    if (has_response_ && (last_response_.completion_quality.should_continue || !last_response_.completion_quality.status.empty())) {
+        prompt << "\nLatest completion quality:\n";
+        prompt << "- Status: " << (last_response_.completion_quality.status.empty() ? "unknown" : last_response_.completion_quality.status);
+        if (last_response_.completion_quality.score > 0.0) {
+            prompt << " (" << static_cast<int>(last_response_.completion_quality.score * 100.0) << "%)";
+        }
+        prompt << "\n";
+        for (const std::string& item : last_response_.completion_quality.reasons) {
+            prompt << "- Reason: " << item << "\n";
+        }
+        for (const std::string& item : last_response_.completion_quality.next_actions) {
+            prompt << "- Next action: " << item << "\n";
+        }
+    }
+    prompt << "\nWork loop for this pass:\n";
+    prompt << "1. Read the project manifest, roadmap, recent command history, and important source files.\n";
+    prompt << "2. Choose the highest-value next task: repair validation first, then complete the requested app/site feature slice.\n";
+    prompt << "3. For app/site/software creation goals, build a complete usable version, not a placeholder: real structure, real UI/content, components, styling, responsive behavior, config, scripts, and docs as needed.\n";
+    prompt << "4. Prefer larger coherent file updates over tiny one-file edits when the project is still skeletal or incomplete.\n";
+    prompt << "5. If dependencies or type packages are missing, use the install/verification path before treating module-resolution errors as code defects.\n";
+    prompt << "6. Run the saved validation command when available, capture errors, and use the repair loop before handing back.\n";
+    prompt << "7. End with a short progress note, remaining risks, and 3 suggested next actions.\n";
+
+    if (project_scaffold_has_result_ &&
+        project_scaffold_result_.has_validation &&
+        !ValidationPassed(project_scaffold_result_.validation)) {
+        prompt << "\nLatest scaffold validation failure:\n";
+        prompt << "Command: " << project_scaffold_result_.validation.command << "\n";
+        prompt << "Summary: " << (project_scaffold_result_.validation.summary.empty()
+            ? project_scaffold_result_.validation.reason
+            : project_scaffold_result_.validation.summary) << "\n";
+        const std::string output = Shorten(ValidationCombinedOutput(project_scaffold_result_.validation), 5000);
+        if (!output.empty()) {
+            prompt << "Output:\n" << output << "\n";
+        }
+    }
+
+    prompt << "\nOnly declare the project at a stopping point when validation is clean or when no more useful work can be done safely in this session.";
+    return prompt.str();
+}
+
+std::string AegisChatApp::BuildAutopilotFinalPrompt(const std::string& reason) const
+{
+    const std::string workspace = Trim(workspace_root_.empty() ? BufferString(workspace_buffer_.data()) : workspace_root_);
+    std::ostringstream prompt;
+    prompt << "Autopilot is wrapping up for this existing project and existing workspace. Do not make file changes in this response.\n\n";
+    prompt << "Original goal:\n" << (autopilot_goal_.empty() ? "Continue improving the selected workspace." : autopilot_goal_) << "\n\n";
+    prompt << "Workspace: " << (workspace.empty() ? "[use active workspace]" : workspace) << "\n";
+    prompt << "Wrap-up reason: " << (reason.empty() ? "Autopilot reached a stopping point." : reason) << "\n";
+    prompt << "Completed autopilot passes: " << autopilot_rounds_completed_ << "\n\n";
+    prompt << "Final response requirements:\n";
+    prompt << "1. Summarize exactly what changed and what validation/build status is known.\n";
+    prompt << "2. If any build errors remain, identify the failing command and the most likely next repair.\n";
+    prompt << "3. Give 3 prioritized suggestions for the next session.\n";
+    prompt << "4. Keep the answer concise and useful for resuming work later.";
+    return prompt.str();
+}
+
+void AegisChatApp::SubmitAutopilotPrompt(const std::string& prompt, bool apply, bool validate, const std::string& label)
+{
+    next_submit_apply_override_set_ = true;
+    next_submit_apply_override_ = apply;
+    next_submit_validation_override_set_ = true;
+    next_submit_validation_override_ = validate;
+    autopilot_waiting_for_result_ = true;
+    status_ = label;
+    SubmitMessage(prompt, false);
+}
+
+void AegisChatApp::FinishAutopilotSession(const std::string& reason)
+{
+    autopilot_enabled_ = false;
+    autopilot_active_ = false;
+    autopilot_stop_requested_ = false;
+    autopilot_finishing_ = false;
+    autopilot_waiting_for_result_ = false;
+    autopilot_dependency_verify_attempted_ = false;
+    verification_chain_repairs_remaining_ = 0;
+    pending_verification_chain_repair_ = false;
+    RefreshAutopilotSuggestions();
+    status_ = reason.empty() ? "Autopilot stopped at a stable handoff point." : reason;
+    PushToast("Autopilot finished", Shorten(status_, 110), "success");
+}
+
+void AegisChatApp::AdvanceAutopilotIfReady()
+{
+    if (!autopilot_active_ || busy_) {
+        return;
+    }
+
+    if (autopilot_waiting_for_result_) {
+        autopilot_waiting_for_result_ = false;
+        ++autopilot_rounds_completed_;
+        RefreshAutopilotSuggestions();
+        if (autopilot_finishing_) {
+            FinishAutopilotSession("Autopilot wrapped up with final thoughts.");
+            return;
+        }
+    }
+
+    if (autopilot_stop_requested_) {
+        autopilot_finishing_ = true;
+        SubmitAutopilotPrompt(
+            BuildAutopilotFinalPrompt("User requested a graceful stop after the current pass."),
+            false,
+            false,
+            "Autopilot is writing final thoughts...");
+        return;
+    }
+
+    if (autopilot_rounds_completed_ >= std::max(1, autopilot_max_rounds_)) {
+        autopilot_finishing_ = true;
+        SubmitAutopilotPrompt(
+            BuildAutopilotFinalPrompt("Reached the configured autopilot pass limit."),
+            false,
+            false,
+            "Autopilot reached its pass limit and is wrapping up...");
+        return;
+    }
+
+    if (AutopilotHasValidationFailure()) {
+        if (!autopilot_dependency_verify_attempted_ && AutopilotFailureLooksDependency()) {
+            autopilot_dependency_verify_attempted_ = true;
+            verification_include_install_ = true;
+            verification_continue_on_failure_ = true;
+            verification_auto_repair_chain_ = true;
+            verification_chain_repairs_remaining_ = std::max(verification_chain_repairs_remaining_, verification_chain_repair_limit_);
+            autopilot_waiting_for_result_ = true;
+            status_ = "Autopilot detected missing dependencies and is running Full Verify with install enabled...";
+            VerifyWorkspace();
+            return;
+        }
+        if ((has_verification_result_ &&
+                verification_result_.has_first_failure &&
+                !ValidationPassed(verification_result_.first_failure)) ||
+            (has_response_ && ValidationFailed(last_response_))) {
+            autopilot_waiting_for_result_ = true;
+            RepairLastValidationFailure(true);
+            return;
+        }
+        SubmitAutopilotPrompt(
+            BuildAutopilotContinuationPrompt("Repair the latest scaffold validation failure."),
+            true,
+            true,
+            "Autopilot is repairing validation...");
+        return;
+    }
+
+    if (AutopilotRecentPassHadNoWork() && autopilot_rounds_completed_ >= std::max(1, autopilot_min_rounds_)) {
+        autopilot_finishing_ = true;
+        SubmitAutopilotPrompt(
+            BuildAutopilotFinalPrompt("The last pass did not produce useful file changes or repair work."),
+            false,
+            false,
+            "Autopilot is wrapping up after a no-change pass...");
+        return;
+    }
+
+    if (AutopilotShouldContinueForQuality()) {
+        SubmitAutopilotPrompt(
+            BuildAutopilotContinuationPrompt("Completion quality requires another pass: " + AutopilotQualityReason()),
+            true,
+            true,
+            "Autopilot is continuing because the project is not complete enough yet...");
+        return;
+    }
+
+    if (AutopilotHasCleanValidation() && autopilot_rounds_completed_ >= std::max(1, autopilot_min_rounds_)) {
+        autopilot_finishing_ = true;
+        SubmitAutopilotPrompt(
+            BuildAutopilotFinalPrompt("Validation is clean and the minimum autopilot pass count is complete."),
+            false,
+            false,
+            "Autopilot found a clean stopping point...");
+        return;
+    }
+
+    SubmitAutopilotPrompt(
+        BuildAutopilotContinuationPrompt("Continue the next highest-value project pass."),
+        true,
+        true,
+        "Autopilot is continuing the project...");
+}
+
 void AegisChatApp::SubmitMessage(const std::string& override_message, bool append_user_message)
 {
     const std::string raw_content = Trim(override_message.empty() ? std::string(message_buffer_.data()) : override_message);
     if (raw_content.empty() && (attachments_.empty() || !append_user_message)) {
         return;
     }
+    if (busy_ && append_user_message && !autopilot_active_) {
+        QueueUserMessageForRetry(raw_content, attachments_, "Aegis is finishing " + (busy_label_.empty() ? std::string("the current operation") : busy_label_) + ".");
+        return;
+    }
+    if (append_user_message && !health_.engine_ready &&
+        (connection_state_ == "offline" || connection_state_ == "failed" || connection_state_ == "reconnecting")) {
+        QueueUserMessageForRetry(raw_content, attachments_, "The backend is " + connection_state_ + "; retry will run automatically.");
+        RefreshRuntime(true);
+        return;
+    }
+    if (busy_ && autopilot_active_ && append_user_message) {
+        const std::vector<FileContent> queued_attachments = attachments_;
+        std::string display_content = raw_content.empty() ? "Use the attached workspace file(s) as context." : raw_content;
+        if (!queued_attachments.empty()) {
+            display_content += "\n\n" + AttachmentSummary(queued_attachments);
+        }
+        history_.push_back({"user", display_content, NowTimeLabel()});
+        attachments_.clear();
+        message_buffer_.fill('\0');
+        const std::string queued_instruction = raw_content.empty() ? AttachmentSummary(queued_attachments) : raw_content;
+        autopilot_goal_ = Shorten(
+            Trim(autopilot_goal_) + "\n\nAdditional user instruction for the next autopilot pass:\n" + queued_instruction,
+            2400);
+        RefreshAutopilotSuggestions();
+        SaveConversationSnapshot();
+        status_ = "Queued your instruction for the next Autopilot pass.";
+        PushToast("Autopilot instruction queued", Shorten(raw_content.empty() ? "Attachment context queued." : raw_content, 110), "info");
+        return;
+    }
+    if (autopilot_enabled_ && append_user_message && !raw_content.empty()) {
+        BeginAutopilotSession(raw_content);
+    }
 
     const std::string explicit_workspace = ExtractWindowsPathFromPrompt(raw_content);
-    if (!explicit_workspace.empty()) {
+    const std::string lowered_prompt = Lower(raw_content);
+    bool project_builder_intent = attachments_.empty() && ShouldRouteToProjectBuilder(raw_content);
+    const bool explicit_cpp_project_creation = IsExplicitCppProjectCreationRequest(raw_content);
+    if (project_builder_intent &&
+        !explicit_workspace.empty() &&
+        PathLooksLikeExistingProject(explicit_workspace) &&
+        !explicit_cpp_project_creation &&
+        !ContainsAnyTerm(lowered_prompt, {
+            "from scratch", "new project", "starter project", "scaffold", "blank project", "empty folder"
+        })) {
+        project_builder_intent = false;
+    }
+    const bool immediate_build_request = PromptRequestsImmediateBuild(raw_content);
+    if (project_builder_intent && immediate_build_request) {
+        project_scaffold_run_install_ = true;
+        project_scaffold_run_validation_ = true;
+        run_validation_ = true;
+    }
+
+    std::string continuity_directive;
+    const std::string known_project_target = project_scaffold_has_result_ ? project_scaffold_result_.target_path : std::string{};
+    const std::string continuity_workspace = !explicit_workspace.empty()
+        ? explicit_workspace
+        : (!Trim(known_project_target).empty() ? known_project_target : workspace_root_);
+    const bool cpp_or_console_context =
+        WorkspaceLooksLikeCppProject(continuity_workspace) ||
+        ContainsAnyTerm(lowered_prompt, {"c++", "cpp", "cmake", "msbuild", "sln", "visual studio", "console app", "console project"});
+    if (!project_builder_intent && IsBuildOrRunFollowUp(raw_content) && !Trim(continuity_workspace).empty() && cpp_or_console_context) {
+        project_builder_intent = false;
+        workspace_root_ = continuity_workspace;
+        SetBuffer(workspace_buffer_, workspace_root_);
+        run_validation_ = true;
+        const std::string validation_command = DefaultValidationCommandForWorkspace(continuity_workspace);
+        if (!validation_command.empty()) {
+            next_validation_command_override_ = validation_command;
+            next_validation_label_override_ = "Project build and run";
+            next_validation_notes_override_ = "Auto-selected from the existing C++ project layout for a build/run follow-up.";
+            SetBuffer(validation_command_buffer_, validation_command);
+            SetBuffer(validation_label_buffer_, next_validation_label_override_);
+            SetBuffer(validation_notes_buffer_, next_validation_notes_override_);
+        }
+        continuity_directive = BuildWorkspaceContinuityDirective(continuity_workspace, validation_command);
+        QueueAgentActivity("routing", "Continuing the existing C++ project and preserving its stack.", "running", continuity_workspace, validation_command);
+    }
+
+    const bool project_builder_apply = project_builder_intent &&
+        (apply_changes_ || ShouldAutoApplyPrompt(raw_content) || immediate_build_request);
+    if (!explicit_workspace.empty() && !project_builder_intent) {
         workspace_root_ = explicit_workspace;
         SetBuffer(workspace_buffer_, workspace_root_);
     }
 
     const std::vector<FileContent> attachments = append_user_message ? attachments_ : std::vector<FileContent>{};
-    const std::string content = BuildMessageWithAttachments(raw_content, attachments);
+    std::string content = BuildMessageWithAttachments(raw_content, attachments);
+    if (!continuity_directive.empty()) {
+        content += "\n\n" + continuity_directive;
+    }
+    if (autopilot_active_ && append_user_message && !raw_content.empty()) {
+        content +=
+            "\n\nAutopilot full-build directive:\n"
+            "- Treat this as a long-running software engineering assignment, not a one-message sketch.\n"
+            "- Use the requested path/workspace exactly when one is provided.\n"
+            "- Inspect the existing project before editing; if it is skeletal, build the complete usable first version in this pass.\n"
+            "- Create all essential files for the requested app, website, desktop app, library, driver, or tool rather than leaving placeholders.\n"
+            "- Add realistic content, structure, configs, scripts, validation commands, docs, and project memory needed to continue reliably.\n"
+            "- Run validation/build when enabled, capture errors, install missing dependencies through the allowed verification path, and repair failures.\n"
+            "- Keep working until there is a usable checkpoint or a concrete validation failure with captured output.";
+    }
     std::string display_content = raw_content.empty() ? "Use the attached workspace file(s) as context." : raw_content;
     if (!attachments.empty()) {
         display_content += "\n\n" + AttachmentSummary(attachments);
@@ -3568,26 +6314,272 @@ void AegisChatApp::SubmitMessage(const std::string& override_message, bool appen
         SaveConversationSnapshot();
     }
     message_buffer_.fill('\0');
+    route_preview_ = {};
+    has_route_preview_ = false;
 
     AegisClient client = client_;
     const std::vector<ChatMessage> request_history = history_;
     const std::string workspace = Trim(workspace_root_.empty() ? BufferString(workspace_buffer_.data()) : workspace_root_);
+    if (project_builder_intent) {
+        const std::string preferred_target = explicit_workspace;
+        const std::string default_builder_workspace = Trim(!config_.default_workspace.empty() ? config_.default_workspace : health_.workspace_root);
+        const std::string builder_workspace = explicit_workspace.empty() && !default_builder_workspace.empty()
+            ? default_builder_workspace
+            : workspace;
+        const bool builder_run_install = project_scaffold_run_install_;
+        const bool builder_run_validation = project_scaffold_run_validation_ || run_validation_;
+        const int builder_repairs = max_repairs_;
+        SetBuffer(project_scaffold_prompt_buffer_, raw_content);
+        status_ = project_builder_apply
+            ? "Detected a new-project request. Creating it through Project Builder with checkpointed writes."
+            : "Detected a new-project request. Planning a scaffold preview instead of asking for free-form code.";
+        history_.push_back({
+            "assistant",
+            project_builder_apply
+                ? "Aegis is working:\n- Thinking through the project request and requested path.\n- Inspecting the target workspace before writing.\n- Selecting the closest supported stack from the prompt.\n- Preparing a file diff and checkpointed write plan.\n- Creating project memory under `.aegis`.\n- Running validation if enabled and capturing errors for repair."
+                : "Aegis is working:\n- Thinking through the project request and requested path.\n- Inspecting the target workspace before writing.\n- Selecting the closest supported stack from the prompt.\n- Preparing a file diff preview, roadmap, and project memory plan.",
+            NowTimeLabel(),
+            "Aegis Project Builder",
+        });
+        const int project_builder_progress_index = static_cast<int>(history_.size()) - 1;
+        SaveConversationSnapshot();
+        QueueAgentActivity("planning", "Reading project request and selecting a build route.", "running");
+        QueueAgentActivity("workspace", preferred_target.empty() ? "Using configured workspace target." : "Using requested target path.", "running", preferred_target);
+        StartTask(project_builder_apply ? "Creating project scaffold..." : "Planning project scaffold...", [this, client, raw_content, builder_workspace, preferred_target, project_builder_progress_index, project_builder_apply, builder_run_install, builder_run_validation, builder_repairs]() mutable -> Completion {
+            try {
+                QueueAgentActivity("planning", "Fetching supported project presets.", "running");
+                std::vector<ProjectScaffoldPresetInfo> presets = client.GetProjectScaffoldPresets();
+                QueueAgentActivity("planning", "Generating scaffold plan from prompt.", "running");
+                ProjectScaffoldPlanResult plan = client.PlanProjectScaffold(raw_content, builder_workspace, preferred_target);
+                QueueAgentActivity("files", project_builder_apply ? "Writing scaffold files with checkpoint protection." : "Preparing file diff preview.", "running");
+                ProjectScaffoldResult result = project_builder_apply
+                    ? client.ScaffoldProject(
+                          plan.target_path,
+                          plan.preset.id,
+                          plan.project_name.empty() ? "aegis-app" : plan.project_name,
+                          plan.install_command,
+                          plan.validation_command,
+                          plan.overwrite,
+                          plan.include_gitignore,
+                          raw_content,
+                          builder_run_install,
+                          builder_run_validation,
+                          builder_repairs)
+                    : client.PreviewProjectScaffold(
+                          plan.target_path,
+                          plan.preset.id,
+                          plan.project_name.empty() ? "aegis-app" : plan.project_name,
+                          plan.install_command,
+                          plan.validation_command,
+                          plan.overwrite,
+                          plan.include_gitignore,
+                          raw_content,
+                          false,
+                          false,
+                          builder_repairs);
+            return [this, presets = std::move(presets), plan = std::move(plan), result = std::move(result), project_builder_progress_index, project_builder_apply]() mutable {
+                project_scaffold_presets_ = std::move(presets);
+                project_scaffold_presets_loaded_ = true;
+                project_scaffold_presets_requested_ = false;
+                project_scaffold_plan_ = std::move(plan);
+                project_scaffold_has_plan_ = true;
+                project_scaffold_result_ = std::move(result);
+                project_scaffold_has_result_ = true;
+                project_scaffold_result_preview_ = !project_builder_apply;
+
+                SetBuffer(project_scaffold_name_buffer_, project_scaffold_plan_.project_name.empty() ? "aegis-app" : project_scaffold_plan_.project_name);
+                SetBuffer(project_scaffold_target_buffer_, project_scaffold_plan_.target_path);
+                SetBuffer(project_scaffold_install_buffer_, project_scaffold_plan_.install_command);
+                SetBuffer(project_scaffold_validation_buffer_, project_scaffold_plan_.validation_command);
+                project_scaffold_overwrite_ = project_scaffold_plan_.overwrite;
+                project_scaffold_include_gitignore_ = project_scaffold_plan_.include_gitignore;
+                if (project_builder_apply) {
+                    const std::string validation_command = !project_scaffold_result_.validation_command.empty()
+                        ? project_scaffold_result_.validation_command
+                        : project_scaffold_plan_.validation_command;
+                    if (!validation_command.empty()) {
+                        SetBuffer(validation_command_buffer_, validation_command);
+                        SetBuffer(
+                            validation_label_buffer_,
+                            (project_scaffold_plan_.preset.label.empty() ? "Project Builder" : project_scaffold_plan_.preset.label) + " validation");
+                        SetBuffer(validation_notes_buffer_, "Loaded from the latest Project Builder scaffold.");
+                        run_validation_ = true;
+                    }
+                }
+                if (project_builder_apply && !project_scaffold_result_.target_path.empty()) {
+                    workspace_root_ = project_scaffold_result_.target_path;
+                    SetBuffer(workspace_buffer_, workspace_root_);
+                }
+                if (project_builder_apply && !project_scaffold_result_.workspace_files.empty()) {
+                    files_ = project_scaffold_result_.workspace_files;
+                }
+
+                for (const ProjectBuildStageInfo& stage : project_scaffold_result_.stages) {
+                    const std::string stage_status =
+                        stage.status == "succeeded" ? "success" :
+                        (stage.status == "failed" ? "failed" :
+                         (stage.status == "skipped" ? "warning" : "running"));
+                    QueueAgentActivity(
+                        stage.command.empty() ? "stage" : "command",
+                        stage.label.empty() ? stage.detail : stage.label,
+                        stage_status,
+                        "",
+                        stage.command);
+                }
+                if (!project_scaffold_result_.checkpoint.empty()) {
+                    QueueAgentActivity("checkpoint", "Created checkpoint " + project_scaffold_result_.checkpoint + ".", "success");
+                }
+
+                for (int i = 0; i < static_cast<int>(project_scaffold_presets_.size()); ++i) {
+                    if (project_scaffold_presets_[static_cast<size_t>(i)].id == project_scaffold_plan_.preset.id) {
+                        selected_project_scaffold_preset_index_ = i;
+                        break;
+                    }
+                }
+
+                const std::string model_label = project_scaffold_plan_.preset.label.empty()
+                    ? "Aegis Project Builder"
+                    : ("Aegis Project Builder / " + project_scaffold_plan_.preset.label);
+                const std::string chat_summary = project_builder_apply
+                    ? BuildProjectScaffoldResultSummary(project_scaffold_result_)
+                    : BuildProjectScaffoldChatSummary(project_scaffold_plan_, project_scaffold_result_);
+                if (project_builder_progress_index >= 0 && project_builder_progress_index < static_cast<int>(history_.size())) {
+                    history_[static_cast<size_t>(project_builder_progress_index)] = {
+                        "assistant",
+                        chat_summary,
+                        NowTimeLabel(),
+                        model_label,
+                    };
+                } else {
+                    history_.push_back({"assistant", chat_summary, NowTimeLabel(), model_label});
+                }
+                SaveConversationSnapshot();
+                pending_popup_ = "Aegis Project Builder";
+                if (project_builder_apply && project_scaffold_result_.has_validation) {
+                    status_ = ValidationPassed(project_scaffold_result_.validation)
+                        ? "Project built and validated in " + Shorten(project_scaffold_result_.target_path, 82) + "."
+                        : "Project created, but validation needs repair in " + Shorten(project_scaffold_result_.target_path, 78) + ".";
+                } else {
+                    status_ = project_builder_apply
+                        ? "Project files created in " + Shorten(project_scaffold_result_.target_path, 92) + "."
+                        : "Project plan and preview ready. Review it in Project Builder before creating files.";
+                }
+                PushToast(
+                    project_builder_apply
+                        ? (project_scaffold_result_.has_validation && ValidationPassed(project_scaffold_result_.validation) ? "Project built" : "Project created")
+                        : "Project plan ready",
+                    Shorten(project_scaffold_plan_.target_path, 84),
+                    project_scaffold_result_.has_validation && !ValidationPassed(project_scaffold_result_.validation) ? "warning" : "success");
+            };
+            } catch (const std::exception& error) {
+                const std::string message = error.what();
+                return [this, message, project_builder_progress_index, project_builder_apply]() {
+                    status_ = message;
+                    const std::string summary = std::string(project_builder_apply
+                        ? "Aegis Project Builder could not create the project."
+                        : "Aegis Project Builder could not prepare the project plan.")
+                        + "\n\n" + message
+                        + "\n\nNo files were written for this request.";
+                    if (project_builder_progress_index >= 0 && project_builder_progress_index < static_cast<int>(history_.size())) {
+                        history_[static_cast<size_t>(project_builder_progress_index)] = {
+                            "assistant",
+                            summary,
+                            NowTimeLabel(),
+                            "Aegis Project Builder",
+                        };
+                    } else {
+                        history_.push_back({"assistant", summary, NowTimeLabel(), "Aegis Project Builder"});
+                    }
+                    SaveConversationSnapshot();
+                    PushToast("Project Builder failed", Shorten(message, 110), "error");
+                };
+            }
+        });
+        return;
+    }
+
     const std::string mode = mode_;
     const bool auto_apply = ShouldAutoApplyPrompt(raw_content);
-    const bool apply = apply_changes_ || auto_apply;
-    const bool validate = run_validation_;
+    bool apply = apply_changes_ || auto_apply;
+    bool validate = run_validation_;
+    if (next_submit_apply_override_set_) {
+        apply = next_submit_apply_override_;
+        next_submit_apply_override_set_ = false;
+    }
+    if (next_submit_validation_override_set_) {
+        validate = next_submit_validation_override_;
+        next_submit_validation_override_set_ = false;
+    }
     const int repairs = max_repairs_;
+    const std::string validation_command_override = next_validation_command_override_;
+    const std::string validation_label_override = next_validation_label_override_;
+    const std::string validation_notes_override = next_validation_notes_override_;
+    next_validation_command_override_.clear();
+    next_validation_label_override_.clear();
+    next_validation_notes_override_.clear();
+    const bool rerun_full_verify_after_repair = !validation_command_override.empty();
     cancel_response_requested_ = false;
     if (!explicit_workspace.empty()) {
         status_ = "Using requested workspace: " + Shorten(explicit_workspace, 112);
     }
+    {
+        std::lock_guard<std::mutex> lock(stream_delta_mutex_);
+        pending_stream_deltas_.clear();
+    }
+    streaming_assistant_has_delta_ = false;
+    streaming_preview_segment_start_ = 0;
+    streaming_preview_attempt_ = 0;
+    history_.push_back({"assistant", "Aegis is preparing a response...", NowTimeLabel(), "Aegis stream"});
+    streaming_assistant_index_ = static_cast<int>(history_.size()) - 1;
 
     const std::string task_label = apply ? "Aegis is creating and applying files..." : "Aegis is thinking...";
-    StartTask(task_label, [this, client, content, request_history, workspace, mode, apply, validate, repairs, auto_apply]() mutable {
-        AgentResponse response = client.SendMessage(content, request_history, workspace, mode, apply, validate, repairs);
-        return [this, response = std::move(response), auto_apply]() {
+    StartTask(task_label, [this, client, content, request_history, workspace, mode, apply, validate, repairs, auto_apply, validation_command_override, validation_label_override, validation_notes_override, rerun_full_verify_after_repair]() mutable {
+        AgentResponse response = client.SendMessageStream(
+            content,
+            request_history,
+            workspace,
+            mode,
+            apply,
+            validate,
+            repairs,
+            [this](const std::string& update) {
+                QueueStatusUpdate(update);
+            },
+            validation_command_override,
+            validation_label_override,
+            validation_notes_override,
+            [this](const StreamDeltaInfo& delta) {
+                QueueStreamDelta(delta);
+            });
+        WorkspaceProfileInfo workspace_profile;
+        bool has_workspace_profile = false;
+        std::string workspace_profile_error;
+        const std::string response_workspace = Trim(response.workspace_root.empty() ? workspace : response.workspace_root);
+        if (!response_workspace.empty()) {
+            try {
+                workspace_profile = client.GetWorkspaceProfile(response_workspace);
+                has_workspace_profile = true;
+            } catch (const std::exception& error) {
+                workspace_profile_error = error.what();
+            }
+        }
+        return [this,
+                response = std::move(response),
+                auto_apply,
+                rerun_full_verify_after_repair,
+                validation_command_override,
+                workspace_profile = std::move(workspace_profile),
+                has_workspace_profile,
+                workspace_profile_error = std::move(workspace_profile_error)]() {
             if (cancel_response_requested_) {
                 cancel_response_requested_ = false;
+                if (streaming_assistant_index_ >= 0 && streaming_assistant_index_ < static_cast<int>(history_.size())) {
+                    history_.erase(history_.begin() + streaming_assistant_index_);
+                }
+                streaming_assistant_index_ = -1;
+                streaming_assistant_has_delta_ = false;
+                streaming_preview_segment_start_ = 0;
+                streaming_preview_attempt_ = 0;
                 status_ = "Generation canceled. The last user message stayed in the transcript.";
                 SaveConversationSnapshot();
                 return;
@@ -3596,6 +6588,31 @@ void AegisChatApp::SubmitMessage(const std::string& override_message, bool appen
             has_response_ = true;
             selected_change_ = 0;
             selected_hunk_ = 0;
+            for (const ToolEvent& event : response.events) {
+                QueueAgentActivity(
+                    event.kind.empty() ? "tool" : event.kind,
+                    event.title.empty() ? event.detail : event.title,
+                    event.status.empty() ? "running" : event.status,
+                    "",
+                    "");
+            }
+            if (response.has_task_plan) {
+                QueueAgentActivity("planning", response.task_plan.objective.empty() ? "Task plan created." : response.task_plan.objective, "success");
+            }
+            for (const FileChange& change : response.changes) {
+                QueueAgentActivity("files", (change.action.empty() ? "Update" : change.action) + ": " + change.path, "pending", change.path);
+            }
+            for (const std::string& applied_path : response.applied) {
+                QueueAgentActivity("files", "Applied change: " + applied_path, "success", applied_path);
+            }
+            if (response.has_validation) {
+                QueueAgentActivity(
+                    "command",
+                    response.validation.summary.empty() ? "Validation command finished." : response.validation.summary,
+                    ValidationFailed(response) ? "failed" : "success",
+                    "",
+                    response.validation.command);
+            }
             if (!response.workspace_root.empty()) {
                 workspace_root_ = response.workspace_root;
                 SetBuffer(workspace_buffer_, workspace_root_);
@@ -3615,6 +6632,9 @@ void AegisChatApp::SubmitMessage(const std::string& override_message, bool appen
                 SetBuffer(validation_label_buffer_, response.validation_profile.label);
                 SetBuffer(validation_notes_buffer_, response.validation_profile.notes);
             }
+            workspace_profile_ = workspace_profile;
+            has_workspace_profile_snapshot_ = has_workspace_profile;
+            workspace_profile_error_ = workspace_profile_error;
             const std::string assistant_name = response.assistant_name.empty() ? "Aegis AI" : response.assistant_name;
             std::string model_label = response.engine;
             if (Trim(model_label).empty()) {
@@ -3623,7 +6643,19 @@ void AegisChatApp::SubmitMessage(const std::string& override_message, bool appen
             if (Trim(model_label).empty()) {
                 model_label = config_.model_api.empty() ? "configured model" : config_.model_api;
             }
-            history_.push_back({"assistant", BuildAssistantSummary(response), NowTimeLabel(), model_label});
+            if (streaming_assistant_index_ >= 0 && streaming_assistant_index_ < static_cast<int>(history_.size()) &&
+                history_[static_cast<size_t>(streaming_assistant_index_)].role == "assistant") {
+                ChatMessage& streamed = history_[static_cast<size_t>(streaming_assistant_index_)];
+                streamed.content = BuildAssistantSummary(response);
+                streamed.time_label = NowTimeLabel();
+                streamed.model_label = model_label;
+            } else {
+                history_.push_back({"assistant", BuildAssistantSummary(response), NowTimeLabel(), model_label});
+            }
+            streaming_assistant_index_ = -1;
+            streaming_assistant_has_delta_ = false;
+            streaming_preview_segment_start_ = 0;
+            streaming_preview_attempt_ = 0;
             SaveConversationSnapshot();
             if (response.has_validation && ValidationFailed(response)) {
                 status_ = "Validation still needs attention. Open Response for output or use Fix Validation again.";
@@ -3638,6 +6670,67 @@ void AegisChatApp::SubmitMessage(const std::string& override_message, bool appen
             } else {
                 status_ = assistant_name + " responded.";
             }
+            if (rerun_full_verify_after_repair && response.has_validation && ValidationPassed(response.validation)) {
+                TrackVerificationRepairActivity(
+                    "Targeted command passed",
+                    response.validation.summary.empty() ? "The failed command now exits cleanly." : Shorten(response.validation.summary, 180),
+                    "passed",
+                    response.validation.command.empty() ? validation_command_override : response.validation.command);
+                pending_full_verify_after_repair_ = true;
+                status_ = "Repair command passed. Rerunning Full Verify.";
+                PushToast("Repair command passed", "Full Verify will rerun now.", "success");
+            } else if (rerun_full_verify_after_repair && response.has_validation) {
+                TrackVerificationRepairActivity(
+                    "Targeted command still failing",
+                    Shorten(response.validation.summary.empty() ? response.validation.reason : response.validation.summary, 180),
+                    "failed",
+                    response.validation.command.empty() ? validation_command_override : response.validation.command);
+            } else if (rerun_full_verify_after_repair) {
+                TrackVerificationRepairActivity(
+                    "Targeted repair needs review",
+                    "The repair turn finished without a validation result to prove the failed command.",
+                    "warning",
+                    validation_command_override);
+            }
+        };
+    });
+}
+
+void AegisChatApp::PreviewComposerRoute()
+{
+    const std::string raw_content = Trim(std::string(message_buffer_.data()));
+    if (raw_content.empty() && attachments_.empty()) {
+        status_ = "Type a prompt before previewing its route.";
+        return;
+    }
+
+    workspace_root_ = BufferString(workspace_buffer_.data());
+    const std::string content = BuildMessageWithAttachments(raw_content, attachments_);
+    AegisClient client = client_;
+    const std::vector<ChatMessage> request_history = history_;
+    const std::string workspace = Trim(workspace_root_.empty() ? BufferString(workspace_buffer_.data()) : workspace_root_);
+    const std::string mode = mode_;
+
+    StartTask("Previewing model route...", [this, client, content, request_history, workspace, mode]() mutable {
+        AgentResponse preview = client.PreviewRoute(content, request_history, workspace, mode);
+        return [this, preview = std::move(preview)]() {
+            route_preview_ = preview;
+            has_route_preview_ = true;
+
+            std::string role = "route";
+            if (route_preview_.has_task_plan && route_preview_.task_plan.has_routing &&
+                !route_preview_.task_plan.routing.task_role.empty()) {
+                role = route_preview_.task_plan.routing.task_role;
+            } else if (route_preview_.has_task_plan && !route_preview_.task_plan.intent.empty()) {
+                role = route_preview_.task_plan.intent;
+            }
+
+            std::string model = route_preview_.engine;
+            if (!route_preview_.model_attempts.empty()) {
+                const ModelAttemptInfo& primary = route_preview_.model_attempts.front();
+                model = primary.model.empty() ? primary.provider_label : primary.model;
+            }
+            status_ = "Route preview ready: " + role + (model.empty() ? "." : (" -> " + model + "."));
         };
     });
 }
@@ -3680,9 +6773,20 @@ void AegisChatApp::CancelActiveResponse()
         return;
     }
 
+    const bool was_autopilot = autopilot_active_;
+    if (autopilot_active_) {
+        autopilot_enabled_ = false;
+        autopilot_active_ = false;
+        autopilot_stop_requested_ = false;
+        autopilot_finishing_ = false;
+        autopilot_waiting_for_result_ = false;
+        RefreshAutopilotSuggestions();
+    }
     cancel_response_requested_ = true;
     busy_label_ = "Canceling response...";
-    status_ = "Cancel requested. Waiting for the current backend call to return.";
+    status_ = was_autopilot
+        ? "Cancel requested. Autopilot stopped and Aegis is waiting for the current backend call to return."
+        : "Cancel requested. Waiting for the current backend call to return.";
 }
 
 void AegisChatApp::AttachSelectedFile()
@@ -3747,8 +6851,25 @@ void AegisChatApp::ApplyPendingChanges()
 
     AegisClient client = client_;
     const std::string workspace = workspace_root_;
-    StartTask("Applying previewed changes...", [this, client, workspace, changes]() mutable {
+    const std::string feedback_task_id = last_response_.task_id;
+    const std::string feedback_route = last_response_.has_task_plan && last_response_.task_plan.has_routing
+        ? last_response_.task_plan.routing.task_role
+        : "";
+    StartTask("Applying previewed changes...", [this, client, workspace, changes, feedback_task_id, feedback_route]() mutable {
         ApplyResult result = client.ApplyChanges(workspace, changes);
+        try {
+            client.RecordFeedback(
+                workspace,
+                "accepted",
+                "Applied " + std::to_string(changes.size()) + " generated change(s).",
+                "apply_all",
+                feedback_task_id,
+                "applied",
+                "code_change",
+                "",
+                feedback_route);
+        } catch (const std::exception&) {
+        }
         return [this, result = std::move(result)]() {
             if (!result.workspace_root.empty()) {
                 workspace_root_ = result.workspace_root;
@@ -3778,8 +6899,25 @@ void AegisChatApp::ApplySelectedChange()
 
     AegisClient client = client_;
     const std::string workspace = Trim(workspace_root_.empty() ? BufferString(workspace_buffer_.data()) : workspace_root_);
-    StartTask("Applying selected file change...", [this, client, workspace, change]() mutable {
+    const std::string feedback_task_id = last_response_.task_id;
+    const std::string feedback_route = last_response_.has_task_plan && last_response_.task_plan.has_routing
+        ? last_response_.task_plan.routing.task_role
+        : "";
+    StartTask("Applying selected file change...", [this, client, workspace, change, feedback_task_id, feedback_route]() mutable {
         ApplyResult result = client.ApplyChanges(workspace, std::vector<FileChange>{change});
+        try {
+            client.RecordFeedback(
+                workspace,
+                "accepted",
+                "Applied selected generated file: " + change.path,
+                "apply_selected_change",
+                feedback_task_id,
+                "applied",
+                "code_change",
+                "",
+                feedback_route);
+        } catch (const std::exception&) {
+        }
         return [this, result = std::move(result), path = change.path]() {
             if (!result.workspace_root.empty()) {
                 workspace_root_ = result.workspace_root;
@@ -3820,8 +6958,25 @@ void AegisChatApp::ApplySelectedHunk()
 
     AegisClient client = client_;
     const int hunk_number = selected_hunk_ + 1;
-    StartTask("Applying selected diff hunk...", [this, client, workspace, hunk_change, source_path = source_change.path, hunk_number]() mutable {
+    const std::string feedback_task_id = last_response_.task_id;
+    const std::string feedback_route = last_response_.has_task_plan && last_response_.task_plan.has_routing
+        ? last_response_.task_plan.routing.task_role
+        : "";
+    StartTask("Applying selected diff hunk...", [this, client, workspace, hunk_change, source_path = source_change.path, hunk_number, feedback_task_id, feedback_route]() mutable {
         ApplyResult result = client.ApplyChanges(workspace, std::vector<FileChange>{hunk_change});
+        try {
+            client.RecordFeedback(
+                workspace,
+                "accepted",
+                "Applied hunk " + std::to_string(hunk_number) + " from " + source_path,
+                "apply_selected_hunk",
+                feedback_task_id,
+                "applied",
+                "code_change",
+                "",
+                feedback_route);
+        } catch (const std::exception&) {
+        }
         return [this, result = std::move(result), source_path, hunk_number]() {
             if (!result.workspace_root.empty()) {
                 workspace_root_ = result.workspace_root;
@@ -3847,8 +7002,25 @@ void AegisChatApp::RollbackLastApply()
     AegisClient client = client_;
     const std::string workspace = Trim(workspace_root_.empty() ? BufferString(workspace_buffer_.data()) : workspace_root_);
     const std::string checkpoint = last_response_.checkpoint;
-    StartTask("Restoring last file checkpoint...", [this, client, workspace, checkpoint]() mutable {
+    const std::string feedback_task_id = last_response_.task_id;
+    const std::string feedback_route = last_response_.has_task_plan && last_response_.task_plan.has_routing
+        ? last_response_.task_plan.routing.task_role
+        : "";
+    StartTask("Restoring last file checkpoint...", [this, client, workspace, checkpoint, feedback_task_id, feedback_route]() mutable {
         RestoreResult result = client.RestoreCheckpoint(workspace, checkpoint);
+        try {
+            client.RecordFeedback(
+                workspace,
+                "rejected",
+                "Rolled back checkpoint " + checkpoint + " with " + std::to_string(result.restored.size()) + " restored file item(s).",
+                "rollback_last_apply",
+                feedback_task_id,
+                "rolled_back",
+                "checkpoint",
+                "",
+                feedback_route);
+        } catch (const std::exception&) {
+        }
         return [this, result = std::move(result), checkpoint]() {
             if (!result.workspace_root.empty()) {
                 workspace_root_ = result.workspace_root;
@@ -3909,8 +7081,25 @@ void AegisChatApp::RestoreCheckpointFromBrowser()
 
     AegisClient client = client_;
     const std::string workspace = Trim(workspace_root_.empty() ? BufferString(workspace_buffer_.data()) : workspace_root_);
-    StartTask("Restoring selected checkpoint...", [this, client, workspace, checkpoint]() mutable {
+    const std::string feedback_task_id = has_response_ ? last_response_.task_id : "";
+    const std::string feedback_route = has_response_ && last_response_.has_task_plan && last_response_.task_plan.has_routing
+        ? last_response_.task_plan.routing.task_role
+        : "";
+    StartTask("Restoring selected checkpoint...", [this, client, workspace, checkpoint, feedback_task_id, feedback_route]() mutable {
         RestoreResult result = client.RestoreCheckpoint(workspace, checkpoint.id);
+        try {
+            client.RecordFeedback(
+                workspace,
+                "rejected",
+                "Restored checkpoint " + checkpoint.id + " with " + std::to_string(result.restored.size()) + " restored file item(s).",
+                "restore_checkpoint",
+                feedback_task_id,
+                "rolled_back",
+                "checkpoint",
+                "",
+                feedback_route);
+        } catch (const std::exception&) {
+        }
         return [this, result = std::move(result), checkpoint]() {
             if (!result.workspace_root.empty()) {
                 workspace_root_ = result.workspace_root;
@@ -3965,10 +7154,162 @@ void AegisChatApp::ValidateWorkspace()
     });
 }
 
-void AegisChatApp::RepairLastValidationFailure()
+void AegisChatApp::TrackVerificationRepairActivity(
+    const std::string& title,
+    const std::string& detail,
+    const std::string& status,
+    const std::string& command)
+{
+    VerificationRepairActivity activity;
+    activity.title = title;
+    activity.detail = detail;
+    activity.status = status;
+    activity.command = command;
+    activity.created_at = NowTimeLabel();
+    verification_repair_activities_.push_back(std::move(activity));
+    QueueAgentActivity("repair", title + (detail.empty() ? "" : (": " + detail)), status, "", command);
+    constexpr size_t max_activity_count = 18;
+    while (verification_repair_activities_.size() > max_activity_count) {
+        verification_repair_activities_.erase(verification_repair_activities_.begin());
+    }
+}
+
+void AegisChatApp::VerifyWorkspace()
+{
+    AegisClient client = client_;
+    const std::string workspace = workspace_root_.empty() ? BufferString(workspace_buffer_.data()) : workspace_root_;
+    const bool include_install = verification_include_install_;
+    const bool continue_on_failure = verification_continue_on_failure_;
+    TrackVerificationRepairActivity(
+        "Full Verify started",
+        std::string(include_install ? "Install steps enabled. " : "Install steps skipped. ") +
+            (continue_on_failure ? "Pipeline will continue after failures." : "Pipeline stops on first required failure."),
+        "running");
+    StartTask("Running full verification...", [this, client, workspace, include_install, continue_on_failure]() mutable {
+        VerificationResult result = client.VerifyWorkspace(workspace, include_install, continue_on_failure, 10);
+        return [this, result = std::move(result)]() {
+            verification_result_ = result;
+            has_verification_result_ = true;
+            if (!verification_result_.workspace_root.empty()) {
+                workspace_root_ = verification_result_.workspace_root;
+                SetBuffer(workspace_buffer_, workspace_root_);
+            }
+            if (verification_result_.has_validation_profile) {
+                validation_profile_.workspace_root = verification_result_.workspace_root;
+                validation_profile_.profile = verification_result_.validation_profile;
+                validation_profile_.has_profile = true;
+                has_validation_profile_snapshot_ = true;
+                SetBuffer(validation_command_buffer_, verification_result_.validation_profile.command);
+                SetBuffer(validation_label_buffer_, verification_result_.validation_profile.label);
+                SetBuffer(validation_notes_buffer_, verification_result_.validation_profile.notes);
+            }
+            if (verification_result_.has_first_failure) {
+                if (!has_response_) {
+                    last_response_ = AgentResponse{};
+                    last_response_.task_id = verification_result_.task_id;
+                    last_response_.workspace_root = verification_result_.workspace_root;
+                    has_response_ = true;
+                }
+                last_response_.validation = verification_result_.first_failure;
+                last_response_.has_validation = true;
+                last_response_.events = verification_result_.events;
+                last_response_.warnings.insert(
+                    last_response_.warnings.end(),
+                    verification_result_.warnings.begin(),
+                    verification_result_.warnings.end());
+            }
+            const std::string status = verification_result_.status.empty() ? "skipped" : verification_result_.status;
+            if (status == "passed") {
+                status_ = "Full verification passed.";
+                TrackVerificationRepairActivity("Full Verify passed", "All required verification steps completed.", "passed");
+                if (verification_chain_repairs_remaining_ > 0) {
+                    TrackVerificationRepairActivity(
+                        "Repair chain completed",
+                        "Full Verify is clean before the repair-pass limit was exhausted.",
+                        "passed");
+                }
+                verification_chain_repairs_remaining_ = 0;
+                pending_verification_chain_repair_ = false;
+                PushToast("Verification passed", "All required verification steps completed.", "success");
+            } else if (status == "failed") {
+                const bool can_continue_chain =
+                    verification_result_.has_first_failure &&
+                    verification_chain_repairs_remaining_ > 0;
+                status_ = can_continue_chain
+                    ? ("Full verification found the next failure. Repair chain has " +
+                        std::to_string(verification_chain_repairs_remaining_) + " pass(es) left.")
+                    : "Full verification failed. Use Fix Validation to repair the first failure.";
+                TrackVerificationRepairActivity(
+                    "Full Verify failed",
+                    verification_result_.has_first_failure
+                        ? Shorten(verification_result_.first_failure.summary.empty() ? verification_result_.first_failure.reason : verification_result_.first_failure.summary, 180)
+                        : "A required verification step failed.",
+                    "failed",
+                    verification_result_.has_first_failure ? verification_result_.first_failure.command : "");
+                if (can_continue_chain) {
+                    pending_verification_chain_repair_ = true;
+                    TrackVerificationRepairActivity(
+                        "Next repair queued",
+                        "Aegis will target the new first failing Full Verify command.",
+                        "queued",
+                        verification_result_.first_failure.command);
+                }
+                PushToast("Verification failed", "A required verification step failed.", "error");
+            } else if (status == "blocked") {
+                status_ = "Full verification was blocked by command safety settings.";
+                verification_chain_repairs_remaining_ = 0;
+                pending_verification_chain_repair_ = false;
+                TrackVerificationRepairActivity(
+                    "Full Verify blocked",
+                    verification_result_.has_first_failure
+                        ? Shorten(verification_result_.first_failure.reason.empty() ? verification_result_.first_failure.summary : verification_result_.first_failure.reason, 180)
+                        : "A verification command was blocked by safety settings.",
+                    "blocked",
+                    verification_result_.has_first_failure ? verification_result_.first_failure.command : "");
+                PushToast("Verification blocked", "A verification command was blocked.", "warning");
+            } else {
+                status_ = "No verification steps were available.";
+                verification_chain_repairs_remaining_ = 0;
+                pending_verification_chain_repair_ = false;
+                TrackVerificationRepairActivity("Full Verify skipped", "No verification steps were detected for this workspace.", "skipped");
+            }
+        };
+    });
+}
+
+void AegisChatApp::RepairLastValidationFailure(bool continue_until_clean)
 {
     if (busy_) {
         status_ = "Aegis is already working.";
+        return;
+    }
+    if (has_verification_result_ &&
+        verification_result_.has_first_failure &&
+        !ValidationPassed(verification_result_.first_failure)) {
+        apply_changes_ = true;
+        run_validation_ = true;
+        max_repairs_ = std::max(1, max_repairs_);
+        const bool should_continue_chain = continue_until_clean || verification_auto_repair_chain_ || verification_chain_repairs_remaining_ > 0;
+        if (should_continue_chain && verification_chain_repairs_remaining_ <= 0) {
+            verification_chain_repairs_remaining_ = std::max(1, verification_chain_repair_limit_);
+        }
+        if (verification_chain_repairs_remaining_ > 0) {
+            --verification_chain_repairs_remaining_;
+        }
+        next_validation_command_override_ = verification_result_.first_failure.command;
+        next_validation_label_override_ = "Full Verify first failure";
+        next_validation_notes_override_ = "Temporary validation override from the latest Full Verify failure.";
+        status_ = should_continue_chain
+            ? ("Starting Full Verify repair chain with " + std::to_string(verification_chain_repairs_remaining_) + " follow-up pass(es) remaining.")
+            : "Starting Full Verify repair loop.";
+        TrackVerificationRepairActivity(
+            should_continue_chain ? "Repair chain step started" : "Targeted repair started",
+            Shorten(verification_result_.first_failure.summary.empty()
+                ? verification_result_.first_failure.reason
+                : verification_result_.first_failure.summary, 180),
+            "running",
+            verification_result_.first_failure.command);
+        SubmitMessage(BuildVerificationRepairPrompt(verification_result_), !autopilot_active_);
         return;
     }
     if (!has_response_ || !ValidationFailed(last_response_)) {
@@ -3980,10 +7321,17 @@ void AegisChatApp::RepairLastValidationFailure()
     run_validation_ = true;
     max_repairs_ = std::max(1, max_repairs_);
     status_ = "Starting validation repair loop.";
-    SubmitMessage(BuildValidationRepairPrompt(last_response_));
+    SubmitMessage(BuildValidationRepairPrompt(last_response_), !autopilot_active_);
 }
 
-void AegisChatApp::RecordFeedback(const std::string& sentiment, const std::string& content, const std::string& context)
+void AegisChatApp::RecordFeedback(
+    const std::string& sentiment,
+    const std::string& content,
+    const std::string& context,
+    const std::string& action,
+    const std::string& target,
+    const std::string& model_label,
+    const std::string& task_id)
 {
     std::string feedback_content = Trim(content);
     if (feedback_content.empty()) {
@@ -3996,10 +7344,14 @@ void AegisChatApp::RecordFeedback(const std::string& sentiment, const std::strin
 
     AegisClient client = client_;
     const std::string workspace = workspace_root_.empty() ? BufferString(workspace_buffer_.data()) : workspace_root_;
-    StartTask("Recording feedback...", [this, client, workspace, sentiment, feedback_content, context]() mutable {
-        client.RecordFeedback(workspace, sentiment, feedback_content, context);
+    const std::string resolved_task_id = !Trim(task_id).empty() ? task_id : (has_response_ ? last_response_.task_id : "");
+    const std::string route_role = has_response_ && last_response_.has_task_plan && last_response_.task_plan.has_routing
+        ? last_response_.task_plan.routing.task_role
+        : "";
+    StartTask("Recording feedback...", [this, client, workspace, sentiment, feedback_content, context, action, target, model_label, resolved_task_id, route_role]() mutable {
+        client.RecordFeedback(workspace, sentiment, feedback_content, context, resolved_task_id, action, target, model_label, route_role);
         return [this, sentiment]() {
-            status_ = "Feedback recorded as project memory: " + sentiment + ".";
+            status_ = "Feedback recorded for routing telemetry: " + sentiment + ".";
         };
     });
 }
@@ -4007,7 +7359,8 @@ void AegisChatApp::RecordFeedback(const std::string& sentiment, const std::strin
 void AegisChatApp::RecordMessageFeedback(const ChatMessage& message, const std::string& sentiment)
 {
     const std::string context = "message; role=" + message.role + "; time=" + message.time_label;
-    RecordFeedback(sentiment, message.content, context);
+    const std::string action = sentiment == "copied" ? "copied" : "message_feedback";
+    RecordFeedback(sentiment, message.content, context, action, "assistant_message", message.model_label);
 }
 
 void AegisChatApp::RefreshMemoryNotes()
@@ -4031,6 +7384,121 @@ void AegisChatApp::RefreshMemoryNotes()
                 HydrateMemoryEditor(nullptr, -1);
             }
             status_ = "Loaded " + std::to_string(memory_notes_.size()) + " memory note(s).";
+        };
+    });
+}
+
+void AegisChatApp::RefreshTelemetry()
+{
+    const std::string workspace = workspace_root_.empty() ? BufferString(workspace_buffer_.data()) : workspace_root_;
+    AegisClient client = client_;
+    StartTask("Loading planning history...", [this, client, workspace]() mutable {
+        TelemetrySnapshot snapshot = client.GetTelemetry(workspace, 20);
+        RouteQualitySnapshot route_quality;
+        bool route_quality_loaded = false;
+        std::string route_quality_error;
+        std::vector<RouteHealthInfo> route_health;
+        bool route_health_loaded = false;
+        std::string route_health_error;
+        FallbackInspectorSnapshot fallback_inspector;
+        bool fallback_inspector_loaded = false;
+        std::string fallback_inspector_error;
+        RoutePolicyDiffInfo route_policy_diff;
+        bool route_policy_diff_loaded = false;
+        std::string route_policy_diff_error;
+        try {
+            route_quality = client.GetRouteQuality(workspace, 200);
+            route_quality_loaded = true;
+        } catch (const std::exception& error) {
+            route_quality_error = error.what();
+        }
+        try {
+            route_health = client.GetRouteHealth(workspace, 200);
+            route_health_loaded = true;
+        } catch (const std::exception& error) {
+            route_health_error = error.what();
+        }
+        try {
+            fallback_inspector = client.GetFallbackInspector(workspace, 20);
+            fallback_inspector_loaded = true;
+        } catch (const std::exception& error) {
+            fallback_inspector_error = error.what();
+        }
+        try {
+            route_policy_diff = client.GetRoutePolicyDiff(workspace, 200, 1);
+            route_policy_diff_loaded = true;
+        } catch (const std::exception& error) {
+            route_policy_diff_error = error.what();
+        }
+
+        return [this,
+                snapshot = std::move(snapshot),
+                route_quality = std::move(route_quality),
+                route_quality_loaded,
+                route_quality_error = std::move(route_quality_error),
+                route_health = std::move(route_health),
+                route_health_loaded,
+                route_health_error = std::move(route_health_error),
+                fallback_inspector = std::move(fallback_inspector),
+                fallback_inspector_loaded,
+                fallback_inspector_error = std::move(fallback_inspector_error),
+                route_policy_diff = std::move(route_policy_diff),
+                route_policy_diff_loaded,
+                route_policy_diff_error = std::move(route_policy_diff_error)]() mutable {
+            telemetry_ = std::move(snapshot);
+            telemetry_loaded_ = true;
+            route_quality_ = std::move(route_quality);
+            route_quality_loaded_ = route_quality_loaded;
+            route_quality_error_ = std::move(route_quality_error);
+            route_health_ = std::move(route_health);
+            route_health_loaded_ = route_health_loaded;
+            route_health_error_ = std::move(route_health_error);
+            fallback_inspector_ = std::move(fallback_inspector);
+            fallback_inspector_loaded_ = fallback_inspector_loaded;
+            fallback_inspector_error_ = std::move(fallback_inspector_error);
+            route_policy_diff_ = std::move(route_policy_diff);
+            route_policy_diff_loaded_ = route_policy_diff_loaded;
+            route_policy_diff_error_ = std::move(route_policy_diff_error);
+            if (fallback_inspector_.tasks.empty()) {
+                selected_fallback_inspector_task_index_ = -1;
+            } else {
+                selected_fallback_inspector_task_index_ = std::clamp(
+                    selected_fallback_inspector_task_index_ < 0 ? 0 : selected_fallback_inspector_task_index_,
+                    0,
+                    static_cast<int>(fallback_inspector_.tasks.size()) - 1);
+            }
+            if (!telemetry_.workspace_root.empty()) {
+                workspace_root_ = telemetry_.workspace_root;
+                SetBuffer(workspace_buffer_, workspace_root_);
+            } else if (!route_quality_.workspace_root.empty()) {
+                workspace_root_ = route_quality_.workspace_root;
+                SetBuffer(workspace_buffer_, workspace_root_);
+            } else if (!fallback_inspector_.workspace_root.empty()) {
+                workspace_root_ = fallback_inspector_.workspace_root;
+                SetBuffer(workspace_buffer_, workspace_root_);
+            }
+            status_ = "Loaded " + std::to_string(telemetry_.context_budgets.size()) +
+                " planning budget(s) and " + std::to_string(telemetry_.model_attempts.size()) + " model attempt(s).";
+            if (route_quality_loaded_) {
+                status_ += " Route quality score: " + FormatNumber(route_quality_.overview.reliability_score, true, 1) + ".";
+            } else if (!route_quality_error_.empty()) {
+                status_ += " Route-quality rollup unavailable.";
+            }
+            if (route_health_loaded_) {
+                status_ += " Route health: " + std::to_string(route_health_.size()) + " signal(s).";
+            } else if (!route_health_error_.empty()) {
+                status_ += " Route health unavailable.";
+            }
+            if (route_policy_diff_loaded_) {
+                status_ += " Policy diff: " + std::to_string(route_policy_diff_.role_proposals.size()) + " role proposal(s).";
+            } else if (!route_policy_diff_error_.empty()) {
+                status_ += " Policy diff unavailable.";
+            }
+            if (fallback_inspector_loaded_) {
+                status_ += " Fallback inspector: " + std::to_string(fallback_inspector_.tasks.size()) + " task(s).";
+            } else if (!fallback_inspector_error_.empty()) {
+                status_ += " Fallback inspector unavailable.";
+            }
         };
     });
 }
@@ -4174,6 +7642,34 @@ void AegisChatApp::SaveValidationProfile(bool clear_profile)
     });
 }
 
+void AegisChatApp::RefreshWorkspaceProfile()
+{
+    AegisClient client = client_;
+    const std::string workspace = Trim(workspace_root_.empty() ? BufferString(workspace_buffer_.data()) : workspace_root_);
+    StartTask("Loading workspace profile...", [this, client, workspace]() mutable {
+        WorkspaceProfileInfo profile = client.GetWorkspaceProfile(workspace);
+        return [this, profile = std::move(profile)]() {
+            workspace_profile_ = profile;
+            has_workspace_profile_snapshot_ = true;
+            workspace_profile_error_.clear();
+            if (!profile.workspace_root.empty()) {
+                workspace_root_ = profile.workspace_root;
+                SetBuffer(workspace_buffer_, workspace_root_);
+            }
+            if (profile.has_manifest && !profile.manifest.validation_command.empty()) {
+                SetBuffer(validation_command_buffer_, profile.manifest.validation_command);
+                if (!profile.manifest.preset_label.empty()) {
+                    SetBuffer(validation_label_buffer_, profile.manifest.preset_label + " validation");
+                }
+                SetBuffer(validation_notes_buffer_, "Loaded from .aegis/project.json.");
+            }
+            status_ = profile.has_manifest
+                ? "Loaded workspace profile: " + (profile.manifest.title.empty() ? profile.manifest.project_name : profile.manifest.title)
+                : "No Aegis project manifest found for this workspace.";
+        };
+    });
+}
+
 void AegisChatApp::StartCodingRoute(const std::string& route)
 {
     const std::string composer_prompt = Trim(std::string(message_buffer_.data()));
@@ -4239,6 +7735,341 @@ void AegisChatApp::StartCodingRoute(const std::string& route)
            << (validation_context.empty() ? "" : validation_context + "\n")
            << "Use the active workspace. Make practical changes when the path is clear, keep scope tight, and report validation results.";
     SubmitMessage(prompt.str());
+}
+
+void AegisChatApp::HydrateProjectBuilderDefaults()
+{
+    if (BufferString(project_scaffold_name_buffer_.data()).empty()) {
+        SetBuffer(project_scaffold_name_buffer_, "aegis-app");
+    }
+
+    if (BufferString(project_scaffold_target_buffer_.data()).empty()) {
+        std::string active_workspace = Trim(workspace_root_.empty() ? BufferString(workspace_buffer_.data()) : workspace_root_);
+        if (active_workspace.empty()) {
+            active_workspace = "workspace";
+        }
+        const std::filesystem::path default_target =
+            std::filesystem::path(Utf8ToWide(active_workspace)) / L"NewAegisProject";
+        SetBuffer(project_scaffold_target_buffer_, WideToUtf8(default_target.wstring()));
+    }
+
+    if (!project_scaffold_presets_.empty()) {
+        selected_project_scaffold_preset_index_ = std::clamp(
+            selected_project_scaffold_preset_index_,
+            0,
+            static_cast<int>(project_scaffold_presets_.size()) - 1);
+        const ProjectScaffoldPresetInfo& preset =
+            project_scaffold_presets_[static_cast<size_t>(selected_project_scaffold_preset_index_)];
+        if (BufferString(project_scaffold_install_buffer_.data()).empty()) {
+            SetBuffer(project_scaffold_install_buffer_, preset.install_command);
+        }
+        if (BufferString(project_scaffold_validation_buffer_.data()).empty()) {
+            SetBuffer(project_scaffold_validation_buffer_, preset.validation_command);
+        }
+    }
+}
+
+void AegisChatApp::RefreshProjectBuilderPresets()
+{
+    AegisClient client = client_;
+    project_scaffold_presets_requested_ = true;
+    StartTask("Loading project builder presets...", [this, client]() mutable {
+        std::vector<ProjectScaffoldPresetInfo> presets = client.GetProjectScaffoldPresets();
+        return [this, presets = std::move(presets)]() {
+            project_scaffold_presets_ = presets;
+            project_scaffold_presets_loaded_ = true;
+            project_scaffold_presets_requested_ = false;
+            if (project_scaffold_presets_.empty()) {
+                selected_project_scaffold_preset_index_ = 0;
+                status_ = "No project builder presets returned by the backend.";
+                return;
+            }
+            selected_project_scaffold_preset_index_ = std::clamp(
+                selected_project_scaffold_preset_index_,
+                0,
+                static_cast<int>(project_scaffold_presets_.size()) - 1);
+            HydrateProjectBuilderDefaults();
+            status_ = "Loaded " + std::to_string(project_scaffold_presets_.size()) + " project builder presets.";
+        };
+    });
+}
+
+void AegisChatApp::PlanProjectFromPrompt()
+{
+    std::string prompt = BufferString(project_scaffold_prompt_buffer_.data());
+    if (prompt.empty()) {
+        prompt = BufferString(message_buffer_.data());
+    }
+    if (prompt.empty()) {
+        status_ = "Enter a project prompt before planning.";
+        PushToast("Project builder", status_, "warning");
+        return;
+    }
+
+    const std::string workspace = Trim(workspace_root_.empty() ? BufferString(workspace_buffer_.data()) : workspace_root_);
+    const std::string preferred_target = BufferString(project_scaffold_target_buffer_.data());
+    AegisClient client = client_;
+    StartTask("Planning project from prompt...", [this, client, prompt, workspace, preferred_target]() mutable {
+        ProjectScaffoldPlanResult plan = client.PlanProjectScaffold(prompt, workspace, preferred_target);
+        ProjectScaffoldResult preview = client.PreviewProjectScaffold(
+            plan.target_path,
+            plan.preset.id,
+            plan.project_name.empty() ? "aegis-app" : plan.project_name,
+            plan.install_command,
+            plan.validation_command,
+            plan.overwrite,
+            plan.include_gitignore,
+            prompt,
+            false,
+            false,
+            max_repairs_);
+        return [this, plan = std::move(plan), preview = std::move(preview)]() mutable {
+            project_scaffold_plan_ = std::move(plan);
+            project_scaffold_has_plan_ = true;
+            project_scaffold_result_ = std::move(preview);
+            project_scaffold_has_result_ = true;
+            project_scaffold_result_preview_ = true;
+
+            SetBuffer(project_scaffold_name_buffer_, project_scaffold_plan_.project_name.empty() ? "aegis-app" : project_scaffold_plan_.project_name);
+            SetBuffer(project_scaffold_target_buffer_, project_scaffold_plan_.target_path);
+            SetBuffer(project_scaffold_install_buffer_, project_scaffold_plan_.install_command);
+            SetBuffer(project_scaffold_validation_buffer_, project_scaffold_plan_.validation_command);
+            project_scaffold_overwrite_ = project_scaffold_plan_.overwrite;
+            project_scaffold_include_gitignore_ = project_scaffold_plan_.include_gitignore;
+
+            for (int i = 0; i < static_cast<int>(project_scaffold_presets_.size()); ++i) {
+                if (project_scaffold_presets_[static_cast<size_t>(i)].id == project_scaffold_plan_.preset.id) {
+                    selected_project_scaffold_preset_index_ = i;
+                    break;
+                }
+            }
+
+            status_ = project_scaffold_plan_.message.empty() ? "Project plan and preview ready." : project_scaffold_plan_.message;
+            PushToast("Project plan ready", Shorten(project_scaffold_plan_.preset.label + " -> " + project_scaffold_plan_.project_name, 84), "success");
+        };
+    });
+}
+
+void AegisChatApp::PreviewProjectFromBuilder()
+{
+    if (project_scaffold_presets_.empty()) {
+        status_ = "Load project builder presets before previewing a project.";
+        RefreshProjectBuilderPresets();
+        return;
+    }
+
+    selected_project_scaffold_preset_index_ = std::clamp(
+        selected_project_scaffold_preset_index_,
+        0,
+        static_cast<int>(project_scaffold_presets_.size()) - 1);
+    const ProjectScaffoldPresetInfo preset =
+        project_scaffold_presets_[static_cast<size_t>(selected_project_scaffold_preset_index_)];
+    const std::string target = BufferString(project_scaffold_target_buffer_.data());
+    const std::string project_name = BufferString(project_scaffold_name_buffer_.data());
+    const std::string prompt = BufferString(project_scaffold_prompt_buffer_.data());
+    const std::string install_command = BufferString(project_scaffold_install_buffer_.data());
+    const std::string validation_command = BufferString(project_scaffold_validation_buffer_.data());
+    const bool overwrite = project_scaffold_overwrite_;
+    const bool include_gitignore = project_scaffold_include_gitignore_;
+
+    if (target.empty()) {
+        status_ = "Choose a target folder before previewing.";
+        PushToast("Project builder", status_, "warning");
+        return;
+    }
+
+    AegisClient client = client_;
+    StartTask("Previewing project scaffold...", [this,
+                                                 client,
+                                                 target,
+                                                 preset,
+                                                 project_name,
+                                                 prompt,
+                                                 install_command,
+                                                 validation_command,
+                                                 overwrite,
+                                                 include_gitignore]() mutable {
+        ProjectScaffoldResult result = client.PreviewProjectScaffold(
+            target,
+            preset.id,
+            project_name.empty() ? "aegis-app" : project_name,
+            install_command,
+            validation_command,
+            overwrite,
+            include_gitignore,
+            prompt,
+            false,
+            false,
+            max_repairs_);
+        return [this, result = std::move(result)]() {
+            project_scaffold_result_ = result;
+            project_scaffold_has_result_ = true;
+            project_scaffold_result_preview_ = true;
+            status_ = result.message.empty() ? "Project scaffold preview ready." : result.message;
+            PushToast("Project preview ready", Shorten(result.target_path, 84), "info");
+        };
+    });
+}
+
+void AegisChatApp::ScaffoldProjectFromBuilder()
+{
+    if (project_scaffold_presets_.empty()) {
+        status_ = "Load project builder presets before creating a project.";
+        RefreshProjectBuilderPresets();
+        return;
+    }
+
+    selected_project_scaffold_preset_index_ = std::clamp(
+        selected_project_scaffold_preset_index_,
+        0,
+        static_cast<int>(project_scaffold_presets_.size()) - 1);
+    const ProjectScaffoldPresetInfo preset =
+        project_scaffold_presets_[static_cast<size_t>(selected_project_scaffold_preset_index_)];
+    const std::string target = BufferString(project_scaffold_target_buffer_.data());
+    const std::string project_name = BufferString(project_scaffold_name_buffer_.data());
+    const std::string prompt = BufferString(project_scaffold_prompt_buffer_.data());
+    const std::string install_command = BufferString(project_scaffold_install_buffer_.data());
+    const std::string validation_command = BufferString(project_scaffold_validation_buffer_.data());
+    const bool overwrite = project_scaffold_overwrite_;
+    const bool include_gitignore = project_scaffold_include_gitignore_;
+    const bool run_install = project_scaffold_run_install_;
+    const bool run_validation = project_scaffold_run_validation_;
+    const int repairs = max_repairs_;
+
+    if (target.empty()) {
+        status_ = "Choose a target folder for the new project.";
+        PushToast("Project builder", status_, "warning");
+        return;
+    }
+
+    AegisClient client = client_;
+    std::ostringstream working_note;
+    working_note << "Aegis is working:\n";
+    working_note << "- Inspecting the target workspace and existing generated files.\n";
+    working_note << "- Preparing a plan, diff preview, and checkpointed write.\n";
+    working_note << "- Creating project memory under `.aegis` for roadmap, decisions, file index, commands, and known errors.\n";
+    if (run_install && !install_command.empty()) {
+        working_note << "- Running install command: `" << install_command << "`.\n";
+    }
+    if (run_validation && !validation_command.empty()) {
+        working_note << "- Running validation/build command: `" << validation_command << "`.\n";
+        working_note << "- Capturing stdout/stderr so repairs can start from real errors.\n";
+    } else if (!validation_command.empty()) {
+        working_note << "- Saving validation command for the next repair/build pass.\n";
+    }
+    history_.push_back({"assistant", working_note.str(), NowTimeLabel(), "Aegis Project Builder"});
+    const int project_builder_create_index = static_cast<int>(history_.size()) - 1;
+    SaveConversationSnapshot();
+    StartTask("Creating project scaffold...", [this,
+                                               client,
+                                               target,
+                                               preset,
+                                               project_name,
+                                               prompt,
+                                               install_command,
+                                               validation_command,
+                                               overwrite,
+                                               include_gitignore,
+                                               run_install,
+                                               run_validation,
+                                               repairs,
+                                               project_builder_create_index]() mutable -> Completion {
+        try {
+            ProjectScaffoldResult result = client.ScaffoldProject(
+                target,
+                preset.id,
+                project_name.empty() ? "aegis-app" : project_name,
+                install_command,
+                validation_command,
+                overwrite,
+                include_gitignore,
+                prompt,
+                run_install,
+                run_validation,
+                repairs);
+        return [this, result = std::move(result), project_builder_create_index]() {
+            project_scaffold_result_ = result;
+            project_scaffold_has_result_ = true;
+            project_scaffold_result_preview_ = false;
+            if (result.has_validation) {
+                status_ = ValidationPassed(result.validation)
+                    ? "Project built and validated in " + Shorten(result.target_path, 82) + "."
+                    : "Project created, but validation needs repair in " + Shorten(result.target_path, 78) + ".";
+            } else {
+                status_ = result.message.empty() ? "Project scaffold created." : result.message;
+            }
+            PushToast(
+                result.has_validation && ValidationPassed(result.validation) ? "Project built" : "Project created",
+                Shorten(result.target_path, 84),
+                result.has_validation && !ValidationPassed(result.validation) ? "warning" : "success");
+            if (!result.validation_command.empty()) {
+                SetBuffer(validation_command_buffer_, result.validation_command);
+                SetBuffer(validation_label_buffer_, result.preset.label + " validation");
+                SetBuffer(validation_notes_buffer_, "Generated by Aegis Project Builder.");
+            }
+            const std::string model_label = result.preset.label.empty()
+                ? "Aegis Project Builder"
+                : ("Aegis Project Builder / " + result.preset.label);
+            if (project_builder_create_index >= 0 && project_builder_create_index < static_cast<int>(history_.size())) {
+                history_[static_cast<size_t>(project_builder_create_index)] = {
+                    "assistant",
+                    BuildProjectScaffoldResultSummary(result),
+                    NowTimeLabel(),
+                    model_label,
+                };
+            } else {
+                history_.push_back({"assistant", BuildProjectScaffoldResultSummary(result), NowTimeLabel(), model_label});
+            }
+            SaveConversationSnapshot();
+        };
+        } catch (const std::exception& error) {
+            const std::string message = error.what();
+            return [this, message, project_builder_create_index]() {
+                status_ = message;
+                const std::string summary = "Aegis Project Builder could not create the project.\n\n"
+                    + message
+                    + "\n\nNo files were written for this request.";
+                if (project_builder_create_index >= 0 && project_builder_create_index < static_cast<int>(history_.size())) {
+                    history_[static_cast<size_t>(project_builder_create_index)] = {
+                        "assistant",
+                        summary,
+                        NowTimeLabel(),
+                        "Aegis Project Builder",
+                    };
+                } else {
+                    history_.push_back({"assistant", summary, NowTimeLabel(), "Aegis Project Builder"});
+                }
+                SaveConversationSnapshot();
+                PushToast("Project Builder failed", Shorten(message, 110), "error");
+            };
+        }
+    });
+}
+
+void AegisChatApp::UseScaffoldedProjectAsWorkspace()
+{
+    if (!project_scaffold_has_result_ || Trim(project_scaffold_result_.target_path).empty()) {
+        status_ = "Create a project before switching workspaces.";
+        return;
+    }
+
+    workspace_root_ = project_scaffold_result_.target_path;
+    SetBuffer(workspace_buffer_, workspace_root_);
+    files_ = project_scaffold_result_.workspace_files;
+    checkpoints_ = {};
+    selected_file_index_ = -1;
+    has_selected_file_ = false;
+    has_validation_profile_snapshot_ = false;
+    has_workspace_profile_snapshot_ = false;
+    workspace_profile_error_.clear();
+    if (!project_scaffold_result_.validation_command.empty()) {
+        SetBuffer(validation_command_buffer_, project_scaffold_result_.validation_command);
+        SetBuffer(validation_label_buffer_, project_scaffold_result_.preset.label + " validation");
+        SetBuffer(validation_notes_buffer_, "Generated by Aegis Project Builder.");
+    }
+    status_ = "Workspace switched to scaffolded project.";
+    PushToast("Workspace selected", Shorten(workspace_root_, 84), "success");
+    RefreshWorkspaceProfile();
 }
 
 MediaGenerationOptions AegisChatApp::BuildMediaGenerationOptionsFromUi() const
@@ -4406,6 +8237,20 @@ void AegisChatApp::ApplyRuntimeSnapshot(const RuntimeSnapshot& snapshot)
     config_ = snapshot.config;
     models_ = snapshot.model_inventory;
     model_registry_ = snapshot.model_registry;
+    model_manager_ = snapshot.model_manager;
+    model_benchmarks_ = snapshot.model_benchmarks;
+    route_apply_preview_ = snapshot.route_apply_preview;
+    route_apply_preview_loaded_ = snapshot.has_route_apply_preview;
+    route_apply_preview_error_ = snapshot.route_apply_preview_error;
+    model_registry_audit_ = snapshot.model_registry_audit;
+    model_registry_audit_loaded_ = snapshot.has_model_registry_audit;
+    model_registry_audit_error_ = snapshot.model_registry_audit_error;
+    model_registry_checkpoints_ = snapshot.model_registry_checkpoints;
+    model_registry_checkpoints_loaded_ = snapshot.has_model_registry_checkpoints;
+    model_registry_checkpoints_error_ = snapshot.model_registry_checkpoints_error;
+    workspace_profile_ = snapshot.workspace_profile;
+    has_workspace_profile_snapshot_ = snapshot.has_workspace_profile;
+    workspace_profile_error_ = snapshot.workspace_profile_error;
     has_config_ = true;
     files_ = snapshot.files;
     recent_tasks_ = snapshot.recent_tasks;
@@ -4485,10 +8330,10 @@ void AegisChatApp::RenderTopBar()
     ImGui::SameLine();
     ImGui::SetCursorPosY(ImGui::GetCursorPosY() - 1.0f);
     const ImVec2 badge_pos = ImGui::GetCursorScreenPos();
-    draw->AddRectFilled(badge_pos, ImVec2(badge_pos.x + 45.0f, badge_pos.y + 20.0f), Color(13, 93, 55, 0.92f), 10.0f);
-    draw->AddRect(badge_pos, ImVec2(badge_pos.x + 45.0f, badge_pos.y + 20.0f), Color(111, 255, 173, 0.22f + Pulse(2.4f) * 0.18f), 10.0f);
-    DrawBitmapIcon(draw, IconGlyph::Bolt, ImVec2(badge_pos.x + 7.0f, badge_pos.y + 5.0f), 10.0f, Color(111, 255, 173));
-    draw->AddText(ImVec2(badge_pos.x + 20.0f, badge_pos.y + 3.0f), Color(111, 255, 173), "Pro");
+    draw->AddRectFilled(badge_pos, ImVec2(badge_pos.x + 45.0f, badge_pos.y + 20.0f), Color(92, 21, 30, 0.92f), 10.0f);
+    draw->AddRect(badge_pos, ImVec2(badge_pos.x + 45.0f, badge_pos.y + 20.0f), Color(255, 120, 132, 0.22f + Pulse(2.4f) * 0.18f), 10.0f);
+    DrawBitmapIcon(draw, IconGlyph::Bolt, ImVec2(badge_pos.x + 7.0f, badge_pos.y + 5.0f), 10.0f, Color(255, 120, 132));
+    draw->AddText(ImVec2(badge_pos.x + 20.0f, badge_pos.y + 3.0f), Color(255, 120, 132), "Pro");
     ImGui::Dummy(ImVec2(48.0f, 20.0f));
 
     ImGui::SetCursorPos(ImVec2(32.0f, 48.0f));
@@ -4524,10 +8369,14 @@ void AegisChatApp::RenderTopBar()
     }
     ImGui::SameLine(0.0f, 28.0f);
     const ImVec2 online_pos = ImGui::GetCursorScreenPos();
-    const bool online = health_.engine_ready && health_.model_ready;
-    draw->AddCircleFilled(ImVec2(online_pos.x + 8.0f, online_pos.y + 18.0f), online ? 7.0f + Pulse(2.8f) * 2.0f : 5.0f, online ? Color(38, 221, 123, 0.14f) : Color(239, 68, 68, 0.14f));
-    draw->AddCircleFilled(ImVec2(online_pos.x + 8.0f, online_pos.y + 18.0f), 4.0f, online ? Color(38, 221, 123) : Color(239, 68, 68));
-    draw->AddText(ImVec2(online_pos.x + 20.0f, online_pos.y + 10.0f), online ? Color(38, 221, 123) : Color(239, 115, 115), online ? "AI Online" : "AI Offline");
+    const bool online = connection_state_ == "connected" && health_.engine_ready && health_.model_ready;
+    const bool reconnecting = connection_state_ == "reconnecting";
+    const ImU32 state_color = online ? Color(38, 221, 123) : (reconnecting ? Color(234, 179, 85) : Color(239, 68, 68));
+    const ImU32 state_ring = online ? Color(38, 221, 123, 0.14f) : (reconnecting ? Color(234, 179, 85, 0.16f) : Color(239, 68, 68, 0.14f));
+    const char* state_label = online ? "Connected" : (reconnecting ? "Reconnecting" : (connection_state_ == "failed" ? "Failed" : "Offline"));
+    draw->AddCircleFilled(ImVec2(online_pos.x + 8.0f, online_pos.y + 18.0f), online || reconnecting ? 7.0f + Pulse(2.8f) * 2.0f : 5.0f, state_ring);
+    draw->AddCircleFilled(ImVec2(online_pos.x + 8.0f, online_pos.y + 18.0f), 4.0f, state_color);
+    draw->AddText(ImVec2(online_pos.x + 20.0f, online_pos.y + 10.0f), state_color, state_label);
     ImGui::Dummy(ImVec2(118.0f, 38.0f));
 
     if (!status_.empty() || busy_) {
@@ -4839,39 +8688,59 @@ void AegisChatApp::RenderLeftPanel()
     ImVec2 logo_pos = ImGui::GetCursorScreenPos();
     logo_pos.x += 8.0f;
     logo_pos.y += 10.0f;
-    draw->AddRectFilled(logo_pos, ImVec2(logo_pos.x + 44.0f, logo_pos.y + 44.0f), Color(3, 18, 17), 13.0f);
-    DrawBitmapIcon(draw, IconGlyph::Shield, ImVec2(logo_pos.x + 7.0f, logo_pos.y + 7.0f), 30.0f, Color(38, 221, 123));
+    draw->AddRectFilled(logo_pos, ImVec2(logo_pos.x + 44.0f, logo_pos.y + 44.0f), Color(26, 9, 12), 13.0f);
+    DrawBitmapIcon(draw, IconGlyph::Shield, ImVec2(logo_pos.x + 7.0f, logo_pos.y + 7.0f), 30.0f, Color(248, 64, 82));
     ImGui::SetCursorPos(ImVec2(70.0f, 20.0f));
     TextColor("Aegis AI", Rgba(246, 248, 251));
     ImGui::SetCursorPos(ImVec2(70.0f, 43.0f));
     TextMuted("Your AI Assistant");
 
     ImGui::SetCursorPosY(94.0f);
-    if (IconTextButton("new_chat", IconGlyph::Plus, "New Chat", ImVec2(-1.0f, 42.0f), Rgba(20, 175, 88), Rgba(34, 197, 94), Rgba(255, 255, 255))) {
+    if (IconTextButton("new_chat", IconGlyph::Plus, "New Chat", ImVec2(-1.0f, 42.0f), Rgba(210, 39, 55), Rgba(239, 68, 68), Rgba(255, 255, 255))) {
         StartNewChat();
+        active_nav_ = "chat";
     }
     ImGui::Separator();
     ImGui::Dummy(ImVec2(0.0f, 6.0f));
 
-    if (NavButton("nav_chat", IconGlyph::Chat, "Chat", mode_ == "chat" || mode_ == "build")) {
+    if (NavButton("nav_chat", IconGlyph::Chat, "Chat", active_nav_ == "chat")) {
+        active_nav_ = "chat";
         mode_ = "chat";
+        status_ = "Chat workspace active.";
     }
-    if (NavButton("nav_explore", IconGlyph::Explore, "Explore", mode_ == "review")) {
-        mode_ = "review";
+    if (NavButton("nav_projects", IconGlyph::Explore, "Projects", active_nav_ == "projects")) {
+        active_nav_ = "projects";
+        pending_popup_ = "Aegis Project Builder";
+        status_ = "Opened project builder.";
     }
-    if (NavButton("nav_agents", IconGlyph::Agents, "Agents", mode_ == "develop")) {
+    if (NavButton("nav_agent", IconGlyph::Agents, "Code Agent", active_nav_ == "agent")) {
+        active_nav_ = "agent";
         mode_ = "develop";
+        status_ = "Code Agent route active.";
     }
-    if (NavButton("nav_documents", IconGlyph::Documents, "Documents", false)) {
-        status_ = "Document workflows are planned for the model/tool expansion.";
+    if (NavButton("nav_build", IconGlyph::Code, "Build/Repair", active_nav_ == "build")) {
+        active_nav_ = "build";
+        mode_ = "build";
+        run_validation_ = true;
+        pending_popup_ = "Aegis Build Queue";
+        status_ = "Build and repair workspace active.";
     }
-    if (NavButton("nav_tools", IconGlyph::Tools, "Tools", false)) {
-        ImGui::OpenPopup("Aegis Settings");
+    if (NavButton("nav_models", IconGlyph::Globe, "Models", active_nav_ == "models")) {
+        active_nav_ = "models";
+        pending_popup_ = "Aegis Model Stack";
+        status_ = "Opened model stack.";
     }
-    if (NavButton("nav_history", IconGlyph::History, "History", false)) {
-        RefreshRuntime(false);
+    if (NavButton("nav_settings", IconGlyph::Sliders, "Settings", active_nav_ == "settings")) {
+        active_nav_ = "settings";
+        pending_popup_ = "Aegis Settings";
+        status_ = "Opened settings.";
     }
-
+    if (NavButton("nav_history", IconGlyph::History, "History", active_nav_ == "history")) {
+        active_nav_ = "history";
+        RefreshConversationLibrary();
+        pending_popup_ = "Aegis Conversations";
+        status_ = "Opened conversations.";
+    }
     ImGui::Dummy(ImVec2(0.0f, 14.0f));
     ImGui::TextUnformatted("Recent Chats");
     ImGui::SameLine(ImGui::GetContentRegionAvail().x + ImGui::GetCursorPosX() - 24.0f);
@@ -4880,22 +8749,49 @@ void AegisChatApp::RenderLeftPanel()
     ImGui::Dummy(ImVec2(0.0f, 4.0f));
 
     int recent_index = 0;
-    for (const TaskSummary& task : recent_tasks_) {
+    if (!current_conversation_id_.empty() && !current_conversation_archived_) {
+        const std::string label = Shorten(current_conversation_title_.empty() ? ConversationTitleFromHistory(history_) : current_conversation_title_, 30);
+        const std::string preview = ConversationPreviewFromHistory(history_);
+        const ImVec2 row_pos = ImGui::GetCursorScreenPos();
+        const ImVec2 row_size(ImGui::GetContentRegionAvail().x, 34.0f);
+        ImGui::InvisibleButton("recent_current", row_size);
+        if (ImGui::IsItemClicked()) {
+            active_nav_ = "chat";
+            status_ = "Current conversation is already open.";
+        }
+        draw->AddRectFilled(row_pos, ImVec2(row_pos.x + row_size.x, row_pos.y + row_size.y), Color(68, 24, 31, 0.78f), 7.0f);
+        draw->AddRectFilled(ImVec2(row_pos.x, row_pos.y + 6.0f), ImVec2(row_pos.x + 3.0f, row_pos.y + row_size.y - 6.0f), Color(248, 64, 82), 2.0f);
+        DrawBitmapIcon(draw, current_conversation_pinned_ ? IconGlyph::Shield : IconGlyph::Chat, ImVec2(row_pos.x + 13.0f, row_pos.y + 10.0f), 13.0f, Color(248, 64, 82));
+        draw->AddText(ImVec2(row_pos.x + 34.0f, row_pos.y + 8.0f), Color(255, 120, 132), label.empty() ? "Current chat" : label.c_str());
+        draw->AddText(ImVec2(row_pos.x + row_size.x - 48.0f, row_pos.y + 8.0f), Color(126, 136, 149), Shorten(preview.empty() ? "now" : preview, 6).c_str());
+        ++recent_index;
+    }
+    for (int i = 0; i < static_cast<int>(conversations_.size()); ++i) {
+        const LocalConversationSummary& conversation = conversations_[static_cast<size_t>(i)];
         if (recent_index >= 7) {
             break;
         }
-        const std::string label = Shorten(task.message.empty() ? "Untitled task" : task.message, 30);
-        const std::string time = task.finished_at.empty() ? task.created_at : task.finished_at;
-        const bool active = recent_index == 0;
+        if (conversation.archived) {
+            continue;
+        }
+        if (!current_conversation_id_.empty() && conversation.id == current_conversation_id_) {
+            continue;
+        }
+        const std::string label = Shorten(conversation.title.empty() ? "Untitled chat" : conversation.title, 30);
+        const std::string time = conversation.saved_at;
+        const bool active = conversation.id == current_conversation_id_;
         const ImVec2 row_pos = ImGui::GetCursorScreenPos();
         const ImVec2 row_size(ImGui::GetContentRegionAvail().x, 34.0f);
         ImGui::InvisibleButton(("recent_" + std::to_string(recent_index)).c_str(), row_size);
-        draw->AddRectFilled(row_pos, ImVec2(row_pos.x + row_size.x, row_pos.y + row_size.y), active ? Color(15, 69, 47, 0.78f) : Color(0, 0, 0, 0), 7.0f);
-        if (active) {
-            draw->AddRectFilled(ImVec2(row_pos.x, row_pos.y + 6.0f), ImVec2(row_pos.x + 3.0f, row_pos.y + row_size.y - 6.0f), Color(38, 221, 123), 2.0f);
+        if (ImGui::IsItemClicked()) {
+            LoadConversationFromLibrary(i);
         }
-        DrawBitmapIcon(draw, recent_index % 2 == 0 ? IconGlyph::Chat : IconGlyph::Mail, ImVec2(row_pos.x + 13.0f, row_pos.y + 10.0f), 13.0f, active ? Color(38, 221, 123) : Color(154, 164, 176));
-        draw->AddText(ImVec2(row_pos.x + 34.0f, row_pos.y + 8.0f), active ? Color(38, 221, 123) : Color(209, 216, 224), label.c_str());
+        draw->AddRectFilled(row_pos, ImVec2(row_pos.x + row_size.x, row_pos.y + row_size.y), active ? Color(68, 24, 31, 0.78f) : Color(0, 0, 0, 0), 7.0f);
+        if (active) {
+            draw->AddRectFilled(ImVec2(row_pos.x, row_pos.y + 6.0f), ImVec2(row_pos.x + 3.0f, row_pos.y + row_size.y - 6.0f), Color(248, 64, 82), 2.0f);
+        }
+        DrawBitmapIcon(draw, conversation.pinned ? IconGlyph::Shield : IconGlyph::Chat, ImVec2(row_pos.x + 13.0f, row_pos.y + 10.0f), 13.0f, active ? Color(248, 64, 82) : Color(154, 164, 176));
+        draw->AddText(ImVec2(row_pos.x + 34.0f, row_pos.y + 8.0f), active ? Color(255, 120, 132) : Color(209, 216, 224), label.c_str());
         draw->AddText(ImVec2(row_pos.x + row_size.x - 48.0f, row_pos.y + 8.0f), Color(126, 136, 149), Shorten(time, 6).c_str());
         ++recent_index;
     }
@@ -4913,8 +8809,8 @@ void AegisChatApp::RenderLeftPanel()
             if (ImGui::IsItemClicked()) {
                 SubmitMessage(samples[i]);
             }
-            DrawBitmapIcon(draw, i == 0 ? IconGlyph::Chat : IconGlyph::Mail, ImVec2(row_pos.x + 13.0f, row_pos.y + 10.0f), 13.0f, i == 0 ? Color(38, 221, 123) : Color(154, 164, 176));
-            draw->AddText(ImVec2(row_pos.x + 34.0f, row_pos.y + 8.0f), i == 0 ? Color(38, 221, 123) : Color(209, 216, 224), samples[i]);
+            DrawBitmapIcon(draw, i == 0 ? IconGlyph::Chat : IconGlyph::Mail, ImVec2(row_pos.x + 13.0f, row_pos.y + 10.0f), 13.0f, i == 0 ? Color(248, 64, 82) : Color(154, 164, 176));
+            draw->AddText(ImVec2(row_pos.x + 34.0f, row_pos.y + 8.0f), i == 0 ? Color(255, 120, 132) : Color(209, 216, 224), samples[i]);
         }
     }
 
@@ -4938,7 +8834,7 @@ void AegisChatApp::RenderLeftPanel()
     ImGui::Dummy(ImVec2(0.0f, 10.0f));
     if (BeginCard("profile_card", ImVec2(0, 66.0f))) {
         const ImVec2 avatar = ImGui::GetCursorScreenPos();
-        draw->AddCircleFilled(ImVec2(avatar.x + 24.0f, avatar.y + 25.0f), 19.0f, Color(74, 222, 128));
+        draw->AddCircleFilled(ImVec2(avatar.x + 24.0f, avatar.y + 25.0f), 19.0f, Color(239, 68, 68));
         draw->AddText(ImVec2(avatar.x + 14.0f, avatar.y + 17.0f), Color(255, 255, 255), "ME");
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 52.0f);
         ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 7.0f);
@@ -4947,6 +8843,114 @@ void AegisChatApp::RenderLeftPanel()
         TextMuted("mercy@aegisai.com");
     }
     EndCard();
+    ImGui::EndChild();
+}
+
+void AegisChatApp::RenderConversationSidebar()
+{
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, Rgba(7, 9, 13, 0.96f));
+    ImGui::PushStyleColor(ImGuiCol_Border, Rgba(52, 55, 64, 0.70f));
+    ImGui::BeginChild("conversation_sidebar", ImVec2(0, 0), true);
+    ImGui::PopStyleColor(2);
+
+    TextColor("Workspace", Rgba(246, 248, 251));
+    TextMuted(Shorten(workspace_root_.empty() ? BufferString(workspace_buffer_.data()) : workspace_root_, 82));
+    ImGui::Dummy(ImVec2(0.0f, 8.0f));
+    if (IconTextButton("conversation_open_builder", IconGlyph::Plus, "New Project", ImVec2(-1.0f, 36.0f), Rgba(32, 16, 20), Rgba(80, 31, 39), Rgba(248, 250, 252))) {
+        active_nav_ = "projects";
+        pending_popup_ = "Aegis Project Builder";
+    }
+    ImGui::Dummy(ImVec2(0.0f, 10.0f));
+    ImGui::Separator();
+    ImGui::Dummy(ImVec2(0.0f, 10.0f));
+
+    TextColor("Conversations", Rgba(246, 248, 251));
+    ImGui::SameLine(ImGui::GetWindowWidth() - 52.0f);
+    if (ImGui::SmallButton("...")) {
+        RefreshConversationLibrary();
+        pending_popup_ = "Aegis Conversations";
+    }
+    ImGui::Dummy(ImVec2(0.0f, 6.0f));
+
+    ImGui::PushStyleColor(ImGuiCol_FrameBg, Rgba(13, 16, 22));
+    ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, Rgba(24, 27, 34));
+    ImGui::PushStyleColor(ImGuiCol_FrameBgActive, Rgba(32, 25, 30));
+    ImGui::PushStyleColor(ImGuiCol_Border, Rgba(62, 64, 74));
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 8.0f);
+    ImGui::InputTextWithHint("##conversation_sidebar_search", "Search chats or projects", conversation_search_buffer_.data(), conversation_search_buffer_.size());
+    ImGui::PopStyleVar(2);
+    ImGui::PopStyleColor(4);
+    ImGui::Dummy(ImVec2(0.0f, 8.0f));
+
+    const std::string filter = BufferString(conversation_search_buffer_.data());
+    int visible = 0;
+    if (!current_conversation_id_.empty() && !current_conversation_archived_) {
+        const std::string current_title = current_conversation_title_.empty()
+            ? ConversationTitleFromHistory(history_)
+            : current_conversation_title_;
+        const std::string current_preview = ConversationPreviewFromHistory(history_);
+        if (filter.empty() ||
+            ContainsCaseInsensitive(current_title, filter) ||
+            ContainsCaseInsensitive(current_preview, filter)) {
+            if (RowButton(
+                    "conversation_row_current",
+                    current_conversation_pinned_ ? IconGlyph::Shield : IconGlyph::Chat,
+                    Shorten(current_title.empty() ? "Current chat" : current_title, 30).c_str(),
+                    Shorten(current_preview.empty() ? "Current local conversation" : current_preview, 42).c_str(),
+                    true)) {
+                active_nav_ = "chat";
+                status_ = "Current conversation is already open.";
+            }
+            ++visible;
+        }
+    }
+    for (int i = 0; i < static_cast<int>(conversations_.size()); ++i) {
+        const LocalConversationSummary& summary = conversations_[static_cast<size_t>(i)];
+        if (summary.archived) {
+            continue;
+        }
+        if (!current_conversation_id_.empty() && summary.id == current_conversation_id_) {
+            continue;
+        }
+        if (!filter.empty() &&
+            !ContainsCaseInsensitive(summary.title, filter) &&
+            !ContainsCaseInsensitive(summary.preview, filter) &&
+            !ContainsCaseInsensitive(summary.saved_at, filter)) {
+            continue;
+        }
+        const std::string title = summary.title.empty() ? "Untitled conversation" : summary.title;
+        const std::string subtitle = summary.preview.empty()
+            ? (std::to_string(summary.message_count) + " messages")
+            : summary.preview;
+        if (RowButton(
+                ("conversation_row_" + summary.id).c_str(),
+                summary.pinned ? IconGlyph::Shield : IconGlyph::Chat,
+                Shorten(title, 30).c_str(),
+                Shorten(subtitle, 42).c_str(),
+                summary.id == current_conversation_id_)) {
+            LoadConversationFromLibrary(i);
+            active_nav_ = "chat";
+        }
+        ++visible;
+        if (visible >= 14) {
+            break;
+        }
+    }
+
+    if (visible == 0) {
+        ImGui::Dummy(ImVec2(0.0f, 10.0f));
+        TextMuted(filter.empty() ? "No previous conversations yet. The current chat is saved as soon as it has activity." : "No conversations match your search.");
+    }
+
+    ImGui::Dummy(ImVec2(0.0f, 14.0f));
+    ImGui::Separator();
+    ImGui::Dummy(ImVec2(0.0f, 10.0f));
+    TextColor("Project Signals", Rgba(246, 248, 251));
+    const std::string active_model = models_.active_model.empty() ? config_.model_name : models_.active_model;
+    TextMuted("Model: " + Shorten(active_model.empty() ? "Auto route" : active_model, 36));
+    TextMuted("Mode: " + mode_);
+    TextMuted("Queued: " + std::to_string(queued_user_messages_.size()));
     ImGui::EndChild();
 }
 
@@ -4959,7 +8963,25 @@ void AegisChatApp::RenderChatPanel()
     const std::string active_api = models_.active_api.empty() ? BufferString(model_api_buffer_.data()) : models_.active_api;
     const std::string active_endpoint = models_.active_endpoint.empty() ? BufferString(model_endpoint_buffer_.data()) : models_.active_endpoint;
     const bool cloud_context_warning = IsCloudModelTarget(active_api, active_endpoint) && (!active_workspace.empty() || !attachments_.empty());
-    const float composer_height = 172.0f + (attachments_.empty() ? 0.0f : 58.0f) + (cloud_context_warning ? 46.0f : 0.0f);
+    const bool profile_quick_actions = has_workspace_profile_snapshot_ && workspace_profile_.has_manifest;
+    const float panel_width = ImGui::GetContentRegionAvail().x;
+    const float panel_height = ImGui::GetContentRegionAvail().y;
+    const float input_wrap_width = std::max(260.0f, panel_width - 128.0f);
+    const std::string composer_text = std::string(message_buffer_.data());
+    const float composer_text_height = ImGui::CalcTextSize(
+        composer_text.empty() ? "Message Aegis AI..." : composer_text.c_str(),
+        nullptr,
+        false,
+        input_wrap_width).y;
+    const bool compact_composer = panel_width < 980.0f || panel_height < 760.0f;
+    const float input_height = std::clamp(composer_text_height + 24.0f, 44.0f, compact_composer ? 96.0f : 132.0f);
+    const float activity_line_height = 18.0f;
+    const float raw_composer_height = 84.0f + input_height + activity_line_height +
+        (attachments_.empty() ? 0.0f : 48.0f) +
+        (cloud_context_warning ? 40.0f : 0.0f) +
+        (profile_quick_actions ? 32.0f : 0.0f) +
+        ((autopilot_enabled_ || autopilot_active_) ? 38.0f : 0.0f);
+    const float composer_height = std::min(raw_composer_height, std::max(154.0f, panel_height * 0.42f));
     const float footer_height = 30.0f;
     ImGui::PushStyleColor(ImGuiCol_ChildBg, Rgba(0, 0, 0, 0));
     ImGui::BeginChild("messages", ImVec2(0, -composer_height - footer_height), false);
@@ -5000,18 +9022,24 @@ void AegisChatApp::RenderChatPanel()
         if (BeginCard("thinking_message", ImVec2(card_width, 88.0f), true)) {
             ImDrawList* draw = ImGui::GetWindowDrawList();
             const ImVec2 pos = ImGui::GetCursorScreenPos();
-            DrawSpinner(draw, ImVec2(pos.x + 24.0f, pos.y + 27.0f), 16.0f, 2.5f, Color(255, 255, 255, 0.09f), Color(38, 221, 123));
+            DrawSpinner(draw, ImVec2(pos.x + 24.0f, pos.y + 27.0f), 16.0f, 2.5f, Color(255, 255, 255, 0.09f), Color(248, 64, 82));
             ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 58.0f);
-            TextColor("Aegis is working", Rgba(38, 221, 123));
+            TextColor("Aegis is working", Rgba(255, 120, 132));
             ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 58.0f);
             const std::string label = busy_label_.empty() ? "Preparing the next response" : busy_label_;
             TextMuted(label);
             const float dot_y = pos.y + 58.0f;
             for (int i = 0; i < 3; ++i) {
                 const float dot = 0.35f + Pulse(4.0f, static_cast<float>(i) * 0.85f) * 0.65f;
-                draw->AddRectFilled(ImVec2(pos.x + 58.0f + i * 13.0f, dot_y), ImVec2(pos.x + 64.0f + i * 13.0f, dot_y + 6.0f), Color(38, 221, 123, dot), 3.0f);
+                draw->AddRectFilled(ImVec2(pos.x + 58.0f + i * 13.0f, dot_y), ImVec2(pos.x + 64.0f + i * 13.0f, dot_y + 6.0f), Color(248, 64, 82, dot), 3.0f);
             }
-            ImGui::SetCursorPos(ImVec2(ImGui::GetWindowWidth() - 130.0f, 18.0f));
+            ImGui::SetCursorPos(ImVec2(ImGui::GetWindowWidth() - (autopilot_active_ ? 252.0f : 130.0f), 18.0f));
+            if (autopilot_active_) {
+                if (IconTextButton("autopilot_wrap_busy", IconGlyph::Shield, autopilot_stop_requested_ ? "Wrapping" : "Wrap Up", ImVec2(112.0f, 34.0f), Rgba(17, 25, 34), Rgba(34, 48, 61), autopilot_stop_requested_ ? Rgba(205, 154, 82) : Rgba(187, 222, 255))) {
+                    RequestAutopilotWrapUp();
+                }
+                ImGui::SameLine();
+            }
             if (IconTextButton("cancel_response", IconGlyph::Bolt, cancel_response_requested_ ? "Canceling" : "Cancel", ImVec2(108.0f, 34.0f), Rgba(25, 32, 41), Rgba(52, 38, 45), cancel_response_requested_ ? Rgba(205, 154, 82) : Rgba(248, 180, 180))) {
                 CancelActiveResponse();
             }
@@ -5026,24 +9054,38 @@ void AegisChatApp::RenderChatPanel()
     ImGui::EndChild();
 
     ImGui::Dummy(ImVec2(0.0f, 10.0f));
-    const float composer_width = ImGui::GetContentRegionAvail().x - 32.0f;
+    const float composer_width = std::max(320.0f, ImGui::GetContentRegionAvail().x - 32.0f);
     ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 16.0f);
     if (BeginCard("composer_card", ImVec2(composer_width, composer_height - 10.0f), true)) {
         ImGui::PushStyleColor(ImGuiCol_FrameBg, Rgba(0, 0, 0, 0));
         ImGui::PushStyleColor(ImGuiCol_Border, Rgba(0, 0, 0, 0));
         ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
-        ImGui::InputTextMultiline(
+        const bool submit_from_enter = ImGui::InputTextMultiline(
             "##composer",
             message_buffer_.data(),
             message_buffer_.size(),
-            ImVec2(-1.0f, 54.0f),
-            ImGuiInputTextFlags_AllowTabInput);
+            ImVec2(-1.0f, input_height),
+            ImGuiInputTextFlags_AllowTabInput |
+                ImGuiInputTextFlags_WordWrap |
+                ImGuiInputTextFlags_NoHorizontalScroll |
+                ImGuiInputTextFlags_EnterReturnsTrue |
+                ImGuiInputTextFlags_CtrlEnterForNewLine);
         if (Trim(std::string(message_buffer_.data())).empty() && !ImGui::IsItemActive()) {
             const ImVec2 hint = ImGui::GetItemRectMin();
             ImGui::GetWindowDrawList()->AddText(ImVec2(hint.x + 4.0f, hint.y + 6.0f), Color(132, 142, 155), "Message Aegis AI...");
         }
         ImGui::PopStyleVar();
         ImGui::PopStyleColor(2);
+
+        if (submit_from_enter && (!Trim(std::string(message_buffer_.data())).empty() || !attachments_.empty())) {
+            workspace_root_ = BufferString(workspace_buffer_.data());
+            SubmitMessage();
+        }
+
+        const std::string latest_activity = agent_activity_.empty()
+            ? (status_.empty() ? "Ready." : status_)
+            : (agent_activity_.back().message + " [" + agent_activity_.back().status + "]");
+        TextMuted(Shorten(latest_activity, 140));
 
         if (cloud_context_warning) {
             const ImVec2 warning_pos = ImGui::GetCursorScreenPos();
@@ -5060,7 +9102,7 @@ void AegisChatApp::RenderChatPanel()
         if (!attachments_.empty()) {
             ImGui::Dummy(ImVec2(0.0f, 4.0f));
             TextMuted("Attached context");
-            ImGui::BeginChild("attachment_tray", ImVec2(0, 42.0f), false, ImGuiWindowFlags_HorizontalScrollbar);
+            ImGui::BeginChild("attachment_tray", ImVec2(0, 34.0f), false, ImGuiWindowFlags_HorizontalScrollbar);
             for (size_t i = 0; i < attachments_.size(); ++i) {
                 ImGui::PushID(static_cast<int>(i));
                 if (i > 0) {
@@ -5077,6 +9119,45 @@ void AegisChatApp::RenderChatPanel()
             ImGui::EndChild();
         }
 
+        if (profile_quick_actions) {
+            const WorkspaceProjectManifestInfo& manifest = workspace_profile_.manifest;
+            const std::string project_title = manifest.title.empty() ? manifest.project_name : manifest.title;
+            const std::string suggested_route = SuggestedRouteForWorkspaceProfile(manifest);
+            ImGui::Dummy(ImVec2(0.0f, 3.0f));
+            TextMuted("Project: " + Shorten(project_title.empty() ? "Aegis workspace" : project_title, 44) +
+                " / " + Shorten(manifest.framework.empty() ? "manifest" : manifest.framework, 32));
+            ImGui::SameLine();
+            ImGui::BeginDisabled(busy_);
+            if (ImGui::SmallButton("First Pass")) {
+                SetBuffer(message_buffer_, BuildWorkspaceFirstPassPrompt(manifest));
+                mode_ = "develop";
+                run_validation_ = !manifest.validation_command.empty();
+                status_ = "Loaded first-pass manifest prompt into the composer.";
+            }
+            ImGui::SameLine();
+            if (ImGui::SmallButton(RouteLabelForWorkspaceProfile(suggested_route).c_str())) {
+                StartCodingRoute(suggested_route);
+            }
+            ImGui::EndDisabled();
+            ImGui::SameLine();
+            ImGui::BeginDisabled(manifest.install_command.empty());
+            if (ImGui::SmallButton("Copy Install")) {
+                ImGui::SetClipboardText(manifest.install_command.c_str());
+                status_ = "Copied install command.";
+            }
+            ImGui::EndDisabled();
+            ImGui::SameLine();
+            ImGui::BeginDisabled(manifest.validation_command.empty());
+            if (ImGui::SmallButton("Use Validate")) {
+                SetBuffer(validation_command_buffer_, manifest.validation_command);
+                SetBuffer(validation_label_buffer_, (manifest.preset_label.empty() ? "Workspace" : manifest.preset_label) + " validation");
+                SetBuffer(validation_notes_buffer_, "Loaded from .aegis/project.json.");
+                run_validation_ = true;
+                status_ = "Validation command loaded from workspace profile.";
+            }
+            ImGui::EndDisabled();
+        }
+
         ImGui::Dummy(ImVec2(0.0f, 2.0f));
         ImGui::Checkbox("Auto Apply", &apply_changes_);
         if (ImGui::IsItemHovered()) {
@@ -5090,14 +9171,57 @@ void AegisChatApp::RenderChatPanel()
         if (ImGui::GetWindowWidth() > 780.0f) {
             ImGui::SameLine(0.0f, 18.0f);
             ImGui::SetNextItemWidth(118.0f);
-            ImGui::SliderInt("Repairs", &max_repairs_, 0, 3);
+            ImGui::SliderInt("Repairs", &max_repairs_, 0, 5);
             if (ImGui::IsItemHovered()) {
                 ImGui::SetTooltip("Automatic validation repair attempts after a failed validation run.");
+            }
+        }
+        if (ImGui::GetWindowWidth() > 900.0f) {
+            ImGui::SameLine(0.0f, 18.0f);
+            if (ImGui::Checkbox("Autopilot", &autopilot_enabled_)) {
+                if (!autopilot_enabled_ && autopilot_active_) {
+                    RequestAutopilotWrapUp();
+                } else {
+                    RefreshAutopilotSuggestions();
+                }
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Keep working through plan, build, validation, and repair passes until a clean handoff point.");
             }
         }
         if (ImGui::GetWindowWidth() > 1020.0f) {
             ImGui::SameLine(0.0f, 18.0f);
             TextMuted("Workspace: " + Shorten(active_workspace.empty() ? "not selected" : active_workspace, 54));
+        }
+
+        if (autopilot_enabled_ || autopilot_active_) {
+            ImGui::Dummy(ImVec2(0.0f, 3.0f));
+            const std::string autopilot_state = autopilot_active_
+                ? ("Autopilot: pass " + std::to_string(autopilot_rounds_completed_) + "/" + std::to_string(autopilot_max_rounds_) +
+                    (autopilot_stop_requested_ ? " / wrapping up" : " / running"))
+                : "Autopilot armed. Send still works, or start from the latest goal.";
+            TextMuted(autopilot_state);
+            ImGui::SameLine(0.0f, 12.0f);
+            ImGui::SetNextItemWidth(132.0f);
+            ImGui::SliderInt("Passes", &autopilot_max_rounds_, 3, kAutopilotMaxPassLimit);
+            autopilot_max_rounds_ = std::max(autopilot_min_rounds_, autopilot_max_rounds_);
+            if (autopilot_active_) {
+                ImGui::SameLine(0.0f, 12.0f);
+                if (ImGui::SmallButton(autopilot_stop_requested_ ? "Wrapping Up" : "Wrap Up")) {
+                    RequestAutopilotWrapUp();
+                }
+            } else {
+                ImGui::SameLine(0.0f, 12.0f);
+                ImGui::BeginDisabled(busy_);
+                if (ImGui::SmallButton("Start Now")) {
+                    StartAutopilotFromCurrentContext();
+                }
+                ImGui::EndDisabled();
+            }
+            if (!autopilot_suggestions_.empty()) {
+                ImGui::Dummy(ImVec2(0.0f, 2.0f));
+                TextMuted("Suggestions: " + Shorten(JoinList(autopilot_suggestions_, " / "), 170));
+            }
         }
 
         ImGui::Dummy(ImVec2(0.0f, 4.0f));
@@ -5119,11 +9243,35 @@ void AegisChatApp::RenderChatPanel()
                 status_ = "Opened context preview.";
             }
         }
+        if (ImGui::GetWindowWidth() > 660.0f) {
+            ImGui::SameLine();
+            ImGui::BeginDisabled(busy_);
+            if (IconTextButton("composer_route", IconGlyph::Sliders, "Route", ImVec2(96.0f, 38.0f), Rgba(17, 25, 34), Rgba(25, 35, 47), Rgba(232, 238, 245))) {
+                PreviewComposerRoute();
+            }
+            ImGui::EndDisabled();
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Preview the selected role, model route, context budget, and route-health signal.");
+            }
+        }
 
         const float send_x = ImGui::GetWindowWidth() - 56.0f;
-        ImGui::SameLine(send_x);
-        ImGui::BeginDisabled(busy_);
-        if (IconOnlyButton("send_message", IconGlyph::Send, ImVec2(40.0f, 40.0f), Rgba(20, 175, 88), Rgba(34, 197, 94), Rgba(255, 255, 255))) {
+        if (ImGui::GetCursorPosX() + 52.0f < send_x) {
+            ImGui::SameLine(send_x);
+        } else {
+            ImGui::Dummy(ImVec2(0.0f, 4.0f));
+            ImGui::SetCursorPosX(send_x);
+        }
+        const bool can_queue_autopilot_instruction =
+            busy_ &&
+            autopilot_active_ &&
+            (!Trim(std::string(message_buffer_.data())).empty() || !attachments_.empty());
+        const bool can_submit_or_queue =
+            !Trim(std::string(message_buffer_.data())).empty() ||
+            !attachments_.empty() ||
+            can_queue_autopilot_instruction;
+        ImGui::BeginDisabled(!can_submit_or_queue);
+        if (IconOnlyButton("send_message", IconGlyph::Send, ImVec2(40.0f, 40.0f), Rgba(210, 39, 55), Rgba(239, 68, 68), Rgba(255, 255, 255))) {
             workspace_root_ = BufferString(workspace_buffer_.data());
             SubmitMessage();
         }
@@ -5141,12 +9289,74 @@ void AegisChatApp::RenderChatPanel()
     ImGui::EndChild();
 }
 
+void AegisChatApp::RenderAgentActivityPanel()
+{
+    const auto activity_color = [](const std::string& status) {
+        if (status == "success" || status == "passed" || status == "succeeded") {
+            return Rgba(58, 217, 127);
+        }
+        if (status == "failed" || status == "error") {
+            return Rgba(248, 113, 113);
+        }
+        if (status == "warning" || status == "pending" || status == "skipped") {
+            return Rgba(234, 179, 85);
+        }
+        return Rgba(255, 120, 132);
+    };
+
+    if (BeginCard("agent_activity_card", ImVec2(0, 306.0f))) {
+        TextColor("Agent Activity", Rgba(246, 248, 251));
+        ImGui::SameLine(ImGui::GetWindowWidth() - 126.0f);
+        const std::string state = connection_state_.empty() ? "offline" : connection_state_;
+        TextColor(state == "connected" ? "Connected" : (state == "reconnecting" ? "Reconnecting" : (state == "failed" ? "Failed" : "Offline")),
+                  state == "connected" ? Rgba(58, 217, 127) : activity_color(state == "failed" ? "failed" : "warning"));
+        ImGui::Separator();
+        TextMuted(connection_detail_.empty() ? status_ : connection_detail_);
+        if (!queued_user_messages_.empty()) {
+            TextColor(std::to_string(queued_user_messages_.size()) + " queued prompt(s)", Rgba(234, 179, 85));
+        }
+        ImGui::Dummy(ImVec2(0.0f, 6.0f));
+
+        ImGui::BeginChild("agent_activity_log", ImVec2(0, 206.0f), false);
+        if (agent_activity_.empty()) {
+            TextMuted("Activity events will appear here while Aegis scans, plans, edits, validates, and repairs.");
+        } else {
+            const int start = std::max(0, static_cast<int>(agent_activity_.size()) - 12);
+            for (int i = start; i < static_cast<int>(agent_activity_.size()); ++i) {
+                const AgentActivityEvent& event = agent_activity_[static_cast<size_t>(i)];
+                ImGui::PushID(i);
+                const ImVec4 color = activity_color(event.status);
+                TextColor("[" + event.timestamp + "] " + Shorten(event.type, 12), color);
+                TextMuted(event.message);
+                if (!event.file_path.empty()) {
+                    TextMuted("file: " + event.file_path);
+                }
+                if (!event.command.empty()) {
+                    TextMuted("cmd: " + event.command);
+                }
+                if (i + 1 < static_cast<int>(agent_activity_.size())) {
+                    ImGui::Dummy(ImVec2(0.0f, 4.0f));
+                }
+                ImGui::PopID();
+            }
+            if (busy_ || !queued_user_messages_.empty()) {
+                ImGui::SetScrollHereY(1.0f);
+            }
+        }
+        ImGui::EndChild();
+    }
+    EndCard();
+}
+
 void AegisChatApp::RenderRightPanel()
 {
     ImGui::PushStyleColor(ImGuiCol_ChildBg, Rgba(0, 0, 0, 0));
-    ImGui::BeginChild("right_panel", ImVec2(0, 0), false, ImGuiWindowFlags_NoScrollbar);
+    ImGui::BeginChild("right_panel", ImVec2(0, 0), false);
     ImGui::PopStyleColor();
     ImGui::Dummy(ImVec2(0.0f, 2.0f));
+
+    RenderAgentActivityPanel();
+    ImGui::Dummy(ImVec2(0.0f, 4.0f));
 
     if (BeginCard("chat_info_card", ImVec2(0, 246.0f))) {
         TextColor("Chat Info", Rgba(246, 248, 251));
@@ -5241,26 +9451,40 @@ void AegisChatApp::RenderRightPanel()
     EndCard();
 
     ImGui::Dummy(ImVec2(0.0f, 4.0f));
-    if (BeginCard("suggested_prompts_card", ImVec2(0, 254.0f))) {
-        TextColor("Suggested Prompts", Rgba(246, 248, 251));
-        ImGui::SameLine(ImGui::GetWindowWidth() - 34.0f);
-        DrawBitmapIcon(ImGui::GetWindowDrawList(), IconGlyph::Regen, ImGui::GetCursorScreenPos(), 16.0f, Color(151, 160, 171));
-        ImGui::Dummy(ImVec2(20.0f, 20.0f));
-        ImGui::Dummy(ImVec2(0.0f, 8.0f));
+    const bool has_route_timeline =
+        has_response_ &&
+        (last_response_.has_task_plan || last_response_.has_context_budget || !last_response_.model_attempts.empty());
+    const bool has_preview_timeline =
+        !has_route_timeline &&
+        has_route_preview_ &&
+        (route_preview_.has_task_plan || route_preview_.has_context_budget || !route_preview_.model_attempts.empty());
+    if (has_route_timeline || has_preview_timeline) {
+        if (BeginCard("route_timeline_card", ImVec2(0, 254.0f))) {
+            RenderRouteTimelineCard(has_route_timeline ? last_response_ : route_preview_, has_preview_timeline);
+        }
+        EndCard();
+    } else {
+        if (BeginCard("suggested_prompts_card", ImVec2(0, 254.0f))) {
+            TextColor("Suggested Prompts", Rgba(246, 248, 251));
+            ImGui::SameLine(ImGui::GetWindowWidth() - 34.0f);
+            DrawBitmapIcon(ImGui::GetWindowDrawList(), IconGlyph::Regen, ImGui::GetCursorScreenPos(), 16.0f, Color(151, 160, 171));
+            ImGui::Dummy(ImVec2(20.0f, 20.0f));
+            ImGui::Dummy(ImVec2(0.0f, 8.0f));
 
-        const char* prompts[] = {
-            "What are the latest AI developments?",
-            "Explain this concept simply",
-            "Help me write a professional email",
-            "Analyze this data for me",
-        };
-        for (int i = 0; i < 4; ++i) {
-            if (RowButton(("prompt_" + std::to_string(i)).c_str(), IconGlyph::Sparkle, prompts[i], "")) {
-                SubmitMessage(prompts[i]);
+            const char* prompts[] = {
+                "What are the latest AI developments?",
+                "Explain this concept simply",
+                "Help me write a professional email",
+                "Analyze this data for me",
+            };
+            for (int i = 0; i < 4; ++i) {
+                if (RowButton(("prompt_" + std::to_string(i)).c_str(), IconGlyph::Sparkle, prompts[i], "")) {
+                    SubmitMessage(prompts[i]);
+                }
             }
         }
+        EndCard();
     }
-    EndCard();
 
     ImGui::Dummy(ImVec2(0.0f, 16.0f));
     if (has_response_ && (!last_response_.changes.empty() || last_response_.has_validation)) {
@@ -5283,7 +9507,7 @@ void AegisChatApp::RenderRightPanel()
             }
             if (!last_response_.changes.empty()) {
                 ImGui::BeginDisabled(busy_ || fully_applied);
-                if (IconTextButton("apply_snapshot_changes", IconGlyph::Bolt, fully_applied ? "Applied" : "Apply Changes", ImVec2(-1.0f, 38.0f), Rgba(20, 175, 88), Rgba(34, 197, 94), Rgba(255, 255, 255))) {
+                if (IconTextButton("apply_snapshot_changes", IconGlyph::Bolt, fully_applied ? "Applied" : "Apply Changes", ImVec2(-1.0f, 38.0f), Rgba(210, 39, 55), Rgba(239, 68, 68), Rgba(255, 255, 255))) {
                     ApplyPendingChanges();
                 }
                 ImGui::EndDisabled();
@@ -5340,11 +9564,11 @@ void AegisChatApp::RenderResponseTab()
         ImGui::SameLine();
         ImGui::BeginDisabled(busy_);
         if (ImGui::Button("Like Response")) {
-            RecordFeedback("liked", last_response_.reply, "response_tab; task_id=" + last_response_.task_id);
+            RecordFeedback("liked", last_response_.reply, "response_tab; task_id=" + last_response_.task_id, "response_feedback", "assistant_response", last_response_.engine);
         }
         ImGui::SameLine();
         if (ImGui::Button("Reject Response")) {
-            RecordFeedback("disliked", last_response_.reply, "response_tab; task_id=" + last_response_.task_id);
+            RecordFeedback("disliked", last_response_.reply, "response_tab; task_id=" + last_response_.task_id, "response_feedback", "assistant_response", last_response_.engine);
         }
         ImGui::EndDisabled();
     }
@@ -5400,11 +9624,11 @@ void AegisChatApp::RenderResponseTab()
         ImGui::SameLine();
         ImGui::BeginDisabled(busy_);
         if (ImGui::Button("Good Validation")) {
-            RecordFeedback("liked", validation_payload, "validation_result; task_id=" + last_response_.task_id);
+            RecordFeedback("liked", validation_payload, "validation_result; task_id=" + last_response_.task_id, "validation_feedback", "validation_result", last_response_.engine);
         }
         ImGui::SameLine();
         if (ImGui::Button("Bad Validation")) {
-            RecordFeedback("disliked", validation_payload, "validation_result; task_id=" + last_response_.task_id);
+            RecordFeedback("disliked", validation_payload, "validation_result; task_id=" + last_response_.task_id, "validation_feedback", "validation_result", last_response_.engine);
         }
         ImGui::EndDisabled();
         if (!last_response_.validation.stdout_text.empty() || !last_response_.validation.stderr_text.empty()) {
@@ -5450,6 +9674,1606 @@ void AegisChatApp::RenderResponseTab()
             ImGui::EndTable();
         }
     }
+}
+
+void AegisChatApp::RenderRouteTimelineCard(const AgentResponse& response, bool preview_mode)
+{
+    TextColor(preview_mode ? "Route Preview" : "Route Timeline", Rgba(246, 248, 251));
+    ImGui::SameLine(ImGui::GetWindowWidth() - 116.0f);
+    ImGui::BeginDisabled(busy_);
+    if (IconTextButton("route_planning_history", IconGlyph::History, "History", ImVec2(92.0f, 28.0f), Rgba(17, 25, 34), Rgba(25, 35, 47), Rgba(232, 238, 245))) {
+        RefreshTelemetry();
+        pending_popup_ = "Aegis Planning History";
+        status_ = "Opened planning history.";
+    }
+    ImGui::EndDisabled();
+    ImGui::Separator();
+
+    const bool has_metadata =
+        response.has_task_plan || response.has_context_budget || !response.model_attempts.empty();
+    if (!has_metadata) {
+        TextMuted(preview_mode ? "Type a prompt and preview its route." : "Routing metadata will appear after the next planned response.");
+        return;
+    }
+
+    const auto privacy_color = [](const std::string& privacy) {
+        const std::string lowered = Lower(privacy);
+        if (lowered.find("cloud") != std::string::npos || lowered.find("remote") != std::string::npos) {
+            return Rgba(205, 154, 82);
+        }
+        if (lowered.find("local") != std::string::npos) {
+            return Rgba(38, 221, 123);
+        }
+        return Rgba(151, 160, 171);
+    };
+    const auto status_color = [](const std::string& status) {
+        const std::string lowered = Lower(status);
+        if (lowered == "succeeded") {
+            return Rgba(38, 221, 123);
+        }
+        if (lowered == "failed" || lowered == "canceled") {
+            return Rgba(248, 113, 113);
+        }
+        if (lowered == "running" || lowered == "fallback") {
+            return Rgba(205, 154, 82);
+        }
+        return Rgba(151, 160, 171);
+    };
+
+    if (response.has_task_plan) {
+        const TaskPlanInfo& plan = response.task_plan;
+        const RoutingDecisionInfo& route = plan.routing;
+        std::string role = plan.has_routing && !route.task_role.empty() ? route.task_role : plan.intent;
+        if (role.empty()) {
+            role = "general";
+        }
+        std::string provider = plan.has_routing ? route.provider_hint : "";
+        if (provider.empty() && plan.has_routing && !route.candidates.empty()) {
+            provider = route.candidates.front().provider_hint;
+        }
+        if (provider.empty()) {
+            provider = config_.model_api.empty() ? "local" : config_.model_api;
+        }
+        const std::string privacy = plan.has_routing ? route.privacy_mode : "local-first";
+        TextColor(Shorten(role, 34), Rgba(246, 248, 251));
+        ImGui::SameLine();
+        Pill(Shorten(privacy, 16).c_str(), privacy_color(privacy));
+        const std::string profile_label = plan.route_profile.label.empty() ? plan.route_profile.id : plan.route_profile.label;
+        if (!profile_label.empty()) {
+            ImGui::SameLine();
+            Pill(Shorten(profile_label, 18).c_str(), Rgba(88, 166, 255));
+        }
+        TextMuted("Provider: " + Shorten(provider, 34));
+        if (!profile_label.empty()) {
+            std::string profile_text = "Profile: " + profile_label;
+            if (!plan.route_profile.category.empty()) {
+                profile_text += " / " + plan.route_profile.category;
+            }
+            if (!plan.route_profile.reason.empty()) {
+                profile_text += " - " + plan.route_profile.reason;
+            }
+            TextMuted(Shorten(profile_text, 96));
+        }
+        const std::string objective = !plan.objective.empty() ? plan.objective : plan.workflow;
+        if (!objective.empty()) {
+            TextMuted(Shorten(objective, 96));
+        }
+        if (plan.has_routing && !route.summary.empty()) {
+            TextMuted("Decision: " + Shorten(route.summary, 88));
+        }
+    }
+
+    if (response.has_context_budget) {
+        const ContextBudgetInfo& budget = response.context_budget;
+        const int requested_tokens = budget.estimated_context_tokens + budget.reserve_response_tokens;
+        const float fraction = budget.max_context_tokens > 0
+            ? Clamp01(static_cast<float>(requested_tokens) / static_cast<float>(budget.max_context_tokens))
+            : 0.0f;
+        ImGui::Dummy(ImVec2(0.0f, 6.0f));
+        DrawProgress(fraction, ImVec2(ImGui::GetContentRegionAvail().x, 6.0f), fraction > 0.72f);
+        TextMuted("Context: " + std::to_string(budget.estimated_context_tokens) + " used + " +
+            std::to_string(budget.reserve_response_tokens) + " reserved / " +
+            (budget.max_context_tokens > 0 ? std::to_string(budget.max_context_tokens) : std::string("unknown")) + " tokens");
+        TextMuted("Files: " + std::to_string(budget.selected_file_count) + " / " +
+            std::to_string(budget.workspace_file_count) + " selected, " +
+            std::to_string(budget.omitted_file_count) + " omitted");
+        const int memory_count = budget.selected_memory_count + budget.selected_project_memory_count;
+        const int omitted_memory = budget.omitted_memory_count + budget.omitted_project_memory_count;
+        TextMuted("Memory: " + std::to_string(memory_count) + " selected, " +
+            std::to_string(omitted_memory) + " omitted");
+    }
+
+    if (!response.model_attempts.empty()) {
+        ImGui::Dummy(ImVec2(0.0f, 6.0f));
+        if (ImGui::BeginTable(preview_mode ? "route_preview_attempts_table" : "route_attempts_table", 5, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+            ImGui::TableSetupColumn("Try", ImGuiTableColumnFlags_WidthFixed, 42.0f);
+            ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_WidthFixed, 76.0f);
+            ImGui::TableSetupColumn("Model");
+            ImGui::TableSetupColumn("Quality", ImGuiTableColumnFlags_WidthFixed, 86.0f);
+            ImGui::TableSetupColumn("Budget", ImGuiTableColumnFlags_WidthFixed, 96.0f);
+            ImGui::TableHeadersRow();
+            const int count = std::min(3, static_cast<int>(response.model_attempts.size()));
+            for (int i = 0; i < count; ++i) {
+                const ModelAttemptInfo& attempt = response.model_attempts[i];
+                const std::string provider = attempt.provider_label.empty() ? attempt.provider_id : attempt.provider_label;
+                const std::string model = attempt.model.empty() ? provider : (provider.empty() ? attempt.model : provider + " / " + attempt.model);
+                const std::string status = attempt.status.empty() ? "planned" : attempt.status;
+                std::string budget_text = FormatOptionalInt(attempt.input_tokens, attempt.has_input_tokens) + "/" +
+                    FormatOptionalInt(attempt.output_tokens, attempt.has_output_tokens);
+                if (attempt.has_estimated_cost) {
+                    budget_text += " " + FormatCostUsd(attempt.estimated_cost_usd, true);
+                }
+                std::string quality_text = FormatPercent(attempt.benchmark_suite_score, attempt.has_benchmark_suite_score);
+                ImVec4 quality_color = Rgba(151, 160, 171);
+                if (attempt.route_health_cooldown) {
+                    quality_text = "Cooldown";
+                    quality_color = Rgba(248, 113, 113);
+                } else if (attempt.has_route_health_penalty && attempt.route_health_penalty > 0.0) {
+                    quality_text = "Health -" + FormatNumber(attempt.route_health_penalty, true, 0);
+                    quality_color = Rgba(205, 154, 82);
+                } else if (attempt.has_route_health_failure_rate && attempt.route_health_failure_rate > 0.0) {
+                    quality_text = "Fail " + FormatPercent(attempt.route_health_failure_rate);
+                    quality_color = Rgba(205, 154, 82);
+                } else if (attempt.structured_preview_retired) {
+                    quality_text = "Preview reset";
+                    quality_color = Rgba(205, 154, 82);
+                } else if (attempt.structured_preview_final_winner) {
+                    quality_text = "Stream win";
+                    quality_color = Rgba(68, 212, 146);
+                } else if (attempt.structured_preview_emitted) {
+                    quality_text = "Previewed";
+                    quality_color = Rgba(84, 186, 255);
+                }
+
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+                TextMuted(std::to_string(attempt.attempt > 0 ? attempt.attempt : i + 1));
+                ImGui::TableSetColumnIndex(1);
+                Pill(Shorten(status, 9).c_str(), status_color(status));
+                ImGui::TableSetColumnIndex(2);
+                TextMuted(Shorten(model.empty() ? attempt.role : model, 38));
+                ImGui::TableSetColumnIndex(3);
+                TextColor(Shorten(quality_text, 14), quality_color);
+                ImGui::TableSetColumnIndex(4);
+                TextMuted(Shorten(budget_text, 24));
+            }
+            ImGui::EndTable();
+        }
+        if (response.model_attempts.size() > 3) {
+            TextMuted("Showing 3 of " + std::to_string(response.model_attempts.size()) + " planned model attempt(s).");
+        }
+    }
+
+    if (!response.routing_recommendations.empty()) {
+        ImGui::Dummy(ImVec2(0.0f, 6.0f));
+        const int count = std::min(2, static_cast<int>(response.routing_recommendations.size()));
+        for (int i = 0; i < count; ++i) {
+            TextMuted(Shorten(response.routing_recommendations[i], 92));
+        }
+    }
+}
+
+void AegisChatApp::RenderPlanningHistoryModal()
+{
+    TextColor("Planning History", Rgba(246, 248, 251));
+    TextMuted("Recent context budgets and model routing attempts for this workspace.");
+    ImGui::Dummy(ImVec2(0.0f, 8.0f));
+
+    ImGui::BeginDisabled(busy_);
+    if (IconTextButton("planning_history_refresh", IconGlyph::History, "Refresh", ImVec2(120.0f, 34.0f), Rgba(17, 25, 34), Rgba(25, 35, 47), Rgba(232, 238, 245))) {
+        RefreshTelemetry();
+    }
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    TextMuted(telemetry_.workspace_root.empty()
+        ? Trim(workspace_root_.empty() ? BufferString(workspace_buffer_.data()) : workspace_root_)
+        : telemetry_.workspace_root);
+    ImGui::Separator();
+
+    if (!telemetry_loaded_) {
+        TextMuted("Open this panel from the route timeline or refresh to load planning telemetry.");
+        return;
+    }
+
+    double total_estimated_cost = 0.0;
+    int succeeded_attempts = 0;
+    int failed_attempts = 0;
+    for (const ModelAttemptTelemetryEntryInfo& entry : telemetry_.model_attempts) {
+        const ModelAttemptInfo& attempt = entry.attempt;
+        if (attempt.has_estimated_cost) {
+            total_estimated_cost += attempt.estimated_cost_usd;
+        }
+        const std::string status = Lower(attempt.status);
+        if (status == "succeeded") {
+            ++succeeded_attempts;
+        } else if (status == "failed" || status == "canceled") {
+            ++failed_attempts;
+        }
+    }
+
+    ImGui::Columns(4, "planning_history_summary", false);
+    TextMuted("Budgets");
+    TextColor(std::to_string(telemetry_.context_budgets.size()), Rgba(246, 248, 251));
+    ImGui::NextColumn();
+    TextMuted("Attempts");
+    TextColor(std::to_string(telemetry_.model_attempts.size()), Rgba(246, 248, 251));
+    ImGui::NextColumn();
+    TextMuted("Succeeded / Failed");
+    TextColor(std::to_string(succeeded_attempts) + " / " + std::to_string(failed_attempts), Rgba(246, 248, 251));
+    ImGui::NextColumn();
+    TextMuted("Est. Cost");
+    TextColor(FormatCostUsd(total_estimated_cost, total_estimated_cost > 0.0), Rgba(246, 248, 251));
+    ImGui::Columns(1);
+
+    ImGui::Dummy(ImVec2(0.0f, 14.0f));
+    TextColor("Route Quality", Rgba(246, 248, 251));
+    if (route_quality_loaded_) {
+        const RouteQualityOverviewInfo& overview = route_quality_.overview;
+        const ImVec4 reliability_color = overview.reliability_score >= 80.0
+            ? Rgba(38, 221, 123)
+            : (overview.reliability_score >= 55.0 ? Rgba(205, 154, 82) : Rgba(248, 113, 113));
+        ImGui::Columns(6, "route_quality_summary", false);
+        TextMuted("Reliability");
+        TextColor(FormatNumber(overview.reliability_score, true, 1), reliability_color);
+        ImGui::NextColumn();
+        TextMuted("Success");
+        TextColor(FormatPercent(overview.success_rate), Rgba(246, 248, 251));
+        ImGui::NextColumn();
+        TextMuted("Fallback");
+        TextColor(FormatPercent(overview.fallback_rate), overview.fallback_rate > 0.25 ? Rgba(205, 154, 82) : Rgba(246, 248, 251));
+        ImGui::NextColumn();
+        TextMuted("Context");
+        TextColor(FormatPercent(overview.average_context_utilization, overview.has_average_context_utilization), Rgba(246, 248, 251));
+        ImGui::NextColumn();
+        TextMuted("Spend");
+        TextColor(FormatCostUsd(overview.estimated_cost_usd, overview.estimated_cost_usd > 0.0), Rgba(246, 248, 251));
+        ImGui::NextColumn();
+        TextMuted("Feedback");
+        TextColor(
+            std::to_string(overview.positive_feedback) + " / " + std::to_string(overview.negative_feedback),
+            overview.negative_feedback > overview.positive_feedback ? Rgba(248, 113, 113) : Rgba(246, 248, 251));
+        ImGui::Columns(1);
+
+        if (!route_quality_.recommendations.empty()) {
+            ImGui::Dummy(ImVec2(0.0f, 6.0f));
+            const int recommendation_count = std::min(2, static_cast<int>(route_quality_.recommendations.size()));
+            for (int i = 0; i < recommendation_count; ++i) {
+                TextMuted(Shorten(route_quality_.recommendations[static_cast<size_t>(i)], 136));
+            }
+        }
+
+        const auto context_util_color = [](double utilization, bool present) {
+            if (!present) {
+                return Rgba(151, 160, 171);
+            }
+            if (utilization >= 0.92) {
+                return Rgba(248, 113, 113);
+            }
+            if (utilization >= 0.76) {
+                return Rgba(205, 154, 82);
+            }
+            return Rgba(38, 221, 123);
+        };
+        const auto context_route_label = [](const std::string& role, const std::string& intent) {
+            if (!role.empty() && !intent.empty() && role != intent) {
+                return role + " / " + intent;
+            }
+            if (!role.empty()) {
+                return role;
+            }
+            return intent.empty() ? std::string("general") : intent;
+        };
+        const auto calibration_status_color = [](const std::string& status) {
+            const std::string lowered = Lower(status);
+            if (lowered == "stable") {
+                return Rgba(38, 221, 123);
+            }
+            if (lowered == "watch") {
+                return Rgba(205, 154, 82);
+            }
+            if (lowered == "drift") {
+                return Rgba(248, 113, 113);
+            }
+            return Rgba(151, 160, 171);
+        };
+        const auto calibration_trend_color = [](const std::string& direction) {
+            const std::string lowered = Lower(direction);
+            if (lowered == "improving") {
+                return Rgba(38, 221, 123);
+            }
+            if (lowered == "worsening") {
+                return Rgba(248, 113, 113);
+            }
+            if (lowered == "flat" || lowered == "baseline") {
+                return Rgba(205, 154, 82);
+            }
+            return Rgba(151, 160, 171);
+        };
+        const auto structured_preview_status_color = [](const std::string& status) {
+            const std::string lowered = Lower(status);
+            if (lowered == "stable") {
+                return Rgba(38, 221, 123);
+            }
+            if (lowered == "unstable") {
+                return Rgba(248, 113, 113);
+            }
+            if (lowered == "watch") {
+                return Rgba(205, 154, 82);
+            }
+            return Rgba(151, 160, 171);
+        };
+
+        if (!route_quality_.contexts.empty()) {
+            ImGui::Dummy(ImVec2(0.0f, 8.0f));
+            TextMuted("Context Pressure");
+            if (ImGui::BeginTable("route_quality_context_pressure_table", 6, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+                ImGui::TableSetupColumn("Route");
+                ImGui::TableSetupColumn("Budgets", ImGuiTableColumnFlags_WidthFixed, 74.0f);
+                ImGui::TableSetupColumn("Utilization", ImGuiTableColumnFlags_WidthFixed, 94.0f);
+                ImGui::TableSetupColumn("Avg Tokens", ImGuiTableColumnFlags_WidthFixed, 96.0f);
+                ImGui::TableSetupColumn("File Tokens", ImGuiTableColumnFlags_WidthFixed, 92.0f);
+                ImGui::TableSetupColumn("Files", ImGuiTableColumnFlags_WidthFixed, 86.0f);
+                ImGui::TableHeadersRow();
+                const int count = std::min(6, static_cast<int>(route_quality_.contexts.size()));
+                for (int i = 0; i < count; ++i) {
+                    const RouteQualityContextRollupInfo& context = route_quality_.contexts[static_cast<size_t>(i)];
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+                    TextColor(Shorten(context_route_label(context.route_role, context.intent), 42), Rgba(246, 248, 251));
+                    ImGui::TableSetColumnIndex(1);
+                    TextMuted(std::to_string(context.budget_count));
+                    ImGui::TableSetColumnIndex(2);
+                    TextColor(
+                        FormatPercent(context.average_budget_utilization, context.has_average_budget_utilization),
+                        context_util_color(context.average_budget_utilization, context.has_average_budget_utilization));
+                    ImGui::TableSetColumnIndex(3);
+                    TextMuted(FormatNumber(context.average_context_tokens, context.budget_count > 0, 0));
+                    ImGui::TableSetColumnIndex(4);
+                    TextMuted(FormatNumber(context.average_file_tokens, context.budget_count > 0, 0));
+                    ImGui::TableSetColumnIndex(5);
+                    TextMuted(
+                        FormatNumber(context.average_selected_files, context.budget_count > 0, 1) +
+                        " / " +
+                        FormatNumber(context.average_omitted_files, context.budget_count > 0, 1));
+                }
+                ImGui::EndTable();
+            }
+        }
+
+        if (!route_quality_.token_calibration.empty()) {
+            ImGui::Dummy(ImVec2(0.0f, 8.0f));
+            TextMuted("Token Calibration");
+            if (ImGui::BeginTable("route_quality_token_calibration_table", 7, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+                ImGui::TableSetupColumn("Provider");
+                ImGui::TableSetupColumn("Model");
+                ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_WidthFixed, 76.0f);
+                ImGui::TableSetupColumn("Samples", ImGuiTableColumnFlags_WidthFixed, 74.0f);
+                ImGui::TableSetupColumn("Avg Error", ImGuiTableColumnFlags_WidthFixed, 104.0f);
+                ImGui::TableSetupColumn("Est / Reported", ImGuiTableColumnFlags_WidthFixed, 146.0f);
+                ImGui::TableSetupColumn("Source", ImGuiTableColumnFlags_WidthFixed, 118.0f);
+                ImGui::TableHeadersRow();
+                const int count = std::min(6, static_cast<int>(route_quality_.token_calibration.size()));
+                for (int i = 0; i < count; ++i) {
+                    const RouteQualityTokenCalibrationInfo& calibration = route_quality_.token_calibration[static_cast<size_t>(i)];
+                    const std::string provider_label = calibration.provider_label.empty() ? calibration.provider_id : calibration.provider_label;
+                    const std::string avg_error =
+                        "I " + FormatPercent(calibration.average_input_token_error, calibration.has_average_input_token_error) +
+                        " / O " + FormatPercent(calibration.average_output_token_error, calibration.has_average_output_token_error);
+                    const std::string token_delta =
+                        "I " + std::to_string(calibration.estimated_input_tokens) + "/" + std::to_string(calibration.reported_input_tokens) +
+                        " O " + std::to_string(calibration.estimated_output_tokens) + "/" + std::to_string(calibration.reported_output_tokens);
+                    const std::string source = !calibration.reported_token_sources.empty()
+                        ? calibration.reported_token_sources.front()
+                        : (calibration.token_estimator_sources.empty() ? std::string("-") : calibration.token_estimator_sources.front());
+
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+                    TextColor(Shorten(provider_label.empty() ? "unknown" : provider_label, 28), Rgba(246, 248, 251));
+                    ImGui::TableSetColumnIndex(1);
+                    TextMuted(Shorten(calibration.model.empty() ? "-" : calibration.model, 30));
+                    ImGui::TableSetColumnIndex(2);
+                    TextColor(Shorten(calibration.calibration_status.empty() ? "insufficient" : calibration.calibration_status, 16), calibration_status_color(calibration.calibration_status));
+                    if (ImGui::IsItemHovered()) {
+                        std::string tooltip = calibration.recommendation.empty() ? "No calibration recommendation recorded." : calibration.recommendation;
+                        if (!calibration.reported_token_sources.empty()) {
+                            tooltip += "\nReported: " + JoinList(calibration.reported_token_sources);
+                        }
+                        if (!calibration.token_estimator_sources.empty()) {
+                            tooltip += "\nEstimated: " + JoinList(calibration.token_estimator_sources);
+                        }
+                        ImGui::SetTooltip("%s", tooltip.c_str());
+                    }
+                    ImGui::TableSetColumnIndex(3);
+                    TextMuted(std::to_string(calibration.calibrated_attempts) + " / " + std::to_string(calibration.attempts));
+                    ImGui::TableSetColumnIndex(4);
+                    TextMuted(avg_error);
+                    ImGui::TableSetColumnIndex(5);
+                    TextMuted(token_delta);
+                    ImGui::TableSetColumnIndex(6);
+                    TextMuted(Shorten(source, 24));
+                }
+                ImGui::EndTable();
+            }
+        }
+
+        if (!route_quality_.token_calibration_trends.empty()) {
+            ImGui::Dummy(ImVec2(0.0f, 8.0f));
+            TextMuted("Calibration Trend");
+            if (ImGui::BeginTable("route_quality_token_calibration_trend_table", 7, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+                ImGui::TableSetupColumn("Period", ImGuiTableColumnFlags_WidthFixed, 84.0f);
+                ImGui::TableSetupColumn("Provider");
+                ImGui::TableSetupColumn("Model");
+                ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_WidthFixed, 76.0f);
+                ImGui::TableSetupColumn("Trend", ImGuiTableColumnFlags_WidthFixed, 88.0f);
+                ImGui::TableSetupColumn("Samples", ImGuiTableColumnFlags_WidthFixed, 74.0f);
+                ImGui::TableSetupColumn("Avg Error", ImGuiTableColumnFlags_WidthFixed, 108.0f);
+                ImGui::TableHeadersRow();
+                const int count = std::min(6, static_cast<int>(route_quality_.token_calibration_trends.size()));
+                for (int i = 0; i < count; ++i) {
+                    const RouteQualityTokenCalibrationTrendInfo& trend = route_quality_.token_calibration_trends[static_cast<size_t>(i)];
+                    const std::string provider_label = trend.provider_label.empty() ? trend.provider_id : trend.provider_label;
+                    const std::string avg_error =
+                        "I " + FormatPercent(trend.average_input_token_error, trend.has_average_input_token_error) +
+                        " / O " + FormatPercent(trend.average_output_token_error, trend.has_average_output_token_error);
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+                    TextMuted(Shorten(trend.period_start.empty() ? "unknown" : trend.period_start, 14));
+                    ImGui::TableSetColumnIndex(1);
+                    TextColor(Shorten(provider_label.empty() ? "unknown" : provider_label, 26), Rgba(246, 248, 251));
+                    ImGui::TableSetColumnIndex(2);
+                    TextMuted(Shorten(trend.model.empty() ? "-" : trend.model, 28));
+                    ImGui::TableSetColumnIndex(3);
+                    TextColor(Shorten(trend.calibration_status.empty() ? "insufficient" : trend.calibration_status, 16), calibration_status_color(trend.calibration_status));
+                    ImGui::TableSetColumnIndex(4);
+                    TextColor(Shorten(trend.trend_direction.empty() ? "baseline" : trend.trend_direction, 18), calibration_trend_color(trend.trend_direction));
+                    if (ImGui::IsItemHovered()) {
+                        const std::string tooltip = trend.recommendation.empty() ? "No trend recommendation recorded." : trend.recommendation;
+                        ImGui::SetTooltip("%s", tooltip.c_str());
+                    }
+                    ImGui::TableSetColumnIndex(5);
+                    TextMuted(std::to_string(trend.calibrated_attempts) + " / " + std::to_string(trend.attempts));
+                    ImGui::TableSetColumnIndex(6);
+                    TextMuted(avg_error);
+                }
+                ImGui::EndTable();
+            }
+        }
+
+        if (!route_quality_.structured_preview.empty()) {
+            ImGui::Dummy(ImVec2(0.0f, 8.0f));
+            TextMuted("Structured Preview Reliability");
+            if (ImGui::BeginTable("route_quality_structured_preview_table", 7, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+                ImGui::TableSetupColumn("Provider");
+                ImGui::TableSetupColumn("Model");
+                ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_WidthFixed, 82.0f);
+                ImGui::TableSetupColumn("Final", ImGuiTableColumnFlags_WidthFixed, 74.0f);
+                ImGui::TableSetupColumn("Retired", ImGuiTableColumnFlags_WidthFixed, 76.0f);
+                ImGui::TableSetupColumn("Resets", ImGuiTableColumnFlags_WidthFixed, 64.0f);
+                ImGui::TableSetupColumn("Preview", ImGuiTableColumnFlags_WidthFixed, 118.0f);
+                ImGui::TableHeadersRow();
+                const int count = std::min(6, static_cast<int>(route_quality_.structured_preview.size()));
+                for (int i = 0; i < count; ++i) {
+                    const RouteQualityStructuredPreviewInfo& preview = route_quality_.structured_preview[static_cast<size_t>(i)];
+                    const std::string provider_label = preview.provider_label.empty() ? preview.provider_id : preview.provider_label;
+                    const std::string final_text = std::to_string(preview.final_winning_attempts) + " / " + std::to_string(preview.previewed_attempts);
+                    const std::string retired_text = std::to_string(preview.retired_attempts) + " / " + std::to_string(preview.previewed_attempts);
+                    const std::string preview_text = std::to_string(preview.delta_count) + "d / " + std::to_string(preview.char_count) + "ch";
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+                    TextColor(Shorten(provider_label.empty() ? "unknown" : provider_label, 28), Rgba(246, 248, 251));
+                    ImGui::TableSetColumnIndex(1);
+                    TextMuted(Shorten(preview.model.empty() ? "-" : preview.model, 30));
+                    ImGui::TableSetColumnIndex(2);
+                    TextColor(Shorten(preview.preview_status.empty() ? "insufficient" : preview.preview_status, 16), structured_preview_status_color(preview.preview_status));
+                    if (ImGui::IsItemHovered()) {
+                        std::string tooltip = preview.recommendation.empty() ? "No structured preview recommendation recorded." : preview.recommendation;
+                        if (!preview.retired_reasons.empty()) {
+                            tooltip += "\nRetired: " + JoinList(preview.retired_reasons);
+                        }
+                        ImGui::SetTooltip("%s", tooltip.c_str());
+                    }
+                    ImGui::TableSetColumnIndex(3);
+                    TextMuted(final_text);
+                    ImGui::TableSetColumnIndex(4);
+                    TextColor(retired_text, preview.retired_attempts > 0 ? Rgba(205, 154, 82) : Rgba(151, 160, 171));
+                    ImGui::TableSetColumnIndex(5);
+                    TextColor(std::to_string(preview.reset_count), preview.reset_count > 0 ? Rgba(248, 113, 113) : Rgba(151, 160, 171));
+                    ImGui::TableSetColumnIndex(6);
+                    TextMuted(preview_text);
+                }
+                ImGui::EndTable();
+            }
+        }
+
+        if (!route_quality_.context_drilldowns.empty()) {
+            ImGui::Dummy(ImVec2(0.0f, 8.0f));
+            TextMuted("Context Drilldowns");
+            if (ImGui::BeginTable("route_quality_context_drilldowns_table", 8, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+                ImGui::TableSetupColumn("Created", ImGuiTableColumnFlags_WidthFixed, 116.0f);
+                ImGui::TableSetupColumn("Task", ImGuiTableColumnFlags_WidthFixed, 92.0f);
+                ImGui::TableSetupColumn("Route");
+                ImGui::TableSetupColumn("Util", ImGuiTableColumnFlags_WidthFixed, 64.0f);
+                ImGui::TableSetupColumn("Tokens", ImGuiTableColumnFlags_WidthFixed, 112.0f);
+                ImGui::TableSetupColumn("Files", ImGuiTableColumnFlags_WidthFixed, 72.0f);
+                ImGui::TableSetupColumn("Largest Refs");
+                ImGui::TableSetupColumn("Recommendation");
+                ImGui::TableHeadersRow();
+                const int count = std::min(8, static_cast<int>(route_quality_.context_drilldowns.size()));
+                for (int i = 0; i < count; ++i) {
+                    const RouteQualityContextDrilldownInfo& drilldown = route_quality_.context_drilldowns[static_cast<size_t>(i)];
+                    const int reserved_tokens = drilldown.estimated_context_tokens + drilldown.reserve_response_tokens;
+                    const std::string token_text =
+                        std::to_string(reserved_tokens) + " / " +
+                        (drilldown.max_context_tokens > 0 ? std::to_string(drilldown.max_context_tokens) : std::string("-"));
+                    const int selected_memories = drilldown.selected_memory_count + drilldown.selected_project_memory_count;
+                    const int omitted_memories = drilldown.omitted_memory_count + drilldown.omitted_project_memory_count;
+                    std::string file_text =
+                        std::to_string(drilldown.selected_file_count) + " / " +
+                        std::to_string(drilldown.omitted_file_count);
+                    if ((selected_memories + omitted_memories) > 0) {
+                        file_text += " | M " + std::to_string(selected_memories) + " / " + std::to_string(omitted_memories);
+                    }
+                    const std::vector<std::string>& refs = drilldown.largest_refs.empty()
+                        ? drilldown.selected_refs
+                        : drilldown.largest_refs;
+                    std::string recommendation = drilldown.recommendations.empty()
+                        ? (drilldown.notes.empty() ? std::string() : drilldown.notes.front())
+                        : drilldown.recommendations.front();
+                    if (recommendation.empty() && omitted_memories > 0) {
+                        recommendation = std::to_string(omitted_memories) + " memory item(s) were omitted.";
+                    }
+
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+                    TextMuted(CompactTimestamp(drilldown.created_at));
+                    ImGui::TableSetColumnIndex(1);
+                    TextMuted(Shorten(drilldown.task_id.empty() ? "-" : drilldown.task_id, 12));
+                    ImGui::TableSetColumnIndex(2);
+                    TextColor(Shorten(context_route_label(drilldown.route_role, drilldown.intent), 38), Rgba(246, 248, 251));
+                    ImGui::TableSetColumnIndex(3);
+                    TextColor(FormatPercent(drilldown.utilization, drilldown.has_utilization), context_util_color(drilldown.utilization, drilldown.has_utilization));
+                    ImGui::TableSetColumnIndex(4);
+                    TextMuted(token_text);
+                    ImGui::TableSetColumnIndex(5);
+                    TextMuted(file_text);
+                    ImGui::TableSetColumnIndex(6);
+                    TextMuted(Shorten(refs.empty() ? "-" : JoinList(refs), 46));
+                    ImGui::TableSetColumnIndex(7);
+                    TextMuted(Shorten(recommendation.empty() ? "-" : recommendation, 68));
+                }
+                ImGui::EndTable();
+            }
+        }
+
+        const auto feedback_color = [](const std::string& value) {
+            const std::string lowered = Lower(value);
+            if (lowered == "liked" || lowered == "accepted" || lowered == "copied") {
+                return Rgba(38, 221, 123);
+            }
+            if (lowered == "disliked" || lowered == "rejected" || lowered == "rolled_back") {
+                return Rgba(248, 113, 113);
+            }
+            if (lowered == "revised" || lowered == "regenerated" || lowered == "corrected") {
+                return Rgba(205, 154, 82);
+            }
+            return Rgba(151, 160, 171);
+        };
+
+        if (!route_quality_.feedback_rollups.empty()) {
+            ImGui::Dummy(ImVec2(0.0f, 8.0f));
+            TextMuted("Feedback Outcomes");
+            if (ImGui::BeginTable("route_quality_feedback_rollups_table", 6, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+                ImGui::TableSetupColumn("Dimension", ImGuiTableColumnFlags_WidthFixed, 92.0f);
+                ImGui::TableSetupColumn("Key");
+                ImGui::TableSetupColumn("Events", ImGuiTableColumnFlags_WidthFixed, 64.0f);
+                ImGui::TableSetupColumn("Positive", ImGuiTableColumnFlags_WidthFixed, 78.0f);
+                ImGui::TableSetupColumn("Negative", ImGuiTableColumnFlags_WidthFixed, 78.0f);
+                ImGui::TableSetupColumn("Signals", ImGuiTableColumnFlags_WidthFixed, 132.0f);
+                ImGui::TableHeadersRow();
+                const int count = std::min(6, static_cast<int>(route_quality_.feedback_rollups.size()));
+                for (int i = 0; i < count; ++i) {
+                    const FeedbackAttributionRollupInfo& rollup = route_quality_.feedback_rollups[static_cast<size_t>(i)];
+                    const std::string label = rollup.label.empty() ? rollup.key : rollup.label;
+                    const std::string signals =
+                        "A " + std::to_string(rollup.applied_count) +
+                        " / R " + std::to_string(rollup.rolled_back_count) +
+                        " / C " + std::to_string(rollup.corrected_count);
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+                    TextMuted(Shorten(rollup.dimension.empty() ? "unknown" : rollup.dimension, 18));
+                    ImGui::TableSetColumnIndex(1);
+                    TextColor(Shorten(label.empty() ? "unknown" : label, 42), Rgba(246, 248, 251));
+                    ImGui::TableSetColumnIndex(2);
+                    TextMuted(std::to_string(rollup.feedback_count));
+                    ImGui::TableSetColumnIndex(3);
+                    TextMuted(FormatPercent(rollup.positive_rate));
+                    ImGui::TableSetColumnIndex(4);
+                    TextColor(FormatPercent(rollup.negative_rate), rollup.negative_rate >= 0.30 ? Rgba(248, 113, 113) : Rgba(151, 160, 171));
+                    ImGui::TableSetColumnIndex(5);
+                    TextMuted(signals);
+                }
+                ImGui::EndTable();
+            }
+        }
+
+        if (!route_quality_.feedback_trends.empty()) {
+            ImGui::Dummy(ImVec2(0.0f, 8.0f));
+            TextMuted("Feedback Trend");
+            if (ImGui::BeginTable("route_quality_feedback_trends_table", 6, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+                ImGui::TableSetupColumn("Period", ImGuiTableColumnFlags_WidthFixed, 92.0f);
+                ImGui::TableSetupColumn("Events", ImGuiTableColumnFlags_WidthFixed, 64.0f);
+                ImGui::TableSetupColumn("Positive", ImGuiTableColumnFlags_WidthFixed, 78.0f);
+                ImGui::TableSetupColumn("Negative", ImGuiTableColumnFlags_WidthFixed, 78.0f);
+                ImGui::TableSetupColumn("Apply/Rollback", ImGuiTableColumnFlags_WidthFixed, 118.0f);
+                ImGui::TableSetupColumn("Regen/Correct", ImGuiTableColumnFlags_WidthFixed, 118.0f);
+                ImGui::TableHeadersRow();
+                const int count = std::min(7, static_cast<int>(route_quality_.feedback_trends.size()));
+                for (int i = 0; i < count; ++i) {
+                    const FeedbackTrendBucketInfo& bucket = route_quality_.feedback_trends[static_cast<size_t>(i)];
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+                    TextColor(Shorten(bucket.period_start.empty() ? "unknown" : bucket.period_start, 18), Rgba(246, 248, 251));
+                    ImGui::TableSetColumnIndex(1);
+                    TextMuted(std::to_string(bucket.feedback_count));
+                    ImGui::TableSetColumnIndex(2);
+                    TextMuted(std::to_string(bucket.positive_count) + " (" + FormatPercent(bucket.positive_rate) + ")");
+                    ImGui::TableSetColumnIndex(3);
+                    TextColor(std::to_string(bucket.negative_count) + " (" + FormatPercent(bucket.negative_rate) + ")", bucket.negative_rate >= 0.30 ? Rgba(248, 113, 113) : Rgba(151, 160, 171));
+                    ImGui::TableSetColumnIndex(4);
+                    TextMuted(std::to_string(bucket.applied_count) + " / " + std::to_string(bucket.rolled_back_count));
+                    ImGui::TableSetColumnIndex(5);
+                    TextMuted(std::to_string(bucket.regenerated_count) + " / " + std::to_string(bucket.corrected_count));
+                }
+                ImGui::EndTable();
+            }
+        }
+
+        if (!route_quality_.feedback_events.empty()) {
+            ImGui::Dummy(ImVec2(0.0f, 8.0f));
+            TextMuted("Recent Feedback Events");
+            if (ImGui::BeginTable("route_quality_feedback_events_table", 7, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+                ImGui::TableSetupColumn("Time", ImGuiTableColumnFlags_WidthFixed, 124.0f);
+                ImGui::TableSetupColumn("Sentiment", ImGuiTableColumnFlags_WidthFixed, 82.0f);
+                ImGui::TableSetupColumn("Action", ImGuiTableColumnFlags_WidthFixed, 108.0f);
+                ImGui::TableSetupColumn("Target", ImGuiTableColumnFlags_WidthFixed, 120.0f);
+                ImGui::TableSetupColumn("Model");
+                ImGui::TableSetupColumn("Route", ImGuiTableColumnFlags_WidthFixed, 96.0f);
+                ImGui::TableSetupColumn("Context");
+                ImGui::TableHeadersRow();
+                const int count = std::min(8, static_cast<int>(route_quality_.feedback_events.size()));
+                for (int i = 0; i < count; ++i) {
+                    const FeedbackTelemetryEntryInfo& event = route_quality_.feedback_events[static_cast<size_t>(i)];
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+                    TextMuted(Shorten(event.created_at.empty() ? "-" : event.created_at, 22));
+                    ImGui::TableSetColumnIndex(1);
+                    TextColor(Shorten(event.sentiment.empty() ? "neutral" : event.sentiment, 16), feedback_color(event.sentiment));
+                    ImGui::TableSetColumnIndex(2);
+                    TextMuted(Shorten(event.action.empty() ? "manual" : event.action, 22));
+                    ImGui::TableSetColumnIndex(3);
+                    TextMuted(Shorten(event.target.empty() ? "assistant_response" : event.target, 24));
+                    ImGui::TableSetColumnIndex(4);
+                    TextColor(Shorten(event.model_label.empty() ? "-" : event.model_label, 30), Rgba(246, 248, 251));
+                    ImGui::TableSetColumnIndex(5);
+                    TextMuted(Shorten(event.route_role.empty() ? "-" : event.route_role, 20));
+                    ImGui::TableSetColumnIndex(6);
+                    TextMuted(Shorten(event.context.empty() ? event.task_id : event.context, 48));
+                }
+                ImGui::EndTable();
+            }
+        }
+
+        if (!route_quality_.providers.empty()) {
+            ImGui::Dummy(ImVec2(0.0f, 8.0f));
+            if (ImGui::BeginTable("route_quality_providers_table", 6, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+                ImGui::TableSetupColumn("Provider");
+                ImGui::TableSetupColumn("Model");
+                ImGui::TableSetupColumn("Success", ImGuiTableColumnFlags_WidthFixed, 78.0f);
+                ImGui::TableSetupColumn("Fallback", ImGuiTableColumnFlags_WidthFixed, 78.0f);
+                ImGui::TableSetupColumn("Cost", ImGuiTableColumnFlags_WidthFixed, 76.0f);
+                ImGui::TableSetupColumn("Estimator", ImGuiTableColumnFlags_WidthFixed, 132.0f);
+                ImGui::TableHeadersRow();
+                const int count = std::min(4, static_cast<int>(route_quality_.providers.size()));
+                for (int i = 0; i < count; ++i) {
+                    const RouteQualityProviderRollupInfo& provider = route_quality_.providers[static_cast<size_t>(i)];
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+                    TextColor(Shorten(provider.provider_label.empty() ? provider.provider_id : provider.provider_label, 28), Rgba(246, 248, 251));
+                    ImGui::TableSetColumnIndex(1);
+                    TextMuted(Shorten(provider.model.empty() ? "-" : provider.model, 30));
+                    ImGui::TableSetColumnIndex(2);
+                    TextMuted(FormatPercent(provider.success_rate));
+                    ImGui::TableSetColumnIndex(3);
+                    TextMuted(FormatPercent(provider.fallback_rate));
+                    ImGui::TableSetColumnIndex(4);
+                    TextMuted(FormatCostUsd(provider.estimated_cost_usd, provider.estimated_cost_usd > 0.0));
+                    ImGui::TableSetColumnIndex(5);
+                    const std::string estimator = provider.token_estimator_sources.empty() ? "-" : provider.token_estimator_sources.front();
+                    TextMuted(Shorten(estimator, 24));
+                }
+                ImGui::EndTable();
+            }
+        }
+
+        if (!route_quality_.roles.empty()) {
+            ImGui::Dummy(ImVec2(0.0f, 8.0f));
+            if (ImGui::BeginTable("route_quality_roles_table", 5, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+                ImGui::TableSetupColumn("Role");
+                ImGui::TableSetupColumn("Attempts", ImGuiTableColumnFlags_WidthFixed, 78.0f);
+                ImGui::TableSetupColumn("Success", ImGuiTableColumnFlags_WidthFixed, 78.0f);
+                ImGui::TableSetupColumn("Fallback", ImGuiTableColumnFlags_WidthFixed, 78.0f);
+                ImGui::TableSetupColumn("Cost", ImGuiTableColumnFlags_WidthFixed, 78.0f);
+                ImGui::TableHeadersRow();
+                const int count = std::min(5, static_cast<int>(route_quality_.roles.size()));
+                for (int i = 0; i < count; ++i) {
+                    const RouteQualityRoleRollupInfo& role = route_quality_.roles[static_cast<size_t>(i)];
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+                    TextColor(Shorten(role.role.empty() ? "unknown" : role.role, 36), Rgba(246, 248, 251));
+                    ImGui::TableSetColumnIndex(1);
+                    TextMuted(std::to_string(role.attempts));
+                    ImGui::TableSetColumnIndex(2);
+                    TextMuted(FormatPercent(role.success_rate));
+                    ImGui::TableSetColumnIndex(3);
+                    TextMuted(std::to_string(role.fallback_attempts));
+                    ImGui::TableSetColumnIndex(4);
+                    TextMuted(FormatCostUsd(role.estimated_cost_usd, role.estimated_cost_usd > 0.0));
+                }
+                ImGui::EndTable();
+            }
+        }
+    } else if (!route_quality_error_.empty()) {
+        TextMuted("Route-quality rollup unavailable: " + Shorten(route_quality_error_, 128));
+    } else {
+        TextMuted("Route-quality rollups will appear after refresh when the backend supports them.");
+    }
+
+    ImGui::Dummy(ImVec2(0.0f, 14.0f));
+    TextColor("Policy Diff", Rgba(246, 248, 251));
+    if (route_policy_diff_loaded_) {
+        const auto action_color = [](const std::string& action) {
+            const std::string lowered = Lower(action);
+            if (lowered == "promote" || lowered == "switch_primary") {
+                return Rgba(38, 221, 123);
+            }
+            if (lowered == "deprioritize") {
+                return Rgba(248, 113, 113);
+            }
+            if (lowered == "strengthen_fallback" || lowered == "rebalance" || lowered == "monitor") {
+                return Rgba(205, 154, 82);
+            }
+            return Rgba(151, 160, 171);
+        };
+        const auto risk_color = [](const std::string& risk) {
+            const std::string lowered = Lower(risk);
+            if (lowered == "high") {
+                return Rgba(248, 113, 113);
+            }
+            if (lowered == "medium") {
+                return Rgba(205, 154, 82);
+            }
+            return Rgba(38, 221, 123);
+        };
+
+        const int provider_change_count = static_cast<int>(std::count_if(
+            route_policy_diff_.provider_proposals.begin(),
+            route_policy_diff_.provider_proposals.end(),
+            [](const RoutePolicyProviderProposalInfo& proposal) {
+                const std::string action = Lower(proposal.action);
+                return action != "hold" && action != "monitor";
+            }));
+        const int role_change_count = static_cast<int>(std::count_if(
+            route_policy_diff_.role_proposals.begin(),
+            route_policy_diff_.role_proposals.end(),
+            [](const RoutePolicyRoleProposalInfo& proposal) {
+                return Lower(proposal.action) != "keep";
+            }));
+
+        ImGui::Columns(4, "route_policy_diff_summary", false);
+        TextMuted("Source");
+        TextColor(Shorten(route_policy_diff_.source.empty() ? "live" : route_policy_diff_.source, 18), Rgba(246, 248, 251));
+        ImGui::NextColumn();
+        TextMuted("Providers");
+        TextColor(std::to_string(provider_change_count) + " / " + std::to_string(route_policy_diff_.provider_proposals.size()), provider_change_count > 0 ? Rgba(205, 154, 82) : Rgba(38, 221, 123));
+        ImGui::NextColumn();
+        TextMuted("Roles");
+        TextColor(std::to_string(role_change_count) + " / " + std::to_string(route_policy_diff_.role_proposals.size()), role_change_count > 0 ? Rgba(205, 154, 82) : Rgba(38, 221, 123));
+        ImGui::NextColumn();
+        TextMuted("Min Attempts");
+        TextColor(std::to_string(route_policy_diff_.min_attempts), Rgba(246, 248, 251));
+        ImGui::Columns(1);
+
+        ImGui::Dummy(ImVec2(0.0f, 6.0f));
+        ImGui::BeginDisabled(busy_ || (provider_change_count + role_change_count) <= 0);
+        if (IconTextButton("apply_safe_policy_diff", IconGlyph::Bolt, "Apply Safe Policy", ImVec2(158.0f, 32.0f), Rgba(20, 98, 62), Rgba(22, 130, 76), Rgba(246, 248, 251))) {
+            pending_popup_ = "Aegis Policy Apply";
+        }
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        TextMuted((provider_change_count + role_change_count) > 0
+            ? "Checkpointed registry update."
+            : "No actionable updates.");
+
+        if (!route_policy_diff_.recommendations.empty()) {
+            ImGui::Dummy(ImVec2(0.0f, 6.0f));
+            const int count = std::min(2, static_cast<int>(route_policy_diff_.recommendations.size()));
+            for (int i = 0; i < count; ++i) {
+                TextMuted(Shorten(route_policy_diff_.recommendations[static_cast<size_t>(i)], 136));
+            }
+        }
+        if (!route_policy_diff_.warnings.empty()) {
+            const int count = std::min(2, static_cast<int>(route_policy_diff_.warnings.size()));
+            for (int i = 0; i < count; ++i) {
+                TextColor(Shorten(route_policy_diff_.warnings[static_cast<size_t>(i)], 136), Rgba(205, 154, 82));
+            }
+        }
+
+        if (!route_policy_diff_.provider_proposals.empty()) {
+            ImGui::Dummy(ImVec2(0.0f, 8.0f));
+            TextMuted("Provider Proposals");
+            if (ImGui::BeginTable("route_policy_provider_diff_table", 7, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+                ImGui::TableSetupColumn("Provider / Model");
+                ImGui::TableSetupColumn("Action", ImGuiTableColumnFlags_WidthFixed, 112.0f);
+                ImGui::TableSetupColumn("Risk", ImGuiTableColumnFlags_WidthFixed, 72.0f);
+                ImGui::TableSetupColumn("Rank", ImGuiTableColumnFlags_WidthFixed, 62.0f);
+                ImGui::TableSetupColumn("Success", ImGuiTableColumnFlags_WidthFixed, 78.0f);
+                ImGui::TableSetupColumn("Fallback", ImGuiTableColumnFlags_WidthFixed, 78.0f);
+                ImGui::TableSetupColumn("Why");
+                ImGui::TableHeadersRow();
+                const int count = std::min(5, static_cast<int>(route_policy_diff_.provider_proposals.size()));
+                for (int i = 0; i < count; ++i) {
+                    const RoutePolicyProviderProposalInfo& proposal = route_policy_diff_.provider_proposals[static_cast<size_t>(i)];
+                    const std::string provider = proposal.provider_label.empty() ? proposal.provider_id : proposal.provider_label;
+                    const std::string provider_model = provider + (proposal.model.empty() ? "" : " / " + proposal.model);
+                    const std::string reason = proposal.reasons.empty() ? JoinList(proposal.risks) : proposal.reasons.front();
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+                    TextColor(Shorten(provider_model.empty() ? "unknown" : provider_model, 42), Rgba(246, 248, 251));
+                    ImGui::TableSetColumnIndex(1);
+                    TextColor(Shorten(proposal.action, 24), action_color(proposal.action));
+                    ImGui::TableSetColumnIndex(2);
+                    TextColor(Shorten(proposal.risk_level, 12), risk_color(proposal.risk_level));
+                    ImGui::TableSetColumnIndex(3);
+                    TextMuted(std::to_string(proposal.observed_rank) + ">" + std::to_string(proposal.proposed_rank));
+                    ImGui::TableSetColumnIndex(4);
+                    TextMuted(FormatPercent(proposal.success_rate, proposal.attempts > 0));
+                    ImGui::TableSetColumnIndex(5);
+                    TextMuted(FormatPercent(proposal.fallback_rate, proposal.attempts > 0));
+                    ImGui::TableSetColumnIndex(6);
+                    TextMuted(Shorten(reason.empty() ? "-" : reason, 72));
+                }
+                ImGui::EndTable();
+            }
+        }
+
+        if (!route_policy_diff_.role_proposals.empty()) {
+            ImGui::Dummy(ImVec2(0.0f, 8.0f));
+            TextMuted("Role Proposals");
+            if (ImGui::BeginTable("route_policy_role_diff_table", 6, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+                ImGui::TableSetupColumn("Role", ImGuiTableColumnFlags_WidthFixed, 88.0f);
+                ImGui::TableSetupColumn("Action", ImGuiTableColumnFlags_WidthFixed, 132.0f);
+                ImGui::TableSetupColumn("Observed");
+                ImGui::TableSetupColumn("Proposed");
+                ImGui::TableSetupColumn("Success", ImGuiTableColumnFlags_WidthFixed, 78.0f);
+                ImGui::TableSetupColumn("Why");
+                ImGui::TableHeadersRow();
+                const int count = std::min(5, static_cast<int>(route_policy_diff_.role_proposals.size()));
+                for (int i = 0; i < count; ++i) {
+                    const RoutePolicyRoleProposalInfo& proposal = route_policy_diff_.role_proposals[static_cast<size_t>(i)];
+                    const std::string reason = proposal.reasons.empty() ? JoinList(proposal.risks) : proposal.reasons.front();
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+                    TextColor(Shorten(proposal.role.empty() ? "unknown" : proposal.role, 18), Rgba(246, 248, 251));
+                    ImGui::TableSetColumnIndex(1);
+                    TextColor(Shorten(proposal.action, 28), action_color(proposal.action));
+                    ImGui::TableSetColumnIndex(2);
+                    TextMuted(Shorten(proposal.observed_primary_provider.empty() ? "-" : proposal.observed_primary_provider, 34));
+                    ImGui::TableSetColumnIndex(3);
+                    TextMuted(Shorten(proposal.proposed_primary_provider.empty() ? "-" : proposal.proposed_primary_provider, 34));
+                    ImGui::TableSetColumnIndex(4);
+                    TextMuted(FormatPercent(proposal.success_rate, proposal.attempts > 0));
+                    ImGui::TableSetColumnIndex(5);
+                    TextMuted(Shorten(reason.empty() ? "-" : reason, 72));
+                }
+                ImGui::EndTable();
+            }
+        }
+    } else if (!route_policy_diff_error_.empty()) {
+        TextMuted("Policy diff unavailable: " + Shorten(route_policy_diff_error_, 128));
+    } else {
+        TextMuted("Policy-diff proposals will appear after refresh when the backend supports them.");
+    }
+
+    ImGui::Dummy(ImVec2(0.0f, 14.0f));
+    TextColor("Route Health", Rgba(246, 248, 251));
+    if (route_health_loaded_) {
+        int cooldown_count = 0;
+        int penalized_count = 0;
+        int terminal_count = 0;
+        int failure_count = 0;
+        for (const RouteHealthInfo& signal : route_health_) {
+            if (signal.cooldown) {
+                ++cooldown_count;
+            }
+            if (signal.penalty > 0.0) {
+                ++penalized_count;
+            }
+            terminal_count += signal.terminal_attempts;
+            failure_count += signal.failures;
+        }
+        const double weighted_failure_rate = terminal_count > 0
+            ? static_cast<double>(failure_count) / static_cast<double>(terminal_count)
+            : 0.0;
+
+        ImGui::Columns(4, "route_health_summary", false);
+        TextMuted("Signals");
+        TextColor(std::to_string(route_health_.size()), Rgba(246, 248, 251));
+        ImGui::NextColumn();
+        TextMuted("Penalized");
+        TextColor(std::to_string(penalized_count), penalized_count > 0 ? Rgba(205, 154, 82) : Rgba(38, 221, 123));
+        ImGui::NextColumn();
+        TextMuted("Cooldown");
+        TextColor(std::to_string(cooldown_count), cooldown_count > 0 ? Rgba(248, 113, 113) : Rgba(38, 221, 123));
+        ImGui::NextColumn();
+        TextMuted("Failure");
+        TextColor(FormatPercent(weighted_failure_rate, terminal_count > 0), weighted_failure_rate >= 0.34 ? Rgba(205, 154, 82) : Rgba(246, 248, 251));
+        ImGui::Columns(1);
+
+        if (route_health_.empty()) {
+            ImGui::Dummy(ImVec2(0.0f, 6.0f));
+            TextMuted("No route-health signals have been recorded yet.");
+        } else {
+            ImGui::Dummy(ImVec2(0.0f, 8.0f));
+            if (ImGui::BeginTable("route_health_table", 7, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+                ImGui::TableSetupColumn("Role", ImGuiTableColumnFlags_WidthFixed, 76.0f);
+                ImGui::TableSetupColumn("Provider / Model");
+                ImGui::TableSetupColumn("Terminal", ImGuiTableColumnFlags_WidthFixed, 74.0f);
+                ImGui::TableSetupColumn("Success", ImGuiTableColumnFlags_WidthFixed, 74.0f);
+                ImGui::TableSetupColumn("Failure", ImGuiTableColumnFlags_WidthFixed, 74.0f);
+                ImGui::TableSetupColumn("Health", ImGuiTableColumnFlags_WidthFixed, 86.0f);
+                ImGui::TableSetupColumn("Recommendation");
+                ImGui::TableHeadersRow();
+                const int count = std::min(8, static_cast<int>(route_health_.size()));
+                for (int i = 0; i < count; ++i) {
+                    const RouteHealthInfo& signal = route_health_[static_cast<size_t>(i)];
+                    const std::string provider = signal.provider_label.empty() ? signal.provider_id : signal.provider_label;
+                    const std::string provider_model = provider.empty()
+                        ? signal.model
+                        : provider + (signal.model.empty() ? "" : " / " + signal.model);
+                    std::string health = "OK";
+                    ImVec4 health_color = Rgba(38, 221, 123);
+                    if (signal.cooldown) {
+                        health = "Cooldown";
+                        health_color = Rgba(248, 113, 113);
+                    } else if (signal.penalty > 0.0) {
+                        health = "-" + FormatNumber(signal.penalty, true, 0);
+                        health_color = Rgba(205, 154, 82);
+                    }
+
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+                    TextMuted(Shorten(signal.role.empty() ? "unknown" : signal.role, 18));
+                    ImGui::TableSetColumnIndex(1);
+                    TextColor(Shorten(provider_model.empty() ? "unknown" : provider_model, 42), Rgba(246, 248, 251));
+                    ImGui::TableSetColumnIndex(2);
+                    TextMuted(std::to_string(signal.terminal_attempts));
+                    ImGui::TableSetColumnIndex(3);
+                    TextMuted(FormatPercent(signal.success_rate, signal.terminal_attempts > 0));
+                    ImGui::TableSetColumnIndex(4);
+                    TextColor(FormatPercent(signal.failure_rate, signal.terminal_attempts > 0), signal.failure_rate >= 0.34 ? Rgba(205, 154, 82) : Rgba(151, 160, 171));
+                    ImGui::TableSetColumnIndex(5);
+                    TextColor(health, health_color);
+                    ImGui::TableSetColumnIndex(6);
+                    std::string recommendation = signal.recommendation.empty() ? signal.latest_error : signal.recommendation;
+                    if (recommendation.empty() && signal.has_average_latency) {
+                        recommendation = "Average latency " + FormatNumber(signal.average_latency_ms / 1000.0, true, 1) + "s.";
+                    }
+                    TextMuted(Shorten(recommendation.empty() ? "-" : recommendation, 62));
+                }
+                ImGui::EndTable();
+            }
+        }
+    } else if (!route_health_error_.empty()) {
+        TextMuted("Route-health signals unavailable: " + Shorten(route_health_error_, 128));
+    } else {
+        TextMuted("Route-health signals will appear after refresh when the backend supports them.");
+    }
+
+    const auto privacy_color = [](const std::string& privacy) {
+        const std::string lowered = Lower(privacy);
+        if (lowered.find("cloud") != std::string::npos || lowered.find("remote") != std::string::npos) {
+            return Rgba(205, 154, 82);
+        }
+        if (lowered.find("local") != std::string::npos) {
+            return Rgba(38, 221, 123);
+        }
+        return Rgba(151, 160, 171);
+    };
+    const auto status_color = [](const std::string& status) {
+        const std::string lowered = Lower(status);
+        if (lowered == "succeeded") {
+            return Rgba(38, 221, 123);
+        }
+        if (lowered == "failed" || lowered == "canceled") {
+            return Rgba(248, 113, 113);
+        }
+        if (lowered == "running" || lowered == "fallback") {
+            return Rgba(205, 154, 82);
+        }
+        return Rgba(151, 160, 171);
+    };
+
+    ImGui::Dummy(ImVec2(0.0f, 14.0f));
+    TextColor("Fallback Inspector", Rgba(246, 248, 251));
+    if (fallback_inspector_loaded_) {
+        int candidate_count = 0;
+        int unresolved_count = 0;
+        int fallback_role_count = 0;
+        int planned_only_count = 0;
+        for (const FallbackInspectorTaskInfo& task : fallback_inspector_.tasks) {
+            candidate_count += static_cast<int>(task.candidates.size());
+            fallback_role_count += static_cast<int>(task.fallback_roles.size());
+            for (const FallbackInspectorCandidateInfo& candidate : task.candidates) {
+                if (candidate.has_registry_resolved && !candidate.registry_resolved) {
+                    ++unresolved_count;
+                }
+            }
+            if (!task.attempts.empty()) {
+                bool all_planned = true;
+                for (const ModelAttemptTelemetryEntryInfo& entry : task.attempts) {
+                    const std::string lowered = Lower(entry.attempt.status);
+                    if (lowered != "planned" && lowered != "running" && lowered != "skipped") {
+                        all_planned = false;
+                        break;
+                    }
+                }
+                if (all_planned) {
+                    ++planned_only_count;
+                }
+            }
+        }
+
+        ImGui::Columns(4, "fallback_inspector_summary", false);
+        TextMuted("Tasks");
+        TextColor(std::to_string(fallback_inspector_.tasks.size()), Rgba(246, 248, 251));
+        ImGui::NextColumn();
+        TextMuted("Candidates");
+        TextColor(std::to_string(candidate_count), Rgba(246, 248, 251));
+        ImGui::NextColumn();
+        TextMuted("Fallback Roles");
+        TextColor(std::to_string(fallback_role_count), fallback_role_count > 0 ? Rgba(205, 154, 82) : Rgba(246, 248, 251));
+        ImGui::NextColumn();
+        TextMuted("Unresolved");
+        TextColor(std::to_string(unresolved_count), unresolved_count > 0 ? Rgba(248, 113, 113) : Rgba(38, 221, 123));
+        ImGui::Columns(1);
+
+        if (!fallback_inspector_.recommendations.empty()) {
+            ImGui::Dummy(ImVec2(0.0f, 6.0f));
+            TextMuted("Recommendations");
+            const int recommendation_count = static_cast<int>(fallback_inspector_.recommendations.size());
+            for (int i = 0; i < recommendation_count; ++i) {
+                TextMuted(Shorten(fallback_inspector_.recommendations[static_cast<size_t>(i)], 136));
+            }
+        } else if (planned_only_count > 0) {
+            ImGui::Dummy(ImVec2(0.0f, 6.0f));
+            TextMuted(std::to_string(planned_only_count) + " task(s) are still planned-only; live routed execution will make this view more useful.");
+        }
+
+        if (fallback_inspector_.tasks.empty()) {
+            ImGui::Dummy(ImVec2(0.0f, 8.0f));
+            TextMuted("No inspected fallback tasks have been recorded yet.");
+        } else {
+            selected_fallback_inspector_task_index_ = std::clamp(
+                selected_fallback_inspector_task_index_ < 0 ? 0 : selected_fallback_inspector_task_index_,
+                0,
+                static_cast<int>(fallback_inspector_.tasks.size()) - 1);
+
+            const auto task_route = [](const FallbackInspectorTaskInfo& task) {
+                if (task.has_task_plan && task.task_plan.has_routing) {
+                    return task.task_plan.routing.task_role + " / " + task.task_plan.routing.privacy_mode;
+                }
+                if (task.has_task_plan) {
+                    return task.task_plan.intent.empty() ? std::string("planned") : task.task_plan.intent;
+                }
+                return std::string("unplanned");
+            };
+            const auto task_state = [](const FallbackInspectorTaskInfo& task) {
+                if (!task.fallback_roles.empty()) {
+                    return std::string("fallback");
+                }
+                if (!task.attempts.empty()) {
+                    bool all_planned = true;
+                    for (const ModelAttemptTelemetryEntryInfo& entry : task.attempts) {
+                        const std::string lowered = Lower(entry.attempt.status);
+                        if (lowered != "planned" && lowered != "running" && lowered != "skipped") {
+                            all_planned = false;
+                            break;
+                        }
+                    }
+                    if (all_planned) {
+                        return std::string("planned-only");
+                    }
+                }
+                return task.status.empty() ? std::string("unknown") : task.status;
+            };
+
+            ImGui::Dummy(ImVec2(0.0f, 8.0f));
+            if (ImGui::BeginTable("fallback_task_table", 5, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+                ImGui::TableSetupColumn("Task");
+                ImGui::TableSetupColumn("Route");
+                ImGui::TableSetupColumn("Candidates", ImGuiTableColumnFlags_WidthFixed, 86.0f);
+                ImGui::TableSetupColumn("Attempts", ImGuiTableColumnFlags_WidthFixed, 78.0f);
+                ImGui::TableSetupColumn("State", ImGuiTableColumnFlags_WidthFixed, 98.0f);
+                ImGui::TableHeadersRow();
+                for (int i = 0; i < static_cast<int>(fallback_inspector_.tasks.size()); ++i) {
+                    const FallbackInspectorTaskInfo& task = fallback_inspector_.tasks[static_cast<size_t>(i)];
+                    const bool selected = selected_fallback_inspector_task_index_ == i;
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+                    const std::string task_label = Shorten(task.message.empty() ? task.task_id : task.message, 48) + "##fallback_task_" + std::to_string(i);
+                    if (ImGui::Selectable(task_label.c_str(), selected, ImGuiSelectableFlags_SpanAllColumns)) {
+                        selected_fallback_inspector_task_index_ = i;
+                    }
+                    ImGui::TableSetColumnIndex(1);
+                    TextMuted(Shorten(task_route(task), 36));
+                    ImGui::TableSetColumnIndex(2);
+                    TextMuted(std::to_string(task.candidates.size()));
+                    ImGui::TableSetColumnIndex(3);
+                    TextMuted(std::to_string(task.attempts.size()));
+                    ImGui::TableSetColumnIndex(4);
+                    const std::string state = task_state(task);
+                    TextColor(Shorten(state, 18), status_color(state));
+                }
+                ImGui::EndTable();
+            }
+
+            const FallbackInspectorTaskInfo& selected_task =
+                fallback_inspector_.tasks[static_cast<size_t>(selected_fallback_inspector_task_index_)];
+            ImGui::Dummy(ImVec2(0.0f, 10.0f));
+            TextColor("Selected Route", Rgba(246, 248, 251));
+            TextColor(Shorten(task_route(selected_task) + " - " + selected_task.message, 150), Rgba(246, 248, 251));
+            TextMuted(Shorten(selected_task.summary.empty() ? selected_task.task_id : selected_task.summary, 170));
+            TextMuted("Task: " + Shorten(selected_task.task_id.empty() ? "unknown" : selected_task.task_id, 42) +
+                " | Status: " + (selected_task.status.empty() ? "unknown" : selected_task.status) +
+                " | Created: " + Shorten(selected_task.created_at.empty() ? "-" : selected_task.created_at, 22));
+            if (selected_task.has_context_budget) {
+                TextMuted("Context budget: " +
+                    std::to_string(selected_task.context_budget.estimated_context_tokens) + "/" +
+                    std::to_string(selected_task.context_budget.max_context_tokens) +
+                    " tokens, files " + std::to_string(selected_task.context_budget.selected_file_count) +
+                    " selected / " + std::to_string(selected_task.context_budget.omitted_file_count) + " omitted.");
+            }
+            if (!selected_task.fallback_roles.empty()) {
+                TextMuted("Fallback roles: " + Shorten(JoinList(selected_task.fallback_roles), 140));
+            }
+            if (!selected_task.recommendations.empty()) {
+                ImGui::Dummy(ImVec2(0.0f, 6.0f));
+                TextMuted("Task recommendations");
+                for (const std::string& recommendation : selected_task.recommendations) {
+                    TextMuted(Shorten(recommendation, 160));
+                }
+            }
+
+            ImGui::Dummy(ImVec2(0.0f, 8.0f));
+            TextColor("Candidate Drilldown", Rgba(246, 248, 251));
+            if (selected_task.candidates.empty()) {
+                TextMuted("No route candidates were recorded for this task.");
+            } else if (ImGui::BeginTable("fallback_candidate_drilldown_table", 9, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+                ImGui::TableSetupColumn("Candidate");
+                ImGui::TableSetupColumn("Role", ImGuiTableColumnFlags_WidthFixed, 86.0f);
+                ImGui::TableSetupColumn("Provider / Model");
+                ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_WidthFixed, 82.0f);
+                ImGui::TableSetupColumn("Registry", ImGuiTableColumnFlags_WidthFixed, 82.0f);
+                ImGui::TableSetupColumn("Tokens", ImGuiTableColumnFlags_WidthFixed, 84.0f);
+                ImGui::TableSetupColumn("Cost", ImGuiTableColumnFlags_WidthFixed, 74.0f);
+                ImGui::TableSetupColumn("Context", ImGuiTableColumnFlags_WidthFixed, 86.0f);
+                ImGui::TableSetupColumn("Metadata");
+                ImGui::TableHeadersRow();
+                for (const FallbackInspectorCandidateInfo& candidate : selected_task.candidates) {
+                    const std::string provider = candidate.provider_label.empty()
+                        ? (candidate.provider_id.empty() ? candidate.provider_hint : candidate.provider_id)
+                        : candidate.provider_label;
+                    const std::string provider_model = provider.empty()
+                        ? candidate.model
+                        : provider + (candidate.model.empty() ? "" : " / " + candidate.model);
+                    const std::string registry = candidate.has_registry_resolved
+                        ? (candidate.registry_resolved ? "resolved" : "missing")
+                        : "-";
+                    const ImVec4 registry_color = candidate.has_registry_resolved && !candidate.registry_resolved
+                        ? Rgba(248, 113, 113)
+                        : Rgba(151, 160, 171);
+                    const std::string candidate_label = candidate.candidate_id.empty()
+                        ? std::to_string(candidate.index) + ". " + candidate.role
+                        : candidate.candidate_id;
+                    const std::string token_text =
+                        FormatOptionalInt(candidate.input_tokens, candidate.has_input_tokens) + "/" +
+                        FormatOptionalInt(candidate.output_tokens, candidate.has_output_tokens);
+                    const std::string context_text = candidate.has_context_window_utilization
+                        ? FormatPercent(candidate.context_window_utilization)
+                        : (candidate.has_context_window ? std::to_string(candidate.context_window) : "-");
+                    std::string metadata = candidate.token_estimator_source.empty() ? "" : candidate.token_estimator_source;
+                    if (!candidate.reason.empty()) {
+                        metadata += metadata.empty() ? candidate.reason : " | " + candidate.reason;
+                    }
+                    if (!candidate.error.empty()) {
+                        metadata += metadata.empty() ? candidate.error : " | " + candidate.error;
+                    }
+
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+                    TextColor(Shorten(candidate_label, 30), Rgba(246, 248, 251));
+                    ImGui::TableSetColumnIndex(1);
+                    TextMuted(Shorten(candidate.role.empty() ? "-" : candidate.role, 20));
+                    ImGui::TableSetColumnIndex(2);
+                    TextMuted(Shorten(provider_model.empty() ? "-" : provider_model, 38));
+                    ImGui::TableSetColumnIndex(3);
+                    TextColor(candidate.status, status_color(candidate.status));
+                    ImGui::TableSetColumnIndex(4);
+                    TextColor(registry, registry_color);
+                    ImGui::TableSetColumnIndex(5);
+                    TextMuted(token_text);
+                    ImGui::TableSetColumnIndex(6);
+                    TextMuted(FormatCostUsd(candidate.estimated_cost_usd, candidate.has_estimated_cost));
+                    ImGui::TableSetColumnIndex(7);
+                    TextMuted(context_text);
+                    ImGui::TableSetColumnIndex(8);
+                    TextMuted(Shorten(metadata.empty() ? "-" : metadata, 72));
+                }
+                ImGui::EndTable();
+            }
+
+            ImGui::Dummy(ImVec2(0.0f, 8.0f));
+            TextColor("Attempt Drilldown", Rgba(246, 248, 251));
+            if (selected_task.attempts.empty()) {
+                TextMuted("No execution attempts were recorded for this task.");
+            } else if (ImGui::BeginTable("fallback_attempt_drilldown_table", 9, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+                ImGui::TableSetupColumn("Try", ImGuiTableColumnFlags_WidthFixed, 42.0f);
+                ImGui::TableSetupColumn("Candidate");
+                ImGui::TableSetupColumn("Provider / Model");
+                ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_WidthFixed, 82.0f);
+                ImGui::TableSetupColumn("Tokens", ImGuiTableColumnFlags_WidthFixed, 84.0f);
+                ImGui::TableSetupColumn("Cost", ImGuiTableColumnFlags_WidthFixed, 74.0f);
+                ImGui::TableSetupColumn("Latency", ImGuiTableColumnFlags_WidthFixed, 72.0f);
+                ImGui::TableSetupColumn("Context", ImGuiTableColumnFlags_WidthFixed, 86.0f);
+                ImGui::TableSetupColumn("Metadata");
+                ImGui::TableHeadersRow();
+                int attempt_index = 0;
+                for (const ModelAttemptTelemetryEntryInfo& entry : selected_task.attempts) {
+                    const ModelAttemptInfo& attempt = entry.attempt;
+                    const std::string provider = attempt.provider_label.empty() ? attempt.provider_id : attempt.provider_label;
+                    const std::string provider_model = provider.empty()
+                        ? attempt.model
+                        : provider + (attempt.model.empty() ? "" : " / " + attempt.model);
+                    std::string candidate_label = attempt.candidate_id.empty()
+                        ? (attempt.role.empty() ? "-" : attempt.role)
+                        : attempt.candidate_id;
+                    if (!attempt.candidate_source.empty()) {
+                        candidate_label += " (" + attempt.candidate_source + ")";
+                    }
+                    const std::string token_text =
+                        FormatOptionalInt(attempt.input_tokens, attempt.has_input_tokens) + "/" +
+                        FormatOptionalInt(attempt.output_tokens, attempt.has_output_tokens);
+                    const std::string latency_text = attempt.has_latency ? std::to_string(attempt.latency_ms) + " ms" : "-";
+                    const std::string context_text = attempt.has_context_window_utilization
+                        ? FormatPercent(attempt.context_window_utilization)
+                        : (attempt.has_context_window ? std::to_string(attempt.context_window) : "-");
+                    std::string metadata = attempt.token_estimator_source;
+                    const std::string attempt_profile = attempt.route_profile.label.empty()
+                        ? attempt.route_profile.id
+                        : attempt.route_profile.label;
+                    if (!attempt_profile.empty()) {
+                        metadata += metadata.empty() ? ("profile " + attempt_profile) : " | profile " + attempt_profile;
+                    }
+                    if (attempt.has_benchmark_suite_score) {
+                        const std::string suite = attempt.benchmark_suite.empty() ? "route" : attempt.benchmark_suite;
+                        const std::string benchmark = suite + " bench " + FormatPercent(attempt.benchmark_suite_score);
+                        metadata += metadata.empty() ? benchmark : " | " + benchmark;
+                    }
+                    if (!attempt.candidate_provider_hint.empty()) {
+                        metadata += metadata.empty() ? attempt.candidate_provider_hint : " | hint: " + attempt.candidate_provider_hint;
+                    }
+                    if (attempt.structured_preview_emitted) {
+                        std::string preview = "preview " + std::to_string(attempt.structured_preview_delta_count) +
+                            " delta(s), " + std::to_string(attempt.structured_preview_char_count) + " chars";
+                        if (attempt.structured_preview_final_winner) {
+                            preview += ", final winner";
+                        }
+                        if (attempt.structured_preview_retired) {
+                            preview += ", reset";
+                            if (!attempt.structured_preview_retired_reason.empty()) {
+                                preview += " (" + attempt.structured_preview_retired_reason + ")";
+                            }
+                        }
+                        metadata += metadata.empty() ? preview : " | " + preview;
+                    }
+                    if (!attempt.reason.empty()) {
+                        metadata += metadata.empty() ? attempt.reason : " | " + attempt.reason;
+                    }
+                    if (!attempt.error.empty()) {
+                        metadata += metadata.empty() ? attempt.error : " | " + attempt.error;
+                    }
+
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+                    TextMuted(std::to_string(attempt.attempt > 0 ? attempt.attempt : attempt_index + 1));
+                    ImGui::TableSetColumnIndex(1);
+                    TextColor(Shorten(candidate_label, 34), Rgba(246, 248, 251));
+                    ImGui::TableSetColumnIndex(2);
+                    TextMuted(Shorten(provider_model.empty() ? "-" : provider_model, 38));
+                    ImGui::TableSetColumnIndex(3);
+                    TextColor(attempt.status, status_color(attempt.status));
+                    ImGui::TableSetColumnIndex(4);
+                    TextMuted(token_text);
+                    ImGui::TableSetColumnIndex(5);
+                    TextMuted(FormatCostUsd(attempt.estimated_cost_usd, attempt.has_estimated_cost));
+                    ImGui::TableSetColumnIndex(6);
+                    TextMuted(latency_text);
+                    ImGui::TableSetColumnIndex(7);
+                    TextMuted(context_text);
+                    ImGui::TableSetColumnIndex(8);
+                    TextMuted(Shorten(metadata.empty() ? "-" : metadata, 72));
+                    ++attempt_index;
+                }
+                ImGui::EndTable();
+            }
+        }
+    } else if (!fallback_inspector_error_.empty()) {
+        TextMuted("Fallback inspector unavailable: " + Shorten(fallback_inspector_error_, 128));
+    } else {
+        TextMuted("Fallback inspection will appear after refresh when the backend supports it.");
+    }
+
+    ImGui::Dummy(ImVec2(0.0f, 14.0f));
+    TextColor("Context Budgets", Rgba(246, 248, 251));
+    if (telemetry_.context_budgets.empty()) {
+        TextMuted("No context budget telemetry has been recorded yet.");
+    } else if (ImGui::BeginTable("planning_budget_table", 7, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+        ImGui::TableSetupColumn("Created", ImGuiTableColumnFlags_WidthFixed, 128.0f);
+        ImGui::TableSetupColumn("Task", ImGuiTableColumnFlags_WidthFixed, 108.0f);
+        ImGui::TableSetupColumn("Route");
+        ImGui::TableSetupColumn("Strategy", ImGuiTableColumnFlags_WidthFixed, 112.0f);
+        ImGui::TableSetupColumn("Tokens", ImGuiTableColumnFlags_WidthFixed, 118.0f);
+        ImGui::TableSetupColumn("Files", ImGuiTableColumnFlags_WidthFixed, 82.0f);
+        ImGui::TableSetupColumn("Privacy", ImGuiTableColumnFlags_WidthFixed, 94.0f);
+        ImGui::TableHeadersRow();
+        const int count = std::min(12, static_cast<int>(telemetry_.context_budgets.size()));
+        for (int i = 0; i < count; ++i) {
+            const ContextBudgetTelemetryEntryInfo& entry = telemetry_.context_budgets[static_cast<size_t>(i)];
+            const ContextBudgetInfo& budget = entry.payload;
+            const std::string role = !budget.route_role.empty() ? budget.route_role : (!entry.route_role.empty() ? entry.route_role : entry.intent);
+            const std::string strategy = !budget.strategy.empty() ? budget.strategy : entry.strategy;
+            const int max_tokens = budget.max_context_tokens > 0 ? budget.max_context_tokens : entry.max_context_tokens;
+            const int estimated_tokens = budget.estimated_context_tokens > 0 ? budget.estimated_context_tokens : entry.estimated_context_tokens;
+            const int reserve_tokens = budget.reserve_response_tokens > 0 ? budget.reserve_response_tokens : entry.reserve_response_tokens;
+            const int selected_files = budget.selected_file_count > 0 ? budget.selected_file_count : entry.selected_file_count;
+            const int omitted_files = budget.omitted_file_count > 0 ? budget.omitted_file_count : entry.omitted_file_count;
+            const std::string privacy = !budget.privacy_mode.empty() ? budget.privacy_mode : entry.privacy_mode;
+
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            TextMuted(CompactTimestamp(entry.created_at));
+            ImGui::TableSetColumnIndex(1);
+            TextMuted(Shorten(entry.task_id, 12));
+            ImGui::TableSetColumnIndex(2);
+            TextColor(Shorten(role.empty() ? "general" : role, 42), Rgba(246, 248, 251));
+            ImGui::TableSetColumnIndex(3);
+            TextMuted(Shorten(strategy.empty() ? "-" : strategy, 18));
+            ImGui::TableSetColumnIndex(4);
+            TextMuted(std::to_string(estimated_tokens + reserve_tokens) + " / " + (max_tokens > 0 ? std::to_string(max_tokens) : std::string("-")));
+            ImGui::TableSetColumnIndex(5);
+            TextMuted(std::to_string(selected_files) + " / " + std::to_string(omitted_files));
+            ImGui::TableSetColumnIndex(6);
+            Pill(Shorten(privacy, 14).c_str(), privacy_color(privacy));
+        }
+        ImGui::EndTable();
+        if (telemetry_.context_budgets.size() > 12) {
+            TextMuted("Showing 12 of " + std::to_string(telemetry_.context_budgets.size()) + " context budget entries.");
+        }
+    }
+
+    ImGui::Dummy(ImVec2(0.0f, 16.0f));
+    TextColor("Model Attempts", Rgba(246, 248, 251));
+    if (telemetry_.model_attempts.empty()) {
+        TextMuted("No model attempt telemetry has been recorded yet.");
+    } else if (ImGui::BeginTable("planning_attempt_table", 8, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+        ImGui::TableSetupColumn("Created", ImGuiTableColumnFlags_WidthFixed, 128.0f);
+        ImGui::TableSetupColumn("Task", ImGuiTableColumnFlags_WidthFixed, 108.0f);
+        ImGui::TableSetupColumn("Try", ImGuiTableColumnFlags_WidthFixed, 42.0f);
+        ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_WidthFixed, 86.0f);
+        ImGui::TableSetupColumn("Provider", ImGuiTableColumnFlags_WidthFixed, 130.0f);
+        ImGui::TableSetupColumn("Model");
+        ImGui::TableSetupColumn("Tokens", ImGuiTableColumnFlags_WidthFixed, 92.0f);
+        ImGui::TableSetupColumn("Cost", ImGuiTableColumnFlags_WidthFixed, 76.0f);
+        ImGui::TableHeadersRow();
+        const int count = std::min(24, static_cast<int>(telemetry_.model_attempts.size()));
+        for (int i = 0; i < count; ++i) {
+            const ModelAttemptTelemetryEntryInfo& entry = telemetry_.model_attempts[static_cast<size_t>(i)];
+            const ModelAttemptInfo& attempt = entry.attempt;
+            const std::string provider = attempt.provider_label.empty() ? attempt.provider_id : attempt.provider_label;
+            const std::string token_text = FormatOptionalInt(attempt.input_tokens, attempt.has_input_tokens) + " / " +
+                FormatOptionalInt(attempt.output_tokens, attempt.has_output_tokens);
+
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            TextMuted(CompactTimestamp(entry.created_at));
+            ImGui::TableSetColumnIndex(1);
+            TextMuted(Shorten(entry.task_id, 12));
+            ImGui::TableSetColumnIndex(2);
+            TextMuted(std::to_string(attempt.attempt > 0 ? attempt.attempt : i + 1));
+            ImGui::TableSetColumnIndex(3);
+            Pill(Shorten(attempt.status.empty() ? "planned" : attempt.status, 12).c_str(), status_color(attempt.status));
+            ImGui::TableSetColumnIndex(4);
+            TextMuted(Shorten(provider.empty() ? attempt.provider_api : provider, 22));
+            ImGui::TableSetColumnIndex(5);
+            TextColor(Shorten(attempt.model.empty() ? attempt.role : attempt.model, 44), Rgba(246, 248, 251));
+            ImGui::TableSetColumnIndex(6);
+            TextMuted(token_text);
+            ImGui::TableSetColumnIndex(7);
+            TextMuted(FormatCostUsd(attempt.estimated_cost_usd, attempt.has_estimated_cost));
+        }
+        ImGui::EndTable();
+        if (telemetry_.model_attempts.size() > 24) {
+            TextMuted("Showing 24 of " + std::to_string(telemetry_.model_attempts.size()) + " model attempt entries.");
+        }
+    }
+}
+
+void AegisChatApp::RenderPolicyApplyConfirmModal()
+{
+    const auto provider_actionable = [](const RoutePolicyProviderProposalInfo& proposal) {
+        const std::string action = Lower(proposal.action);
+        return (action == "promote" || action == "deprioritize") &&
+            proposal.confidence >= 0.55 &&
+            Lower(proposal.risk_level) != "high";
+    };
+    const auto role_actionable = [](const RoutePolicyRoleProposalInfo& proposal) {
+        const std::string action = Lower(proposal.action);
+        if (action != "switch_primary" && action != "strengthen_fallback" && action != "rebalance") {
+            return false;
+        }
+        if (proposal.confidence < 0.55) {
+            return false;
+        }
+        for (const std::string& risk : proposal.risks) {
+            const std::string lowered = Lower(risk);
+            if (lowered.find("only one provider") != std::string::npos ||
+                lowered.find("insufficient") != std::string::npos ||
+                lowered.find("below") != std::string::npos) {
+                return false;
+            }
+        }
+        return true;
+    };
+    const auto action_color = [](const std::string& action) {
+        const std::string lowered = Lower(action);
+        if (lowered == "promote" || lowered == "switch_primary") {
+            return Rgba(38, 221, 123);
+        }
+        if (lowered == "deprioritize") {
+            return Rgba(248, 113, 113);
+        }
+        return Rgba(205, 154, 82);
+    };
+
+    const int provider_apply_count = static_cast<int>(std::count_if(
+        route_policy_diff_.provider_proposals.begin(),
+        route_policy_diff_.provider_proposals.end(),
+        provider_actionable));
+    const int role_apply_count = static_cast<int>(std::count_if(
+        route_policy_diff_.role_proposals.begin(),
+        route_policy_diff_.role_proposals.end(),
+        role_actionable));
+    const int total_apply_count = provider_apply_count + role_apply_count;
+
+    TextColor("Apply Safe Policy", Rgba(246, 248, 251));
+    TextMuted("This updates model routing only for confident, non-high-risk policy proposals. A registry checkpoint is created before changes are written.");
+    ImGui::Dummy(ImVec2(0.0f, 8.0f));
+
+    ImGui::Columns(4, "policy_apply_summary", false);
+    TextMuted("Providers");
+    TextColor(std::to_string(provider_apply_count) + " actionable", provider_apply_count > 0 ? Rgba(205, 154, 82) : Rgba(151, 160, 171));
+    ImGui::NextColumn();
+    TextMuted("Roles");
+    TextColor(std::to_string(role_apply_count) + " actionable", role_apply_count > 0 ? Rgba(205, 154, 82) : Rgba(151, 160, 171));
+    ImGui::NextColumn();
+    TextMuted("Confidence");
+    TextColor("55% minimum", Rgba(246, 248, 251));
+    ImGui::NextColumn();
+    TextMuted("Source");
+    TextColor(Shorten(route_policy_diff_.source.empty() ? "live" : route_policy_diff_.source, 18), Rgba(246, 248, 251));
+    ImGui::Columns(1);
+
+    if (total_apply_count <= 0) {
+        ImGui::Dummy(ImVec2(0.0f, 10.0f));
+        TextColor("No policy proposal currently passes the safe-apply gate.", Rgba(205, 154, 82));
+        TextMuted("Refresh Planning History after more routed tasks or feedback, then review the diff again.");
+    }
+
+    if (provider_apply_count > 0) {
+        ImGui::Dummy(ImVec2(0.0f, 10.0f));
+        TextMuted("Provider updates");
+        if (ImGui::BeginTable("policy_apply_provider_table", 5, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+            ImGui::TableSetupColumn("Provider");
+            ImGui::TableSetupColumn("Action", ImGuiTableColumnFlags_WidthFixed, 112.0f);
+            ImGui::TableSetupColumn("Risk", ImGuiTableColumnFlags_WidthFixed, 72.0f);
+            ImGui::TableSetupColumn("Confidence", ImGuiTableColumnFlags_WidthFixed, 86.0f);
+            ImGui::TableSetupColumn("Why");
+            ImGui::TableHeadersRow();
+            int shown = 0;
+            for (const RoutePolicyProviderProposalInfo& proposal : route_policy_diff_.provider_proposals) {
+                if (!provider_actionable(proposal) || shown >= 5) {
+                    continue;
+                }
+                const std::string provider = proposal.provider_label.empty() ? proposal.provider_id : proposal.provider_label;
+                const std::string reason = proposal.reasons.empty() ? JoinList(proposal.risks) : proposal.reasons.front();
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+                TextColor(Shorten(provider.empty() ? proposal.model : provider, 34), Rgba(246, 248, 251));
+                ImGui::TableSetColumnIndex(1);
+                TextColor(Shorten(proposal.action, 22), action_color(proposal.action));
+                ImGui::TableSetColumnIndex(2);
+                TextMuted(proposal.risk_level.empty() ? "low" : proposal.risk_level);
+                ImGui::TableSetColumnIndex(3);
+                TextMuted(FormatPercent(proposal.confidence));
+                ImGui::TableSetColumnIndex(4);
+                TextMuted(Shorten(reason.empty() ? "-" : reason, 68));
+                ++shown;
+            }
+            ImGui::EndTable();
+        }
+    }
+
+    if (role_apply_count > 0) {
+        ImGui::Dummy(ImVec2(0.0f, 10.0f));
+        TextMuted("Role updates");
+        if (ImGui::BeginTable("policy_apply_role_table", 5, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+            ImGui::TableSetupColumn("Role", ImGuiTableColumnFlags_WidthFixed, 88.0f);
+            ImGui::TableSetupColumn("Action", ImGuiTableColumnFlags_WidthFixed, 132.0f);
+            ImGui::TableSetupColumn("Proposed");
+            ImGui::TableSetupColumn("Confidence", ImGuiTableColumnFlags_WidthFixed, 86.0f);
+            ImGui::TableSetupColumn("Why");
+            ImGui::TableHeadersRow();
+            int shown = 0;
+            for (const RoutePolicyRoleProposalInfo& proposal : route_policy_diff_.role_proposals) {
+                if (!role_actionable(proposal) || shown >= 5) {
+                    continue;
+                }
+                const std::string reason = proposal.reasons.empty() ? JoinList(proposal.risks) : proposal.reasons.front();
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+                TextColor(Shorten(proposal.role.empty() ? "unknown" : proposal.role, 18), Rgba(246, 248, 251));
+                ImGui::TableSetColumnIndex(1);
+                TextColor(Shorten(proposal.action, 28), action_color(proposal.action));
+                ImGui::TableSetColumnIndex(2);
+                TextMuted(Shorten(proposal.proposed_primary_provider.empty() ? "-" : proposal.proposed_primary_provider, 36));
+                ImGui::TableSetColumnIndex(3);
+                TextMuted(FormatPercent(proposal.confidence));
+                ImGui::TableSetColumnIndex(4);
+                TextMuted(Shorten(reason.empty() ? "-" : reason, 68));
+                ++shown;
+            }
+            ImGui::EndTable();
+        }
+    }
+
+    ImGui::Dummy(ImVec2(0.0f, 12.0f));
+    ImGui::BeginDisabled(busy_ || total_apply_count <= 0);
+    if (ImGui::Button("Confirm Apply", ImVec2(180.0f, 36.0f))) {
+        ApplyRoutePolicyDiffToRoutes();
+        ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    if (ImGui::Button("Cancel", ImVec2(120.0f, 36.0f))) {
+        ImGui::CloseCurrentPopup();
+    }
+    ImGui::SameLine();
+    ImGui::BeginDisabled(busy_);
+    if (ImGui::Button("Refresh Preview", ImVec2(150.0f, 36.0f))) {
+        RefreshTelemetry();
+        ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndDisabled();
 }
 
 void AegisChatApp::RenderChangesTab()
@@ -5563,11 +11387,11 @@ void AegisChatApp::RenderChangesTab()
     ImGui::SameLine();
     ImGui::BeginDisabled(busy_);
     if (ImGui::Button("Like Change")) {
-        RecordFeedback("liked", change_payload, "code_change; task_id=" + last_response_.task_id);
+        RecordFeedback("liked", change_payload, "code_change; task_id=" + last_response_.task_id, "change_feedback", "code_change", last_response_.engine);
     }
     ImGui::SameLine();
     if (ImGui::Button("Reject Change")) {
-        RecordFeedback("disliked", change_payload, "code_change; task_id=" + last_response_.task_id);
+        RecordFeedback("disliked", change_payload, "code_change; task_id=" + last_response_.task_id, "change_feedback", "code_change", last_response_.engine);
     }
     ImGui::EndDisabled();
 
@@ -5757,6 +11581,161 @@ void AegisChatApp::RenderWorkspaceTab()
         status_ = "Opened workspace folder.";
     }
     ImGui::EndDisabled();
+    ImGui::SameLine();
+    ImGui::BeginDisabled(busy_ || active_workspace.empty());
+    if (ImGui::Button("Refresh Profile")) {
+        RefreshWorkspaceProfile();
+    }
+    ImGui::EndDisabled();
+
+    if (has_workspace_profile_snapshot_) {
+        ImGui::Dummy(ImVec2(0.0f, 8.0f));
+        TextColor("Workspace Profile", Rgba(246, 248, 251));
+        if (workspace_profile_.has_manifest) {
+            const WorkspaceProjectManifestInfo& manifest = workspace_profile_.manifest;
+            const std::string project_title = manifest.title.empty() ? manifest.project_name : manifest.title;
+            Pill("Aegis manifest", Rgba(38, 221, 123));
+            ImGui::SameLine();
+            TextMuted(Shorten(project_title.empty() ? "Unnamed project" : project_title, 84));
+
+            if (ImGui::BeginTable("workspace_profile_table", 2, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+                ImGui::TableSetupColumn("Field", ImGuiTableColumnFlags_WidthFixed, 132.0f);
+                ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
+                ImGui::TableHeadersRow();
+
+                auto row = [](const char* label, const std::string& value) {
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+                    TextMuted(label);
+                    ImGui::TableSetColumnIndex(1);
+                    TextMuted(value.empty() ? "-" : Shorten(value, 112));
+                };
+                row("Preset", manifest.preset_label.empty() ? manifest.preset_id : manifest.preset_label);
+                row("Stack", (manifest.framework.empty() ? "-" : manifest.framework) + " / " + (manifest.language.empty() ? "-" : manifest.language));
+                row("Package", manifest.package_manager);
+                row("Install", manifest.install_command);
+                row("Validate", manifest.validation_command);
+                row("Tags", JoinPalette(manifest.tags));
+                row("Schema", manifest.schema);
+                ImGui::EndTable();
+            }
+
+            ImGui::BeginDisabled(manifest.install_command.empty());
+            if (ImGui::Button("Copy Install")) {
+                ImGui::SetClipboardText(manifest.install_command.c_str());
+                status_ = "Copied install command.";
+            }
+            ImGui::EndDisabled();
+            ImGui::SameLine();
+            ImGui::BeginDisabled(manifest.validation_command.empty());
+            if (ImGui::Button("Copy Validate")) {
+                ImGui::SetClipboardText(manifest.validation_command.c_str());
+                status_ = "Copied validation command.";
+            }
+            ImGui::EndDisabled();
+
+            if (!manifest.handoff_goal.empty()) {
+                TextMuted("Goal: " + Shorten(manifest.handoff_goal, 128));
+            }
+            if (!manifest.first_pass.empty() && ImGui::TreeNodeEx("First Pass", ImGuiTreeNodeFlags_DefaultOpen)) {
+                for (const std::string& step : manifest.first_pass) {
+                    ImGui::BulletText("%s", Shorten(step, 128).c_str());
+                }
+                ImGui::TreePop();
+            }
+            if (!manifest.safety.empty() && ImGui::TreeNode("Safety Notes")) {
+                for (const std::string& note : manifest.safety) {
+                    ImGui::BulletText("%s", Shorten(note, 128).c_str());
+                }
+                ImGui::TreePop();
+            }
+        } else {
+            TextMuted("No .aegis/project.json manifest found.");
+            if (!workspace_profile_.recommendations.empty()) {
+                TextMuted(Shorten(workspace_profile_.recommendations.front(), 128));
+            }
+        }
+
+        const WorkspaceDependencyProfileInfo& dependency = workspace_profile_.dependency_profile;
+        ImGui::Dummy(ImVec2(0.0f, 8.0f));
+        TextColor("Dependency Profile", Rgba(246, 248, 251));
+        if (dependency.config_files.empty()) {
+            TextMuted("No dependency or build manifest detected yet.");
+        } else {
+            if (ImGui::BeginTable("workspace_dependency_profile_table", 2, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+                ImGui::TableSetupColumn("Signal", ImGuiTableColumnFlags_WidthFixed, 132.0f);
+                ImGui::TableSetupColumn("Detected");
+                ImGui::TableHeadersRow();
+
+                auto row = [](const char* label, const std::vector<std::string>& values) {
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+                    TextMuted(label);
+                    ImGui::TableSetColumnIndex(1);
+                    TextMuted(values.empty() ? "-" : Shorten(JoinPalette(values), 128));
+                };
+                if (!dependency.project_type.empty()) {
+                    row("Project", std::vector<std::string>{dependency.project_type});
+                }
+                row("Languages", dependency.languages);
+                row("Frameworks", dependency.frameworks);
+                row("Managers", dependency.package_managers);
+                row("Build", dependency.build_systems);
+                row("Entry", dependency.entry_points);
+                row("Tests", dependency.test_files);
+                row("Database", dependency.database_tools);
+                row("Configs", dependency.config_files);
+                row("Install", dependency.install_commands);
+                row("Validate", dependency.validation_commands);
+                ImGui::EndTable();
+            }
+
+            ImGui::BeginDisabled(dependency.install_commands.empty());
+            if (ImGui::Button("Copy Inferred Install")) {
+                ImGui::SetClipboardText(dependency.install_commands.front().c_str());
+                status_ = "Copied inferred install command.";
+            }
+            ImGui::EndDisabled();
+            ImGui::SameLine();
+            ImGui::BeginDisabled(dependency.validation_commands.empty());
+            if (ImGui::Button("Copy Inferred Validate")) {
+                ImGui::SetClipboardText(dependency.validation_commands.front().c_str());
+                status_ = "Copied inferred validation command.";
+            }
+            ImGui::EndDisabled();
+
+            if (!dependency.scripts.empty() && ImGui::TreeNode("Scripts")) {
+                for (size_t i = 0; i < std::min<size_t>(dependency.scripts.size(), 12); ++i) {
+                    const WorkspaceScriptInfo& script = dependency.scripts[i];
+                    ImGui::BulletText("%s", Shorten(script.name + ": " + script.command, 132).c_str());
+                }
+                ImGui::TreePop();
+            }
+            if (!dependency.dependencies.empty() && ImGui::TreeNode("Runtime Dependencies")) {
+                for (size_t i = 0; i < std::min<size_t>(dependency.dependencies.size(), 16); ++i) {
+                    const WorkspaceDependencyInfo& item = dependency.dependencies[i];
+                    const std::string version = item.version.empty() ? "" : " " + item.version;
+                    ImGui::BulletText("%s", Shorten(item.name + version, 112).c_str());
+                }
+                ImGui::TreePop();
+            }
+            if (!dependency.dev_dependencies.empty() && ImGui::TreeNode("Development Dependencies")) {
+                for (size_t i = 0; i < std::min<size_t>(dependency.dev_dependencies.size(), 16); ++i) {
+                    const WorkspaceDependencyInfo& item = dependency.dev_dependencies[i];
+                    const std::string version = item.version.empty() ? "" : " " + item.version;
+                    ImGui::BulletText("%s", Shorten(item.name + version, 112).c_str());
+                }
+                ImGui::TreePop();
+            }
+            if (!dependency.warnings.empty()) {
+                for (size_t i = 0; i < std::min<size_t>(dependency.warnings.size(), 3); ++i) {
+                    TextColor("- " + Shorten(dependency.warnings[i], 128), Rgba(205, 154, 82));
+                }
+            }
+        }
+    } else if (!workspace_profile_error_.empty()) {
+        TextMuted("Workspace profile unavailable: " + Shorten(workspace_profile_error_, 128));
+    }
     ImGui::Separator();
 
     if (!has_selected_file_) {
@@ -5800,9 +11779,23 @@ void AegisChatApp::RenderWorkspaceTab()
 
 void AegisChatApp::RenderEventsTab()
 {
+    if (has_verification_result_ && !verification_result_.events.empty()) {
+        TextColor("Latest Verification Events", Rgba(246, 248, 251));
+        for (const ToolEvent& event : verification_result_.events) {
+            ImGui::TextWrapped("%s", event.title.c_str());
+            TextMuted(event.detail);
+            ImGui::SameLine(ImGui::GetWindowWidth() - 72.0f);
+            Pill(event.status.c_str(), event.status == "error" ? StatusColor(false) : StatusColor(true));
+            ImGui::Separator();
+        }
+        ImGui::Dummy(ImVec2(0.0f, 8.0f));
+    }
+
     const std::vector<ToolEvent>* events = has_response_ ? &last_response_.events : nullptr;
     if (events == nullptr || events->empty()) {
-        TextMuted("Task events will appear after Aegis runs.");
+        if (!has_verification_result_) {
+            TextMuted("Task events will appear after Aegis runs.");
+        }
     } else {
         for (const ToolEvent& event : *events) {
             ImGui::TextWrapped("%s", event.title.c_str());
@@ -5857,6 +11850,47 @@ void AegisChatApp::RenderSettingsTab()
         status_ = "Opened setup check.";
     }
 
+    ImGui::Dummy(ImVec2(0.0f, 6.0f));
+    TextColor("Runtime Health", Rgba(246, 248, 251));
+    if (health_.ok || health_.engine_ready) {
+        const std::string health_status = health_.status.empty() ? (health_.ready ? "ready" : "degraded") : health_.status;
+        const bool runtime_ready = health_status == "ready" && health_.engine_ready;
+        TextMuted(Shorten(
+            (health_.app.empty() ? "Aegis Coding AI" : health_.app) +
+            (health_.version.empty() ? "" : " " + health_.version) +
+            " / " + (health_.engine.empty() ? "Aegis Core" : health_.engine),
+            116));
+        if (ImGui::BeginTable("settings_runtime_health_table", 4, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+            ImGui::TableSetupColumn("Runtime", ImGuiTableColumnFlags_WidthFixed, 104.0f);
+            ImGui::TableSetupColumn("Model");
+            ImGui::TableSetupColumn("Providers", ImGuiTableColumnFlags_WidthFixed, 126.0f);
+            ImGui::TableSetupColumn("Router", ImGuiTableColumnFlags_WidthFixed, 132.0f);
+            ImGui::TableHeadersRow();
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            Pill(health_status.c_str(), runtime_ready ? Rgba(38, 221, 123) : Rgba(205, 154, 82));
+            ImGui::TableSetColumnIndex(1);
+            TextMuted(Shorten(
+                (health_.model_api.empty() ? "model" : health_.model_api) +
+                " / " + (health_.model_name.empty() ? config_.model_name : health_.model_name),
+                58));
+            ImGui::TableSetColumnIndex(2);
+            TextMuted(std::to_string(health_.configured_provider_count) + " configured / " + std::to_string(health_.provider_count));
+            ImGui::TableSetColumnIndex(3);
+            TextMuted(std::string(health_.router_enabled ? "routes on" : "routes off") +
+                (health_.fallback_supported ? " / fallback" : ""));
+            ImGui::EndTable();
+        }
+        if (!health_.workspace_root.empty()) {
+            TextMuted("Workspace: " + Shorten(health_.workspace_root, 104));
+        }
+        if (!health_.recommendations.empty()) {
+            TextColor("Runtime recommendation: " + Shorten(health_.recommendations.front(), 112), Rgba(205, 154, 82));
+        }
+    } else {
+        TextMuted("Runtime diagnostics appear after the backend handshake succeeds.");
+    }
+
     ImGui::Separator();
     ImGui::TextUnformatted("Aegis Core");
     ImGui::InputText("Assistant", assistant_name_buffer_.data(), assistant_name_buffer_.size());
@@ -5868,6 +11902,17 @@ void AegisChatApp::RenderSettingsTab()
     ImGui::InputTextMultiline("Allowlist", command_allowlist_buffer_.data(), command_allowlist_buffer_.size(), ImVec2(-1, 58));
     ImGui::SliderInt("Timeout", &config_.command_timeout_seconds, 5, 3600);
     ImGui::Checkbox("Auto validation", &run_validation_);
+    ImGui::Separator();
+    ImGui::TextUnformatted("Feedback Privacy");
+    TextMuted("Controls whether feedback memory can keep redacted snippets for preference review.");
+    ImGui::Checkbox("Shared workspace mode", &config_.shared_workspace_mode);
+    ImGui::Checkbox("Capture redacted excerpts", &config_.feedback_capture_excerpts);
+    ImGui::Checkbox("Redact secrets and emails", &config_.feedback_redaction_enabled);
+    ImGui::Checkbox("Store content hashes", &config_.feedback_hash_content);
+    ImGui::SliderInt("Max feedback excerpt", &config_.feedback_max_excerpt_chars, 0, 2000);
+    if (config_.shared_workspace_mode) {
+        TextMuted("Shared mode disables feedback excerpts and content hashes on the backend.");
+    }
     RenderValidationProfilePanel();
     if (ImGui::Button("Save Aegis Settings", ImVec2(-1, 0))) {
         SaveRemoteConfigFromUi();
@@ -5892,7 +11937,29 @@ void AegisChatApp::RenderValidationProfilePanel()
     if (ImGui::Button("Run Validation")) {
         ValidateWorkspace();
     }
+    ImGui::SameLine();
+    if (ImGui::Button("Full Verify")) {
+        VerifyWorkspace();
+    }
     ImGui::EndDisabled();
+    ImGui::Checkbox("Include install step", &verification_include_install_);
+    ImGui::SameLine();
+    ImGui::Checkbox("Continue after failures", &verification_continue_on_failure_);
+    ImGui::Checkbox("Auto repair next Full Verify failures", &verification_auto_repair_chain_);
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(112.0f);
+    ImGui::SliderInt("Chain limit", &verification_chain_repair_limit_, 1, 8);
+    if (verification_chain_repairs_remaining_ > 0) {
+        TextMuted("Repair chain: " + std::to_string(verification_chain_repairs_remaining_) + " queued repair pass(es) remaining.");
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Stop chain")) {
+            verification_chain_repairs_remaining_ = 0;
+            pending_verification_chain_repair_ = false;
+            pending_full_verify_after_repair_ = false;
+            status_ = "Stopped the Full Verify repair chain.";
+            TrackVerificationRepairActivity("Repair chain stopped", "Manual stop requested from Validation Profile.", "stopped");
+        }
+    }
 
     ImGui::InputText("Validation command", validation_command_buffer_.data(), validation_command_buffer_.size());
     ImGui::InputText("Validation label", validation_label_buffer_.data(), validation_label_buffer_.size());
@@ -5939,6 +12006,205 @@ void AegisChatApp::RenderValidationProfilePanel()
         TextColor("Workspace Suggestions", Rgba(246, 248, 251));
         TextMuted("Aegis inferred these from visible workspace files.");
         RenderValidationSuggestionTable("local_validation_suggestions_no_profile", local_suggestions, 8);
+    }
+
+    RenderVerificationResultPanel();
+}
+
+void AegisChatApp::RenderVerificationResultPanel()
+{
+    if (!has_verification_result_) {
+        return;
+    }
+
+    const std::string status = verification_result_.status.empty() ? "skipped" : verification_result_.status;
+    const auto status_color = [](const std::string& value) {
+        const std::string lowered = Lower(value);
+        if (lowered == "passed" || lowered == "succeeded") {
+            return Rgba(38, 221, 123);
+        }
+        if (lowered == "failed" || lowered == "blocked") {
+            return Rgba(248, 113, 113);
+        }
+        if (lowered == "running" || lowered == "planned") {
+            return Rgba(205, 154, 82);
+        }
+        return Rgba(151, 160, 171);
+    };
+
+    int succeeded = 0;
+    int failed = 0;
+    int blocked = 0;
+    for (const VerificationStepInfo& step : verification_result_.steps) {
+        const std::string lowered = Lower(step.status);
+        if (lowered == "succeeded") {
+            ++succeeded;
+        } else if (lowered == "blocked") {
+            ++blocked;
+        } else if (lowered == "failed") {
+            ++failed;
+        }
+    }
+
+    ImGui::Dummy(ImVec2(0.0f, 10.0f));
+    ImGui::Separator();
+    TextColor("Full Verification", Rgba(246, 248, 251));
+    ImGui::SameLine();
+    Pill(status.c_str(), status_color(status));
+    TextMuted(
+        std::to_string(verification_result_.steps.size()) + " step(s), " +
+        std::to_string(succeeded) + " passed, " +
+        std::to_string(failed) + " failed, " +
+        std::to_string(blocked) + " blocked");
+    if (ImGui::Button("Copy Verification Report")) {
+        const std::string report = BuildVerificationReport(verification_result_, verification_repair_activities_);
+        ImGui::SetClipboardText(report.c_str());
+        status_ = "Copied verification report.";
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Export Report")) {
+        ExportVerificationReport();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Open Reports")) {
+        OpenVerificationReportsFolder();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Prune Old Reports")) {
+        PruneVerificationReports(25);
+    }
+
+    const std::vector<std::filesystem::path> recent_reports = RecentVerificationReportPaths(5);
+    if (!recent_reports.empty()) {
+        ImGui::Dummy(ImVec2(0.0f, 8.0f));
+        TextColor("Recent Verification Reports", Rgba(246, 248, 251));
+        if (ImGui::BeginTable("recent_verification_reports_table", 4, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+            ImGui::TableSetupColumn("Report");
+            ImGui::TableSetupColumn("Open", ImGuiTableColumnFlags_WidthFixed, 64.0f);
+            ImGui::TableSetupColumn("Copy", ImGuiTableColumnFlags_WidthFixed, 64.0f);
+            ImGui::TableSetupColumn("Attach", ImGuiTableColumnFlags_WidthFixed, 70.0f);
+            ImGui::TableHeadersRow();
+            for (int i = 0; i < static_cast<int>(recent_reports.size()); ++i) {
+                const std::filesystem::path& path = recent_reports[static_cast<size_t>(i)];
+                const std::string path_text = WideToUtf8(path.wstring());
+                ImGui::PushID(i);
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+                TextMuted(Shorten(WideToUtf8(path.filename().wstring()), 78));
+                ImGui::TableSetColumnIndex(1);
+                if (ImGui::Button("Open")) {
+                    OpenExternalPath(path);
+                    status_ = "Opened verification report.";
+                }
+                ImGui::TableSetColumnIndex(2);
+                if (ImGui::Button("Copy")) {
+                    ImGui::SetClipboardText(path_text.c_str());
+                    status_ = "Copied verification report path.";
+                }
+                ImGui::TableSetColumnIndex(3);
+                if (ImGui::Button("Attach")) {
+                    AttachVerificationReport(path_text);
+                }
+                ImGui::PopID();
+            }
+            ImGui::EndTable();
+        }
+    }
+
+    if (!verification_repair_activities_.empty()) {
+        ImGui::Dummy(ImVec2(0.0f, 8.0f));
+        TextColor("Verification Repair Activity", Rgba(246, 248, 251));
+        TextMuted("Tracks Full Verify, targeted repair, failed-command validation, and automatic reruns.");
+        if (ImGui::BeginTable("verification_repair_activity_table", 4, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+            ImGui::TableSetupColumn("Time", ImGuiTableColumnFlags_WidthFixed, 72.0f);
+            ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_WidthFixed, 82.0f);
+            ImGui::TableSetupColumn("Step", ImGuiTableColumnFlags_WidthFixed, 168.0f);
+            ImGui::TableSetupColumn("Detail");
+            ImGui::TableHeadersRow();
+            const int first = std::max(0, static_cast<int>(verification_repair_activities_.size()) - 8);
+            for (int i = first; i < static_cast<int>(verification_repair_activities_.size()); ++i) {
+                const VerificationRepairActivity& activity = verification_repair_activities_[static_cast<size_t>(i)];
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+                TextMuted(activity.created_at.empty() ? "-" : activity.created_at);
+                ImGui::TableSetColumnIndex(1);
+                TextColor(Shorten(activity.status.empty() ? "info" : activity.status, 14), status_color(activity.status));
+                ImGui::TableSetColumnIndex(2);
+                TextColor(Shorten(activity.title.empty() ? "Verification" : activity.title, 30), Rgba(246, 248, 251));
+                ImGui::TableSetColumnIndex(3);
+                const std::string detail = activity.command.empty()
+                    ? activity.detail
+                    : (activity.detail.empty() ? activity.command : activity.detail + " | " + activity.command);
+                TextMuted(Shorten(detail.empty() ? "-" : detail, 96));
+            }
+            ImGui::EndTable();
+        }
+    }
+
+    if (verification_result_.has_first_failure) {
+        const CommandRun& failure = verification_result_.first_failure;
+        TextColor("First Failure", Rgba(248, 113, 113));
+        TextMuted(Shorten(failure.summary.empty() ? failure.reason : failure.summary, 132));
+        if (!failure.command.empty()) {
+            TextMuted("Command: " + Shorten(failure.command, 132));
+        }
+        if (ImGui::Button("Copy Failure Output")) {
+            const std::string output = ValidationCombinedOutput(failure);
+            ImGui::SetClipboardText(output.empty() ? failure.summary.c_str() : output.c_str());
+            status_ = "Copied verification failure output.";
+        }
+        ImGui::SameLine();
+        ImGui::BeginDisabled(busy_);
+        if (ImGui::Button("Repair First Failure")) {
+            RepairLastValidationFailure();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Repair Until Clean")) {
+            RepairLastValidationFailure(true);
+        }
+        ImGui::EndDisabled();
+    }
+
+    if (!verification_result_.warnings.empty()) {
+        const int count = std::min(3, static_cast<int>(verification_result_.warnings.size()));
+        for (int i = 0; i < count; ++i) {
+            TextColor(Shorten(verification_result_.warnings[static_cast<size_t>(i)], 132), Rgba(205, 154, 82));
+        }
+    }
+
+    if (verification_result_.steps.empty()) {
+        TextMuted("No verification steps were detected.");
+        return;
+    }
+
+    ImGui::Dummy(ImVec2(0.0f, 6.0f));
+    if (ImGui::BeginTable("verification_steps_table", 5, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+        ImGui::TableSetupColumn("Phase", ImGuiTableColumnFlags_WidthFixed, 92.0f);
+        ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_WidthFixed, 88.0f);
+        ImGui::TableSetupColumn("Command");
+        ImGui::TableSetupColumn("Required", ImGuiTableColumnFlags_WidthFixed, 72.0f);
+        ImGui::TableSetupColumn("Result");
+        ImGui::TableHeadersRow();
+        for (const VerificationStepInfo& step : verification_result_.steps) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            TextMuted(Shorten(step.phase.empty() ? step.category : step.phase, 18));
+            ImGui::TableSetColumnIndex(1);
+            TextColor(Shorten(step.status.empty() ? "planned" : step.status, 18), status_color(step.status));
+            ImGui::TableSetColumnIndex(2);
+            TextColor(Shorten(step.command, 62), Rgba(246, 248, 251));
+            ImGui::TableSetColumnIndex(3);
+            TextMuted(step.required ? "yes" : "optional");
+            ImGui::TableSetColumnIndex(4);
+            std::string summary;
+            if (step.has_run) {
+                summary = step.run.summary.empty() ? step.run.reason : step.run.summary;
+            } else {
+                summary = step.reason;
+            }
+            TextMuted(Shorten(summary.empty() ? "-" : summary, 72));
+        }
+        ImGui::EndTable();
     }
 }
 
@@ -6017,7 +12283,7 @@ void AegisChatApp::RenderSetupCheckModal()
 
     ImGui::BeginDisabled(busy_);
     if (ImGui::Button("Refresh Runtime")) {
-        RefreshRuntime(false);
+        RefreshRuntime(true);
     }
     ImGui::SameLine();
     if (ImGui::Button("Start Backend")) {
@@ -6770,7 +13036,7 @@ void AegisChatApp::RenderModelStackModal()
     ImGui::Dummy(ImVec2(0.0f, 8.0f));
 
     if (ImGui::Button("Refresh Inventory")) {
-        RefreshRuntime(false);
+        RefreshRuntime(true);
     }
     ImGui::SameLine();
     if (ImGui::Button("Open Model Settings")) {
@@ -6805,6 +13071,422 @@ void AegisChatApp::RenderModelStackModal()
     if (!models_.message.empty()) {
         ImGui::Dummy(ImVec2(0.0f, 8.0f));
         TextMuted(models_.message);
+    }
+
+    ImGui::Separator();
+    TextColor("Local Model Storage", Rgba(246, 248, 251));
+    TextMuted(model_manager_.message.empty()
+        ? "Disk-aware model manager data will appear after the backend refreshes."
+        : model_manager_.message);
+    if (model_manager_.disk.total_bytes > 0) {
+        const float free_fraction = static_cast<float>(std::max(0.0, std::min(100.0, model_manager_.disk.free_percent)) / 100.0);
+        DrawProgress(free_fraction, ImVec2(ImGui::GetContentRegionAvail().x, 8.0f), model_manager_.disk.low_space);
+        ImGui::Dummy(ImVec2(0.0f, 6.0f));
+        if (ImGui::BeginTable("model_storage_summary", 4, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+            ImGui::TableSetupColumn("Free", ImGuiTableColumnFlags_WidthFixed, 130.0f);
+            ImGui::TableSetupColumn("Model Store", ImGuiTableColumnFlags_WidthFixed, 130.0f);
+            ImGui::TableSetupColumn("Reserve", ImGuiTableColumnFlags_WidthFixed, 130.0f);
+            ImGui::TableSetupColumn("Path");
+            ImGui::TableHeadersRow();
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            TextColor(FormatModelBytes(model_manager_.disk.free_bytes), model_manager_.disk.low_space ? Rgba(248, 113, 113) : Rgba(38, 221, 123));
+            ImGui::TableSetColumnIndex(1);
+            TextMuted(FormatModelBytes(model_manager_.disk.model_store_bytes));
+            ImGui::TableSetColumnIndex(2);
+            TextMuted(FormatModelBytes(model_manager_.disk.minimum_free_bytes));
+            ImGui::TableSetColumnIndex(3);
+            TextMuted(Shorten(model_manager_.disk.model_store_path.empty() ? model_manager_.disk.project_root : model_manager_.disk.model_store_path, 78));
+            ImGui::EndTable();
+        }
+    }
+    ImGui::BeginDisabled(busy_);
+    if (ImGui::Button("Refresh Model Manager")) {
+        RefreshModelManager();
+    }
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    ImGui::BeginDisabled(model_manager_.disk.model_store_path.empty());
+    if (ImGui::Button("Open Model Store")) {
+        OpenExternalPath(std::filesystem::path(Utf8ToWide(model_manager_.disk.model_store_path)));
+        status_ = "Opened local model store.";
+    }
+    ImGui::EndDisabled();
+
+    ImGui::Separator();
+    TextColor("Agent Routing Readiness", Rgba(246, 248, 251));
+    TextMuted("Aegis becomes stronger when each task can route to a specialist and fall back cleanly if that provider fails.");
+    if (ImGui::BeginTable("agent_route_readiness_table", 5, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+        ImGui::TableSetupColumn("Route", ImGuiTableColumnFlags_WidthFixed, 104.0f);
+        ImGui::TableSetupColumn("State", ImGuiTableColumnFlags_WidthFixed, 82.0f);
+        ImGui::TableSetupColumn("Ready", ImGuiTableColumnFlags_WidthFixed, 58.0f);
+        ImGui::TableSetupColumn("Providers");
+        ImGui::TableSetupColumn("Good Next Provider", ImGuiTableColumnFlags_WidthFixed, 190.0f);
+        ImGui::TableHeadersRow();
+        for (const AgentRouteBlueprint& route : kAgentRouteBlueprints) {
+            const int ready = CountProvidersForRoute(model_registry_, route, true);
+            const int enabled = CountProvidersForRoute(model_registry_, route, false);
+            const int staged = std::max(0, enabled - ready);
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            TextColor(route.label, ready > 0 ? Rgba(38, 221, 123) : (staged > 0 ? Rgba(205, 154, 82) : Rgba(248, 113, 113)));
+            ImGui::TableSetColumnIndex(1);
+            Pill(ready > 0 ? "Ready" : (staged > 0 ? "Staged" : "Gap"),
+                 ready > 0 ? Rgba(38, 221, 123) : (staged > 0 ? Rgba(205, 154, 82) : Rgba(248, 113, 113)));
+            ImGui::TableSetColumnIndex(2);
+            TextMuted(std::to_string(ready) + (staged > 0 ? " + " + std::to_string(staged) : ""));
+            ImGui::TableSetColumnIndex(3);
+            TextMuted(Shorten(ProviderLabelsForRoute(model_registry_, route, false), 62));
+            ImGui::TableSetColumnIndex(4);
+            TextMuted(route.recommended);
+        }
+        ImGui::EndTable();
+    }
+
+    ImGui::Dummy(ImVec2(0.0f, 6.0f));
+    TextColor("Registry Checkpoints", Rgba(246, 248, 251));
+    ImGui::SameLine();
+    ImGui::BeginDisabled(busy_);
+    if (ImGui::Button("Create Baseline")) {
+        CreateModelRegistryCheckpoint();
+    }
+    ImGui::EndDisabled();
+    if (!model_registry_checkpoints_error_.empty()) {
+        TextColor("Checkpoint history unavailable: " + Shorten(model_registry_checkpoints_error_, 118), Rgba(248, 113, 113));
+    } else if (!model_registry_checkpoints_loaded_) {
+        TextMuted("Refresh Model Manager to load provider and routing rollback points.");
+    } else if (model_registry_checkpoints_.checkpoints.empty()) {
+        TextMuted("No registry checkpoints yet. Provider edits and healthy-winner applies will create rollback points.");
+    } else if (ImGui::BeginTable("model_registry_checkpoints_table", 6, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+        ImGui::TableSetupColumn("Created", ImGuiTableColumnFlags_WidthFixed, 146.0f);
+        ImGui::TableSetupColumn("Reason");
+        ImGui::TableSetupColumn("Snapshot", ImGuiTableColumnFlags_WidthFixed, 100.0f);
+        ImGui::TableSetupColumn("Restore Impact", ImGuiTableColumnFlags_WidthFixed, 190.0f);
+        ImGui::TableSetupColumn("Details", ImGuiTableColumnFlags_WidthFixed, 76.0f);
+        ImGui::TableSetupColumn("Restore", ImGuiTableColumnFlags_WidthFixed, 82.0f);
+        ImGui::TableHeadersRow();
+        const int visible_checkpoints = std::min(4, static_cast<int>(model_registry_checkpoints_.checkpoints.size()));
+        for (int i = 0; i < visible_checkpoints; ++i) {
+            const ModelRegistryCheckpointInfo& checkpoint = model_registry_checkpoints_.checkpoints[static_cast<size_t>(i)];
+            const bool restore_changes = checkpoint.restore_total_change_count > 0;
+            const bool restore_pending = has_pending_model_registry_restore_ && pending_model_registry_restore_.id == checkpoint.id;
+            ImGui::PushID(checkpoint.id.empty() ? i : static_cast<int>(std::hash<std::string>{}(checkpoint.id)));
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            TextMuted(Shorten(checkpoint.created_at.empty() ? checkpoint.id : checkpoint.created_at, 24));
+            ImGui::TableSetColumnIndex(1);
+            TextMuted(Shorten(checkpoint.reason.empty() ? checkpoint.message : checkpoint.reason, 72));
+            ImGui::TableSetColumnIndex(2);
+            TextMuted("P" + std::to_string(checkpoint.provider_count) + " / R" + std::to_string(checkpoint.role_count));
+            ImGui::TableSetColumnIndex(3);
+            TextColor(
+                Shorten(checkpoint.restore_summary.empty() ? "Impact unknown" : checkpoint.restore_summary, 48),
+                restore_changes ? Rgba(205, 154, 82) : Rgba(38, 221, 123));
+            ImGui::TableSetColumnIndex(4);
+            ImGui::BeginDisabled(busy_ || checkpoint.id.empty());
+            if (ImGui::Button("View", ImVec2(-1.0f, 0.0f))) {
+                LoadModelRegistryCheckpointDiff(checkpoint);
+            }
+            ImGui::EndDisabled();
+            ImGui::TableSetColumnIndex(5);
+            ImGui::BeginDisabled(busy_ || checkpoint.id.empty());
+            if (ImGui::Button(restore_pending ? "Pending" : "Restore", ImVec2(-1.0f, 0.0f))) {
+                RequestModelRegistryCheckpointRestore(checkpoint);
+            }
+            ImGui::EndDisabled();
+            ImGui::PopID();
+        }
+        ImGui::EndTable();
+    }
+
+    if (!selected_model_registry_checkpoint_diff_error_.empty()) {
+        TextColor("Checkpoint details unavailable: " + Shorten(selected_model_registry_checkpoint_diff_error_, 118), Rgba(248, 113, 113));
+        if (has_pending_model_registry_restore_) {
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel Restore")) {
+                has_pending_model_registry_restore_ = false;
+                status_ = "Cancelled pending registry restore.";
+            }
+        }
+    } else if (selected_model_registry_checkpoint_diff_loaded_) {
+        const ModelRegistryCheckpointDiffInfo& diff = selected_model_registry_checkpoint_diff_;
+        const bool restore_pending = has_pending_model_registry_restore_ && pending_model_registry_restore_.id == diff.checkpoint.id;
+        ImGui::Dummy(ImVec2(0.0f, 6.0f));
+        TextColor("Checkpoint Details", Rgba(246, 248, 251));
+        TextMuted(Shorten(diff.checkpoint.id + " / " + (diff.checkpoint.restore_summary.empty() ? "Impact unknown" : diff.checkpoint.restore_summary), 132));
+        if (!diff.provider_diffs.empty() &&
+            ImGui::BeginTable("model_registry_checkpoint_provider_diffs", 4, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+            ImGui::TableSetupColumn("Provider", ImGuiTableColumnFlags_WidthFixed, 150.0f);
+            ImGui::TableSetupColumn("Action", ImGuiTableColumnFlags_WidthFixed, 128.0f);
+            ImGui::TableSetupColumn("Current");
+            ImGui::TableSetupColumn("Checkpoint");
+            ImGui::TableHeadersRow();
+            for (const ModelRegistryCheckpointEntityDiffInfo& item : diff.provider_diffs) {
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+                TextColor(Shorten(item.label.empty() ? item.id : item.label, 34), Rgba(246, 248, 251));
+                ImGui::TableSetColumnIndex(1);
+                Pill(item.action.empty() ? "change" : item.action.c_str(), item.action == "remove_on_restore" ? Rgba(248, 113, 113) : Rgba(205, 154, 82));
+                ImGui::TableSetColumnIndex(2);
+                TextMuted(Shorten(item.current_summary, 58));
+                ImGui::TableSetColumnIndex(3);
+                TextMuted(Shorten(item.checkpoint_summary, 58));
+            }
+            ImGui::EndTable();
+        }
+        if (!diff.role_diffs.empty() &&
+            ImGui::BeginTable("model_registry_checkpoint_role_diffs", 4, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+            ImGui::TableSetupColumn("Role", ImGuiTableColumnFlags_WidthFixed, 150.0f);
+            ImGui::TableSetupColumn("Action", ImGuiTableColumnFlags_WidthFixed, 128.0f);
+            ImGui::TableSetupColumn("Current");
+            ImGui::TableSetupColumn("Checkpoint");
+            ImGui::TableHeadersRow();
+            for (const ModelRegistryCheckpointEntityDiffInfo& item : diff.role_diffs) {
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+                TextColor(Shorten(item.label.empty() ? item.id : item.label, 34), Rgba(246, 248, 251));
+                ImGui::TableSetColumnIndex(1);
+                Pill(item.action.empty() ? "change" : item.action.c_str(), item.action == "remove_on_restore" ? Rgba(248, 113, 113) : Rgba(205, 154, 82));
+                ImGui::TableSetColumnIndex(2);
+                TextMuted(Shorten(item.current_summary, 58));
+                ImGui::TableSetColumnIndex(3);
+                TextMuted(Shorten(item.checkpoint_summary, 58));
+            }
+            ImGui::EndTable();
+        }
+        if (!diff.setting_diffs.empty() &&
+            ImGui::BeginTable("model_registry_checkpoint_setting_diffs", 3, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+            ImGui::TableSetupColumn("Setting", ImGuiTableColumnFlags_WidthFixed, 150.0f);
+            ImGui::TableSetupColumn("Current");
+            ImGui::TableSetupColumn("Checkpoint");
+            ImGui::TableHeadersRow();
+            for (const ModelRegistryCheckpointSettingDiffInfo& item : diff.setting_diffs) {
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+                TextColor(item.key, Rgba(246, 248, 251));
+                ImGui::TableSetColumnIndex(1);
+                TextMuted(item.current_value);
+                ImGui::TableSetColumnIndex(2);
+                TextMuted(item.checkpoint_value);
+            }
+            ImGui::EndTable();
+        }
+        if (diff.provider_diffs.empty() && diff.role_diffs.empty() && diff.setting_diffs.empty()) {
+            TextMuted("No provider, role, or registry setting differences. This checkpoint matches the current registry.");
+        }
+        if (restore_pending) {
+            ImGui::Dummy(ImVec2(0.0f, 6.0f));
+            TextColor("Restore Confirmation", Rgba(205, 154, 82));
+            TextMuted("Review the checkpoint details above. Confirming will overwrite the current model registry with this checkpoint.");
+            ImGui::BeginDisabled(busy_);
+            if (ImGui::Button("Confirm Restore")) {
+                RestoreModelRegistryCheckpoint(pending_model_registry_restore_);
+            }
+            ImGui::EndDisabled();
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel Restore")) {
+                has_pending_model_registry_restore_ = false;
+                status_ = "Cancelled pending registry restore.";
+            }
+        }
+    }
+
+    ImGui::Separator();
+    TextColor("Benchmark Lab", Rgba(246, 248, 251));
+    TextMuted(model_benchmarks_.message.empty()
+        ? "Run a quick local benchmark to rank installed models for chat, code, and reasoning routes."
+        : model_benchmarks_.message);
+    const bool benchmark_job_active = HasActiveBenchmarkJob(model_benchmarks_);
+    ImGui::BeginDisabled(busy_);
+    if (ImGui::Button("Refresh Scores")) {
+        RefreshModelBenchmarks();
+    }
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    ImGui::BeginDisabled(busy_ || benchmark_job_active);
+    if (ImGui::Button("Run Quick Benchmark")) {
+        RunQuickModelBenchmarks();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Seed Code + Reason")) {
+        RunModelBenchmarkPreset("code and reasoning benchmark seed", {"code", "reasoning"}, 4, 55.0);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Deep Local Sweep")) {
+        RunModelBenchmarkPreset("deep local benchmark sweep", {"chat", "code", "reasoning"}, 8, 70.0);
+    }
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    ImGui::BeginDisabled(busy_ || benchmark_job_active || model_benchmarks_.provider_scores.empty());
+    if (ImGui::Button("Apply Healthy Winners")) {
+        ApplyBenchmarkWinnersToRoutes();
+    }
+    ImGui::EndDisabled();
+    if (!model_benchmarks_.latest_at.empty()) {
+        ImGui::SameLine();
+        TextMuted("Latest: " + Shorten(model_benchmarks_.latest_at, 24));
+    }
+    if (benchmark_job_active) {
+        ImGui::SameLine();
+        TextColor("Benchmark running", Rgba(38, 221, 123));
+    }
+    ImGui::Dummy(ImVec2(0.0f, 6.0f));
+    TextColor("Healthy Apply Preview", Rgba(246, 248, 251));
+    if (!route_apply_preview_error_.empty()) {
+        TextColor("Preview unavailable: " + Shorten(route_apply_preview_error_, 126), Rgba(248, 113, 113));
+    } else if (route_apply_preview_loaded_) {
+        const int change_count = static_cast<int>(std::count_if(
+            route_apply_preview_.role_diffs.begin(),
+            route_apply_preview_.role_diffs.end(),
+            [](const ModelRegistryRoleDiffInfo& diff) { return diff.action != "keep"; }));
+        const std::string summary = route_apply_preview_.message.empty()
+            ? ("Dry run ready: " + std::to_string(change_count) + " route change(s) would apply.")
+            : route_apply_preview_.message;
+        TextMuted(summary);
+        if (!route_apply_preview_.role_diffs.empty() &&
+            ImGui::BeginTable("benchmark_route_apply_preview", 6, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+            ImGui::TableSetupColumn("Role", ImGuiTableColumnFlags_WidthFixed, 76.0f);
+            ImGui::TableSetupColumn("Action", ImGuiTableColumnFlags_WidthFixed, 116.0f);
+            ImGui::TableSetupColumn("Current", ImGuiTableColumnFlags_WidthFixed, 150.0f);
+            ImGui::TableSetupColumn("Proposed");
+            ImGui::TableSetupColumn("Fallbacks", ImGuiTableColumnFlags_WidthFixed, 190.0f);
+            ImGui::TableSetupColumn("Health", ImGuiTableColumnFlags_WidthFixed, 150.0f);
+            ImGui::TableHeadersRow();
+            for (const ModelRegistryRoleDiffInfo& diff : route_apply_preview_.role_diffs) {
+                const bool risky = diff.health_cooldown;
+                const bool changed = diff.action != "keep";
+                const ImVec4 action_color = risky
+                    ? Rgba(248, 113, 113)
+                    : (changed ? Rgba(205, 154, 82) : Rgba(38, 221, 123));
+                const std::string health = diff.health_cooldown
+                    ? "cooldown"
+                    : (diff.health_penalty > 0.0 ? "penalty " + std::to_string(static_cast<int>(diff.health_penalty)) : "clear");
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+                TextColor(diff.role.empty() ? "route" : diff.role, Rgba(246, 248, 251));
+                ImGui::TableSetColumnIndex(1);
+                Pill(diff.action.empty() ? "keep" : diff.action.c_str(), action_color);
+                ImGui::TableSetColumnIndex(2);
+                TextMuted(Shorten(diff.current_primary_model.empty() ? "none" : diff.current_primary_model, 34));
+                ImGui::TableSetColumnIndex(3);
+                TextColor(
+                    Shorten(diff.proposed_primary_model.empty() ? diff.winner_provider_id : diff.proposed_primary_model, 44),
+                    changed ? Rgba(38, 221, 123) : Rgba(246, 248, 251));
+                ImGui::TableSetColumnIndex(4);
+                TextMuted(Shorten(JoinList(diff.proposed_fallback_models), 44));
+                ImGui::TableSetColumnIndex(5);
+                TextMuted(Shorten(diff.health_recommendation.empty() ? health : health + " / " + diff.health_recommendation, 46));
+            }
+            ImGui::EndTable();
+        }
+        if (!route_apply_preview_.warnings.empty()) {
+            for (size_t i = 0; i < std::min<size_t>(2, route_apply_preview_.warnings.size()); ++i) {
+                TextColor("- " + Shorten(route_apply_preview_.warnings[i], 126), Rgba(248, 113, 113));
+            }
+        } else if (!route_apply_preview_.recommendations.empty()) {
+            TextMuted("- " + Shorten(route_apply_preview_.recommendations.front(), 132));
+        }
+    } else {
+        TextMuted("Refresh Scores to load the dry-run route changes before applying benchmark winners.");
+    }
+    if (!model_benchmarks_.jobs.empty() &&
+        ImGui::BeginTable("model_benchmark_jobs_table", 6, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+        ImGui::TableSetupColumn("Job", ImGuiTableColumnFlags_WidthFixed, 146.0f);
+        ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_WidthFixed, 88.0f);
+        ImGui::TableSetupColumn("Progress", ImGuiTableColumnFlags_WidthFixed, 92.0f);
+        ImGui::TableSetupColumn("Current");
+        ImGui::TableSetupColumn("Message", ImGuiTableColumnFlags_WidthFixed, 216.0f);
+        ImGui::TableSetupColumn("Action", ImGuiTableColumnFlags_WidthFixed, 76.0f);
+        ImGui::TableHeadersRow();
+        const int job_count = std::min(3, static_cast<int>(model_benchmarks_.jobs.size()));
+        for (int i = 0; i < job_count; ++i) {
+            const ModelBenchmarkJobInfo& job = model_benchmarks_.jobs[static_cast<size_t>(i)];
+            const bool active_job = job.status == "queued" || job.status == "running" || job.status == "cancel_requested";
+            if (job.id.empty()) {
+                ImGui::PushID(i);
+            } else {
+                ImGui::PushID(job.id.c_str());
+            }
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            TextMuted(Shorten(job.id.empty() ? "benchmark" : job.id, 24));
+            ImGui::TableSetColumnIndex(1);
+            Pill(job.status.empty() ? "unknown" : job.status.c_str(),
+                 active_job ? Rgba(38, 221, 123) : (job.status == "failed" || job.status == "interrupted" ? Rgba(248, 113, 113) : Rgba(133, 146, 161)));
+            ImGui::TableSetColumnIndex(2);
+            TextMuted(std::to_string(job.completed_runs) + "/" + std::to_string(job.total_runs));
+            ImGui::TableSetColumnIndex(3);
+            TextMuted(Shorten(job.current_model_name.empty() ? "-" : job.current_model_name + " / " + job.current_suite_id, 54));
+            ImGui::TableSetColumnIndex(4);
+            TextMuted(Shorten(job.error.empty() ? job.message : job.error, 72));
+            ImGui::TableSetColumnIndex(5);
+            ImGui::BeginDisabled(busy_ || !active_job || job.status == "cancel_requested");
+            if (ImGui::Button("Cancel", ImVec2(-1.0f, 0.0f))) {
+                CancelModelBenchmarkJob(job);
+            }
+            ImGui::EndDisabled();
+            ImGui::PopID();
+        }
+        ImGui::EndTable();
+    }
+    if (!model_benchmarks_.suite_summaries.empty() &&
+        ImGui::BeginTable("model_benchmark_suite_summary", 5, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+        ImGui::TableSetupColumn("Suite", ImGuiTableColumnFlags_WidthFixed, 112.0f);
+        ImGui::TableSetupColumn("Best Model");
+        ImGui::TableSetupColumn("Score", ImGuiTableColumnFlags_WidthFixed, 72.0f);
+        ImGui::TableSetupColumn("Latency", ImGuiTableColumnFlags_WidthFixed, 82.0f);
+        ImGui::TableSetupColumn("Runs", ImGuiTableColumnFlags_WidthFixed, 58.0f);
+        ImGui::TableHeadersRow();
+        for (const ModelBenchmarkSuiteSummaryInfo& summary : model_benchmarks_.suite_summaries) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            TextColor(summary.suite_label.empty() ? summary.suite_id : summary.suite_label, summary.best_score >= 0.75 ? Rgba(38, 221, 123) : Rgba(246, 248, 251));
+            ImGui::TableSetColumnIndex(1);
+            TextMuted(summary.best_model_name.empty() ? "No benchmark data" : Shorten(summary.best_model_name, 54));
+            ImGui::TableSetColumnIndex(2);
+            TextMuted(summary.best_model_name.empty() ? "-" : FormatPercent(summary.best_score));
+            ImGui::TableSetColumnIndex(3);
+            TextMuted(summary.has_best_latency_ms ? std::to_string(summary.best_latency_ms) + " ms" : "-");
+            ImGui::TableSetColumnIndex(4);
+            TextMuted(std::to_string(summary.run_count));
+        }
+        ImGui::EndTable();
+    }
+    if (!model_benchmarks_.provider_scores.empty() &&
+        ImGui::BeginTable("model_benchmark_provider_scores", 7, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+        ImGui::TableSetupColumn("Provider", ImGuiTableColumnFlags_WidthFixed, 132.0f);
+        ImGui::TableSetupColumn("Model");
+        ImGui::TableSetupColumn("Overall", ImGuiTableColumnFlags_WidthFixed, 76.0f);
+        ImGui::TableSetupColumn("Chat", ImGuiTableColumnFlags_WidthFixed, 68.0f);
+        ImGui::TableSetupColumn("Code", ImGuiTableColumnFlags_WidthFixed, 68.0f);
+        ImGui::TableSetupColumn("Reason", ImGuiTableColumnFlags_WidthFixed, 68.0f);
+        ImGui::TableSetupColumn("Fit", ImGuiTableColumnFlags_WidthFixed, 190.0f);
+        ImGui::TableHeadersRow();
+        const int visible_scores = std::min(8, static_cast<int>(model_benchmarks_.provider_scores.size()));
+        for (int i = 0; i < visible_scores; ++i) {
+            const ModelBenchmarkProviderScoreInfo& score = model_benchmarks_.provider_scores[static_cast<size_t>(i)];
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            TextMuted(Shorten(score.provider_label.empty() ? score.provider_id : score.provider_label, 28));
+            ImGui::TableSetColumnIndex(1);
+            TextColor(Shorten(score.model_name.empty() ? score.provider_id : score.model_name, 42), i == 0 ? Rgba(38, 221, 123) : Rgba(246, 248, 251));
+            ImGui::TableSetColumnIndex(2);
+            TextColor(FormatPercent(score.overall_score), score.overall_score >= 0.75 ? Rgba(38, 221, 123) : Rgba(205, 154, 82));
+            ImGui::TableSetColumnIndex(3);
+            TextMuted(FormatPercent(score.chat_score, score.has_chat_score));
+            ImGui::TableSetColumnIndex(4);
+            TextMuted(FormatPercent(score.code_score, score.has_code_score));
+            ImGui::TableSetColumnIndex(5);
+            TextMuted(FormatPercent(score.reasoning_score, score.has_reasoning_score));
+            ImGui::TableSetColumnIndex(6);
+            TextMuted(Shorten(score.recommendation.empty() ? "-" : score.recommendation, 42));
+        }
+        ImGui::EndTable();
+    }
+    if (!model_benchmarks_.recommendations.empty()) {
+        for (size_t i = 0; i < std::min<size_t>(3, model_benchmarks_.recommendations.size()); ++i) {
+            TextMuted("- " + Shorten(model_benchmarks_.recommendations[i], 132));
+        }
     }
 
     ImGui::Separator();
@@ -6853,10 +13535,514 @@ void AegisChatApp::RenderModelStackModal()
     }
 
     ImGui::Separator();
+    TextColor("Managed Model Library", Rgba(246, 248, 251));
+    TextMuted("Pull missing local Ollama models when there is enough C-drive headroom, or remove inactive installed models to reclaim space.");
+    if (!model_manager_.pull_logs.empty()) {
+        if (ImGui::BeginTable("model_pull_log_summary", 5, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+            ImGui::TableSetupColumn("Pack", ImGuiTableColumnFlags_WidthFixed, 140.0f);
+            ImGui::TableSetupColumn("Pulled", ImGuiTableColumnFlags_WidthFixed, 68.0f);
+            ImGui::TableSetupColumn("Skipped", ImGuiTableColumnFlags_WidthFixed, 72.0f);
+            ImGui::TableSetupColumn("Failed", ImGuiTableColumnFlags_WidthFixed, 64.0f);
+            ImGui::TableSetupColumn("Latest");
+            ImGui::TableHeadersRow();
+            for (const ModelPullLogSummaryInfo& summary : model_manager_.pull_logs) {
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+                TextMuted(summary.source.empty() ? "pull log" : summary.source);
+                ImGui::TableSetColumnIndex(1);
+                TextColor(std::to_string(summary.pulled), summary.pulled > 0 ? Rgba(38, 221, 123) : Rgba(133, 146, 161));
+                ImGui::TableSetColumnIndex(2);
+                TextMuted(std::to_string(summary.skipped));
+                ImGui::TableSetColumnIndex(3);
+                TextColor(std::to_string(summary.failed), summary.failed > 0 ? Rgba(248, 113, 113) : Rgba(133, 146, 161));
+                ImGui::TableSetColumnIndex(4);
+                TextMuted(Shorten(summary.latest_at, 48));
+            }
+            ImGui::EndTable();
+        }
+        ImGui::Dummy(ImVec2(0.0f, 6.0f));
+    }
+    if (!model_manager_.operations.empty()) {
+        const ModelOperationInfo& latest = model_manager_.operations.front();
+        TextMuted("Latest operation: " + latest.action + " " + latest.model_name + " - " + latest.status);
+    }
+    if (model_manager_.models.empty()) {
+        TextMuted("No managed model records are loaded yet.");
+    } else if (ImGui::BeginTable("managed_model_library_table", 9, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+        ImGui::TableSetupColumn("State", ImGuiTableColumnFlags_WidthFixed, 78.0f);
+        ImGui::TableSetupColumn("Model");
+        ImGui::TableSetupColumn("Roles", ImGuiTableColumnFlags_WidthFixed, 150.0f);
+        ImGui::TableSetupColumn("Size", ImGuiTableColumnFlags_WidthFixed, 84.0f);
+        ImGui::TableSetupColumn("Pull Est.", ImGuiTableColumnFlags_WidthFixed, 84.0f);
+        ImGui::TableSetupColumn("Health", ImGuiTableColumnFlags_WidthFixed, 118.0f);
+        ImGui::TableSetupColumn("Pull", ImGuiTableColumnFlags_WidthFixed, 64.0f);
+        ImGui::TableSetupColumn("Bench", ImGuiTableColumnFlags_WidthFixed, 72.0f);
+        ImGui::TableSetupColumn("Remove", ImGuiTableColumnFlags_WidthFixed, 72.0f);
+        ImGui::TableHeadersRow();
+        const int visible_count = std::min(36, static_cast<int>(model_manager_.models.size()));
+        for (int i = 0; i < visible_count; ++i) {
+            const ManagedModelInfo& model = model_manager_.models[static_cast<size_t>(i)];
+            ImGui::PushID(i);
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            const bool ready = model.installed || model.configured;
+            Pill(model.active ? "Active" : (ready ? "Ready" : (model.pullable ? "Pull" : "Cloud")),
+                 model.active || ready ? Rgba(38, 221, 123) : (model.pullable ? Rgba(205, 154, 82) : Rgba(133, 146, 161)));
+            ImGui::TableSetColumnIndex(1);
+            TextColor(Shorten(model.name.empty() ? model.provider_id : model.name, 42), model.active ? Rgba(38, 221, 123) : Rgba(246, 248, 251));
+            ImGui::TableSetColumnIndex(2);
+            TextMuted(Shorten(JoinPalette(model.roles), 36));
+            ImGui::TableSetColumnIndex(3);
+            TextMuted(model.has_size_bytes ? FormatModelBytes(model.size_bytes) : "-");
+            ImGui::TableSetColumnIndex(4);
+            TextMuted(model.has_estimated_pull_bytes ? FormatModelBytes(model.estimated_pull_bytes) : "-");
+            ImGui::TableSetColumnIndex(5);
+            TextMuted(Shorten(model.health.empty() ? model.notes : model.health, 24));
+            ImGui::TableSetColumnIndex(6);
+            const bool can_pull = model.pullable && !model_manager_.disk.low_space && !busy_;
+            ImGui::BeginDisabled(!can_pull);
+            if (ImGui::Button("Pull", ImVec2(-1.0f, 0.0f))) {
+                PullManagedModel(model);
+            }
+            ImGui::EndDisabled();
+            if (!can_pull && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+                ImGui::SetTooltip("%s", model_manager_.disk.low_space ? "Free more disk or lower reserve before pulling." : "Model is already installed, cloud-only, disabled, or busy.");
+            }
+            ImGui::TableSetColumnIndex(7);
+            const bool can_benchmark = !busy_ && !benchmark_job_active && CanBenchmarkManagedModel(model);
+            ImGui::BeginDisabled(!can_benchmark);
+            if (ImGui::Button("Bench", ImVec2(-1.0f, 0.0f))) {
+                RunManagedModelBenchmark(model);
+            }
+            ImGui::EndDisabled();
+            if (!can_benchmark && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+                ImGui::SetTooltip("%s", "Only installed local chat, code, or reasoning models can be benchmarked.");
+            }
+            ImGui::TableSetColumnIndex(8);
+            const bool can_remove = model.local && model.installed && !model.active && !busy_;
+            ImGui::BeginDisabled(!can_remove);
+            if (ImGui::Button("Remove", ImVec2(-1.0f, 0.0f))) {
+                DeleteManagedModel(model);
+            }
+            ImGui::EndDisabled();
+            if (!can_remove && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+                ImGui::SetTooltip("%s", model.active ? "Select another active model before removing this one." : "Only inactive installed local Ollama models can be removed.");
+            }
+            ImGui::PopID();
+        }
+        ImGui::EndTable();
+        if (model_manager_.models.size() > static_cast<size_t>(visible_count)) {
+            TextMuted("Showing " + std::to_string(visible_count) + " of " + std::to_string(model_manager_.models.size()) + " managed model records.");
+        }
+    }
+
+    ImGui::Separator();
     TextColor("Provider Registry", Rgba(246, 248, 251));
     TextMuted(model_registry_.message.empty()
         ? "Provider registry will appear after the backend refreshes to the latest code."
         : model_registry_.message);
+
+    ImGui::Dummy(ImVec2(0.0f, 6.0f));
+    TextColor("Registry Audit", Rgba(246, 248, 251));
+    if (!model_registry_audit_error_.empty()) {
+        TextColor("Audit unavailable: " + Shorten(model_registry_audit_error_, 126), Rgba(248, 113, 113));
+    } else if (model_registry_audit_loaded_) {
+        const bool blocked = model_registry_audit_.status == "blocked";
+        const bool ready = model_registry_audit_.status == "ready";
+        ImGui::Columns(4, "model_registry_audit_summary", false);
+        TextMuted("Score");
+        TextColor(std::to_string(model_registry_audit_.readiness_score) + "/100",
+            blocked ? Rgba(248, 113, 113) : (ready ? Rgba(38, 221, 123) : Rgba(205, 154, 82)));
+        ImGui::NextColumn();
+        TextMuted("Providers");
+        TextColor(
+            std::to_string(model_registry_audit_.configured_provider_count) + " configured / " +
+                std::to_string(model_registry_audit_.provider_count),
+            Rgba(246, 248, 251));
+        ImGui::NextColumn();
+        TextMuted("Routes");
+        TextColor(std::to_string(model_registry_audit_.role_count) + " roles", Rgba(246, 248, 251));
+        ImGui::NextColumn();
+        TextMuted("Issues");
+        TextColor(std::to_string(model_registry_audit_.issues.size()),
+            model_registry_audit_.issues.empty() ? Rgba(38, 221, 123) : Rgba(205, 154, 82));
+        ImGui::Columns(1);
+        DrawProgress(std::clamp(model_registry_audit_.readiness_score / 100.0f, 0.0f, 1.0f), ImVec2(ImGui::GetContentRegionAvail().x, 8.0f), blocked);
+        if (!model_registry_audit_.route_coverages.empty() &&
+            ImGui::BeginTable("model_registry_audit_routes", 5, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+            ImGui::TableSetupColumn("Route", ImGuiTableColumnFlags_WidthFixed, 118.0f);
+            ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_WidthFixed, 86.0f);
+            ImGui::TableSetupColumn("Primary");
+            ImGui::TableSetupColumn("Configured", ImGuiTableColumnFlags_WidthFixed, 92.0f);
+            ImGui::TableSetupColumn("Fallbacks", ImGuiTableColumnFlags_WidthFixed, 82.0f);
+            ImGui::TableHeadersRow();
+            const int route_count = std::min(6, static_cast<int>(model_registry_audit_.route_coverages.size()));
+            for (int i = 0; i < route_count; ++i) {
+                const ModelRegistryRouteCoverageInfo& route = model_registry_audit_.route_coverages[static_cast<size_t>(i)];
+                const bool route_ready = route.status == "ready";
+                const bool route_missing = route.status == "missing";
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+                TextColor(route.label.empty() ? route.role : route.label, route_ready ? Rgba(38, 221, 123) : Rgba(246, 248, 251));
+                ImGui::TableSetColumnIndex(1);
+                Pill(route.status.empty() ? "unknown" : route.status.c_str(),
+                    route_ready ? Rgba(38, 221, 123) : (route_missing ? Rgba(248, 113, 113) : Rgba(205, 154, 82)));
+                ImGui::TableSetColumnIndex(2);
+                TextMuted(route.primary_model.empty() ? "-" : Shorten(route.primary_model, 42));
+                ImGui::TableSetColumnIndex(3);
+                TextMuted(std::to_string(route.configured_provider_count) + " / " + std::to_string(route.eligible_provider_count));
+                ImGui::TableSetColumnIndex(4);
+                TextMuted(std::to_string(route.fallback_configured_count));
+            }
+            ImGui::EndTable();
+        }
+        if (!model_registry_audit_.setup_actions.empty()) {
+            ImGui::Dummy(ImVec2(0.0f, 4.0f));
+            TextColor("Next Setup Actions", Rgba(246, 248, 251));
+            const int action_count = std::min(5, static_cast<int>(model_registry_audit_.setup_actions.size()));
+            if (ImGui::BeginTable("model_registry_setup_actions", 4, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+                ImGui::TableSetupColumn("Priority", ImGuiTableColumnFlags_WidthFixed, 82.0f);
+                ImGui::TableSetupColumn("Action", ImGuiTableColumnFlags_WidthFixed, 180.0f);
+                ImGui::TableSetupColumn("Detail");
+                ImGui::TableSetupColumn("Copy", ImGuiTableColumnFlags_WidthFixed, 62.0f);
+                ImGui::TableHeadersRow();
+                for (int i = 0; i < action_count; ++i) {
+                    const ModelRegistrySetupActionInfo& action = model_registry_audit_.setup_actions[static_cast<size_t>(i)];
+                    const bool critical = action.priority == "critical";
+                    const bool high = action.priority == "high";
+                    const bool low = action.priority == "low";
+                    const ImVec4 priority_color = critical ? Rgba(248, 113, 113) : (high ? Rgba(205, 154, 82) : (low ? Rgba(151, 160, 171) : Rgba(82, 196, 205)));
+                    const std::string priority = action.priority.empty() ? "medium" : action.priority;
+                    const std::string title = action.title.empty() ? action.kind : action.title;
+                    const std::string copy_text = action.command.empty() ? action.env_var : action.command;
+                    ImGui::PushID(i);
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+                    Pill(Shorten(priority, 10).c_str(), priority_color);
+                    ImGui::TableSetColumnIndex(1);
+                    TextColor(Shorten(title, 34), Rgba(246, 248, 251));
+                    if (!action.kind.empty()) {
+                        TextMuted(Shorten(action.kind, 20));
+                    }
+                    ImGui::TableSetColumnIndex(2);
+                    TextMuted(Shorten(action.detail, 92));
+                    if (!action.recommendation.empty()) {
+                        TextMuted(Shorten(action.recommendation, 92));
+                    }
+                    ImGui::TableSetColumnIndex(3);
+                    ImGui::BeginDisabled(copy_text.empty());
+                    if (ImGui::Button("Copy")) {
+                        ImGui::SetClipboardText(copy_text.c_str());
+                        status_ = action.command.empty() ? "Copied setup environment variable." : "Copied setup command.";
+                    }
+                    ImGui::EndDisabled();
+                    ImGui::PopID();
+                }
+                ImGui::EndTable();
+            }
+        }
+        if (!model_registry_audit_.adapter_health.empty()) {
+            ImGui::Dummy(ImVec2(0.0f, 4.0f));
+            TextColor("Adapter Health", Rgba(246, 248, 251));
+            const int adapter_count = std::min(8, static_cast<int>(model_registry_audit_.adapter_health.size()));
+            if (ImGui::BeginTable("model_registry_adapter_health", 7, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+                ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_WidthFixed, 104.0f);
+                ImGui::TableSetupColumn("Provider", ImGuiTableColumnFlags_WidthFixed, 154.0f);
+                ImGui::TableSetupColumn("API", ImGuiTableColumnFlags_WidthFixed, 86.0f);
+                ImGui::TableSetupColumn("Model", ImGuiTableColumnFlags_WidthFixed, 142.0f);
+                ImGui::TableSetupColumn("Attempts", ImGuiTableColumnFlags_WidthFixed, 112.0f);
+                ImGui::TableSetupColumn("Secret", ImGuiTableColumnFlags_WidthFixed, 132.0f);
+                ImGui::TableSetupColumn("Message");
+                ImGui::TableHeadersRow();
+                for (int i = 0; i < adapter_count; ++i) {
+                    const ModelAdapterHealthInfo& adapter = model_registry_audit_.adapter_health[static_cast<size_t>(i)];
+                    const std::string adapter_status = adapter.status.empty() ? "unknown" : adapter.status;
+                    const bool ready_adapter = adapter_status == "ready";
+                    const bool blocked_adapter =
+                        adapter_status == "missing_secret" ||
+                        adapter_status == "missing_model" ||
+                        adapter_status == "unsupported_api" ||
+                        adapter_status == "unconfigured";
+                    const bool muted_adapter = adapter_status == "disabled";
+                    const ImVec4 adapter_color = ready_adapter
+                        ? Rgba(38, 221, 123)
+                        : (muted_adapter ? Rgba(151, 160, 171) : (blocked_adapter ? Rgba(248, 113, 113) : Rgba(205, 154, 82)));
+                    std::string attempts = std::to_string(adapter.recent_successes) + " ok / " +
+                        std::to_string(adapter.recent_failures) + " fail";
+                    if (adapter.recent_skips > 0 || adapter.preflight_skips > 0) {
+                        attempts += " / " + std::to_string(adapter.recent_skips + adapter.preflight_skips) + " skip";
+                    }
+                    if (adapter.recent_attempts == 0 && adapter.preflight_skips == 0) {
+                        attempts = "-";
+                    }
+                    std::string secret = adapter.local ? "local" : "not required";
+                    if (!adapter.secret_env.empty()) {
+                        secret = Shorten(adapter.secret_env, 24) + (adapter.secret_present ? " set" : " missing");
+                    }
+                    std::string adapter_message = adapter.message;
+                    if (adapter_message.empty()) {
+                        adapter_message = adapter.recommendation;
+                    }
+                    if (adapter_message.empty()) {
+                        adapter_message = adapter.latest_error;
+                    }
+                    if (adapter_message.empty()) {
+                        adapter_message = adapter.error_code;
+                    }
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+                    Pill(Shorten(adapter_status, 14).c_str(), adapter_color);
+                    ImGui::TableSetColumnIndex(1);
+                    TextColor(Shorten(adapter.provider_label.empty() ? adapter.provider_id : adapter.provider_label, 28),
+                        ready_adapter ? Rgba(38, 221, 123) : Rgba(246, 248, 251));
+                    ImGui::TableSetColumnIndex(2);
+                    TextMuted(Shorten(adapter.api.empty() ? "-" : adapter.api, 18));
+                    ImGui::TableSetColumnIndex(3);
+                    TextMuted(Shorten(adapter.model.empty() ? (adapter.endpoint.empty() ? "-" : adapter.endpoint) : adapter.model, 30));
+                    ImGui::TableSetColumnIndex(4);
+                    TextMuted(attempts);
+                    ImGui::TableSetColumnIndex(5);
+                    TextMuted(secret);
+                    ImGui::TableSetColumnIndex(6);
+                    TextMuted(Shorten(adapter_message.empty() ? "-" : adapter_message, 88));
+                }
+                ImGui::EndTable();
+            }
+            for (const ModelAdapterHealthInfo& adapter : model_registry_audit_.adapter_health) {
+                if (adapter.status != "ready" && !adapter.recommendation.empty()) {
+                    TextMuted("- " + Shorten(adapter.recommendation, 132));
+                    break;
+                }
+            }
+        }
+        if (!model_registry_audit_.tokenizer_diagnostics.empty()) {
+            const auto tokenizer_status_color = [](const std::string& status) {
+                const std::string lowered = Lower(status);
+                if (lowered == "exact" || lowered == "profiled") {
+                    return Rgba(38, 221, 123);
+                }
+                if (lowered == "missing") {
+                    return Rgba(248, 113, 113);
+                }
+                if (lowered == "heuristic" || lowered == "mixed") {
+                    return Rgba(205, 154, 82);
+                }
+                return Rgba(151, 160, 171);
+            };
+            const auto calibration_status_color = [](const std::string& status) {
+                const std::string lowered = Lower(status);
+                if (lowered == "stable") {
+                    return Rgba(38, 221, 123);
+                }
+                if (lowered == "watch") {
+                    return Rgba(205, 154, 82);
+                }
+                if (lowered == "drift") {
+                    return Rgba(248, 113, 113);
+                }
+                return Rgba(151, 160, 171);
+            };
+
+            int observed_count = 0;
+            int exact_or_profiled_count = 0;
+            int heuristic_or_missing_count = 0;
+            int calibrated_count = 0;
+            int calibration_attention_count = 0;
+            for (const ModelTokenizerDiagnosticInfo& diagnostic : model_registry_audit_.tokenizer_diagnostics) {
+                const std::string lowered = Lower(diagnostic.status);
+                const std::string calibration_lowered = Lower(diagnostic.calibration_status);
+                if (diagnostic.recent_attempts > 0) {
+                    ++observed_count;
+                }
+                if (lowered == "exact" || lowered == "profiled") {
+                    ++exact_or_profiled_count;
+                }
+                if (lowered == "missing" || lowered == "heuristic" || lowered == "mixed") {
+                    ++heuristic_or_missing_count;
+                }
+                if (diagnostic.calibrated_attempts > 0) {
+                    ++calibrated_count;
+                }
+                if (calibration_lowered == "watch" || calibration_lowered == "drift") {
+                    ++calibration_attention_count;
+                }
+            }
+
+            ImGui::Dummy(ImVec2(0.0f, 4.0f));
+            TextColor("Tokenizer Diagnostics", Rgba(246, 248, 251));
+            ImGui::Columns(5, "model_registry_tokenizer_summary", false);
+            TextMuted("Observed");
+            TextColor(std::to_string(observed_count), Rgba(246, 248, 251));
+            ImGui::NextColumn();
+            TextMuted("Profiled/Exact");
+            TextColor(std::to_string(exact_or_profiled_count), exact_or_profiled_count > 0 ? Rgba(38, 221, 123) : Rgba(151, 160, 171));
+            ImGui::NextColumn();
+            TextMuted("Needs Work");
+            TextColor(std::to_string(heuristic_or_missing_count), heuristic_or_missing_count > 0 ? Rgba(205, 154, 82) : Rgba(38, 221, 123));
+            ImGui::NextColumn();
+            TextMuted("Calibrated");
+            TextColor(std::to_string(calibrated_count), calibrated_count > 0 ? Rgba(38, 221, 123) : Rgba(151, 160, 171));
+            ImGui::NextColumn();
+            TextMuted("Providers");
+            TextColor(std::to_string(model_registry_audit_.tokenizer_diagnostics.size()), Rgba(246, 248, 251));
+            ImGui::Columns(1);
+            if (calibration_attention_count > 0) {
+                TextColor(std::to_string(calibration_attention_count) + " provider(s) have token calibration drift or watch warnings.", Rgba(205, 154, 82));
+            }
+            const int diagnostic_count = std::min(8, static_cast<int>(model_registry_audit_.tokenizer_diagnostics.size()));
+            if (ImGui::BeginTable("model_registry_tokenizer_diagnostics", 9, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+                ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_WidthFixed, 82.0f);
+                ImGui::TableSetupColumn("Provider", ImGuiTableColumnFlags_WidthFixed, 130.0f);
+                ImGui::TableSetupColumn("API", ImGuiTableColumnFlags_WidthFixed, 68.0f);
+                ImGui::TableSetupColumn("Model", ImGuiTableColumnFlags_WidthFixed, 110.0f);
+                ImGui::TableSetupColumn("Window", ImGuiTableColumnFlags_WidthFixed, 84.0f);
+                ImGui::TableSetupColumn("Attempts", ImGuiTableColumnFlags_WidthFixed, 78.0f);
+                ImGui::TableSetupColumn("Source", ImGuiTableColumnFlags_WidthFixed, 114.0f);
+                ImGui::TableSetupColumn("Calib", ImGuiTableColumnFlags_WidthFixed, 94.0f);
+                ImGui::TableSetupColumn("Recommendation");
+                ImGui::TableHeadersRow();
+                for (int i = 0; i < diagnostic_count; ++i) {
+                    const ModelTokenizerDiagnosticInfo& diagnostic = model_registry_audit_.tokenizer_diagnostics[static_cast<size_t>(i)];
+                    const std::string provider = diagnostic.provider_label.empty() ? diagnostic.provider_id : diagnostic.provider_label;
+                    std::string window = diagnostic.has_context_window ? std::to_string(diagnostic.context_window) : "-";
+                    if (diagnostic.has_average_context_utilization) {
+                        window += " / " + FormatPercent(diagnostic.average_context_utilization);
+                    }
+                    const std::string attempts =
+                        std::to_string(diagnostic.recent_attempts) +
+                        " (" + std::to_string(diagnostic.exact_attempts) +
+                        "/" + std::to_string(diagnostic.profiled_attempts) +
+                        "/" + std::to_string(diagnostic.heuristic_attempts) +
+                        "/" + std::to_string(diagnostic.missing_attempts) + ")";
+                    const std::string source = diagnostic.primary_estimator_source.empty()
+                        ? (diagnostic.estimator_sources.empty() ? "-" : diagnostic.estimator_sources.front())
+                        : diagnostic.primary_estimator_source;
+                    std::string calibration = diagnostic.calibration_status.empty() ? "insufficient" : diagnostic.calibration_status;
+                    if (diagnostic.calibrated_attempts > 0) {
+                        calibration += " " + std::to_string(diagnostic.calibrated_attempts);
+                        if (diagnostic.has_average_input_token_error || diagnostic.has_average_output_token_error) {
+                            calibration += " ";
+                            calibration += diagnostic.has_average_input_token_error ? FormatPercent(diagnostic.average_input_token_error) : "-";
+                            calibration += "/";
+                            calibration += diagnostic.has_average_output_token_error ? FormatPercent(diagnostic.average_output_token_error) : "-";
+                        }
+                    }
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+                    Pill(Shorten(diagnostic.status.empty() ? "unknown" : diagnostic.status, 12).c_str(), tokenizer_status_color(diagnostic.status));
+                    ImGui::TableSetColumnIndex(1);
+                    TextColor(Shorten(provider.empty() ? "-" : provider, 28), Rgba(246, 248, 251));
+                    ImGui::TableSetColumnIndex(2);
+                    TextMuted(Shorten(diagnostic.api.empty() ? "-" : diagnostic.api, 18));
+                    ImGui::TableSetColumnIndex(3);
+                    TextMuted(Shorten(diagnostic.model.empty() ? "-" : diagnostic.model, 28));
+                    ImGui::TableSetColumnIndex(4);
+                    TextMuted(window);
+                    ImGui::TableSetColumnIndex(5);
+                    TextMuted(attempts);
+                    ImGui::TableSetColumnIndex(6);
+                    TextMuted(Shorten(source, 28));
+                    ImGui::TableSetColumnIndex(7);
+                    TextColor(Shorten(calibration, 24), calibration_status_color(diagnostic.calibration_status));
+                    if (ImGui::IsItemHovered()) {
+                        std::string tooltip = diagnostic.calibration_recommendation.empty() ? "Provider has not reported token usage yet." : diagnostic.calibration_recommendation;
+                        if (!diagnostic.reported_token_sources.empty()) {
+                            tooltip += "\nSources: " + JoinList(diagnostic.reported_token_sources);
+                        }
+                        ImGui::SetTooltip("%s", tooltip.c_str());
+                    }
+                    ImGui::TableSetColumnIndex(8);
+                    TextMuted(Shorten(diagnostic.recommendation.empty() ? "-" : diagnostic.recommendation, 82));
+                }
+                ImGui::EndTable();
+            }
+            if (model_registry_audit_.tokenizer_diagnostics.size() > static_cast<size_t>(diagnostic_count)) {
+                TextMuted("Showing " + std::to_string(diagnostic_count) + " of " + std::to_string(model_registry_audit_.tokenizer_diagnostics.size()) + " tokenizer diagnostics.");
+            }
+        }
+        if (!model_registry_audit_.issues.empty()) {
+            const int issue_count = std::min(3, static_cast<int>(model_registry_audit_.issues.size()));
+            for (int i = 0; i < issue_count; ++i) {
+                const ModelRegistryAuditIssueInfo& issue = model_registry_audit_.issues[static_cast<size_t>(i)];
+                const bool error = issue.severity == "error";
+                TextColor("- " + Shorten(issue.message, 126), error ? Rgba(248, 113, 113) : Rgba(205, 154, 82));
+            }
+        } else if (!model_registry_audit_.recommendations.empty()) {
+            TextMuted("- " + Shorten(model_registry_audit_.recommendations.front(), 132));
+        }
+    } else {
+        TextMuted("Refresh Model Manager to audit route coverage and provider configuration.");
+    }
+
+    ImGui::Dummy(ImVec2(0.0f, 6.0f));
+    TextColor("Provider Blueprints", Rgba(246, 248, 251));
+    TextMuted("Stage common local and cloud providers without storing secrets in the desktop app.");
+    const ProviderBlueprint& selected_blueprint = ModelProviderBlueprintAt(selected_provider_blueprint_index_);
+    if (ImGui::BeginCombo("Blueprint", selected_blueprint.label)) {
+        for (int i = 0; i < ProviderBlueprintCount(); ++i) {
+            const ProviderBlueprint& blueprint = ModelProviderBlueprintAt(i);
+            const bool selected = selected_provider_blueprint_index_ == i;
+            if (ImGui::Selectable(blueprint.label, selected)) {
+                selected_provider_blueprint_index_ = i;
+            }
+            if (selected) {
+                ImGui::SetItemDefaultFocus();
+            }
+        }
+        ImGui::EndCombo();
+    }
+    if (ImGui::BeginTable("provider_blueprint_preview", 5, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+        ImGui::TableSetupColumn("API", ImGuiTableColumnFlags_WidthFixed, 122.0f);
+        ImGui::TableSetupColumn("Target", ImGuiTableColumnFlags_WidthFixed, 78.0f);
+        ImGui::TableSetupColumn("Secret", ImGuiTableColumnFlags_WidthFixed, 150.0f);
+        ImGui::TableSetupColumn("Roles");
+        ImGui::TableSetupColumn("Model Hint", ImGuiTableColumnFlags_WidthFixed, 168.0f);
+        ImGui::TableHeadersRow();
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        TextMuted(selected_blueprint.api);
+        ImGui::TableSetColumnIndex(1);
+        Pill(selected_blueprint.local ? "Local" : "Cloud", selected_blueprint.local ? Rgba(38, 221, 123) : Rgba(205, 154, 82));
+        ImGui::TableSetColumnIndex(2);
+        TextMuted(selected_blueprint.env_var[0] == '\0' ? "none" : selected_blueprint.env_var);
+        ImGui::TableSetColumnIndex(3);
+        TextMuted(Shorten(selected_blueprint.roles, 70));
+        ImGui::TableSetColumnIndex(4);
+        TextMuted(Shorten(selected_blueprint.default_model, 34));
+        ImGui::EndTable();
+    }
+    ImGui::BeginDisabled(busy_);
+    if (ImGui::Button("Stage Blueprint")) {
+        HydrateModelProviderBlueprint(selected_provider_blueprint_index_);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Stage Model Target")) {
+        SetBuffer(model_api_buffer_, selected_blueprint.api);
+        SetBuffer(model_endpoint_buffer_, selected_blueprint.endpoint);
+        const std::string model_hint = selected_blueprint.default_model;
+        if (!model_hint.empty() &&
+            model_hint.find("Configure") == std::string::npos &&
+            model_hint.find("Pick") == std::string::npos) {
+            SetBuffer(model_name_buffer_, model_hint);
+        }
+        status_ = "Staged model target from " + std::string(selected_blueprint.label) + ". Save Aegis Settings to persist it.";
+        PushToast("Model target staged", selected_blueprint.label, "info");
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Copy Setup Notes")) {
+        ImGui::SetClipboardText(ProviderBlueprintSetupText(selected_blueprint).c_str());
+        status_ = "Copied provider setup notes.";
+    }
+    ImGui::SameLine();
+    ImGui::BeginDisabled(selected_blueprint.env_var[0] == '\0');
+    if (ImGui::Button("Copy Env Name")) {
+        ImGui::SetClipboardText(selected_blueprint.env_var);
+        status_ = "Copied provider environment variable name.";
+    }
+    ImGui::EndDisabled();
+    ImGui::EndDisabled();
+    ImGui::Dummy(ImVec2(0.0f, 6.0f));
+
     if (ImGui::Button("New Provider")) {
         HydrateModelProviderEditor(nullptr, -1);
     }
@@ -6873,7 +14059,7 @@ void AegisChatApp::RenderModelStackModal()
         ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_WidthFixed, 82.0f);
         ImGui::TableSetupColumn("Provider");
         ImGui::TableSetupColumn("API", ImGuiTableColumnFlags_WidthFixed, 110.0f);
-        ImGui::TableSetupColumn("Target", ImGuiTableColumnFlags_WidthFixed, 86.0f);
+        ImGui::TableSetupColumn("Model", ImGuiTableColumnFlags_WidthFixed, 150.0f);
         ImGui::TableSetupColumn("Roles", ImGuiTableColumnFlags_WidthFixed, 180.0f);
         ImGui::TableSetupColumn("Notes");
         ImGui::TableSetupColumn("Edit", ImGuiTableColumnFlags_WidthFixed, 70.0f);
@@ -6890,7 +14076,7 @@ void AegisChatApp::RenderModelStackModal()
             ImGui::TableSetColumnIndex(2);
             TextMuted(provider.api.empty() ? "-" : provider.api);
             ImGui::TableSetColumnIndex(3);
-            TextMuted(provider.local ? "Local" : "Cloud");
+            TextMuted(provider.model_name.empty() ? (provider.local ? "local target" : "cloud target") : Shorten(provider.model_name, 28));
             ImGui::TableSetColumnIndex(4);
             TextMuted(Shorten(JoinPalette(provider.roles), 42));
             ImGui::TableSetColumnIndex(5);
@@ -6912,14 +14098,27 @@ void AegisChatApp::RenderModelStackModal()
         ImGui::InputText("Provider Id", provider_id_buffer_.data(), provider_id_buffer_.size());
         ImGui::InputText("Label", provider_label_buffer_.data(), provider_label_buffer_.size());
         ImGui::InputText("API", provider_api_buffer_.data(), provider_api_buffer_.size());
+        ImGui::InputText("Model", provider_model_buffer_.data(), provider_model_buffer_.size());
+        ImGui::InputText("Aliases", provider_aliases_buffer_.data(), provider_aliases_buffer_.size());
         ImGui::NextColumn();
         ImGui::InputText("Endpoint", provider_endpoint_buffer_.data(), provider_endpoint_buffer_.size());
+        ImGui::InputText("Secret Env", provider_secret_env_buffer_.data(), provider_secret_env_buffer_.size());
+        ImGui::InputText("Cost Tier", provider_cost_tier_buffer_.data(), provider_cost_tier_buffer_.size());
         ImGui::InputText("Health", provider_health_buffer_.data(), provider_health_buffer_.size());
         ImGui::Checkbox("Local provider", &model_provider_local_);
         ImGui::SameLine();
         ImGui::Checkbox("Enabled", &model_provider_enabled_);
         ImGui::SameLine();
         ImGui::Checkbox("Configured", &model_provider_configured_);
+        ImGui::Columns(1);
+        ImGui::Columns(4, "model_provider_limits_columns", false);
+        ImGui::InputInt("Context", &model_provider_context_window_, 0, 0);
+        ImGui::NextColumn();
+        ImGui::InputInt("RPM", &model_provider_rate_limit_rpm_, 0, 0);
+        ImGui::NextColumn();
+        ImGui::InputFloat("Input / 1M", &model_provider_input_cost_per_million_, 0.0f, 0.0f, "%.4f");
+        ImGui::NextColumn();
+        ImGui::InputFloat("Output / 1M", &model_provider_output_cost_per_million_, 0.0f, 0.0f, "%.4f");
         ImGui::Columns(1);
         ImGui::InputText("Capabilities", provider_capabilities_buffer_.data(), provider_capabilities_buffer_.size());
         ImGui::InputText("Roles", provider_roles_buffer_.data(), provider_roles_buffer_.size());
@@ -7011,7 +14210,7 @@ void AegisChatApp::RenderModelStackModal()
     ImGui::Separator();
     TextColor("Next Router Targets", Rgba(246, 248, 251));
     const char* targets[] = {
-        "Add editable model registry CRUD for local and cloud providers.",
+        "Done: add editable model registry CRUD plus provider blueprints for local and cloud providers.",
         "Execute fallback chains so failed model calls recover automatically.",
         "Wire live task routing: chat, code, reasoning, research, vision, creative, embeddings, judge.",
         "Track latency, errors, tokens, and estimated cost per model.",
@@ -7033,7 +14232,7 @@ void AegisChatApp::RenderRoadmapModal()
     }
     ImGui::SameLine();
     if (ImGui::Button("Refresh Runtime")) {
-        RefreshRuntime(false);
+        RefreshRuntime(true);
     }
     ImGui::SameLine();
     if (ImGui::Button("Open Settings")) {
@@ -7068,6 +14267,7 @@ void AegisChatApp::RenderRoadmapModal()
             };
             const char* const model[] = {
                 "Done: model registry foundation exposes providers, roles, and routing presets.",
+                "Done: provider blueprints stage OpenAI, Claude, local, research, router, and judge lanes.",
                 "Done: desktop model selection from live inventory.",
                 "Route by task: chat, code, reasoning, research, vision, creative, embeddings, judge, and fallback.",
                 "Add fallback chains so one bad model does not kill the response.",
@@ -7211,7 +14411,7 @@ void AegisChatApp::RenderRoadmapModal()
             const char* const sprint3[] = {
                 "Registry storage and API.",
                 "Done: desktop model selection from live inventory.",
-                "Desktop registry editor.",
+                "Done: desktop registry editor with provider blueprint staging.",
                 "Provider adapter interface.",
                 "Routing policy and fallback chain."
             };
@@ -7764,6 +14964,11 @@ void AegisChatApp::RenderCommandPaletteModal()
         can_apply_selected_hunk = !BuildDiffHunks(BuildInlineDiffLines(change, workspace)).empty();
     }
     const bool can_fix_validation = has_response_ && ValidationFailed(last_response_) && !busy_;
+    const bool can_repair_verify_chain =
+        has_verification_result_ &&
+        verification_result_.has_first_failure &&
+        !ValidationPassed(verification_result_.first_failure) &&
+        !busy_;
 
     command("new_chat", IconGlyph::Plus, "New Chat", "Clear the current thread and start fresh.", true, [this]() {
         StartNewChat();
@@ -7797,6 +15002,21 @@ void AegisChatApp::RenderCommandPaletteModal()
     command("export_patch", IconGlyph::Document, "Export Patch", "Save the latest generated file changes as a .patch file.", has_response_ && !last_response_.changes.empty(), [this]() {
         ExportPatchFile();
     });
+    command("export_verification_report", IconGlyph::Document, "Export Verification Report", "Save the latest Full Verify result and repair activity as Markdown.", has_verification_result_, [this]() {
+        ExportVerificationReport();
+    });
+    command("open_verification_reports", IconGlyph::Documents, "Open Verification Reports", "Open the local folder for exported Full Verify reports.", true, [this]() {
+        OpenVerificationReportsFolder();
+    });
+    command("attach_latest_verification_report", IconGlyph::Attach, "Attach Latest Verification Report", "Attach the newest exported Full Verify report to the next chat message.", !RecentVerificationReportPaths(1).empty(), [this]() {
+        const std::vector<std::filesystem::path> reports = RecentVerificationReportPaths(1);
+        if (!reports.empty()) {
+            AttachVerificationReport(WideToUtf8(reports.front().wstring()));
+        }
+    });
+    command("prune_verification_reports", IconGlyph::Tools, "Prune Verification Reports", "Keep the latest 25 Full Verify reports and delete older Markdown reports.", true, [this]() {
+        PruneVerificationReports(25);
+    });
     command("apply_selected_change", IconGlyph::Bolt, "Apply Selected File", "Apply only the currently selected generated file change.", can_apply_selected_change, [this]() {
         ApplySelectedChange();
     });
@@ -7808,6 +15028,9 @@ void AegisChatApp::RenderCommandPaletteModal()
     });
     command("fix_validation", IconGlyph::Bolt, "Fix Validation", "Start a focused repair pass from the latest failing validation output.", can_fix_validation, [this]() {
         RepairLastValidationFailure();
+    });
+    command("repair_verify_until_clean", IconGlyph::Shield, "Repair Verify Until Clean", "Repair Full Verify failures one at a time, rerunning the full pipeline after each targeted fix.", can_repair_verify_chain, [this]() {
+        RepairLastValidationFailure(true);
     });
     command("checkpoints", IconGlyph::History, "Checkpoint Browser", "List workspace restore points and restore a selected checkpoint.", !busy_, [this]() {
         RefreshCheckpoints();
@@ -7823,6 +15046,11 @@ void AegisChatApp::RenderCommandPaletteModal()
         RefreshMemoryNotes();
         pending_popup_ = "Aegis Memory Center";
         status_ = "Opened memory center.";
+    });
+    command("planning_history", IconGlyph::History, "Planning History", "Inspect recent context budgets, model attempts, costs, and routing decisions.", !busy_, [this]() {
+        RefreshTelemetry();
+        pending_popup_ = "Aegis Planning History";
+        status_ = "Opened planning history.";
     });
     command("creative", IconGlyph::Image, "Creative Studio", "Open generated image, video, GIF, PSD, edit, and beat packages.", true, [this]() {
         pending_popup_ = "Aegis Creative Studio";
@@ -7850,6 +15078,14 @@ void AegisChatApp::RenderCommandPaletteModal()
         pending_popup_ = "Aegis Coding Routes";
         status_ = "Opened coding routes.";
     });
+    command("project_builder", IconGlyph::Plus, "New Project Builder", "Create a full starter project from a checkpointed scaffold preset.", true, [this]() {
+        HydrateProjectBuilderDefaults();
+        if (!project_scaffold_presets_loaded_ && !busy_) {
+            RefreshProjectBuilderPresets();
+        }
+        pending_popup_ = "Aegis Project Builder";
+        status_ = "Opened project builder.";
+    });
     command("settings", IconGlyph::Sliders, "Settings", "Edit backend, workspace, model, allowlist, and validation settings.", true, [this]() {
         pending_popup_ = "Aegis Settings";
         status_ = "Opened settings.";
@@ -7861,8 +15097,11 @@ void AegisChatApp::RenderCommandPaletteModal()
     command("validate", IconGlyph::Bolt, "Run Validation", "Run the saved build, test, or type-check command.", !busy_, [this]() {
         ValidateWorkspace();
     });
+    command("full_verify", IconGlyph::Shield, "Full Verify", "Run the ordered install, configure, build, type-check, lint, database, and test pipeline.", !busy_, [this]() {
+        VerifyWorkspace();
+    });
     command("refresh", IconGlyph::Sparkle, "Refresh Runtime", "Reload backend health, workspace files, history, and model inventory.", !busy_, [this]() {
-        RefreshRuntime(false);
+        RefreshRuntime(true);
     });
     command("open_backend", IconGlyph::Tools, "Open Backend Folder", "Open the configured backend folder in Windows.", true, [this]() {
         OpenBackendFolder();
@@ -7949,6 +15188,16 @@ void AegisChatApp::RenderCodingRoutesModal()
     const std::string composer_prompt = Trim(std::string(message_buffer_.data()));
     TextMuted("Current goal: " + Shorten(composer_prompt.empty() ? "Use the composer prompt or inspect the workspace for the best next coding step." : composer_prompt, 118));
     TextMuted("Workspace: " + Shorten(workspace_root_.empty() ? BufferString(workspace_buffer_.data()) : workspace_root_, 118));
+    ImGui::Dummy(ImVec2(0.0f, 8.0f));
+    if (RowButton("route_project_builder", IconGlyph::Plus, "New Project Builder", "Scaffold a full starter project with checkpoint and validation profile")) {
+        HydrateProjectBuilderDefaults();
+        if (!project_scaffold_presets_loaded_ && !busy_) {
+            RefreshProjectBuilderPresets();
+        }
+        pending_popup_ = "Aegis Project Builder";
+        ImGui::CloseCurrentPopup();
+    }
+
     const std::vector<ValidationSuggestionInfo> local_suggestions = BuildProjectValidationSuggestions(files_);
     if (!local_suggestions.empty()) {
         ImGui::Dummy(ImVec2(0.0f, 6.0f));
@@ -8030,6 +15279,273 @@ void AegisChatApp::RenderCodingRoutesModal()
     ImGui::BulletText("Workspace file detection recommends commands for Node, Python, .NET, C++, Rust, Go, Flutter, Gradle, Swift, and Make projects.");
     ImGui::BulletText("System and kernel work starts in review mode with explicit safety checks.");
     ImGui::BulletText("The route uses your current composer text as the goal; leave it blank to let Aegis inspect the workspace first.");
+}
+
+void AegisChatApp::RenderProjectBuilderModal()
+{
+    TextColor("New Project Builder", Rgba(246, 248, 251));
+    TextMuted("Create a full starter project from a deterministic preset, checkpoint every generated file, and save a validation command for the new workspace.");
+    ImGui::Dummy(ImVec2(0.0f, 8.0f));
+
+    if (!project_scaffold_presets_loaded_ && !project_scaffold_presets_requested_ && !busy_) {
+        RefreshProjectBuilderPresets();
+    }
+
+    ImGui::BeginDisabled(busy_);
+    if (ImGui::Button("Refresh Presets")) {
+        RefreshProjectBuilderPresets();
+    }
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    TextMuted(project_scaffold_presets_loaded_
+        ? "Presets loaded."
+        : (busy_ ? "Loading or waiting for backend..." : "Presets not loaded yet."));
+
+    HydrateProjectBuilderDefaults();
+    ImGui::Separator();
+
+    ImGui::TextUnformatted("Project prompt");
+    ImGui::SetNextItemWidth(-1.0f);
+    ImGui::InputTextMultiline(
+        "##project_builder_prompt",
+        project_scaffold_prompt_buffer_.data(),
+        project_scaffold_prompt_buffer_.size(),
+        ImVec2(-1.0f, 74.0f));
+    ImGui::BeginDisabled(busy_);
+    if (IconTextButton("project_builder_plan_prompt", IconGlyph::Sparkle, "Plan + Preview", ImVec2(170.0f, 38.0f), Rgba(20, 98, 62), Rgba(22, 130, 76), Rgba(246, 248, 251))) {
+        PlanProjectFromPrompt();
+    }
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    TextMuted(project_scaffold_has_plan_
+        ? ("Last plan: " + project_scaffold_plan_.preset.label + " (" + std::to_string(static_cast<int>(project_scaffold_plan_.confidence * 100.0)) + "%)")
+        : "Use the composer text or this prompt box.");
+    ImGui::Separator();
+
+    if (project_scaffold_presets_.empty()) {
+        TextMuted("No presets are available yet. Check that the backend is running and refresh presets.");
+    } else {
+        selected_project_scaffold_preset_index_ = std::clamp(
+            selected_project_scaffold_preset_index_,
+            0,
+            static_cast<int>(project_scaffold_presets_.size()) - 1);
+        const ProjectScaffoldPresetInfo& selected_preset =
+            project_scaffold_presets_[static_cast<size_t>(selected_project_scaffold_preset_index_)];
+        const std::string current_label = selected_preset.label.empty() ? selected_preset.id : selected_preset.label;
+
+        ImGui::TextUnformatted("Preset");
+        ImGui::SetNextItemWidth(-1.0f);
+        if (ImGui::BeginCombo("##project_builder_preset", current_label.c_str())) {
+            for (int i = 0; i < static_cast<int>(project_scaffold_presets_.size()); ++i) {
+                const ProjectScaffoldPresetInfo& preset = project_scaffold_presets_[static_cast<size_t>(i)];
+                const std::string label = preset.label.empty() ? preset.id : preset.label;
+                const bool selected = i == selected_project_scaffold_preset_index_;
+                if (ImGui::Selectable(label.c_str(), selected)) {
+                    selected_project_scaffold_preset_index_ = i;
+                    SetBuffer(project_scaffold_install_buffer_, preset.install_command);
+                    SetBuffer(project_scaffold_validation_buffer_, preset.validation_command);
+                }
+                if (selected) {
+                    ImGui::SetItemDefaultFocus();
+                }
+            }
+            ImGui::EndCombo();
+        }
+
+        TextMuted(selected_preset.description.empty() ? "No preset description." : selected_preset.description);
+        ImGui::Dummy(ImVec2(0.0f, 8.0f));
+
+        if (project_scaffold_has_plan_) {
+            TextColor("Prompt Plan", Rgba(246, 248, 251));
+            TextMuted(project_scaffold_plan_.message.empty() ? "Project plan ready." : project_scaffold_plan_.message);
+            if (!project_scaffold_plan_.detected_keywords.empty()) {
+                TextMuted("Matched: " + JoinList(project_scaffold_plan_.detected_keywords, ", "));
+            }
+            for (const std::string& reason : project_scaffold_plan_.reasons) {
+                ImGui::BulletText("%s", reason.c_str());
+            }
+            ImGui::Dummy(ImVec2(0.0f, 8.0f));
+        }
+
+        ImGui::Columns(2, "project_builder_inputs", false);
+        ImGui::SetColumnWidth(0, 430.0f);
+        ImGui::TextUnformatted("Project name");
+        ImGui::SetNextItemWidth(-1.0f);
+        ImGui::InputText("##project_builder_name", project_scaffold_name_buffer_.data(), project_scaffold_name_buffer_.size());
+        TextMuted("Used for package metadata and generated titles.");
+
+        ImGui::NextColumn();
+        ImGui::TextUnformatted("Target folder");
+        ImGui::SetNextItemWidth(-1.0f);
+        ImGui::InputText("##project_builder_target", project_scaffold_target_buffer_.data(), project_scaffold_target_buffer_.size());
+        TextMuted("Absolute project paths are allowed; drive roots and protected system folders are rejected.");
+        ImGui::Columns(1);
+
+        ImGui::Dummy(ImVec2(0.0f, 8.0f));
+        ImGui::Columns(2, "project_builder_commands", false);
+        ImGui::SetColumnWidth(0, 430.0f);
+        ImGui::TextUnformatted("Install command");
+        ImGui::SetNextItemWidth(-1.0f);
+        ImGui::InputText("##project_builder_install", project_scaffold_install_buffer_.data(), project_scaffold_install_buffer_.size());
+        TextMuted("Saved as a next step; Aegis will not run it automatically.");
+
+        ImGui::NextColumn();
+        ImGui::TextUnformatted("Validation command");
+        ImGui::SetNextItemWidth(-1.0f);
+        ImGui::InputText("##project_builder_validation", project_scaffold_validation_buffer_.data(), project_scaffold_validation_buffer_.size());
+        TextMuted("Saved into the new workspace validation profile.");
+        ImGui::Columns(1);
+
+        ImGui::Dummy(ImVec2(0.0f, 8.0f));
+        ImGui::Checkbox("Include .gitignore", &project_scaffold_include_gitignore_);
+        ImGui::SameLine();
+        ImGui::Checkbox("Overwrite scaffold-owned files", &project_scaffold_overwrite_);
+        ImGui::SameLine();
+        ImGui::Checkbox("Run validation after create", &project_scaffold_run_validation_);
+        ImGui::SameLine();
+        ImGui::Checkbox("Run install first", &project_scaffold_run_install_);
+        TextMuted(project_scaffold_overwrite_
+            ? "Existing files generated by the selected preset can be updated. Other files are left alone."
+            : "Non-empty target folders are blocked until overwrite is enabled.");
+        TextMuted(project_scaffold_run_validation_
+            ? "Create will attempt the validation/build command and capture stdout/stderr for repair."
+            : "Create will save validation for later; no build command will run immediately.");
+
+        ImGui::Dummy(ImVec2(0.0f, 10.0f));
+        ImGui::BeginDisabled(busy_ || BufferString(project_scaffold_target_buffer_.data()).empty());
+        if (IconTextButton("project_builder_preview", IconGlyph::Document, "Preview Plan", ImVec2(154.0f, 38.0f), Rgba(17, 25, 34), Rgba(25, 35, 47), Rgba(246, 248, 251))) {
+            PreviewProjectFromBuilder();
+        }
+        ImGui::SameLine();
+        if (IconTextButton("project_builder_create", IconGlyph::Plus, "Create Project", ImVec2(170.0f, 38.0f), Rgba(20, 98, 62), Rgba(22, 130, 76), Rgba(246, 248, 251))) {
+            ScaffoldProjectFromBuilder();
+        }
+        ImGui::EndDisabled();
+    }
+
+    if (project_scaffold_has_result_) {
+        ImGui::Separator();
+        TextColor(
+            project_scaffold_result_.ok ? (project_scaffold_result_preview_ ? "Scaffold Preview" : "Scaffold Result") : "Scaffold Issue",
+            project_scaffold_result_.ok ? Rgba(38, 221, 123) : Rgba(239, 115, 115));
+        TextMuted(project_scaffold_result_.message.empty() ? "Project builder returned a result." : project_scaffold_result_.message);
+        TextMuted("Target: " + Shorten(project_scaffold_result_.target_path, 120));
+        if (!project_scaffold_result_.diff_summary.empty()) {
+            TextMuted("Diff: " + JoinList(project_scaffold_result_.diff_summary, ", "));
+        }
+        if (!project_scaffold_result_.checkpoint.empty()) {
+            TextMuted("Checkpoint: " + project_scaffold_result_.checkpoint);
+        } else if (project_scaffold_result_preview_) {
+            TextMuted("Preview only: no files have been written yet.");
+        }
+
+        ImGui::BeginDisabled(project_scaffold_result_preview_ || !project_scaffold_result_.ok || project_scaffold_result_.target_path.empty());
+        if (ImGui::Button("Use As Workspace")) {
+            UseScaffoldedProjectAsWorkspace();
+        }
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        if (!project_scaffold_result_.target_path.empty() && ImGui::Button("Open Folder")) {
+            OpenExternalPath(std::filesystem::path(Utf8ToWide(project_scaffold_result_.target_path)));
+        }
+
+        if (!project_scaffold_result_.warnings.empty()) {
+            ImGui::Dummy(ImVec2(0.0f, 6.0f));
+            TextColor("Warnings", Rgba(239, 115, 115));
+            for (const std::string& warning : project_scaffold_result_.warnings) {
+                ImGui::BulletText("%s", warning.c_str());
+            }
+        }
+        if (!project_scaffold_result_.risk_warnings.empty()) {
+            ImGui::Dummy(ImVec2(0.0f, 6.0f));
+            TextColor("Risk Notes", Rgba(248, 196, 87));
+            for (const std::string& warning : project_scaffold_result_.risk_warnings) {
+                ImGui::BulletText("%s", warning.c_str());
+            }
+        }
+
+        if (!project_scaffold_result_.stages.empty()) {
+            ImGui::Dummy(ImVec2(0.0f, 8.0f));
+            TextColor("Build Loop", Rgba(246, 248, 251));
+            if (ImGui::BeginTable("project_builder_stages", 4, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_NoSavedSettings)) {
+                ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_WidthFixed, 92.0f);
+                ImGui::TableSetupColumn("Stage", ImGuiTableColumnFlags_WidthFixed, 190.0f);
+                ImGui::TableSetupColumn("Command", ImGuiTableColumnFlags_WidthFixed, 220.0f);
+                ImGui::TableSetupColumn("Detail");
+                ImGui::TableHeadersRow();
+                for (const ProjectBuildStageInfo& stage : project_scaffold_result_.stages) {
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+                    const ImVec4 status_color =
+                        stage.status == "succeeded" ? Rgba(38, 221, 123) :
+                        (stage.status == "failed" || stage.status == "blocked") ? Rgba(239, 115, 115) :
+                        stage.status == "skipped" ? Rgba(148, 163, 184) :
+                        Rgba(248, 196, 87);
+                    TextColor(stage.status.empty() ? "planned" : stage.status, status_color);
+                    ImGui::TableSetColumnIndex(1);
+                    ImGui::TextWrapped("%s", stage.label.c_str());
+                    ImGui::TableSetColumnIndex(2);
+                    ImGui::TextWrapped("%s", stage.command.empty() ? "-" : stage.command.c_str());
+                    ImGui::TableSetColumnIndex(3);
+                    ImGui::TextWrapped("%s", stage.detail.empty() ? "-" : stage.detail.c_str());
+                    if (!stage.output_excerpt.empty()) {
+                        ImGui::TextWrapped("%s", Shorten(stage.output_excerpt, 260).c_str());
+                    }
+                }
+                ImGui::EndTable();
+            }
+        }
+
+        if (!project_scaffold_result_.roadmap_path.empty()) {
+            TextMuted("Roadmap: " + project_scaffold_result_.roadmap_path);
+        }
+
+        if (project_scaffold_result_.has_validation) {
+            ImGui::Dummy(ImVec2(0.0f, 8.0f));
+            const bool passed = ValidationPassed(project_scaffold_result_.validation);
+            TextColor(passed ? "Validation passed" : "Validation captured", passed ? Rgba(38, 221, 123) : Rgba(239, 115, 115));
+            TextMuted(project_scaffold_result_.validation.summary.empty()
+                ? project_scaffold_result_.validation.reason
+                : project_scaffold_result_.validation.summary);
+            if (!project_scaffold_result_.validation.command.empty()) {
+                TextMuted("Command: " + project_scaffold_result_.validation.command);
+            }
+            const std::string validation_output = Shorten(ValidationCombinedOutput(project_scaffold_result_.validation), 2400);
+            if (!validation_output.empty()) {
+                ImGui::BeginChild("project_builder_validation_console", ImVec2(0, 150.0f), true, ImGuiWindowFlags_HorizontalScrollbar);
+                ImGui::TextUnformatted(validation_output.c_str());
+                ImGui::EndChild();
+            }
+        }
+
+        if (ImGui::BeginTable("project_builder_files", 4, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_NoSavedSettings)) {
+            ImGui::TableSetupColumn("Action", ImGuiTableColumnFlags_WidthFixed, 82.0f);
+            ImGui::TableSetupColumn("File");
+            ImGui::TableSetupColumn("Size", ImGuiTableColumnFlags_WidthFixed, 80.0f);
+            ImGui::TableSetupColumn("Summary");
+            ImGui::TableHeadersRow();
+            for (const ProjectScaffoldFileInfo& file : project_scaffold_result_.files) {
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+                ImGui::TextUnformatted(file.action.c_str());
+                ImGui::TableSetColumnIndex(1);
+                ImGui::TextUnformatted(file.path.c_str());
+                ImGui::TableSetColumnIndex(2);
+                ImGui::Text("%lld", file.size);
+                ImGui::TableSetColumnIndex(3);
+                ImGui::TextWrapped("%s", file.summary.c_str());
+            }
+            ImGui::EndTable();
+        }
+
+        if (!project_scaffold_result_.next_steps.empty()) {
+            ImGui::Dummy(ImVec2(0.0f, 8.0f));
+            TextColor("Next Steps", Rgba(246, 248, 251));
+            for (const std::string& step : project_scaffold_result_.next_steps) {
+                ImGui::BulletText("%s", step.c_str());
+            }
+        }
+    }
 }
 
 void AegisChatApp::RenderMessage(const ChatMessage& message)

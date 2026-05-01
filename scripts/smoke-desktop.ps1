@@ -1,6 +1,7 @@
 param(
     [string]$ExePath = "",
     [string]$OutputDir = "",
+    [string]$BackendUrl = "http://127.0.0.1:8787",
     [int]$LoginWaitSeconds = 2,
     [int]$SetupWaitSeconds = 2,
     [int]$DashboardWaitSeconds = 8,
@@ -52,6 +53,9 @@ public static class AegisSmokeNative
     [DllImport("user32.dll")]
     public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+
     [DllImport("user32.dll")]
     public static extern bool SetCursorPos(int x, int y);
 
@@ -60,6 +64,19 @@ public static class AegisSmokeNative
 }
 "@
     $script:NativeLoaded = $true
+}
+
+function Bring-WindowToFront {
+    param([IntPtr]$Handle)
+
+    $hwndTopMost = [IntPtr]::new(-1)
+    $swpNoSize = 0x0001
+    $swpNoMove = 0x0002
+    $swpShowWindow = 0x0040
+    [AegisSmokeNative]::ShowWindow($Handle, 5) | Out-Null
+    [AegisSmokeNative]::SetWindowPos($Handle, $hwndTopMost, 0, 0, 0, 0, ($swpNoSize -bor $swpNoMove -bor $swpShowWindow)) | Out-Null
+    [AegisSmokeNative]::SetForegroundWindow($Handle) | Out-Null
+    Start-Sleep -Milliseconds 220
 }
 
 function Wait-ForMainWindow {
@@ -110,6 +127,10 @@ function Capture-Window {
         [string]$Path
     )
 
+    Bring-WindowToFront -Handle $Handle
+    [System.Windows.Forms.SendKeys]::SendWait("{ESC}")
+    Start-Sleep -Milliseconds 180
+    Bring-WindowToFront -Handle $Handle
     $rect = Get-WindowRectInfo -Handle $Handle
     $bitmap = New-Object System.Drawing.Bitmap $rect.Width, $rect.Height, ([System.Drawing.Imaging.PixelFormat]::Format24bppRgb)
     $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
@@ -175,6 +196,46 @@ function Assert-VisibleCapture {
     }
 }
 
+function Get-BackendHealth {
+    param([string]$Url)
+
+    if ([string]::IsNullOrWhiteSpace($Url)) {
+        return [pscustomobject]@{
+            Url = ""
+            Reachable = $false
+            Status = "not configured"
+            Ready = $false
+            Engine = ""
+            Model = ""
+            Detail = ""
+        }
+    }
+
+    $healthUrl = $Url.TrimEnd([char[]]@('/')) + "/health"
+    try {
+        $health = Invoke-RestMethod -Uri $healthUrl -TimeoutSec 5
+        return [pscustomobject]@{
+            Url = $Url
+            Reachable = $true
+            Status = [string]$health.status
+            Ready = [bool]$health.ready
+            Engine = [string]$health.engine
+            Model = [string]$health.model_name
+            Detail = ""
+        }
+    } catch {
+        return [pscustomobject]@{
+            Url = $Url
+            Reachable = $false
+            Status = "unreachable"
+            Ready = $false
+            Engine = ""
+            Model = ""
+            Detail = $_.Exception.Message
+        }
+    }
+}
+
 function Invoke-MouseClick {
     param(
         [int]$X,
@@ -192,9 +253,7 @@ function Invoke-SmokeLogin {
     param([IntPtr]$Handle)
 
     $rect = Get-WindowRectInfo -Handle $Handle
-    [AegisSmokeNative]::ShowWindow($Handle, 5) | Out-Null
-    [AegisSmokeNative]::SetForegroundWindow($Handle) | Out-Null
-    Start-Sleep -Milliseconds 200
+    Bring-WindowToFront -Handle $Handle
 
     $passwordX = [int]($rect.Left + ($rect.Width * 0.74))
     $passwordY = [int]($rect.Top + ($rect.Height * 0.82))
@@ -232,6 +291,8 @@ New-Item -ItemType Directory -Force -Path $runDir | Out-Null
 
 $process = $null
 $captures = @()
+$backendBefore = Get-BackendHealth -Url $BackendUrl
+$backendAfter = $null
 $previousAutoLogin = $env:AEGIS_CHATBOT_SMOKE_AUTO_LOGIN
 $previousAutoLoginDelay = $env:AEGIS_CHATBOT_SMOKE_AUTO_LOGIN_DELAY_MS
 try {
@@ -259,10 +320,14 @@ try {
         Assert-VisibleCapture -Capture $dashboard -MinimumRatio $MinimumNonBlackRatio
         $captures += $dashboard
     }
+    $backendAfter = Get-BackendHealth -Url $BackendUrl
 
     $summary = [pscustomobject]@{
         ExePath = $ExePath
         OutputDir = $runDir
+        BackendUrl = $BackendUrl
+        BackendBefore = $backendBefore
+        BackendAfter = $backendAfter
         MinimumNonBlackRatio = $MinimumNonBlackRatio
         Captures = $captures | ForEach-Object {
             [pscustomobject]@{

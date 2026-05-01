@@ -124,7 +124,12 @@ std::string PathToUtf8(const std::filesystem::path& path)
     return WideToUtf8(path.wstring());
 }
 
-HttpResponse SendWinHttpRequest(const std::wstring& method, const std::string& url, const std::string* body)
+HttpResponse SendWinHttpRequest(
+    const std::wstring& method,
+    const std::string& url,
+    const std::string* body,
+    const std::function<void(const std::string&)>& on_chunk = {},
+    const std::wstring& accept = L"application/json")
 {
     HttpResponse response;
     const std::wstring wide_url = Utf8ToWide(url);
@@ -183,7 +188,7 @@ HttpResponse SendWinHttpRequest(const std::wstring& method, const std::string& u
         return response;
     }
 
-    std::wstring headers = L"Accept: application/json\r\n";
+    std::wstring headers = L"Accept: " + accept + L"\r\n";
     if (body != nullptr) {
         headers += L"Content-Type: application/json; charset=utf-8\r\n";
     }
@@ -250,6 +255,9 @@ HttpResponse SendWinHttpRequest(const std::wstring& method, const std::string& u
         }
         chunk.resize(downloaded);
         response.body += chunk;
+        if (on_chunk) {
+            on_chunk(chunk);
+        }
     }
 
     WinHttpCloseHandle(request);
@@ -328,6 +336,11 @@ std::filesystem::path LocateDefaultBackendRoot()
     return (ProjectDirectoryFromExecutable() / ".." / ".." / ".." / "Website" / "ChatBot").lexically_normal();
 }
 
+bool BackendRootLooksValid(const std::filesystem::path& root)
+{
+    return std::filesystem::exists(root / "backend" / "aegis_ai" / "main.py");
+}
+
 DesktopSettings LoadDesktopSettings()
 {
     DesktopSettings settings;
@@ -357,7 +370,10 @@ DesktopSettings LoadDesktopSettings()
         if (key == "api_base_url") {
             settings.api_base_url = value;
         } else if (key == "backend_root") {
-            settings.backend_root = ResolveConfigPath(base, value);
+            const std::filesystem::path configured_root = ResolveConfigPath(base, value);
+            if (BackendRootLooksValid(configured_root)) {
+                settings.backend_root = configured_root;
+            }
         } else if (key == "backend_start_script") {
             settings.backend_start_script = value;
         } else if (key == "auto_start_backend") {
@@ -564,6 +580,14 @@ HttpResponse HttpPostJson(const std::string& url, const std::string& body)
     return SendWinHttpRequest(L"POST", url, &body);
 }
 
+HttpResponse HttpPostJsonStream(
+    const std::string& url,
+    const std::string& body,
+    const std::function<void(const std::string&)>& on_chunk)
+{
+    return SendWinHttpRequest(L"POST", url, &body, on_chunk, L"text/event-stream");
+}
+
 HttpResponse HttpPutJson(const std::string& url, const std::string& body)
 {
     return SendWinHttpRequest(L"PUT", url, &body);
@@ -574,8 +598,22 @@ HttpResponse HttpDelete(const std::string& url)
     return SendWinHttpRequest(L"DELETE", url, nullptr);
 }
 
+bool BackendHealthEndpointReady(const DesktopSettings& settings)
+{
+    try {
+        const HttpResponse response = HttpGet(JoinUrl(settings.api_base_url, "/api/health"));
+        return response.status_code >= 200 && response.status_code < 300 && response.error.empty();
+    } catch (...) {
+        return false;
+    }
+}
+
 bool StartBackendProcess(const DesktopSettings& settings, std::string& error)
 {
+    if (BackendHealthEndpointReady(settings)) {
+        return true;
+    }
+
     const std::filesystem::path root = settings.backend_root;
     const std::filesystem::path python = root / ".venv" / "Scripts" / "python.exe";
     const std::filesystem::path backend = root / "backend";
@@ -888,7 +926,7 @@ void RequestWindowClose()
 
 void RequestWindowMinimize()
 {
-    HWND hwnd = GetActiveWindow();
+    HWND hwnd = g_host_window != nullptr ? g_host_window : GetActiveWindow();
     if (hwnd != nullptr) {
         ShowWindow(hwnd, SW_MINIMIZE);
     }
@@ -896,11 +934,17 @@ void RequestWindowMinimize()
 
 void RequestWindowMaximizeRestore()
 {
-    HWND hwnd = GetActiveWindow();
+    HWND hwnd = g_host_window != nullptr ? g_host_window : GetActiveWindow();
     if (hwnd == nullptr) {
         return;
     }
     ShowWindow(hwnd, IsZoomed(hwnd) ? SW_RESTORE : SW_MAXIMIZE);
+}
+
+bool IsHostWindowMaximized()
+{
+    HWND hwnd = g_host_window != nullptr ? g_host_window : GetActiveWindow();
+    return hwnd != nullptr && IsZoomed(hwnd);
 }
 
 std::pair<float, float> HostWindowSize()

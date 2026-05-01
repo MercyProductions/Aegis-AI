@@ -1,6 +1,6 @@
 # Aegis ChatBot Master TODO
 
-Last updated: 2026-04-27
+Last updated: 2026-04-29
 
 This is the working build list for the Aegis desktop chatbot. Use it as the execution board: first stabilize the native desktop app, then build the model gateway, then expand into creative generation, coding workflows, memory, evals, and release polish.
 
@@ -16,6 +16,24 @@ This is the working build list for the Aegis desktop chatbot. Use it as the exec
 - Creative media first slice exists for images, video packages, animations, GIFs, PSD template packages, theme inference, and revision jobs.
 - Desktop smoke test exists at `scripts/smoke-desktop.ps1`; `build.ps1 -Smoke` compiles and captures login/setup/dashboard for blank-render checks.
 - Desktop command palette exists for fast access to chat, creative, coding, model, validation, settings, runtime, and roadmap actions.
+- Desktop Project Builder now opens from Coding Routes, chat auto-detection, or the command palette, can turn a plain project prompt into a preset-backed plan, previews planned files, loads thirteen backend scaffold presets, creates checkpointed starter projects with Aegis handoff manifests, saves validation profiles, and can switch the active workspace to the generated project.
+- Backend workspace intelligence now reads `.aegis/project.json`, exposes `/api/workspace/profile`, prefers manifest validation commands, and injects project stack/handoff metadata into model context.
+- Backend task planning and route previews now use `.aegis/project.json` so broad continuation prompts can route as stack-aware project work instead of generic chat.
+- Backend route planning now derives stack route profiles from manifests, including web app, desktop app, mobile app, API service, data tool, and systems/CLI profiles, and stores them in task-plan/model-attempt metadata.
+- Backend route profiles now also cover database/schema work, native DLL/EXE binaries, kernel/driver/firmware work, and authorized reverse-engineering analysis with explicit safety and validation expectations.
+- Backend workspace profiles now infer dependency stacks from `package.json`, `pyproject.toml`, `requirements.txt`, `Cargo.toml`, `go.mod`, `.csproj`, `CMakeLists.txt`, Maven/Gradle manifests, Prisma schemas, migrations, and SQL files.
+- Backend task planning and model prompts now include dependency languages, frameworks, package managers, build systems, install commands, validation commands, package scripts, and key dependencies.
+- Native Workspace tab now displays the inferred dependency profile with copy actions for inferred install and validation commands.
+- Backend provider routing now infers richer model capabilities, including tools, vision, embeddings, audio, image, video, realtime, code, reasoning, and judge tags, then requires all meaningful task capabilities before selecting a provider.
+- Routed model execution now performs provider preflight checks for disabled providers, missing models, unsupported APIs, and missing cloud secret environment variables before attempting a live request.
+- Backend validation discovery now covers broader build systems including CMake/CTest, Visual C++ MSBuild, Make, Maven, Gradle, Prisma schema validation, and SQL linting in addition to Node, Python, Rust, Go, .NET, and TypeScript.
+- Backend validation now respects Node package managers from `packageManager` and lockfiles, so npm, pnpm, yarn, and bun projects get matching script and install commands.
+- Backend verification now exposes `/api/verify`, plans ordered install/configure/build/typecheck/database/lint/test/validate steps, runs them through the command safety layer, captures the first failure, and reports per-step status for future repair loops.
+- Native desktop now has a Full Verify action backed by `/api/verify`, with include-install/continue-after-failure controls, per-step status table, first-failure copy action, command-palette access, and repair-loop handoff from the first failed command.
+- Full Verify reports can now be exported, browsed, copied, attached back into the next chat as context, and pruned with keep-latest retention controls.
+- Full Verify repair can now run as a controlled chain: repair the current first failure, rerun the full pipeline, queue the next failure, and stop when clean, blocked, or the repair-pass limit is reached.
+- Native Workspace tab now loads `/api/workspace/profile` and displays Aegis project manifest details, install/validation commands, tags, first-pass handoff, and safety notes with copy actions.
+- Native composer now uses workspace manifest metadata for quick actions: first-pass prompt loading, stack-aware coding route launch, install command copy, and validation command staging.
 - Creative Studio now has an in-app asset preview strip with selected asset, type, path, open/copy actions, theme/palette copy helpers, real DirectX/WIC raster previews for PNG/JPEG/GIF/BMP/TIFF/WebP when Windows has a decoder, in-app audio preview playback for beat/audio assets, and pre-generation controls for kind, prompt, revision feedback, theme, aspect ratio, size, duration, FPS, style, and output formats.
 - Desktop toast notifications now surface backend, settings, validation, Creative Studio, copy, and error states without relying only on the top bar.
 - Workspace and change-preview panels now include open file/open folder controls with workspace-aware path resolution.
@@ -34,6 +52,29 @@ This is the working build list for the Aegis desktop chatbot. Use it as the exec
 - Context Preview now includes an approximate token budget planner for composer text, attachments, chat history, workspace index context, previous response context, and memory/task signals.
 - Backend model registry foundation now persists provider entries, routing roles, and routing presets through `/api/model-registry`, with provider create/update/delete endpoints.
 - Desktop Model Stack now shows provider registry, routing roles, privacy/routing presets, and an editable provider registry form for local/cloud/creative/search/audio/judge providers.
+- Desktop Planning History now reads `/api/telemetry` and shows recent context budgets, model attempts, privacy labels, token pressure, status, and estimated spend.
+- Desktop Planning History now shows route-level context pressure and per-task context drilldowns with budget utilization, selected/omitted references, largest context items, and tuning recommendations.
+- Web ChatBot now has an Observability sidebar panel with route-quality, fallback-inspector, and feedback tabs backed by typed telemetry API helpers.
+- Backend telemetry can now materialize route-quality, fallback-inspector, and feedback snapshots for cached dashboard reads.
+- Backend route-policy diff proposals now explain provider promotion, deprioritization, and role-routing changes before policy updates are applied.
+- Backend and native Planning History now support a guarded Apply Safe Policy workflow for confident, non-high-risk route-policy updates.
+- Apply Safe Policy now uses a native confirmation modal with provider/role summaries before writing registry changes.
+- Model Stack now shows provider tokenizer diagnostics from registry audit, including estimator source, context window, context utilization, exact/profiled/heuristic/missing attempt counts, and tuning recommendations.
+- Model Stack now shows tokenizer calibration health from provider-reported token usage, including calibrated attempt counts, input/output drift percentages, and warning tooltips.
+- Route-quality telemetry, native Planning History, and web Observability now show provider/model token-calibration rollups with estimated-vs-reported usage, drift/watch/stable status, source provenance, and tuning recommendations.
+- Route-quality telemetry, native Planning History, and web Observability now also show daily token-calibration trend buckets with improving/worsening/flat direction.
+- Telemetry snapshots now support retention pruning, return prune summaries in the API response, and show retention status in web Observability.
+- Backend provider adapters now have a streaming text contract, and `/api/chat/stream` exposes server-sent lifecycle events with the final structured response.
+- Web ChatBot and native desktop chat now consume `/api/chat/stream` lifecycle events, surface streamed backend status, and retain `/api/chat` as a compatibility fallback.
+- Direct read-only chat prompts now use `chat-delta-final` streaming with provider text deltas, inline web rendering, native desktop live assistant placeholders, and final structured-response reconciliation.
+- Structured coding/build prompts now use `structured-delta-final` streaming with safe progress deltas while raw provider JSON, file changes, validation state, and apply metadata stay hidden until the final structured response.
+- Structured coding/build streams now also request provider JSON mode and render only sanitized top-level reply preview deltas, keeping generated file content and command metadata hidden until final reconciliation.
+- Structured streams now explain final-response handoffs when a live preview is superseded by deterministic fallback files or by a later provider attempt, and that explanation is preserved after the final response replaces the temporary stream.
+- Structured preview events now carry provider-attempt metadata plus append/reset actions, and web/native clients remove failed attempt preview text before showing the next provider's draft.
+- Web and native streaming status now names the provider/model currently producing structured preview text.
+- Model-attempt metadata now records structured preview telemetry for deltas, character counts, reset count, retired reason, and final-winning attempts, and web/native diagnostics surface those counters.
+- Route-quality telemetry now aggregates structured preview reliability by provider/model, native Planning History renders the rollup, web Observability shows preview status, and route-health penalties can deprioritize providers with repeated preview resets.
+- Backend workspace policy now accepts explicit absolute project paths outside the Aegis folder by default, so prompts like "work in C:\path\to\project" can route there, while drive roots and protected system directories remain blocked.
 - Context Preview now runs a pre-send safety scan for likely secrets, sensitive paths, noisy dependency/cache paths, and prompt-injection markers in visible context.
 - Desktop chat now restores the saved workspace with the saved conversation and keeps runtime refreshes from snapping back to the default workspace.
 - Create/build prompts that include an explicit Windows path now select that workspace, show a working/applying state, and auto-apply low-risk generated files.
@@ -90,11 +131,42 @@ These are non-negotiable before the app can feel like a serious next-generation 
 - [ ] Add fallback chain so one bad model does not kill the response.
 - [ ] Add per-task routing: chat, code, reasoning, research, vision, creative, embedding, judge, fallback.
 - [ ] Add secure API key handling through environment variables or OS credential storage.
-- [ ] Track model latency, errors, tokens, and cost estimates.
+- [x] Track model latency, errors, tokens, and cost estimates through planning/model-attempt telemetry.
+- [x] Add provider-aware token estimator hooks for OpenAI, Claude, Perplexity, Qwen, DeepSeek, local open-weight, OpenRouter, and local-compatible routes.
+- [x] Capture provider-reported token usage from routed attempts and compare it against planning-time token estimates.
+- [x] Add backend route-quality rollups for provider reliability, fallback rate, estimated spend, context pressure, and routing recommendations.
+- [x] Surface route-quality rollups in native Planning History with reliability, fallback, provider, role, estimator, and recommendation views.
+- [x] Surface route-quality context pressure and per-task context drilldowns in native Planning History.
+- [x] Add backend fallback/candidate inspector telemetry that links task plans, route candidates, fallback roles, context budgets, model attempts, estimator provenance, and registry resolution.
+- [x] Surface fallback/candidate inspection in native Planning History with task summaries, candidate tables, registry status, fallback roles, cost, and estimator provenance.
+- [x] Add stable route candidate IDs that persist from planner payloads into model-attempt metadata and native fallback-inspector rows.
+- [x] Upgrade native fallback inspection into a selectable task drilldown with all candidates, all attempts, recommendations, context metadata, and candidate/attempt metadata.
+- [x] Add capability-aware route matching so providers missing required tools, vision, embeddings, audio, image, video, or realtime support are skipped before execution.
+- [x] Add provider preflight checks so disabled providers, missing models, unsupported APIs, and missing API keys are skipped cleanly in fallback-chain telemetry.
+- [x] Add structured user feedback telemetry for liked, rejected, copied, applied, rolled-back, regenerated, and corrected outcomes so route quality can learn from real usage.
+- [x] Add feedback attribution rollups for provider, model, route role, candidate, task intent, target, and action outcomes in native Planning History.
+- [x] Add feedback privacy controls for shared-workspace no-excerpt mode, redaction, excerpt limits, and optional content hashing.
+- [x] Add feedback trend buckets and recent feedback event drilldowns to native Planning History.
+- [x] Add web route-quality, fallback-inspector, and feedback observability panels.
+- [x] Add cached/materialized telemetry snapshots before expanding dashboard windows beyond recent history.
+- [x] Add retention/pruning controls for materialized telemetry snapshots.
+- [x] Add route-policy diff proposals for provider and role routing changes before applying policy updates.
+- [x] Add a checkpointed apply workflow for safe route-policy proposals.
+- [x] Add provider tokenizer diagnostics to the backend registry audit and native Model Stack.
+- [x] Add route-quality token-calibration rollups to backend telemetry, native Planning History, and web Observability.
+- [x] Add route-quality token-calibration trend buckets to backend telemetry, native Planning History, and web Observability.
 
 ### P0 Chat Experience
 
-- [ ] Add streaming responses in the desktop app.
+- [x] Add streaming responses in the desktop app.
+- [x] Add backend SSE streaming contract and provider adapter stream hooks without breaking normal `/api/chat` responses.
+- [x] Wire web and desktop clients to the backend chat stream lifecycle endpoint.
+- [x] Stream direct read-only chat answer deltas and replace the live text with the final structured response.
+- [x] Stream safe structured-task progress deltas without exposing raw JSON or file-change payloads before final response reconciliation.
+- [x] Stream sanitized structured reply previews from provider JSON mode while keeping generated files, command suggestions, and raw provider JSON hidden until final.
+- [x] Reset failed provider preview text before later-provider text appears.
+- [x] Persist structured preview counters into model-attempt telemetry and show them in route diagnostics.
+- [x] Aggregate structured preview reliability into route-quality diagnostics and route-health ranking.
 - [x] Show visible working/applying status for create/build prompts.
 - [x] Add composer-level Auto Apply and Validate controls.
 - [x] Add stop/cancel generation.
@@ -132,6 +204,30 @@ These are non-negotiable before the app can feel like a serious next-generation 
 - [x] Add specialist coding routes for web, mobile, desktop, macOS, Linux, Windows, game tooling, and data work.
 - [x] Add high-risk coding guardrails for kernel, driver, firmware, security-sensitive, and destructive system changes.
 - [x] Add test-generation and validation suggestions per project type.
+- [x] Add a checkpointed New Project Builder with preview mode and deterministic presets for web, API, Python, TypeScript, and C++ starter projects.
+- [x] Add prompt-to-project planning that selects a scaffold preset, project name, target folder, install command, and validation command before writing files.
+- [x] Auto-route normal chat prompts for new/full/from-scratch projects into Project Builder plan + preview instead of free-form model code.
+- [x] Expand Project Builder presets to include Electron desktop, Expo React Native mobile, Django web, and Rust CLI starters.
+- [x] Expand Project Builder presets to include Go HTTP API, ASP.NET Core C# Web API, and Tauri React desktop starters.
+- [x] Generate `AGENTS.md` and `.aegis/project.json` in every scaffold so future agent passes know the stack, commands, first-pass plan, and safety notes.
+- [x] Read `.aegis/project.json` back into backend workspace profiles, validation discovery, and model prompt context.
+- [x] Surface workspace profile metadata in the native Workspace tab so users can inspect stack, commands, and handoff state without opening files manually.
+- [x] Use workspace profile metadata to suggest route presets, validation defaults, and project-specific quick actions in the composer.
+- [x] Infer dependency profiles from common project manifests and feed them into task planning, prompt context, workspace UI, validation suggestions, and verification install steps.
+- [x] Use workspace profile metadata in backend task planning and route preview so broad continuation prompts stay stack-aware.
+- [x] Add stack route profiles so manifest-backed work can bias planning, route previews, model-attempt metadata, and native route timeline display by project type.
+- [x] Add high-coverage coding route profiles for databases, native DLL/EXE work, kernel drivers, firmware-adjacent work, and authorized reverse-engineering analysis.
+- [x] Expand validation discovery for native, JVM, SQL/database, and CMake-style projects so syntax/build/test checks are easier to run before repair loops.
+- [x] Add a full backend verification pipeline that can chain install, configure, build, type-check, database validation, lint, test, and final validation steps.
+- [x] Add native Full Verify controls and result display for the backend verification pipeline.
+- [x] Feed the first Full Verify failure into the repair loop with a one-turn validation-command override, then automatically rerun Full Verify after the targeted command passes.
+- [x] Add a native verification-repair activity timeline that tracks Full Verify start/completion, targeted repair, command pass/fail, and automatic reruns.
+- [x] Add copyable Full Verify reports with workspace, first failure, pipeline steps, warnings, and repair activity.
+- [x] Add Markdown file export and reports-folder access for Full Verify reports from the panel and command palette.
+- [x] Add an in-panel recent verification report browser with open/copy actions for exported Markdown reports.
+- [x] Add attach-latest verification report support so exported diagnostics can be sent back into the next repair prompt as explicit context.
+- [x] Add verification report pruning/retention controls so long-running coding sessions do not accumulate stale reports forever.
+- [x] Add controlled multi-step Full Verify repair chaining with an auto-repair toggle, repair-pass limit, stop control, activity tracking, and command-palette entry.
 
 ### P0 Creative Workflow
 
@@ -187,7 +283,7 @@ These are non-negotiable before the app can feel like a serious next-generation 
 ### Visual Polish
 
 - [ ] Match `goal.png` colors and spacing as the base dashboard theme.
-- [ ] Keep green accent usage intentional: active nav, primary actions, composer, online status, progress.
+- [ ] Keep red accent usage intentional: active nav, primary actions, composer, online status, progress.
 - [ ] Avoid green borders around every card.
 - [ ] Make all card heights stable so labels and animations cannot create scrollbars.
 - [ ] Add hover, press, disabled, loading, and selected states for every custom widget.
@@ -200,12 +296,13 @@ These are non-negotiable before the app can feel like a serious next-generation 
 - [x] Turn current model inventory into a real model registry foundation.
 - [x] Add CRUD endpoints for model registry entries.
 - [ ] Add model health checks and periodic refresh.
-- [ ] Add streaming API endpoint.
+- [x] Add streaming API endpoint.
 - [ ] Add cancellation tokens or task cancellation endpoint.
 - [ ] Add conversation CRUD endpoints.
 - [x] Add media job list/detail endpoints.
 - [x] Add validation profile endpoint to desktop client.
 - [x] Add checkpoint browser endpoint.
+- [x] Add full verification endpoint for ordered multi-step build/test pipelines.
 - [ ] Add provider-specific rate limit and quota handling.
 - [ ] Add better structured error envelopes.
 
@@ -304,7 +401,8 @@ These are non-negotiable before the app can feel like a serious next-generation 
 - [ ] Revision memory that learns what changed between first draft and accepted result.
 - [ ] Eval suites for chat, coding, creative, research, education, and safety workflows.
 - [ ] Model benchmark dashboard comparing quality, speed, cost, context length, reliability, and privacy posture.
-- [ ] Prompt and router experiment tracker so better settings can be promoted safely.
+- [x] Guarded route-policy apply path so better settings can be promoted safely.
+- [ ] Prompt and router experiment tracker for named experiments, cohorts, and rollback notes.
 - [ ] Local training data export bundle with privacy filters and provenance metadata.
 
 ### Privacy, Safety, And Governance
@@ -380,9 +478,9 @@ These are non-negotiable before the app can feel like a serious next-generation 
 
 ### Sprint 2: Conversation And Streaming
 
-- [ ] Backend streaming endpoint.
-- [ ] Desktop streaming renderer.
-- [ ] Stop/cancel button.
+- [x] Backend streaming endpoint.
+- [x] Desktop streaming renderer.
+- [x] Stop/cancel button.
 - [x] Persistent conversation storage.
 - [ ] Conversation list/detail endpoints.
 - [x] Desktop conversation browser.
@@ -425,9 +523,9 @@ These are non-negotiable before the app can feel like a serious next-generation 
 
 ## Immediate Next Moves
 
-1. Add provider adapter interface for local, cloud, search, image, video, embeddings, audio, and judge models.
+1. Add adapter health summaries to the Model Stack and fallback inspector using provider preflight telemetry.
 2. Add dependency-aware coding plans per project type.
-3. Add memory controls for user preferences and project facts.
-4. Connect routing presets to actual task routing, fallback, and provider consent.
-5. Add source/citation cards for research and education mode.
-6. Expand smoke checks from login/loading/dashboard into model stack, build queue, Context Preview, Creative Studio, validation profile UI, coding routes, and feedback buttons.
+3. Connect routing presets to actual task routing, fallback, and provider consent.
+4. Expand smoke checks from login/loading/dashboard into model stack, build queue, Context Preview, Creative Studio, validation profile UI, coding routes, and feedback buttons.
+5. Add desktop smoke coverage for Full Verify and verification-result rendering.
+6. Add verification-result snapshots that can be replayed in the desktop UI without rerunning commands.

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <functional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -45,6 +46,10 @@ std::string FirstJsonErrorDetail(const std::string& body);
 
 HttpResponse HttpGet(const std::string& url);
 HttpResponse HttpPostJson(const std::string& url, const std::string& body);
+HttpResponse HttpPostJsonStream(
+    const std::string& url,
+    const std::string& body,
+    const std::function<void(const std::string&)>& on_chunk);
 HttpResponse HttpPutJson(const std::string& url, const std::string& body);
 HttpResponse HttpDelete(const std::string& url);
 
@@ -65,6 +70,7 @@ bool IsAudioPreviewPlaying();
 void RequestWindowClose();
 void RequestWindowMinimize();
 void RequestWindowMaximizeRestore();
+bool IsHostWindowMaximized();
 std::pair<float, float> HostWindowSize();
 
 }
