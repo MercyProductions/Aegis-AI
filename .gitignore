@@ -26,6 +26,7 @@ cmake_install.cmake
 
 # Runtime captures and generated diagnostics
 smoke-artifacts/
+stress-artifacts/
 logs/
 crash-dumps/
 *.log

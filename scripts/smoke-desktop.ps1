@@ -211,28 +211,34 @@ function Get-BackendHealth {
         }
     }
 
-    $healthUrl = $Url.TrimEnd([char[]]@('/')) + "/health"
-    try {
-        $health = Invoke-RestMethod -Uri $healthUrl -TimeoutSec 5
-        return [pscustomobject]@{
-            Url = $Url
-            Reachable = $true
-            Status = [string]$health.status
-            Ready = [bool]$health.ready
-            Engine = [string]$health.engine
-            Model = [string]$health.model_name
-            Detail = ""
+    $baseUrl = $Url.TrimEnd([char[]]@('/'))
+    $healthUrls = @("$baseUrl/api/health", "$baseUrl/health")
+    $lastError = ""
+    foreach ($healthUrl in $healthUrls) {
+        try {
+            $health = Invoke-RestMethod -Uri $healthUrl -TimeoutSec 5
+            return [pscustomobject]@{
+                Url = $healthUrl
+                Reachable = $true
+                Status = [string]$health.status
+                Ready = [bool]$health.ready
+                Engine = [string]$health.engine
+                Model = [string]$health.model_name
+                Detail = ""
+            }
+        } catch {
+            $lastError = $_.Exception.Message
         }
-    } catch {
-        return [pscustomobject]@{
-            Url = $Url
-            Reachable = $false
-            Status = "unreachable"
-            Ready = $false
-            Engine = ""
-            Model = ""
-            Detail = $_.Exception.Message
-        }
+    }
+
+    return [pscustomobject]@{
+        Url = $baseUrl
+        Reachable = $false
+        Status = "unreachable"
+        Ready = $false
+        Engine = ""
+        Model = ""
+        Detail = $lastError
     }
 }
 

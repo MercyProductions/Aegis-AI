@@ -598,50 +598,161 @@ HttpResponse HttpDelete(const std::string& url)
     return SendWinHttpRequest(L"DELETE", url, nullptr);
 }
 
-bool BackendHealthEndpointReady(const DesktopSettings& settings)
+std::string BackendHealthFailureMessage(const HttpResponse& response)
+{
+    if (!response.error.empty()) {
+        return response.error;
+    }
+
+    std::ostringstream message;
+    message << "HTTP " << response.status_code;
+    const std::string detail = FirstJsonErrorDetail(response.body);
+    if (!detail.empty()) {
+        message << ": " << detail;
+    }
+    return message.str();
+}
+
+bool BackendHealthEndpointReady(const DesktopSettings& settings, std::string* detail = nullptr)
 {
     try {
         const HttpResponse response = HttpGet(JoinUrl(settings.api_base_url, "/api/health"));
-        return response.status_code >= 200 && response.status_code < 300 && response.error.empty();
+        if (response.status_code >= 200 && response.status_code < 300 && response.error.empty()) {
+            SetError(detail, {});
+            return true;
+        }
+        SetError(detail, BackendHealthFailureMessage(response));
+    } catch (const std::exception& ex) {
+        SetError(detail, ex.what());
     } catch (...) {
-        return false;
+        SetError(detail, "Unexpected backend health check failure.");
     }
+    return false;
 }
 
-bool StartBackendProcess(const DesktopSettings& settings, std::string& error)
+bool WaitForBackendHealth(
+    const DesktopSettings& settings,
+    std::chrono::milliseconds timeout,
+    std::string& detail)
 {
-    if (BackendHealthEndpointReady(settings)) {
-        return true;
-    }
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    int attempt = 0;
+    while (true) {
+        std::string probe_error;
+        if (BackendHealthEndpointReady(settings, &probe_error)) {
+            detail.clear();
+            return true;
+        }
+        detail = probe_error.empty() ? "Health endpoint is not ready yet." : probe_error;
 
+        const auto now = std::chrono::steady_clock::now();
+        if (now >= deadline) {
+            break;
+        }
+
+        const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now);
+        const auto backoff = std::chrono::milliseconds(std::min(1000, 250 + attempt * 150));
+        std::this_thread::sleep_for(std::min(backoff, remaining));
+        ++attempt;
+    }
+    return false;
+}
+
+int BackendPortFromUrl(const std::string& url)
+{
+    const std::wstring wide_url = Utf8ToWide(url);
+    URL_COMPONENTS components{};
+    components.dwStructSize = sizeof(components);
+    components.dwSchemeLength = static_cast<DWORD>(-1);
+    components.dwHostNameLength = static_cast<DWORD>(-1);
+    components.dwUrlPathLength = static_cast<DWORD>(-1);
+    components.dwExtraInfoLength = static_cast<DWORD>(-1);
+
+    if (WinHttpCrackUrl(wide_url.c_str(), 0, 0, &components) && components.nPort != 0) {
+        return static_cast<int>(components.nPort);
+    }
+    return 8787;
+}
+
+std::string WindowsErrorLabel(DWORD code)
+{
+    std::ostringstream message;
+    message << "Windows error " << code;
+    return message.str();
+}
+
+std::string QuotePathForMessage(const std::filesystem::path& path)
+{
+    return "\"" + PathToUtf8(path) + "\"";
+}
+
+bool CloseProcessHandlesAndReturn(PROCESS_INFORMATION& process, bool value)
+{
+    if (process.hThread != nullptr) {
+        CloseHandle(process.hThread);
+        process.hThread = nullptr;
+    }
+    if (process.hProcess != nullptr) {
+        CloseHandle(process.hProcess);
+        process.hProcess = nullptr;
+    }
+    return value;
+}
+
+std::wstring BuildBackendCommand(const DesktopSettings& settings, std::string& error)
+{
     const std::filesystem::path root = settings.backend_root;
     const std::filesystem::path python = root / ".venv" / "Scripts" / "python.exe";
     const std::filesystem::path backend = root / "backend";
 
-    std::wstring command;
     if (std::filesystem::exists(python) && std::filesystem::exists(backend / "aegis_ai" / "main.py")) {
-        command = L"\"";
+        std::wstring command = L"\"";
         command += python.wstring();
         command += L"\" -m uvicorn aegis_ai.main:app --app-dir \"";
         command += backend.wstring();
-        command += L"\" --host 127.0.0.1 --port 8787";
-    } else {
-        const std::filesystem::path script = root / Utf8ToWide(settings.backend_start_script);
-        if (!std::filesystem::exists(script)) {
-            error = "Backend venv and fallback start script were not found.";
-            return false;
-        }
+        command += L"\" --host 127.0.0.1 --port ";
+        command += std::to_wstring(BackendPortFromUrl(settings.api_base_url));
+        return command;
+    }
 
-        std::filesystem::path powershell = std::filesystem::path(GetEnvUtf8(L"WINDIR")) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe";
-        if (!std::filesystem::exists(powershell)) {
-            powershell = L"powershell.exe";
-        }
+    const std::filesystem::path script = root / Utf8ToWide(settings.backend_start_script);
+    if (!std::filesystem::exists(script)) {
+        error = "Backend venv and fallback start script were not found. Checked " +
+            QuotePathForMessage(python) + " and " + QuotePathForMessage(script) + ".";
+        return {};
+    }
 
-        command = L"\"";
-        command += powershell.wstring();
-        command += L"\" -NoProfile -ExecutionPolicy Bypass -File \"";
-        command += script.wstring();
-        command += L"\"";
+    std::filesystem::path powershell = std::filesystem::path(GetEnvUtf8(L"WINDIR")) /
+        "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe";
+    if (!std::filesystem::exists(powershell)) {
+        powershell = L"powershell.exe";
+    }
+
+    std::wstring command = L"\"";
+    command += powershell.wstring();
+    command += L"\" -NoProfile -ExecutionPolicy Bypass -File \"";
+    command += script.wstring();
+    command += L"\"";
+    return command;
+}
+
+bool StartBackendProcess(const DesktopSettings& settings, std::string& error)
+{
+    std::string health_error;
+    if (BackendHealthEndpointReady(settings, &health_error)) {
+        return true;
+    }
+
+    const std::filesystem::path root = settings.backend_root;
+    if (!BackendRootLooksValid(root)) {
+        error = "Backend root is invalid: " + QuotePathForMessage(root) +
+            " (expected backend\\aegis_ai\\main.py). Last health check: " + health_error;
+        return false;
+    }
+
+    const std::wstring command = BuildBackendCommand(settings, error);
+    if (command.empty()) {
+        return false;
     }
 
     STARTUPINFOW startup{};
@@ -664,14 +775,47 @@ bool StartBackendProcess(const DesktopSettings& settings, std::string& error)
         &process);
 
     if (!ok) {
-        error = "Could not launch backend process.";
+        error = "Could not launch backend process: " + WindowsErrorLabel(GetLastError()) + ".";
         return false;
     }
 
-    CloseHandle(process.hThread);
-    CloseHandle(process.hProcess);
-    std::this_thread::sleep_for(std::chrono::milliseconds(1800));
-    return true;
+    const DWORD quick_wait = WaitForSingleObject(process.hProcess, 700);
+    if (quick_wait == WAIT_OBJECT_0) {
+        std::string quick_health_error;
+        if (WaitForBackendHealth(settings, std::chrono::seconds(4), quick_health_error)) {
+            return CloseProcessHandlesAndReturn(process, true);
+        }
+
+        DWORD exit_code = 0;
+        GetExitCodeProcess(process.hProcess, &exit_code);
+        std::ostringstream message;
+        message << "Backend process exited before health became ready";
+        if (exit_code != STILL_ACTIVE) {
+            message << " (exit code " << exit_code << ")";
+        }
+        if (!quick_health_error.empty()) {
+            message << ": " << quick_health_error;
+        }
+        error = message.str();
+        return CloseProcessHandlesAndReturn(process, false);
+    }
+
+    if (WaitForBackendHealth(settings, std::chrono::seconds(18), health_error)) {
+        return CloseProcessHandlesAndReturn(process, true);
+    }
+
+    DWORD exit_code = STILL_ACTIVE;
+    GetExitCodeProcess(process.hProcess, &exit_code);
+    std::ostringstream message;
+    message << "Backend process launched but health did not become ready within 18 seconds";
+    if (!health_error.empty()) {
+        message << ": " << health_error;
+    }
+    if (exit_code != STILL_ACTIVE) {
+        message << " (process exited with code " << exit_code << ")";
+    }
+    error = message.str();
+    return CloseProcessHandlesAndReturn(process, false);
 }
 
 void OpenExternalPath(const std::filesystem::path& path)
