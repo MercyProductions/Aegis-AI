@@ -1252,12 +1252,117 @@ struct WorkspaceDependencyProfileInfo {
     std::vector<std::string> warnings;
 };
 
+struct WorkspaceInstructionStatusFileInfo {
+    std::string path;
+    std::string title;
+    std::string kind;
+    double score = 0.0;
+    int open_items = 0;
+    int completed_items = 0;
+    int total_items = 0;
+    std::vector<std::string> pending_items;
+    std::string summary;
+};
+
+struct WorkspaceInstructionStatusInfo {
+    std::string schema;
+    std::string updated_at;
+    std::string source_message;
+    int instruction_file_count = 0;
+    int open_items = 0;
+    int completed_items = 0;
+    int total_items = 0;
+    std::vector<WorkspaceInstructionStatusFileInfo> files;
+    std::string validation_status;
+    std::string validation_command;
+    std::string validation_summary;
+    std::string completion_status;
+    double completion_score = 0.0;
+    bool has_completion_score = false;
+    bool should_continue = false;
+    std::vector<std::string> completion_reasons;
+    std::vector<std::string> completion_next_actions;
+    std::vector<std::string> applied;
+    std::string recommendation;
+};
+
+struct WorkspaceValidationPlanStepInfo {
+    std::string id;
+    std::string phase;
+    std::string command;
+    std::string label;
+    bool required = true;
+    std::string source_command;
+    int chain_index = 0;
+    int chain_total = 0;
+};
+
+struct WorkspaceValidationPlanInfo {
+    std::string schema;
+    std::string updated_at;
+    std::string project_name;
+    std::string preset_id;
+    std::string preset_label;
+    std::string install_command;
+    std::string validation_command;
+    std::vector<WorkspaceValidationPlanStepInfo> steps;
+    std::string last_run_status;
+    std::string last_run_command;
+    std::string last_run_summary;
+    std::string last_run_failed_step;
+    std::string last_run_build_log_path;
+    std::vector<std::string> notes;
+};
+
+struct WorkspaceReadinessInfo {
+    std::string status;
+    int score = 0;
+    std::string summary;
+    std::string next_action;
+    std::vector<std::string> blockers;
+    std::vector<std::string> signals;
+};
+
 struct WorkspaceProfileInfo {
     std::string workspace_root;
     bool has_manifest = false;
     WorkspaceProjectManifestInfo manifest;
     WorkspaceDependencyProfileInfo dependency_profile;
+    bool has_instruction_status = false;
+    WorkspaceInstructionStatusInfo instruction_status;
+    bool has_validation_plan = false;
+    WorkspaceValidationPlanInfo validation_plan;
+    WorkspaceReadinessInfo readiness;
     std::vector<std::string> recommendations;
+};
+
+struct WorkspaceAutopilotStatusInfo {
+    std::string workspace_root;
+    std::string phase = "unconfigured";
+    bool should_continue = false;
+    std::string recommended_mode = "build";
+    std::string suggested_prompt;
+    std::string next_action;
+    std::string stop_reason;
+    int pass_budget = 0;
+    bool run_validation = false;
+    int max_repair_attempts = 0;
+    WorkspaceReadinessInfo readiness;
+    int open_items = 0;
+    int completed_items = 0;
+    int total_items = 0;
+    std::string validation_command;
+    std::string latest_validation_status;
+    std::string failed_step;
+    std::string failed_step_command;
+    std::string first_diagnostic;
+    std::string repair_brief;
+    std::vector<std::string> blockers;
+    std::vector<std::string> signals;
+    std::vector<std::string> recommendations;
+    std::vector<WorkspaceInstructionStatusFileInfo> instruction_files;
+    std::vector<std::string> next_open_items;
+    std::string instruction_source;
 };
 
 struct RuntimeSnapshot {
@@ -1282,6 +1387,9 @@ struct RuntimeSnapshot {
     WorkspaceProfileInfo workspace_profile;
     bool has_workspace_profile = false;
     std::string workspace_profile_error;
+    WorkspaceAutopilotStatusInfo workspace_autopilot_status;
+    bool has_workspace_autopilot_status = false;
+    std::string workspace_autopilot_status_error;
     std::string workspace_root;
     std::string error;
 };
@@ -1377,6 +1485,8 @@ struct ProjectBuildStageInfo {
 struct ProjectScaffoldResult {
     bool ok = false;
     std::string message;
+    std::string execution_mode;
+    std::string primary_action;
     std::string target_path;
     ProjectScaffoldPresetInfo preset;
     std::vector<std::string> plan_steps;
@@ -1384,6 +1494,7 @@ struct ProjectScaffoldResult {
     std::vector<std::string> diff_summary;
     std::vector<std::string> memory_paths;
     std::vector<ProjectScaffoldFileInfo> files;
+    int file_change_count = 0;
     std::vector<std::string> applied;
     std::vector<std::string> warnings;
     std::string checkpoint;
@@ -1402,6 +1513,8 @@ struct ProjectScaffoldPlanResult {
     bool ok = false;
     std::string message;
     std::string prompt;
+    std::string execution_mode;
+    std::string primary_action;
     double confidence = 0.0;
     ProjectScaffoldPresetInfo preset;
     std::string project_name;
@@ -1554,6 +1667,7 @@ public:
     ModelRegistrySnapshot DeleteModelRegistryProvider(const std::string& provider_id);
     AppConfig SaveConfig(const AppConfig& config);
     WorkspaceProfileInfo GetWorkspaceProfile(const std::string& workspace_root);
+    WorkspaceAutopilotStatusInfo GetWorkspaceAutopilotStatus(const std::string& workspace_root);
     std::vector<WorkspaceFile> ListFiles(const std::string& workspace_root, int max_files, std::string* resolved_root = nullptr);
     std::vector<TaskSummary> GetHistory(const std::string& workspace_root, int limit);
     TelemetrySnapshot GetTelemetry(const std::string& workspace_root, int limit = 20);

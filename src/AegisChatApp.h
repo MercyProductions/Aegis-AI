@@ -113,6 +113,7 @@ private:
     ProjectScaffoldPlanResult project_scaffold_plan_;
     ProjectScaffoldResult project_scaffold_result_;
     WorkspaceProfileInfo workspace_profile_;
+    WorkspaceAutopilotStatusInfo workspace_autopilot_status_;
     AgentResponse last_response_;
     AgentResponse route_preview_;
     bool has_response_ = false;
@@ -124,6 +125,7 @@ private:
     VerificationResult verification_result_;
     bool has_verification_result_ = false;
     bool has_workspace_profile_snapshot_ = false;
+    bool has_workspace_autopilot_status_snapshot_ = false;
     CheckpointListResult checkpoints_;
     std::vector<MediaJobSummary> media_jobs_;
     MediaJobSummary selected_media_job_;
@@ -174,6 +176,7 @@ private:
     std::string model_registry_checkpoints_error_;
     std::string selected_model_registry_checkpoint_diff_error_;
     std::string workspace_profile_error_;
+    std::string workspace_autopilot_status_error_;
     std::string next_validation_command_override_;
     std::string next_validation_label_override_;
     std::string next_validation_notes_override_;

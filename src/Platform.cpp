@@ -280,6 +280,14 @@ std::filesystem::path ExecutableDirectory()
 
 std::filesystem::path AppDataDirectory()
 {
+    const std::string override_dir = Trim(GetEnvUtf8(L"AEGIS_CHATBOT_APPDATA_DIR"));
+    if (!override_dir.empty()) {
+        std::filesystem::path path = Utf8ToWide(override_dir);
+        std::error_code ec;
+        std::filesystem::create_directories(path, ec);
+        return path;
+    }
+
     PWSTR raw = nullptr;
     std::filesystem::path base;
     if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, nullptr, &raw)) && raw != nullptr) {

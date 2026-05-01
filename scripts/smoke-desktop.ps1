@@ -6,7 +6,9 @@ param(
     [int]$SetupWaitSeconds = 2,
     [int]$DashboardWaitSeconds = 8,
     [double]$MinimumNonBlackRatio = 0.02,
-    [switch]$SkipDashboard
+    [switch]$SkipDashboard,
+    [switch]$RunConversationSmoke,
+    [switch]$UseIsolatedAppData
 )
 
 Set-StrictMode -Version Latest
@@ -277,6 +279,77 @@ function Invoke-SmokeLogin {
     Start-Sleep -Milliseconds 500
 }
 
+function Get-DefaultAegisAppDataDirectory {
+    if ([string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+        return Join-Path (Split-Path -Parent $ExePath) "smoke-appdata"
+    }
+    return Join-Path $env:LOCALAPPDATA "Aegis\ChatBot"
+}
+
+function Assert-ConversationPersistence {
+    param([string]$AppDataDir)
+
+    if ([string]::IsNullOrWhiteSpace($AppDataDir)) {
+        throw "Conversation smoke did not receive an app data directory."
+    }
+
+    $snapshotPath = Join-Path $AppDataDir "conversation_last.json"
+    if (-not (Test-Path -LiteralPath $snapshotPath)) {
+        throw "Conversation snapshot was not written at $snapshotPath."
+    }
+
+    $snapshot = Get-Content -LiteralPath $snapshotPath -Raw | ConvertFrom-Json
+    if ([string]::IsNullOrWhiteSpace([string]$snapshot.id)) {
+        throw "Conversation snapshot is missing an id."
+    }
+    $snapshotMessages = @($snapshot.messages)
+    if ($snapshotMessages.Count -lt 1) {
+        throw "Conversation snapshot did not persist any messages."
+    }
+    $snapshotText = ($snapshotMessages | ForEach-Object { [string]$_.content }) -join "`n"
+    if ($snapshotText -notmatch "New chat started") {
+        throw "Conversation snapshot did not contain the New Chat starter message."
+    }
+
+    $conversationDir = Join-Path $AppDataDir "conversations"
+    if (-not (Test-Path -LiteralPath $conversationDir)) {
+        throw "Conversation library directory was not written at $conversationDir."
+    }
+
+    $conversationFiles = @(Get-ChildItem -LiteralPath $conversationDir -Filter "*.json" -File -ErrorAction Stop)
+    if ($conversationFiles.Count -lt 1) {
+        throw "Conversation library did not contain any saved conversation files."
+    }
+
+    $matchingConversation = $null
+    foreach ($file in $conversationFiles) {
+        try {
+            $candidate = Get-Content -LiteralPath $file.FullName -Raw | ConvertFrom-Json
+        } catch {
+            continue
+        }
+        $candidateMessages = @($candidate.messages)
+        $candidateText = ($candidateMessages | ForEach-Object { [string]$_.content }) -join "`n"
+        if ([string]$candidate.id -eq [string]$snapshot.id -and $candidateText -match "New chat started") {
+            $matchingConversation = $file
+            break
+        }
+    }
+
+    if ($null -eq $matchingConversation) {
+        throw "Conversation library did not include the current New Chat conversation."
+    }
+
+    return [pscustomobject]@{
+        AppDataDir = $AppDataDir
+        SnapshotPath = $snapshotPath
+        ConversationDir = $conversationDir
+        ConversationFile = $matchingConversation.FullName
+        ConversationCount = $conversationFiles.Count
+        SnapshotMessageCount = $snapshotMessages.Count
+    }
+}
+
 Ensure-NativeTypes
 
 if ([string]::IsNullOrWhiteSpace($ExePath)) {
@@ -299,10 +372,23 @@ $process = $null
 $captures = @()
 $backendBefore = Get-BackendHealth -Url $BackendUrl
 $backendAfter = $null
+$appDataDir = ""
+$conversationSmoke = $null
 $previousAutoLogin = $env:AEGIS_CHATBOT_SMOKE_AUTO_LOGIN
 $previousAutoLoginDelay = $env:AEGIS_CHATBOT_SMOKE_AUTO_LOGIN_DELAY_MS
+$previousAppDataDir = $env:AEGIS_CHATBOT_APPDATA_DIR
 try {
     $workingDirectory = Split-Path -Parent $ExePath
+    if ($UseIsolatedAppData -or $RunConversationSmoke) {
+        $appDataDir = Join-Path $runDir "appdata"
+        New-Item -ItemType Directory -Force -Path $appDataDir | Out-Null
+        $env:AEGIS_CHATBOT_APPDATA_DIR = $appDataDir
+    } elseif (-not [string]::IsNullOrWhiteSpace($env:AEGIS_CHATBOT_APPDATA_DIR)) {
+        $appDataDir = $env:AEGIS_CHATBOT_APPDATA_DIR
+    } else {
+        $appDataDir = Get-DefaultAegisAppDataDirectory
+    }
+
     if (-not $SkipDashboard) {
         $env:AEGIS_CHATBOT_SMOKE_AUTO_LOGIN = "1"
         $env:AEGIS_CHATBOT_SMOKE_AUTO_LOGIN_DELAY_MS = [string]([Math]::Max(($LoginWaitSeconds * 1000) + 700, 1500))
@@ -325,15 +411,27 @@ try {
         $dashboard = Capture-Window -Handle $handle -Path (Join-Path $runDir "03-dashboard.png")
         Assert-VisibleCapture -Capture $dashboard -MinimumRatio $MinimumNonBlackRatio
         $captures += $dashboard
+
+        if ($RunConversationSmoke) {
+            Bring-WindowToFront -Handle $handle
+            [System.Windows.Forms.SendKeys]::SendWait("^n")
+            Start-Sleep -Milliseconds 900
+            $newChat = Capture-Window -Handle $handle -Path (Join-Path $runDir "04-new-chat.png")
+            Assert-VisibleCapture -Capture $newChat -MinimumRatio $MinimumNonBlackRatio
+            $captures += $newChat
+            $conversationSmoke = Assert-ConversationPersistence -AppDataDir $appDataDir
+        }
     }
     $backendAfter = Get-BackendHealth -Url $BackendUrl
 
     $summary = [pscustomobject]@{
         ExePath = $ExePath
         OutputDir = $runDir
+        AppDataDir = $appDataDir
         BackendUrl = $BackendUrl
         BackendBefore = $backendBefore
         BackendAfter = $backendAfter
+        ConversationSmoke = $conversationSmoke
         MinimumNonBlackRatio = $MinimumNonBlackRatio
         Captures = $captures | ForEach-Object {
             [pscustomobject]@{
@@ -351,6 +449,7 @@ try {
 } finally {
     $env:AEGIS_CHATBOT_SMOKE_AUTO_LOGIN = $previousAutoLogin
     $env:AEGIS_CHATBOT_SMOKE_AUTO_LOGIN_DELAY_MS = $previousAutoLoginDelay
+    $env:AEGIS_CHATBOT_APPDATA_DIR = $previousAppDataDir
     if ($process -ne $null -and -not $process.HasExited) {
         $process.CloseMainWindow() | Out-Null
         Start-Sleep -Milliseconds 600
