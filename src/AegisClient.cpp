@@ -158,6 +158,8 @@ ProjectScaffoldResult ParseProjectScaffoldResult(const JsonValue& value)
     }
     result.ok = value["ok"].AsBool(false);
     result.message = value["message"].AsString();
+    result.execution_mode = value["execution_mode"].AsString("scaffold");
+    result.primary_action = value["primary_action"].AsString("create_or_update_files");
     result.target_path = value["target_path"].AsString();
     result.preset = ParseProjectScaffoldPreset(value["preset"]);
     result.plan_steps = ParseStringArray(value["plan_steps"]);
@@ -165,6 +167,7 @@ ProjectScaffoldResult ParseProjectScaffoldResult(const JsonValue& value)
     result.diff_summary = ParseStringArray(value["diff_summary"]);
     result.memory_paths = ParseStringArray(value["memory_paths"]);
     result.files = ParseProjectScaffoldFiles(value["files"]);
+    result.file_change_count = value["file_change_count"].AsInt(static_cast<int>(result.files.size()));
     result.applied = ParseStringArray(value["applied"]);
     result.warnings = ParseStringArray(value["warnings"]);
     result.checkpoint = value["checkpoint"].AsString();
@@ -188,6 +191,8 @@ ProjectScaffoldPlanResult ParseProjectScaffoldPlanResult(const JsonValue& value)
     result.ok = value["ok"].AsBool(false);
     result.message = value["message"].AsString();
     result.prompt = value["prompt"].AsString();
+    result.execution_mode = value["execution_mode"].AsString("scaffold");
+    result.primary_action = value["primary_action"].AsString("create_or_update_files");
     result.confidence = value["confidence"].AsDouble(0.0);
     result.preset = ParseProjectScaffoldPreset(value["preset"]);
     result.project_name = value["project_name"].AsString();
@@ -307,6 +312,149 @@ WorkspaceDependencyProfileInfo ParseWorkspaceDependencyProfile(const JsonValue& 
     return profile;
 }
 
+WorkspaceInstructionStatusFileInfo ParseWorkspaceInstructionStatusFile(const JsonValue& value)
+{
+    WorkspaceInstructionStatusFileInfo file;
+    if (!value.IsObject()) {
+        return file;
+    }
+    file.path = value["path"].AsString();
+    file.title = value["title"].AsString();
+    file.kind = value["kind"].AsString();
+    file.score = value["score"].AsDouble(0.0);
+    file.open_items = value["open_items"].AsInt(0);
+    file.completed_items = value["completed_items"].AsInt(0);
+    file.total_items = value["total_items"].AsInt(0);
+    file.pending_items = ParseStringArray(value["pending_items"]);
+    file.summary = value["summary"].AsString();
+    return file;
+}
+
+std::vector<WorkspaceInstructionStatusFileInfo> ParseWorkspaceInstructionStatusFiles(const JsonValue& value)
+{
+    std::vector<WorkspaceInstructionStatusFileInfo> files;
+    if (!value.IsArray()) {
+        return files;
+    }
+    files.reserve(value.array_value.size());
+    for (const JsonValue& item : value.array_value) {
+        if (item.IsObject()) {
+            files.push_back(ParseWorkspaceInstructionStatusFile(item));
+        }
+    }
+    return files;
+}
+
+WorkspaceInstructionStatusInfo ParseWorkspaceInstructionStatus(const JsonValue& value)
+{
+    WorkspaceInstructionStatusInfo status;
+    if (!value.IsObject()) {
+        return status;
+    }
+    status.schema = value["schema"].AsString();
+    status.updated_at = value["updated_at"].AsString();
+    status.source_message = value["source_message"].AsString();
+    status.instruction_file_count = value["instruction_file_count"].AsInt(0);
+    status.open_items = value["open_items"].AsInt(0);
+    status.completed_items = value["completed_items"].AsInt(0);
+    status.total_items = value["total_items"].AsInt(0);
+    status.files = ParseWorkspaceInstructionStatusFiles(value["files"]);
+    status.applied = ParseStringArray(value["applied"]);
+    status.recommendation = value["recommendation"].AsString();
+
+    const JsonValue& validation = value["last_validation"];
+    if (validation.IsObject()) {
+        status.validation_status = validation["status"].AsString();
+        status.validation_command = validation["command"].AsString();
+        status.validation_summary = validation["summary"].AsString();
+    }
+
+    const JsonValue& completion = value["completion"];
+    if (completion.IsObject()) {
+        status.completion_status = completion["status"].AsString();
+        status.completion_score = completion["score"].AsDouble(0.0);
+        status.has_completion_score = true;
+        status.should_continue = completion["should_continue"].AsBool(false);
+        status.completion_reasons = ParseStringArray(completion["reasons"]);
+        status.completion_next_actions = ParseStringArray(completion["next_actions"]);
+    }
+    return status;
+}
+
+WorkspaceValidationPlanStepInfo ParseWorkspaceValidationPlanStep(const JsonValue& value)
+{
+    WorkspaceValidationPlanStepInfo step;
+    if (!value.IsObject()) {
+        return step;
+    }
+    step.id = value["id"].AsString();
+    step.phase = value["phase"].AsString();
+    step.command = value["command"].AsString();
+    step.label = value["label"].AsString();
+    step.required = value["required"].AsBool(true);
+    step.source_command = value["source_command"].AsString();
+    step.chain_index = value["chain_index"].AsInt(0);
+    step.chain_total = value["chain_total"].AsInt(0);
+    return step;
+}
+
+std::vector<WorkspaceValidationPlanStepInfo> ParseWorkspaceValidationPlanSteps(const JsonValue& value)
+{
+    std::vector<WorkspaceValidationPlanStepInfo> steps;
+    if (!value.IsArray()) {
+        return steps;
+    }
+    steps.reserve(value.array_value.size());
+    for (const JsonValue& item : value.array_value) {
+        if (item.IsObject()) {
+            steps.push_back(ParseWorkspaceValidationPlanStep(item));
+        }
+    }
+    return steps;
+}
+
+WorkspaceValidationPlanInfo ParseWorkspaceValidationPlan(const JsonValue& value)
+{
+    WorkspaceValidationPlanInfo plan;
+    if (!value.IsObject()) {
+        return plan;
+    }
+    plan.schema = value["schema"].AsString();
+    plan.updated_at = value["updated_at"].AsString();
+    plan.project_name = value["project_name"].AsString();
+    plan.preset_id = value["preset_id"].AsString();
+    plan.preset_label = value["preset_label"].AsString();
+    plan.install_command = value["install_command"].AsString();
+    plan.validation_command = value["validation_command"].AsString();
+    plan.steps = ParseWorkspaceValidationPlanSteps(value["steps"]);
+    plan.notes = ParseStringArray(value["notes"]);
+
+    const JsonValue& last_run = value["last_run"];
+    if (last_run.IsObject()) {
+        plan.last_run_status = last_run["status"].AsString();
+        plan.last_run_command = last_run["command"].AsString();
+        plan.last_run_summary = last_run["summary"].AsString();
+        plan.last_run_failed_step = last_run["failed_step"].AsString();
+        plan.last_run_build_log_path = last_run["build_log_path"].AsString();
+    }
+    return plan;
+}
+
+WorkspaceReadinessInfo ParseWorkspaceReadiness(const JsonValue& value)
+{
+    WorkspaceReadinessInfo readiness;
+    if (!value.IsObject()) {
+        return readiness;
+    }
+    readiness.status = value["status"].AsString();
+    readiness.score = value["score"].AsInt(0);
+    readiness.summary = value["summary"].AsString();
+    readiness.next_action = value["next_action"].AsString();
+    readiness.blockers = ParseStringArray(value["blockers"]);
+    readiness.signals = ParseStringArray(value["signals"]);
+    return readiness;
+}
+
 WorkspaceProfileInfo ParseWorkspaceProfile(const JsonValue& value)
 {
     WorkspaceProfileInfo profile;
@@ -317,8 +465,48 @@ WorkspaceProfileInfo ParseWorkspaceProfile(const JsonValue& value)
     profile.has_manifest = value["has_manifest"].AsBool(false);
     profile.manifest = ParseWorkspaceProjectManifest(value["manifest"]);
     profile.dependency_profile = ParseWorkspaceDependencyProfile(value["dependency_profile"]);
+    profile.has_instruction_status = value["has_instruction_status"].AsBool(false);
+    profile.instruction_status = ParseWorkspaceInstructionStatus(value["instruction_status"]);
+    profile.has_validation_plan = value["has_validation_plan"].AsBool(false);
+    profile.validation_plan = ParseWorkspaceValidationPlan(value["validation_plan"]);
+    profile.readiness = ParseWorkspaceReadiness(value["readiness"]);
     profile.recommendations = ParseStringArray(value["recommendations"]);
     return profile;
+}
+
+WorkspaceAutopilotStatusInfo ParseWorkspaceAutopilotStatus(const JsonValue& value)
+{
+    WorkspaceAutopilotStatusInfo status;
+    if (!value.IsObject()) {
+        return status;
+    }
+    status.workspace_root = value["workspace_root"].AsString();
+    status.phase = value["phase"].AsString("unconfigured");
+    status.should_continue = value["should_continue"].AsBool(false);
+    status.recommended_mode = value["recommended_mode"].AsString("build");
+    status.suggested_prompt = value["suggested_prompt"].AsString();
+    status.next_action = value["next_action"].AsString();
+    status.stop_reason = value["stop_reason"].AsString();
+    status.pass_budget = value["pass_budget"].AsInt(0);
+    status.run_validation = value["run_validation"].AsBool(false);
+    status.max_repair_attempts = value["max_repair_attempts"].AsInt(0);
+    status.readiness = ParseWorkspaceReadiness(value["readiness"]);
+    status.open_items = value["open_items"].AsInt(0);
+    status.completed_items = value["completed_items"].AsInt(0);
+    status.total_items = value["total_items"].AsInt(0);
+    status.validation_command = value["validation_command"].AsString();
+    status.latest_validation_status = value["latest_validation_status"].AsString();
+    status.failed_step = value["failed_step"].AsString();
+    status.failed_step_command = value["failed_step_command"].AsString();
+    status.first_diagnostic = value["first_diagnostic"].AsString();
+    status.repair_brief = value["repair_brief"].AsString();
+    status.blockers = ParseStringArray(value["blockers"]);
+    status.signals = ParseStringArray(value["signals"]);
+    status.recommendations = ParseStringArray(value["recommendations"]);
+    status.instruction_files = ParseWorkspaceInstructionStatusFiles(value["instruction_files"]);
+    status.next_open_items = ParseStringArray(value["next_open_items"]);
+    status.instruction_source = value["instruction_source"].AsString();
+    return status;
 }
 
 std::vector<CheckpointFileInfo> ParseCheckpointFiles(const JsonValue& value)
@@ -3092,6 +3280,12 @@ RuntimeSnapshot AegisClient::LoadRuntime(bool allow_backend_start, const std::st
     } catch (const std::exception& error) {
         snapshot.workspace_profile_error = error.what();
     }
+    try {
+        snapshot.workspace_autopilot_status = GetWorkspaceAutopilotStatus(snapshot.workspace_root);
+        snapshot.has_workspace_autopilot_status = true;
+    } catch (const std::exception& error) {
+        snapshot.workspace_autopilot_status_error = error.what();
+    }
     snapshot.recent_tasks = GetHistory(snapshot.workspace_root, 8);
     snapshot.ok = true;
     return snapshot;
@@ -3399,6 +3593,21 @@ WorkspaceProfileInfo AegisClient::GetWorkspaceProfile(const std::string& workspa
         throw std::runtime_error(parsed.error);
     }
     return ParseWorkspaceProfile(parsed.value);
+}
+
+WorkspaceAutopilotStatusInfo AegisClient::GetWorkspaceAutopilotStatus(const std::string& workspace_root)
+{
+    std::string path = "/api/workspace/autopilot-status";
+    if (!Trim(workspace_root).empty()) {
+        path += "?workspace_root=" + UrlEncode(workspace_root);
+    }
+
+    const std::string body = RequireJson(HttpGet(Endpoint(path)), "load workspace autopilot status");
+    const JsonParseResult parsed = ParseJson(body);
+    if (!parsed.ok) {
+        throw std::runtime_error(parsed.error);
+    }
+    return ParseWorkspaceAutopilotStatus(parsed.value);
 }
 
 std::vector<WorkspaceFile> AegisClient::ListFiles(const std::string& workspace_root, int max_files, std::string* resolved_root)

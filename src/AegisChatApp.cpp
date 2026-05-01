@@ -321,6 +321,40 @@ std::string DefaultValidationCommandForWorkspace(const std::string& path)
     if (std::filesystem::exists(root / L"CMakeLists.txt", ec)) {
         return "python build.py";
     }
+    if (std::filesystem::exists(root / L"package.json", ec)) {
+        std::ifstream package_file(root / L"package.json", std::ios::binary);
+        const std::string package_json = package_file
+            ? Lower(std::string((std::istreambuf_iterator<char>(package_file)), std::istreambuf_iterator<char>()))
+            : std::string{};
+        const bool uses_pnpm = std::filesystem::exists(root / L"pnpm-lock.yaml", ec);
+        const bool uses_yarn = std::filesystem::exists(root / L"yarn.lock", ec);
+        const std::string runner = uses_pnpm ? "pnpm" : (uses_yarn ? "yarn" : "npm");
+        if (package_json.find("\"build\"") != std::string::npos) {
+            return runner == "yarn" ? "yarn build" : runner + " run build";
+        }
+        if (package_json.find("\"test\"") != std::string::npos) {
+            return runner == "npm" ? "npm test" : runner + " test";
+        }
+    }
+    if (std::filesystem::exists(root / L"pyproject.toml", ec) ||
+        std::filesystem::exists(root / L"requirements.txt", ec)) {
+        if (std::filesystem::exists(root / L"tests", ec) || std::filesystem::exists(root / L"test", ec)) {
+            return "python -m pytest";
+        }
+        return "python -m compileall .";
+    }
+    if (std::filesystem::exists(root / L"Cargo.toml", ec)) {
+        return "cargo test";
+    }
+    if (std::filesystem::exists(root / L"go.mod", ec)) {
+        return "go test ./...";
+    }
+    if (std::filesystem::exists(root / L"pom.xml", ec)) {
+        return "mvn test";
+    }
+    if (std::filesystem::exists(root / L"build.gradle", ec) || std::filesystem::exists(root / L"build.gradle.kts", ec)) {
+        return std::filesystem::exists(root / L"gradlew", ec) ? "gradlew test" : "gradle test";
+    }
     for (const auto& entry : std::filesystem::directory_iterator(root, ec)) {
         if (ec) {
             break;
@@ -335,16 +369,22 @@ std::string DefaultValidationCommandForWorkspace(const std::string& path)
         if (extension == ".vcxproj") {
             return "msbuild \"" + WideToUtf8(entry.path().filename().wstring()) + "\" /m /p:Configuration=Release";
         }
+        if (extension == ".csproj") {
+            return "dotnet build \"" + WideToUtf8(entry.path().filename().wstring()) + "\"";
+        }
     }
     return {};
 }
 
-std::string BuildWorkspaceContinuityDirective(const std::string& workspace, const std::string& validation_command)
+std::string BuildWorkspaceContinuityDirective(const std::string& workspace, const std::string& validation_command, bool native_project)
 {
     std::ostringstream body;
     body << "Project continuity directive:\n";
     body << "- Continue the existing project in `" << workspace << "`; do not create an unrelated starter in another folder.\n";
-    body << "- Preserve the detected C++/CMake/MSBuild console-app stack. Do not replace it with a website, Python app, Node app, or generic template.\n";
+    body << "- Preserve the detected stack, build system, and app type. Do not convert it into an unrelated template or different platform.\n";
+    if (native_project) {
+        body << "- Preserve the detected C++/CMake/MSBuild console-app stack. Do not replace it with a website, Python app, Node app, or generic template.\n";
+    }
     body << "- Inspect the existing source, solution, project, and `.aegis` files before editing.\n";
     body << "- Build and run validation for the current project, then repair concrete compiler/build/runtime errors if any are captured.\n";
     if (!validation_command.empty()) {
@@ -3007,12 +3047,35 @@ std::string LatestUserPrompt(const std::vector<ChatMessage>& history)
     return "Analyze the current project and give me the highest-impact next steps.";
 }
 
+bool IsExistingProjectValidationMode(const ProjectScaffoldPlanResult& plan)
+{
+    return plan.execution_mode == "existing_validation"
+        || plan.primary_action == "validate_existing_project";
+}
+
+bool IsExistingProjectValidationMode(const ProjectScaffoldResult& result)
+{
+    return result.execution_mode == "existing_validation"
+        || result.primary_action == "validate_existing_project";
+}
+
+std::string ProjectBuilderModeText(bool existing_validation)
+{
+    return existing_validation ? "Validate existing project" : "Scaffold / update files";
+}
+
 std::string BuildProjectScaffoldChatSummary(
     const ProjectScaffoldPlanResult& plan,
     const ProjectScaffoldResult& preview)
 {
     std::ostringstream summary;
-    summary << "I routed this into the Project Builder and prepared a safe preview. No files have been written yet.\n\n";
+    const bool existing_validation = IsExistingProjectValidationMode(plan) || IsExistingProjectValidationMode(preview);
+    if (existing_validation) {
+        summary << "I routed this into the Project Builder as an existing-project validation pass. No starter files are planned.\n\n";
+    } else {
+        summary << "I routed this into the Project Builder and prepared a safe preview. No files have been written yet.\n\n";
+    }
+    summary << "Mode: " << ProjectBuilderModeText(existing_validation) << "\n";
     summary << "Planned stack: " << (plan.preset.label.empty() ? plan.preset.id : plan.preset.label) << "\n";
     summary << "Project name: " << (plan.project_name.empty() ? "aegis-app" : plan.project_name) << "\n";
     summary << "Target: " << (plan.target_path.empty() ? preview.target_path : plan.target_path) << "\n";
@@ -3059,15 +3122,25 @@ std::string BuildProjectScaffoldChatSummary(
             summary << "- " << plan.reasons[i] << "\n";
         }
     }
-    summary << "\nThe Project Builder is open so you can inspect the plan, adjust fields, then click Create Project when ready.";
+    summary << "\nThe Project Builder is open so you can inspect the plan and adjust fields. ";
+    summary << (existing_validation
+        ? "Click Run Validation when ready."
+        : "Click Create Project when ready.");
     return summary.str();
 }
 
 std::string BuildProjectScaffoldResultSummary(const ProjectScaffoldResult& result)
 {
     std::ostringstream summary;
+    const bool existing_validation = IsExistingProjectValidationMode(result);
     summary << (result.message.empty() ? "Project Builder finished." : result.message) << "\n\n";
+    summary << "Mode: " << ProjectBuilderModeText(existing_validation) << "\n";
     summary << "Target: " << result.target_path << "\n";
+    if (result.file_change_count > 0 || !result.files.empty()) {
+        summary << "File changes: " << result.file_change_count << "\n";
+    } else if (existing_validation) {
+        summary << "File changes: 0 (validation-only pass)\n";
+    }
     if (!result.checkpoint.empty()) {
         summary << "Checkpoint: " << result.checkpoint << "\n";
     }
@@ -5970,6 +6043,23 @@ std::string AegisChatApp::AutopilotQualityReason() const
 void AegisChatApp::RefreshAutopilotSuggestions()
 {
     autopilot_suggestions_.clear();
+    if (has_workspace_autopilot_status_snapshot_) {
+        const WorkspaceAutopilotStatusInfo& status = workspace_autopilot_status_;
+        if (!status.phase.empty()) {
+            autopilot_suggestions_.push_back("Backend phase: " + status.phase);
+        }
+        if (status.should_continue && !status.next_open_items.empty()) {
+            autopilot_suggestions_.push_back("Next queued item: " + Shorten(status.next_open_items.front(), 80));
+        }
+        if (status.should_continue && !status.repair_brief.empty()) {
+            autopilot_suggestions_.push_back("Repair: " + Shorten(status.repair_brief, 86));
+        }
+        if (status.should_continue && !status.next_action.empty()) {
+            autopilot_suggestions_.push_back(Shorten(status.next_action, 90));
+        } else if (!status.stop_reason.empty()) {
+            autopilot_suggestions_.push_back(Shorten(status.stop_reason, 90));
+        }
+    }
     if (autopilot_active_) {
         autopilot_suggestions_.push_back(autopilot_stop_requested_ ? "Preparing graceful wrap-up" : "Wrap up after current pass");
         autopilot_suggestions_.push_back("Run full verify before final handoff");
@@ -6010,6 +6100,67 @@ std::string AegisChatApp::BuildAutopilotContinuationPrompt(const std::string& re
     if (!reason.empty()) {
         prompt << "Reason for this pass: " << reason << "\n";
     }
+    if (has_workspace_autopilot_status_snapshot_) {
+        const WorkspaceAutopilotStatusInfo& status = workspace_autopilot_status_;
+        prompt << "\nBackend autopilot status:\n";
+        prompt << "- Phase: " << (status.phase.empty() ? "unknown" : status.phase) << "\n";
+        prompt << "- Should continue: " << (status.should_continue ? "yes" : "no") << "\n";
+        prompt << "- Recommended mode: " << (status.recommended_mode.empty() ? "build" : status.recommended_mode) << "\n";
+        prompt << "- Pass budget: " << status.pass_budget << "\n";
+        if (!status.validation_command.empty()) {
+            prompt << "- Validation command: " << status.validation_command << "\n";
+        }
+        if (!status.latest_validation_status.empty()) {
+            prompt << "- Latest validation: " << status.latest_validation_status << "\n";
+        }
+        if (!status.failed_step.empty()) {
+            prompt << "- Failed step: " << status.failed_step << "\n";
+        }
+        if (!status.failed_step_command.empty()) {
+            prompt << "- Failed command: " << status.failed_step_command << "\n";
+        }
+        if (!status.first_diagnostic.empty()) {
+            prompt << "- First diagnostic: " << status.first_diagnostic << "\n";
+        }
+        if (!status.repair_brief.empty()) {
+            prompt << "- Repair brief: " << status.repair_brief << "\n";
+        }
+        if (!status.next_action.empty()) {
+            prompt << "- Next action: " << status.next_action << "\n";
+        }
+        if (!status.instruction_source.empty()) {
+            prompt << "- Instruction source: " << status.instruction_source << "\n";
+        }
+        if (!status.instruction_files.empty()) {
+            prompt << "- Instruction files: ";
+            int emitted = 0;
+            for (const WorkspaceInstructionStatusFileInfo& file : status.instruction_files) {
+                if (file.path.empty()) {
+                    continue;
+                }
+                if (emitted > 0) {
+                    prompt << ", ";
+                }
+                prompt << file.path;
+                ++emitted;
+                if (emitted >= 6) {
+                    break;
+                }
+            }
+            prompt << "\n";
+        }
+        if (!status.next_open_items.empty()) {
+            prompt << "\nBackend queued instruction items to work in order:\n";
+            const size_t queue_count = std::min<size_t>(status.next_open_items.size(), 8);
+            for (size_t i = 0; i < queue_count; ++i) {
+                prompt << (i + 1) << ". " << status.next_open_items[i] << "\n";
+            }
+            prompt << "Use the first unfinished queue item as the primary task for this pass unless validation repair is blocking it.\n";
+        }
+        if (!status.suggested_prompt.empty()) {
+            prompt << "- Status prompt: " << Shorten(status.suggested_prompt, 1200) << "\n";
+        }
+    }
     if (has_response_ && (last_response_.completion_quality.should_continue || !last_response_.completion_quality.status.empty())) {
         prompt << "\nLatest completion quality:\n";
         prompt << "- Status: " << (last_response_.completion_quality.status.empty() ? "unknown" : last_response_.completion_quality.status);
@@ -6026,12 +6177,14 @@ std::string AegisChatApp::BuildAutopilotContinuationPrompt(const std::string& re
     }
     prompt << "\nWork loop for this pass:\n";
     prompt << "1. Read the project manifest, roadmap, recent command history, and important source files.\n";
-    prompt << "2. Choose the highest-value next task: repair validation first, then complete the requested app/site feature slice.\n";
-    prompt << "3. For app/site/software creation goals, build a complete usable version, not a placeholder: real structure, real UI/content, components, styling, responsive behavior, config, scripts, and docs as needed.\n";
-    prompt << "4. Prefer larger coherent file updates over tiny one-file edits when the project is still skeletal or incomplete.\n";
-    prompt << "5. If dependencies or type packages are missing, use the install/verification path before treating module-resolution errors as code defects.\n";
-    prompt << "6. Run the saved validation command when available, capture errors, and use the repair loop before handing back.\n";
-    prompt << "7. End with a short progress note, remaining risks, and 3 suggested next actions.\n";
+    prompt << "2. If backend queued instruction items are present, treat them as the authoritative roadmap and complete the first unfinished item before inventing new scope.\n";
+    prompt << "3. If a backend repair brief is present, fix that exact failed command and first diagnostic before adding new scope.\n";
+    prompt << "4. Choose the highest-value next task: repair validation first, then complete the requested app/site/software feature slice.\n";
+    prompt << "5. For app/site/software creation goals, build a complete usable version, not a placeholder: real structure, real UI/content, components, styling, responsive behavior, config, scripts, and docs as needed.\n";
+    prompt << "6. Prefer larger coherent file updates over tiny one-file edits when the project is still skeletal or incomplete.\n";
+    prompt << "7. If dependencies or type packages are missing, use the install/verification path before treating module-resolution errors as code defects.\n";
+    prompt << "8. Run the saved validation command when available, capture errors, and use the repair loop before handing back.\n";
+    prompt << "9. End with a short progress note, remaining risks, and 3 suggested next actions.\n";
 
     if (project_scaffold_has_result_ &&
         project_scaffold_result_.has_validation &&
@@ -6128,6 +6281,39 @@ void AegisChatApp::AdvanceAutopilotIfReady()
             false,
             "Autopilot reached its pass limit and is wrapping up...");
         return;
+    }
+
+    if (has_workspace_autopilot_status_snapshot_) {
+        const WorkspaceAutopilotStatusInfo& status = workspace_autopilot_status_;
+        const std::string phase = Lower(status.phase);
+        if (phase == "ready" && autopilot_rounds_completed_ >= std::max(1, autopilot_min_rounds_)) {
+            autopilot_finishing_ = true;
+            SubmitAutopilotPrompt(
+                BuildAutopilotFinalPrompt(status.stop_reason.empty()
+                    ? "Backend workspace readiness reports a clean stopping point."
+                    : status.stop_reason),
+                false,
+                false,
+                "Autopilot found a backend-confirmed stopping point...");
+            return;
+        }
+        if (status.should_continue && !Trim(status.suggested_prompt).empty()) {
+            if (!status.recommended_mode.empty()) {
+                mode_ = status.recommended_mode;
+            }
+            max_repairs_ = std::max(max_repairs_, std::max(0, status.max_repair_attempts));
+            if (!status.validation_command.empty()) {
+                SetBuffer(validation_command_buffer_, status.validation_command);
+                SetBuffer(validation_label_buffer_, "Workspace autopilot validation");
+                SetBuffer(validation_notes_buffer_, "Loaded from backend workspace autopilot status.");
+            }
+            SubmitAutopilotPrompt(
+                BuildAutopilotContinuationPrompt("Backend autopilot status phase " + status.phase + ": " + status.next_action),
+                true,
+                status.run_validation || run_validation_,
+                "Autopilot is following backend workspace status...");
+            return;
+        }
     }
 
     if (AutopilotHasValidationFailure()) {
@@ -6261,22 +6447,34 @@ void AegisChatApp::SubmitMessage(const std::string& override_message, bool appen
     const bool cpp_or_console_context =
         WorkspaceLooksLikeCppProject(continuity_workspace) ||
         ContainsAnyTerm(lowered_prompt, {"c++", "cpp", "cmake", "msbuild", "sln", "visual studio", "console app", "console project"});
-    if (!project_builder_intent && IsBuildOrRunFollowUp(raw_content) && !Trim(continuity_workspace).empty() && cpp_or_console_context) {
+    const std::string inferred_validation_command = DefaultValidationCommandForWorkspace(continuity_workspace);
+    const bool existing_project_followup =
+        !Trim(continuity_workspace).empty() &&
+        (PathLooksLikeExistingProject(continuity_workspace) || !inferred_validation_command.empty());
+    if (!project_builder_intent && IsBuildOrRunFollowUp(raw_content) && existing_project_followup) {
         project_builder_intent = false;
         workspace_root_ = continuity_workspace;
         SetBuffer(workspace_buffer_, workspace_root_);
         run_validation_ = true;
-        const std::string validation_command = DefaultValidationCommandForWorkspace(continuity_workspace);
-        if (!validation_command.empty()) {
-            next_validation_command_override_ = validation_command;
+        if (!inferred_validation_command.empty()) {
+            next_validation_command_override_ = inferred_validation_command;
             next_validation_label_override_ = "Project build and run";
-            next_validation_notes_override_ = "Auto-selected from the existing C++ project layout for a build/run follow-up.";
-            SetBuffer(validation_command_buffer_, validation_command);
+            next_validation_notes_override_ = cpp_or_console_context
+                ? "Auto-selected from the existing C++ project layout for a build/run follow-up."
+                : "Auto-selected from existing project files for a build/run follow-up.";
+            SetBuffer(validation_command_buffer_, inferred_validation_command);
             SetBuffer(validation_label_buffer_, next_validation_label_override_);
             SetBuffer(validation_notes_buffer_, next_validation_notes_override_);
         }
-        continuity_directive = BuildWorkspaceContinuityDirective(continuity_workspace, validation_command);
-        QueueAgentActivity("routing", "Continuing the existing C++ project and preserving its stack.", "running", continuity_workspace, validation_command);
+        continuity_directive = BuildWorkspaceContinuityDirective(continuity_workspace, inferred_validation_command, cpp_or_console_context);
+        QueueAgentActivity(
+            "routing",
+            cpp_or_console_context
+                ? "Continuing the existing C++ project and preserving its stack."
+                : "Continuing the existing project and preserving its detected stack.",
+            "running",
+            continuity_workspace,
+            inferred_validation_command);
     }
 
     const bool project_builder_apply = project_builder_intent &&
@@ -6331,13 +6529,13 @@ void AegisChatApp::SubmitMessage(const std::string& override_message, bool appen
         const int builder_repairs = max_repairs_;
         SetBuffer(project_scaffold_prompt_buffer_, raw_content);
         status_ = project_builder_apply
-            ? "Detected a new-project request. Creating it through Project Builder with checkpointed writes."
-            : "Detected a new-project request. Planning a scaffold preview instead of asking for free-form code.";
+            ? "Detected a project-builder request. Preparing a checkpointed workspace pass."
+            : "Detected a project-builder request. Planning the safest workspace pass first.";
         history_.push_back({
             "assistant",
             project_builder_apply
-                ? "Aegis is working:\n- Thinking through the project request and requested path.\n- Inspecting the target workspace before writing.\n- Selecting the closest supported stack from the prompt.\n- Preparing a file diff and checkpointed write plan.\n- Creating project memory under `.aegis`.\n- Running validation if enabled and capturing errors for repair."
-                : "Aegis is working:\n- Thinking through the project request and requested path.\n- Inspecting the target workspace before writing.\n- Selecting the closest supported stack from the prompt.\n- Preparing a file diff preview, roadmap, and project memory plan.",
+                ? "Aegis is working:\n- Thinking through the project request and requested path.\n- Inspecting the target workspace before writing or validating.\n- Selecting whether this is a new scaffold, update, or existing-project build pass.\n- Preparing a file diff and checkpointed workspace plan.\n- Creating or updating project memory under `.aegis`.\n- Running validation if enabled and capturing errors for repair."
+                : "Aegis is working:\n- Thinking through the project request and requested path.\n- Inspecting the target workspace before writing or validating.\n- Selecting whether this is a new scaffold, update, or existing-project build pass.\n- Preparing a file diff preview, roadmap, and project memory plan.",
             NowTimeLabel(),
             "Aegis Project Builder",
         });
@@ -6345,13 +6543,19 @@ void AegisChatApp::SubmitMessage(const std::string& override_message, bool appen
         SaveConversationSnapshot();
         QueueAgentActivity("planning", "Reading project request and selecting a build route.", "running");
         QueueAgentActivity("workspace", preferred_target.empty() ? "Using configured workspace target." : "Using requested target path.", "running", preferred_target);
-        StartTask(project_builder_apply ? "Creating project scaffold..." : "Planning project scaffold...", [this, client, raw_content, builder_workspace, preferred_target, project_builder_progress_index, project_builder_apply, builder_run_install, builder_run_validation, builder_repairs]() mutable -> Completion {
+        StartTask(project_builder_apply ? "Running Project Builder..." : "Planning Project Builder pass...", [this, client, raw_content, builder_workspace, preferred_target, project_builder_progress_index, project_builder_apply, builder_run_install, builder_run_validation, builder_repairs]() mutable -> Completion {
             try {
                 QueueAgentActivity("planning", "Fetching supported project presets.", "running");
                 std::vector<ProjectScaffoldPresetInfo> presets = client.GetProjectScaffoldPresets();
-                QueueAgentActivity("planning", "Generating scaffold plan from prompt.", "running");
+                QueueAgentActivity("planning", "Generating workspace plan from prompt.", "running");
                 ProjectScaffoldPlanResult plan = client.PlanProjectScaffold(raw_content, builder_workspace, preferred_target);
-                QueueAgentActivity("files", project_builder_apply ? "Writing scaffold files with checkpoint protection." : "Preparing file diff preview.", "running");
+                const bool existing_validation = IsExistingProjectValidationMode(plan);
+                QueueAgentActivity(
+                    existing_validation ? "validation" : "files",
+                    existing_validation
+                        ? (project_builder_apply ? "Validating existing workspace without starter-file generation." : "Preparing existing-project validation preview.")
+                        : (project_builder_apply ? "Writing scaffold files with checkpoint protection." : "Preparing file diff preview."),
+                    "running");
                 ProjectScaffoldResult result = project_builder_apply
                     ? client.ScaffoldProject(
                           plan.target_path,
@@ -6455,18 +6659,29 @@ void AegisChatApp::SubmitMessage(const std::string& override_message, bool appen
                 }
                 SaveConversationSnapshot();
                 pending_popup_ = "Aegis Project Builder";
-                if (project_builder_apply && project_scaffold_result_.has_validation) {
+                const bool existing_validation = IsExistingProjectValidationMode(project_scaffold_result_);
+                if (project_builder_apply && existing_validation && project_scaffold_result_.has_validation) {
+                    status_ = ValidationPassed(project_scaffold_result_.validation)
+                        ? "Existing project validated in " + Shorten(project_scaffold_result_.target_path, 82) + "."
+                        : "Existing project validation needs repair in " + Shorten(project_scaffold_result_.target_path, 78) + ".";
+                } else if (project_builder_apply && project_scaffold_result_.has_validation) {
                     status_ = ValidationPassed(project_scaffold_result_.validation)
                         ? "Project built and validated in " + Shorten(project_scaffold_result_.target_path, 82) + "."
                         : "Project created, but validation needs repair in " + Shorten(project_scaffold_result_.target_path, 78) + ".";
                 } else {
                     status_ = project_builder_apply
-                        ? "Project files created in " + Shorten(project_scaffold_result_.target_path, 92) + "."
-                        : "Project plan and preview ready. Review it in Project Builder before creating files.";
+                        ? (existing_validation
+                            ? "Existing project pass finished in " + Shorten(project_scaffold_result_.target_path, 82) + "."
+                            : "Project files created in " + Shorten(project_scaffold_result_.target_path, 92) + ".")
+                        : (existing_validation
+                            ? "Existing-project validation preview ready. Review it in Project Builder before running validation."
+                            : "Project plan and preview ready. Review it in Project Builder before creating files.");
                 }
                 PushToast(
                     project_builder_apply
-                        ? (project_scaffold_result_.has_validation && ValidationPassed(project_scaffold_result_.validation) ? "Project built" : "Project created")
+                        ? (existing_validation
+                            ? (project_scaffold_result_.has_validation && ValidationPassed(project_scaffold_result_.validation) ? "Validation passed" : "Validation captured")
+                            : (project_scaffold_result_.has_validation && ValidationPassed(project_scaffold_result_.validation) ? "Project built" : "Project created"))
                         : "Project plan ready",
                     Shorten(project_scaffold_plan_.target_path, 84),
                     project_scaffold_result_.has_validation && !ValidationPassed(project_scaffold_result_.validation) ? "warning" : "success");
@@ -6554,6 +6769,9 @@ void AegisChatApp::SubmitMessage(const std::string& override_message, bool appen
         WorkspaceProfileInfo workspace_profile;
         bool has_workspace_profile = false;
         std::string workspace_profile_error;
+        WorkspaceAutopilotStatusInfo autopilot_status;
+        bool has_autopilot_status = false;
+        std::string autopilot_status_error;
         const std::string response_workspace = Trim(response.workspace_root.empty() ? workspace : response.workspace_root);
         if (!response_workspace.empty()) {
             try {
@@ -6561,6 +6779,12 @@ void AegisChatApp::SubmitMessage(const std::string& override_message, bool appen
                 has_workspace_profile = true;
             } catch (const std::exception& error) {
                 workspace_profile_error = error.what();
+            }
+            try {
+                autopilot_status = client.GetWorkspaceAutopilotStatus(response_workspace);
+                has_autopilot_status = true;
+            } catch (const std::exception& error) {
+                autopilot_status_error = error.what();
             }
         }
         return [this,
@@ -6570,7 +6794,10 @@ void AegisChatApp::SubmitMessage(const std::string& override_message, bool appen
                 validation_command_override,
                 workspace_profile = std::move(workspace_profile),
                 has_workspace_profile,
-                workspace_profile_error = std::move(workspace_profile_error)]() {
+                workspace_profile_error = std::move(workspace_profile_error),
+                autopilot_status = std::move(autopilot_status),
+                has_autopilot_status,
+                autopilot_status_error = std::move(autopilot_status_error)]() {
             if (cancel_response_requested_) {
                 cancel_response_requested_ = false;
                 if (streaming_assistant_index_ >= 0 && streaming_assistant_index_ < static_cast<int>(history_.size())) {
@@ -6635,6 +6862,9 @@ void AegisChatApp::SubmitMessage(const std::string& override_message, bool appen
             workspace_profile_ = workspace_profile;
             has_workspace_profile_snapshot_ = has_workspace_profile;
             workspace_profile_error_ = workspace_profile_error;
+            workspace_autopilot_status_ = autopilot_status;
+            has_workspace_autopilot_status_snapshot_ = has_autopilot_status;
+            workspace_autopilot_status_error_ = autopilot_status_error;
             const std::string assistant_name = response.assistant_name.empty() ? "Aegis AI" : response.assistant_name;
             std::string model_label = response.engine;
             if (Trim(model_label).empty()) {
@@ -7648,10 +7878,26 @@ void AegisChatApp::RefreshWorkspaceProfile()
     const std::string workspace = Trim(workspace_root_.empty() ? BufferString(workspace_buffer_.data()) : workspace_root_);
     StartTask("Loading workspace profile...", [this, client, workspace]() mutable {
         WorkspaceProfileInfo profile = client.GetWorkspaceProfile(workspace);
-        return [this, profile = std::move(profile)]() {
+        WorkspaceAutopilotStatusInfo autopilot_status;
+        std::string autopilot_error;
+        bool has_autopilot_status = false;
+        try {
+            autopilot_status = client.GetWorkspaceAutopilotStatus(profile.workspace_root.empty() ? workspace : profile.workspace_root);
+            has_autopilot_status = true;
+        } catch (const std::exception& error) {
+            autopilot_error = error.what();
+        }
+        return [this,
+                profile = std::move(profile),
+                autopilot_status = std::move(autopilot_status),
+                has_autopilot_status,
+                autopilot_error = std::move(autopilot_error)]() {
             workspace_profile_ = profile;
             has_workspace_profile_snapshot_ = true;
             workspace_profile_error_.clear();
+            workspace_autopilot_status_ = autopilot_status;
+            has_workspace_autopilot_status_snapshot_ = has_autopilot_status;
+            workspace_autopilot_status_error_ = autopilot_error;
             if (!profile.workspace_root.empty()) {
                 workspace_root_ = profile.workspace_root;
                 SetBuffer(workspace_buffer_, workspace_root_);
@@ -7666,6 +7912,9 @@ void AegisChatApp::RefreshWorkspaceProfile()
             status_ = profile.has_manifest
                 ? "Loaded workspace profile: " + (profile.manifest.title.empty() ? profile.manifest.project_name : profile.manifest.title)
                 : "No Aegis project manifest found for this workspace.";
+            if (has_autopilot_status && !autopilot_status.phase.empty()) {
+                RefreshAutopilotSuggestions();
+            }
         };
     });
 }
@@ -7871,6 +8120,8 @@ void AegisChatApp::PreviewProjectFromBuilder()
     const std::string validation_command = BufferString(project_scaffold_validation_buffer_.data());
     const bool overwrite = project_scaffold_overwrite_;
     const bool include_gitignore = project_scaffold_include_gitignore_;
+    const bool planned_existing_validation =
+        project_scaffold_has_plan_ && IsExistingProjectValidationMode(project_scaffold_plan_);
 
     if (target.empty()) {
         status_ = "Choose a target folder before previewing.";
@@ -7879,16 +8130,16 @@ void AegisChatApp::PreviewProjectFromBuilder()
     }
 
     AegisClient client = client_;
-    StartTask("Previewing project scaffold...", [this,
-                                                 client,
-                                                 target,
-                                                 preset,
-                                                 project_name,
-                                                 prompt,
-                                                 install_command,
-                                                 validation_command,
-                                                 overwrite,
-                                                 include_gitignore]() mutable {
+    StartTask(planned_existing_validation ? "Previewing existing-project validation..." : "Previewing project scaffold...", [this,
+                                                                                                                              client,
+                                                                                                                              target,
+                                                                                                                              preset,
+                                                                                                                              project_name,
+                                                                                                                              prompt,
+                                                                                                                              install_command,
+                                                                                                                              validation_command,
+                                                                                                                              overwrite,
+                                                                                                                              include_gitignore]() mutable {
         ProjectScaffoldResult result = client.PreviewProjectScaffold(
             target,
             preset.id,
@@ -7905,8 +8156,11 @@ void AegisChatApp::PreviewProjectFromBuilder()
             project_scaffold_result_ = result;
             project_scaffold_has_result_ = true;
             project_scaffold_result_preview_ = true;
-            status_ = result.message.empty() ? "Project scaffold preview ready." : result.message;
-            PushToast("Project preview ready", Shorten(result.target_path, 84), "info");
+            const bool existing_validation = IsExistingProjectValidationMode(result);
+            status_ = result.message.empty()
+                ? (existing_validation ? "Existing-project validation preview ready." : "Project scaffold preview ready.")
+                : result.message;
+            PushToast(existing_validation ? "Validation preview ready" : "Project preview ready", Shorten(result.target_path, 84), "info");
         };
     });
 }
@@ -7935,9 +8189,13 @@ void AegisChatApp::ScaffoldProjectFromBuilder()
     const bool run_install = project_scaffold_run_install_;
     const bool run_validation = project_scaffold_run_validation_;
     const int repairs = max_repairs_;
+    const bool planned_existing_validation =
+        project_scaffold_has_plan_ && IsExistingProjectValidationMode(project_scaffold_plan_);
 
     if (target.empty()) {
-        status_ = "Choose a target folder for the new project.";
+        status_ = planned_existing_validation
+            ? "Choose the existing project folder to validate."
+            : "Choose a target folder for the new project.";
         PushToast("Project builder", status_, "warning");
         return;
     }
@@ -7945,9 +8203,15 @@ void AegisChatApp::ScaffoldProjectFromBuilder()
     AegisClient client = client_;
     std::ostringstream working_note;
     working_note << "Aegis is working:\n";
-    working_note << "- Inspecting the target workspace and existing generated files.\n";
-    working_note << "- Preparing a plan, diff preview, and checkpointed write.\n";
-    working_note << "- Creating project memory under `.aegis` for roadmap, decisions, file index, commands, and known errors.\n";
+    if (planned_existing_validation) {
+        working_note << "- Inspecting the existing workspace and saved project memory.\n";
+        working_note << "- Preparing a validation/build pass without starter-file generation.\n";
+        working_note << "- Reusing the validation profile and capturing output for the repair loop.\n";
+    } else {
+        working_note << "- Inspecting the target workspace and existing generated files.\n";
+        working_note << "- Preparing a plan, diff preview, and checkpointed write.\n";
+        working_note << "- Creating project memory under `.aegis` for roadmap, decisions, file index, commands, and known errors.\n";
+    }
     if (run_install && !install_command.empty()) {
         working_note << "- Running install command: `" << install_command << "`.\n";
     }
@@ -7960,20 +8224,21 @@ void AegisChatApp::ScaffoldProjectFromBuilder()
     history_.push_back({"assistant", working_note.str(), NowTimeLabel(), "Aegis Project Builder"});
     const int project_builder_create_index = static_cast<int>(history_.size()) - 1;
     SaveConversationSnapshot();
-    StartTask("Creating project scaffold...", [this,
-                                               client,
-                                               target,
-                                               preset,
-                                               project_name,
-                                               prompt,
-                                               install_command,
-                                               validation_command,
-                                               overwrite,
-                                               include_gitignore,
-                                               run_install,
-                                               run_validation,
-                                               repairs,
-                                               project_builder_create_index]() mutable -> Completion {
+    StartTask(planned_existing_validation ? "Validating existing project..." : "Creating project scaffold...", [this,
+                                                                                                                client,
+                                                                                                                target,
+                                                                                                                preset,
+                                                                                                                project_name,
+                                                                                                                prompt,
+                                                                                                                install_command,
+                                                                                                                validation_command,
+                                                                                                                overwrite,
+                                                                                                                include_gitignore,
+                                                                                                                run_install,
+                                                                                                                run_validation,
+                                                                                                                repairs,
+                                                                                                                project_builder_create_index,
+                                                                                                                planned_existing_validation]() mutable -> Completion {
         try {
             ProjectScaffoldResult result = client.ScaffoldProject(
                 target,
@@ -7991,15 +8256,24 @@ void AegisChatApp::ScaffoldProjectFromBuilder()
             project_scaffold_result_ = result;
             project_scaffold_has_result_ = true;
             project_scaffold_result_preview_ = false;
-            if (result.has_validation) {
+            const bool existing_validation = IsExistingProjectValidationMode(result);
+            if (existing_validation && result.has_validation) {
+                status_ = ValidationPassed(result.validation)
+                    ? "Existing project validated in " + Shorten(result.target_path, 82) + "."
+                    : "Existing project validation needs repair in " + Shorten(result.target_path, 78) + ".";
+            } else if (result.has_validation) {
                 status_ = ValidationPassed(result.validation)
                     ? "Project built and validated in " + Shorten(result.target_path, 82) + "."
                     : "Project created, but validation needs repair in " + Shorten(result.target_path, 78) + ".";
             } else {
-                status_ = result.message.empty() ? "Project scaffold created." : result.message;
+                status_ = result.message.empty()
+                    ? (existing_validation ? "Existing project pass finished." : "Project scaffold created.")
+                    : result.message;
             }
             PushToast(
-                result.has_validation && ValidationPassed(result.validation) ? "Project built" : "Project created",
+                existing_validation
+                    ? (result.has_validation && ValidationPassed(result.validation) ? "Validation passed" : "Validation captured")
+                    : (result.has_validation && ValidationPassed(result.validation) ? "Project built" : "Project created"),
                 Shorten(result.target_path, 84),
                 result.has_validation && !ValidationPassed(result.validation) ? "warning" : "success");
             if (!result.validation_command.empty()) {
@@ -8007,9 +8281,11 @@ void AegisChatApp::ScaffoldProjectFromBuilder()
                 SetBuffer(validation_label_buffer_, result.preset.label + " validation");
                 SetBuffer(validation_notes_buffer_, "Generated by Aegis Project Builder.");
             }
-            const std::string model_label = result.preset.label.empty()
-                ? "Aegis Project Builder"
-                : ("Aegis Project Builder / " + result.preset.label);
+            const std::string model_label = existing_validation
+                ? "Aegis Project Builder / Validate Existing"
+                : (result.preset.label.empty()
+                    ? "Aegis Project Builder"
+                    : ("Aegis Project Builder / " + result.preset.label));
             if (project_builder_create_index >= 0 && project_builder_create_index < static_cast<int>(history_.size())) {
                 history_[static_cast<size_t>(project_builder_create_index)] = {
                     "assistant",
@@ -8024,9 +8300,11 @@ void AegisChatApp::ScaffoldProjectFromBuilder()
         };
         } catch (const std::exception& error) {
             const std::string message = error.what();
-            return [this, message, project_builder_create_index]() {
+            return [this, message, project_builder_create_index, planned_existing_validation]() {
                 status_ = message;
-                const std::string summary = "Aegis Project Builder could not create the project.\n\n"
+                const std::string summary = std::string(planned_existing_validation
+                    ? "Aegis Project Builder could not validate the existing project.\n\n"
+                    : "Aegis Project Builder could not create the project.\n\n")
                     + message
                     + "\n\nNo files were written for this request.";
                 if (project_builder_create_index >= 0 && project_builder_create_index < static_cast<int>(history_.size())) {
@@ -8061,7 +8339,9 @@ void AegisChatApp::UseScaffoldedProjectAsWorkspace()
     has_selected_file_ = false;
     has_validation_profile_snapshot_ = false;
     has_workspace_profile_snapshot_ = false;
+    has_workspace_autopilot_status_snapshot_ = false;
     workspace_profile_error_.clear();
+    workspace_autopilot_status_error_.clear();
     if (!project_scaffold_result_.validation_command.empty()) {
         SetBuffer(validation_command_buffer_, project_scaffold_result_.validation_command);
         SetBuffer(validation_label_buffer_, project_scaffold_result_.preset.label + " validation");
@@ -8251,6 +8531,9 @@ void AegisChatApp::ApplyRuntimeSnapshot(const RuntimeSnapshot& snapshot)
     workspace_profile_ = snapshot.workspace_profile;
     has_workspace_profile_snapshot_ = snapshot.has_workspace_profile;
     workspace_profile_error_ = snapshot.workspace_profile_error;
+    workspace_autopilot_status_ = snapshot.workspace_autopilot_status;
+    has_workspace_autopilot_status_snapshot_ = snapshot.has_workspace_autopilot_status;
+    workspace_autopilot_status_error_ = snapshot.workspace_autopilot_status_error;
     has_config_ = true;
     files_ = snapshot.files;
     recent_tasks_ = snapshot.recent_tasks;
@@ -9134,6 +9417,16 @@ void AegisChatApp::RenderChatPanel()
                 run_validation_ = !manifest.validation_command.empty();
                 status_ = "Loaded first-pass manifest prompt into the composer.";
             }
+            ImGui::SameLine();
+            ImGui::BeginDisabled(!has_workspace_autopilot_status_snapshot_ || !workspace_autopilot_status_.should_continue || workspace_autopilot_status_.suggested_prompt.empty());
+            if (ImGui::SmallButton("Autopilot Next")) {
+                SetBuffer(message_buffer_, workspace_autopilot_status_.suggested_prompt);
+                mode_ = workspace_autopilot_status_.recommended_mode.empty() ? mode_ : workspace_autopilot_status_.recommended_mode;
+                run_validation_ = workspace_autopilot_status_.run_validation || run_validation_;
+                max_repairs_ = std::max(max_repairs_, workspace_autopilot_status_.max_repair_attempts);
+                status_ = "Loaded backend autopilot next action.";
+            }
+            ImGui::EndDisabled();
             ImGui::SameLine();
             if (ImGui::SmallButton(RouteLabelForWorkspaceProfile(suggested_route).c_str())) {
                 StartCodingRoute(suggested_route);
@@ -11591,6 +11884,149 @@ void AegisChatApp::RenderWorkspaceTab()
     if (has_workspace_profile_snapshot_) {
         ImGui::Dummy(ImVec2(0.0f, 8.0f));
         TextColor("Workspace Profile", Rgba(246, 248, 251));
+        const WorkspaceReadinessInfo& readiness = workspace_profile_.readiness;
+        if (!readiness.status.empty() || !readiness.summary.empty() || !readiness.next_action.empty()) {
+            const std::string readiness_status = readiness.status.empty() ? "unconfigured" : readiness.status;
+            const std::string readiness_status_lower = Lower(readiness_status);
+            const ImVec4 readiness_color =
+                readiness_status_lower == "ready"
+                    ? Rgba(38, 221, 123)
+                    : (readiness_status_lower == "needs_repair"
+                        ? Rgba(248, 64, 82)
+                        : (readiness_status_lower == "needs_validation"
+                            ? Rgba(205, 154, 82)
+                            : Rgba(111, 180, 255)));
+            Pill(Shorten(readiness_status, 22).c_str(), readiness_color);
+            ImGui::SameLine();
+            TextMuted("Readiness " + std::to_string(std::max(0, std::min(100, readiness.score))) + "%");
+
+            if (ImGui::BeginTable("workspace_readiness_table", 2, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+                ImGui::TableSetupColumn("Signal", ImGuiTableColumnFlags_WidthFixed, 132.0f);
+                ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
+                ImGui::TableHeadersRow();
+
+                auto row = [](const char* label, const std::string& value) {
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+                    TextMuted(label);
+                    ImGui::TableSetColumnIndex(1);
+                    TextMuted(value.empty() ? "-" : Shorten(value, 128));
+                };
+                row("Summary", readiness.summary);
+                row("Next", readiness.next_action);
+                row("Blockers", JoinList(readiness.blockers, " / "));
+                row("Signals", JoinList(readiness.signals, " / "));
+                ImGui::EndTable();
+            }
+
+            ImGui::BeginDisabled(readiness.next_action.empty() || busy_);
+            if (ImGui::Button("Use Readiness Action")) {
+                SetBuffer(message_buffer_, readiness.next_action);
+                mode_ = readiness_status_lower == "needs_repair" ? "develop" : "review";
+                active_nav_ = "chat";
+                status_ = "Loaded workspace readiness action into the composer.";
+            }
+            ImGui::EndDisabled();
+            ImGui::Dummy(ImVec2(0.0f, 8.0f));
+        }
+
+        if (has_workspace_autopilot_status_snapshot_) {
+            const WorkspaceAutopilotStatusInfo& autopilot = workspace_autopilot_status_;
+            ImGui::Dummy(ImVec2(0.0f, 8.0f));
+            TextColor("Autopilot Status", Rgba(246, 248, 251));
+            const std::string phase = autopilot.phase.empty() ? "unconfigured" : autopilot.phase;
+            const std::string phase_lower = Lower(phase);
+            const ImVec4 phase_color =
+                phase_lower == "ready"
+                    ? Rgba(38, 221, 123)
+                    : (phase_lower == "repair"
+                        ? Rgba(248, 64, 82)
+                        : (phase_lower == "validate" ? Rgba(205, 154, 82) : Rgba(111, 180, 255)));
+            Pill(Shorten(phase, 22).c_str(), phase_color);
+            ImGui::SameLine();
+            TextMuted(
+                std::string(autopilot.should_continue ? "Continue" : "Stop") +
+                " / " + std::to_string(std::max(0, autopilot.pass_budget)) + " pass budget");
+
+            if (ImGui::BeginTable("workspace_autopilot_status_table", 2, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+                ImGui::TableSetupColumn("Signal", ImGuiTableColumnFlags_WidthFixed, 132.0f);
+                ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
+                ImGui::TableHeadersRow();
+
+                auto row = [](const char* label, const std::string& value) {
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+                    TextMuted(label);
+                    ImGui::TableSetColumnIndex(1);
+                    TextMuted(value.empty() ? "-" : Shorten(value, 128));
+                };
+                row("Mode", autopilot.recommended_mode);
+                row("Next", autopilot.next_action);
+                row("Validate", autopilot.validation_command);
+                row("Latest", autopilot.latest_validation_status);
+                row("Failed Step", autopilot.failed_step);
+                row("Failed Command", autopilot.failed_step_command);
+                row("First Diagnostic", autopilot.first_diagnostic);
+                row("Repair Brief", autopilot.repair_brief);
+                row("Stop Reason", autopilot.stop_reason);
+                ImGui::EndTable();
+            }
+
+            if (!autopilot.next_open_items.empty()) {
+                ImGui::Dummy(ImVec2(0.0f, 6.0f));
+                TextMuted("Next queued work");
+                const int item_count = std::min<int>(static_cast<int>(autopilot.next_open_items.size()), 5);
+                for (int i = 0; i < item_count; ++i) {
+                    ImGui::BulletText("%s", Shorten(autopilot.next_open_items[static_cast<size_t>(i)], 132).c_str());
+                }
+            }
+            if (!autopilot.instruction_files.empty()) {
+                std::string sources;
+                const int source_count = std::min<int>(static_cast<int>(autopilot.instruction_files.size()), 4);
+                for (int i = 0; i < source_count; ++i) {
+                    const std::string& path = autopilot.instruction_files[static_cast<size_t>(i)].path;
+                    if (path.empty()) {
+                        continue;
+                    }
+                    if (!sources.empty()) {
+                        sources += " / ";
+                    }
+                    sources += path;
+                }
+                if (!sources.empty()) {
+                    TextMuted("Instruction files: " + Shorten(sources, 132));
+                }
+            }
+            if (!autopilot.instruction_source.empty()) {
+                TextMuted("Instruction source: " + Shorten(autopilot.instruction_source, 132));
+            }
+
+            ImGui::BeginDisabled(!autopilot.should_continue || Trim(autopilot.suggested_prompt).empty() || busy_);
+            if (ImGui::Button("Use Autopilot Next Action")) {
+                SetBuffer(message_buffer_, autopilot.suggested_prompt);
+                mode_ = autopilot.recommended_mode.empty() ? mode_ : autopilot.recommended_mode;
+                run_validation_ = autopilot.run_validation || run_validation_;
+                max_repairs_ = std::max(max_repairs_, autopilot.max_repair_attempts);
+                if (!autopilot.validation_command.empty()) {
+                    SetBuffer(validation_command_buffer_, autopilot.validation_command);
+                    SetBuffer(validation_label_buffer_, "Workspace autopilot validation");
+                    SetBuffer(validation_notes_buffer_, "Loaded from backend workspace autopilot status.");
+                }
+                active_nav_ = "chat";
+                status_ = "Loaded backend autopilot next action into the composer.";
+            }
+            ImGui::EndDisabled();
+            ImGui::SameLine();
+            ImGui::BeginDisabled(autopilot.suggested_prompt.empty());
+            if (ImGui::Button("Copy Autopilot Prompt")) {
+                ImGui::SetClipboardText(autopilot.suggested_prompt.c_str());
+                status_ = "Copied backend autopilot prompt.";
+            }
+            ImGui::EndDisabled();
+        } else if (!workspace_autopilot_status_error_.empty()) {
+            TextMuted("Autopilot status unavailable: " + Shorten(workspace_autopilot_status_error_, 128));
+        }
+
         if (workspace_profile_.has_manifest) {
             const WorkspaceProjectManifestInfo& manifest = workspace_profile_.manifest;
             const std::string project_title = manifest.title.empty() ? manifest.project_name : manifest.title;
@@ -11653,6 +12089,160 @@ void AegisChatApp::RenderWorkspaceTab()
             TextMuted("No .aegis/project.json manifest found.");
             if (!workspace_profile_.recommendations.empty()) {
                 TextMuted(Shorten(workspace_profile_.recommendations.front(), 128));
+            }
+        }
+
+        if (workspace_profile_.has_instruction_status) {
+            const WorkspaceInstructionStatusInfo& instruction = workspace_profile_.instruction_status;
+            ImGui::Dummy(ImVec2(0.0f, 8.0f));
+            TextColor("Instruction Checkpoint", Rgba(246, 248, 251));
+            Pill(instruction.open_items > 0 ? "Open work" : "Tracked", instruction.open_items > 0 ? Rgba(248, 64, 82) : Rgba(38, 221, 123));
+            ImGui::SameLine();
+            TextMuted(
+                std::to_string(instruction.open_items) + " open / " +
+                std::to_string(instruction.completed_items) + " done / " +
+                std::to_string(instruction.total_items) + " tracked");
+
+            if (ImGui::BeginTable("workspace_instruction_checkpoint_table", 2, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+                ImGui::TableSetupColumn("Signal", ImGuiTableColumnFlags_WidthFixed, 132.0f);
+                ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
+                ImGui::TableHeadersRow();
+
+                auto row = [](const char* label, const std::string& value) {
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+                    TextMuted(label);
+                    ImGui::TableSetColumnIndex(1);
+                    TextMuted(value.empty() ? "-" : Shorten(value, 128));
+                };
+                row("Updated", instruction.updated_at);
+                row("Validation", instruction.validation_status.empty()
+                    ? ""
+                    : instruction.validation_status + (instruction.validation_command.empty() ? "" : " / " + instruction.validation_command));
+                row("Completion", instruction.completion_status.empty()
+                    ? ""
+                    : instruction.completion_status + " / " + FormatPercent(instruction.completion_score, instruction.has_completion_score));
+                row("Recommendation", instruction.recommendation);
+                ImGui::EndTable();
+            }
+
+            ImGui::BeginDisabled(instruction.open_items <= 0 || busy_);
+            if (ImGui::Button("Continue Instruction Work")) {
+                SetBuffer(message_buffer_, instruction.recommendation.empty()
+                    ? "continue working through the open project instruction items, validate the result, and update completed checklist items"
+                    : instruction.recommendation);
+                mode_ = "develop";
+                apply_changes_ = true;
+                run_validation_ = true;
+                active_nav_ = "chat";
+                status_ = "Loaded instruction checkpoint continuation into the composer.";
+            }
+            ImGui::EndDisabled();
+            ImGui::SameLine();
+            ImGui::BeginDisabled(instruction.recommendation.empty());
+            if (ImGui::Button("Copy Recommendation")) {
+                ImGui::SetClipboardText(instruction.recommendation.c_str());
+                status_ = "Copied instruction checkpoint recommendation.";
+            }
+            ImGui::EndDisabled();
+
+            if (!instruction.files.empty() && ImGui::TreeNodeEx("Instruction Files", ImGuiTreeNodeFlags_DefaultOpen)) {
+                for (size_t i = 0; i < std::min<size_t>(instruction.files.size(), 8); ++i) {
+                    const WorkspaceInstructionStatusFileInfo& file = instruction.files[i];
+                    ImGui::BulletText(
+                        "%s",
+                        Shorten(
+                            file.path + " - " +
+                                std::to_string(file.open_items) + " open / " +
+                                std::to_string(file.completed_items) + " done",
+                            132)
+                            .c_str());
+                    if (!file.pending_items.empty()) {
+                        ImGui::Indent(16.0f);
+                        for (size_t item_index = 0; item_index < std::min<size_t>(file.pending_items.size(), 3); ++item_index) {
+                            TextMuted("- " + Shorten(file.pending_items[item_index], 118));
+                        }
+                        ImGui::Unindent(16.0f);
+                    }
+                }
+                ImGui::TreePop();
+            }
+        }
+
+        if (workspace_profile_.has_validation_plan) {
+            const WorkspaceValidationPlanInfo& plan = workspace_profile_.validation_plan;
+            ImGui::Dummy(ImVec2(0.0f, 8.0f));
+            TextColor("Validation Plan", Rgba(246, 248, 251));
+            const bool failed = Lower(plan.last_run_status).find("fail") != std::string::npos ||
+                Lower(plan.last_run_status).find("block") != std::string::npos;
+            Pill(
+                failed ? "Needs repair" : (plan.steps.empty() ? "Command only" : "Planned"),
+                failed ? Rgba(248, 64, 82) : Rgba(38, 221, 123));
+            ImGui::SameLine();
+            TextMuted(
+                std::to_string(plan.steps.size()) + " step" +
+                (plan.steps.size() == 1 ? "" : "s") +
+                (plan.validation_command.empty() ? "" : " / " + Shorten(plan.validation_command, 84)));
+
+            if (ImGui::BeginTable("workspace_validation_plan_table", 2, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+                ImGui::TableSetupColumn("Signal", ImGuiTableColumnFlags_WidthFixed, 132.0f);
+                ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
+                ImGui::TableHeadersRow();
+
+                auto row = [](const char* label, const std::string& value) {
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+                    TextMuted(label);
+                    ImGui::TableSetColumnIndex(1);
+                    TextMuted(value.empty() ? "-" : Shorten(value, 128));
+                };
+                row("Updated", plan.updated_at);
+                row("Validate", plan.validation_command);
+                row("Last Run", plan.last_run_status.empty()
+                    ? ""
+                    : plan.last_run_status + (plan.last_run_command.empty() ? "" : " / " + plan.last_run_command));
+                row("Failed Step", plan.last_run_failed_step);
+                row("Summary", plan.last_run_summary);
+                ImGui::EndTable();
+            }
+
+            ImGui::BeginDisabled(plan.validation_command.empty());
+            if (ImGui::Button("Copy Plan Command")) {
+                ImGui::SetClipboardText(plan.validation_command.c_str());
+                status_ = "Copied validation plan command.";
+            }
+            ImGui::EndDisabled();
+            ImGui::SameLine();
+            ImGui::BeginDisabled(busy_ || (plan.last_run_failed_step.empty() && plan.last_run_command.empty()));
+            if (ImGui::Button("Repair Validation Step")) {
+                const std::string repair_target = plan.last_run_failed_step.empty()
+                    ? plan.last_run_command
+                    : plan.last_run_failed_step;
+                SetBuffer(
+                    message_buffer_,
+                    "repair the saved validation plan step " + repair_target +
+                        ", inspect the captured build output, apply the fix, and rerun validation until it passes");
+                mode_ = "develop";
+                apply_changes_ = true;
+                run_validation_ = true;
+                active_nav_ = "chat";
+                status_ = "Loaded validation-plan repair prompt into the composer.";
+            }
+            ImGui::EndDisabled();
+
+            if (!plan.steps.empty() && ImGui::TreeNodeEx("Validation Steps", ImGuiTreeNodeFlags_DefaultOpen)) {
+                for (size_t i = 0; i < std::min<size_t>(plan.steps.size(), 8); ++i) {
+                    const WorkspaceValidationPlanStepInfo& step = plan.steps[i];
+                    std::string prefix = step.label.empty() ? step.id : step.label;
+                    if (prefix.empty()) {
+                        prefix = "Validation step " + std::to_string(i + 1);
+                    }
+                    if (step.chain_total > 1 && step.chain_index > 0) {
+                        prefix += " (" + std::to_string(step.chain_index) + "/" + std::to_string(step.chain_total) + ")";
+                    }
+                    ImGui::BulletText("%s", Shorten(prefix + " - " + step.command, 148).c_str());
+                }
+                ImGui::TreePop();
             }
         }
 
@@ -15283,8 +15873,12 @@ void AegisChatApp::RenderCodingRoutesModal()
 
 void AegisChatApp::RenderProjectBuilderModal()
 {
-    TextColor("New Project Builder", Rgba(246, 248, 251));
-    TextMuted("Create a full starter project from a deterministic preset, checkpoint every generated file, and save a validation command for the new workspace.");
+    const bool planned_existing_validation =
+        project_scaffold_has_plan_ && IsExistingProjectValidationMode(project_scaffold_plan_);
+    TextColor(planned_existing_validation ? "Existing Project Builder" : "Project Builder", Rgba(246, 248, 251));
+    TextMuted(planned_existing_validation
+        ? "Validate, build, and repair an existing workspace without generating starter files."
+        : "Create a full starter project from a deterministic preset, checkpoint every generated file, and save a validation command for the workspace.");
     ImGui::Dummy(ImVec2(0.0f, 8.0f));
 
     if (!project_scaffold_presets_loaded_ && !project_scaffold_presets_requested_ && !busy_) {
@@ -15357,6 +15951,7 @@ void AegisChatApp::RenderProjectBuilderModal()
 
         if (project_scaffold_has_plan_) {
             TextColor("Prompt Plan", Rgba(246, 248, 251));
+            TextMuted("Mode: " + ProjectBuilderModeText(planned_existing_validation));
             TextMuted(project_scaffold_plan_.message.empty() ? "Project plan ready." : project_scaffold_plan_.message);
             if (!project_scaffold_plan_.detected_keywords.empty()) {
                 TextMuted("Matched: " + JoinList(project_scaffold_plan_.detected_keywords, ", "));
@@ -15393,7 +15988,9 @@ void AegisChatApp::RenderProjectBuilderModal()
         ImGui::TextUnformatted("Validation command");
         ImGui::SetNextItemWidth(-1.0f);
         ImGui::InputText("##project_builder_validation", project_scaffold_validation_buffer_.data(), project_scaffold_validation_buffer_.size());
-        TextMuted("Saved into the new workspace validation profile.");
+        TextMuted(planned_existing_validation
+            ? "Used for this existing-project validation/build pass."
+            : "Saved into the workspace validation profile.");
         ImGui::Columns(1);
 
         ImGui::Dummy(ImVec2(0.0f, 8.0f));
@@ -15404,20 +16001,28 @@ void AegisChatApp::RenderProjectBuilderModal()
         ImGui::Checkbox("Run validation after create", &project_scaffold_run_validation_);
         ImGui::SameLine();
         ImGui::Checkbox("Run install first", &project_scaffold_run_install_);
-        TextMuted(project_scaffold_overwrite_
-            ? "Existing files generated by the selected preset can be updated. Other files are left alone."
-            : "Non-empty target folders are blocked until overwrite is enabled.");
+        TextMuted(planned_existing_validation
+            ? "Validation-only passes do not generate starter files. Overwrite only affects later scaffold-owned updates."
+            : (project_scaffold_overwrite_
+                ? "Existing files generated by the selected preset can be updated. Other files are left alone."
+                : "Non-empty target folders are blocked until overwrite is enabled."));
         TextMuted(project_scaffold_run_validation_
-            ? "Create will attempt the validation/build command and capture stdout/stderr for repair."
-            : "Create will save validation for later; no build command will run immediately.");
+            ? (planned_existing_validation
+                ? "Run Validation will attempt the build command and capture stdout/stderr for repair."
+                : "Create will attempt the validation/build command and capture stdout/stderr for repair.")
+            : (planned_existing_validation
+                ? "Run Validation will save the command for later; no build command will run immediately."
+                : "Create will save validation for later; no build command will run immediately."));
 
         ImGui::Dummy(ImVec2(0.0f, 10.0f));
         ImGui::BeginDisabled(busy_ || BufferString(project_scaffold_target_buffer_.data()).empty());
-        if (IconTextButton("project_builder_preview", IconGlyph::Document, "Preview Plan", ImVec2(154.0f, 38.0f), Rgba(17, 25, 34), Rgba(25, 35, 47), Rgba(246, 248, 251))) {
+        const std::string preview_button_label = planned_existing_validation ? "Preview Validate" : "Preview Plan";
+        if (IconTextButton("project_builder_preview", IconGlyph::Document, preview_button_label.c_str(), ImVec2(164.0f, 38.0f), Rgba(17, 25, 34), Rgba(25, 35, 47), Rgba(246, 248, 251))) {
             PreviewProjectFromBuilder();
         }
         ImGui::SameLine();
-        if (IconTextButton("project_builder_create", IconGlyph::Plus, "Create Project", ImVec2(170.0f, 38.0f), Rgba(20, 98, 62), Rgba(22, 130, 76), Rgba(246, 248, 251))) {
+        const std::string create_button_label = planned_existing_validation ? "Run Validation" : "Create Project";
+        if (IconTextButton("project_builder_create", IconGlyph::Plus, create_button_label.c_str(), ImVec2(170.0f, 38.0f), Rgba(20, 98, 62), Rgba(22, 130, 76), Rgba(246, 248, 251))) {
             ScaffoldProjectFromBuilder();
         }
         ImGui::EndDisabled();
@@ -15425,11 +16030,21 @@ void AegisChatApp::RenderProjectBuilderModal()
 
     if (project_scaffold_has_result_) {
         ImGui::Separator();
+        const bool result_existing_validation = IsExistingProjectValidationMode(project_scaffold_result_);
+        const std::string result_heading = !project_scaffold_result_.ok
+            ? (result_existing_validation ? "Validation Issue" : "Scaffold Issue")
+            : (result_existing_validation
+                ? (project_scaffold_result_preview_ ? "Validation Preview" : "Validation Result")
+                : (project_scaffold_result_preview_ ? "Scaffold Preview" : "Scaffold Result"));
         TextColor(
-            project_scaffold_result_.ok ? (project_scaffold_result_preview_ ? "Scaffold Preview" : "Scaffold Result") : "Scaffold Issue",
+            result_heading,
             project_scaffold_result_.ok ? Rgba(38, 221, 123) : Rgba(239, 115, 115));
+        TextMuted("Mode: " + ProjectBuilderModeText(result_existing_validation));
         TextMuted(project_scaffold_result_.message.empty() ? "Project builder returned a result." : project_scaffold_result_.message);
         TextMuted("Target: " + Shorten(project_scaffold_result_.target_path, 120));
+        if (result_existing_validation && project_scaffold_result_.files.empty()) {
+            TextMuted("No starter files were generated for this validation-only pass.");
+        }
         if (!project_scaffold_result_.diff_summary.empty()) {
             TextMuted("Diff: " + JoinList(project_scaffold_result_.diff_summary, ", "));
         }
@@ -15518,7 +16133,12 @@ void AegisChatApp::RenderProjectBuilderModal()
             }
         }
 
-        if (ImGui::BeginTable("project_builder_files", 4, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_NoSavedSettings)) {
+        if (project_scaffold_result_.files.empty()) {
+            ImGui::Dummy(ImVec2(0.0f, 8.0f));
+            TextMuted(result_existing_validation
+                ? "Files changed: 0. This pass focused on build/validation output."
+                : "No file preview was returned for this pass.");
+        } else if (ImGui::BeginTable("project_builder_files", 4, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_NoSavedSettings)) {
             ImGui::TableSetupColumn("Action", ImGuiTableColumnFlags_WidthFixed, 82.0f);
             ImGui::TableSetupColumn("File");
             ImGui::TableSetupColumn("Size", ImGuiTableColumnFlags_WidthFixed, 80.0f);
