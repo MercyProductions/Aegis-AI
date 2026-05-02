@@ -1073,6 +1073,11 @@ bool IsAudioPreviewPlaying()
 
 void RequestWindowClose()
 {
+    HWND hwnd = g_host_window != nullptr ? g_host_window : GetActiveWindow();
+    if (hwnd != nullptr) {
+        PostMessageW(hwnd, WM_CLOSE, 0, 0);
+        return;
+    }
     PostQuitMessage(0);
 }
 

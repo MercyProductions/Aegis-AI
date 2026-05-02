@@ -250,6 +250,12 @@ Assert-Aegis ($chatAppSource -match "Next queued item:") "Desktop autopilot sugg
 Assert-Aegis ($chatAppSource -match "Repair brief") "Desktop autopilot prompt contract does not include the backend repair brief."
 Assert-Aegis ($chatAppSource -match "Failed command") "Desktop autopilot prompt contract does not include the backend failed command."
 Assert-Aegis ($chatAppSource -match "First diagnostic") "Desktop autopilot prompt contract does not include the backend first diagnostic."
+Assert-Aegis ($chatAppSource -match " at this path") "Desktop path extraction does not stop before repeated 'at this path' wording."
+Assert-Aegis ($chatAppSource -match "PromptTargetsExistingNativeOrDllWork") "Desktop routing no longer protects existing DLL/native refinement prompts from scaffold routing."
+$mainSourcePath = Join-Path $repoRoot "src\Main.cpp"
+Assert-Aegis (Test-Path -LiteralPath $mainSourcePath) "Desktop chrome contract smoke could not find Main.cpp."
+$mainSource = Get-Content -LiteralPath $mainSourcePath -Raw
+Assert-Aegis ($mainSource -match "rect.right - chrome_width") "Desktop frameless hit-test no longer reserves window chrome for ImGui buttons."
 $clientHeaderPath = Join-Path $repoRoot "src\AegisClient.h"
 $clientSourcePath = Join-Path $repoRoot "src\AegisClient.cpp"
 Assert-Aegis (Test-Path -LiteralPath $clientHeaderPath) "Desktop client contract smoke could not find AegisClient.h."
@@ -298,9 +304,12 @@ $backendAgentSource = Get-Content -LiteralPath $backendAgentSourcePath -Raw
 Assert-Aegis ($backendAgentSource -match "Validation requested for current workspace") "Backend no-change validation path does not announce current-workspace validation."
 Assert-Aegis ($backendAgentSource -match "Validation deferred until changes are applied") "Backend no-change validation path does not defer preview-only validation safely."
 Assert-Aegis ($backendAgentSource -match "Aegis ran validation and") "Backend no-change validation replies do not summarize validation results."
+Assert-Aegis ($backendAgentSource -match "_draft_stack_mismatch_reasons") "Backend agent no longer rejects stack-drifted model drafts."
+Assert-Aegis ($backendAgentSource -match "The C\+\+ entry point does not wait for user input") "Backend agent no longer checks native console prompts for requested input pause behavior."
 $backendValidationOnlyContractSmoke = @{
     source_path = $backendAgentSourcePath
     validates_current_workspace_without_file_changes = $true
+    stack_drift_guard = $true
 }
 
 $backendScaffolderSourcePath = Join-Path $aegisRoot "Website\ChatBot\backend\aegis_ai\project_scaffolder.py"
@@ -309,6 +318,10 @@ $backendScaffolderSource = Get-Content -LiteralPath $backendScaffolderSourcePath
 Assert-Aegis ($backendScaffolderSource -match "cmake -S \. -B build && cmake --build build --config Release") "Backend existing CMake validation no longer configures before the first build."
 Assert-Aegis ($backendScaffolderSource -match '" write me "') "Backend existing-project validation still treats implementation prompts as pure validation."
 Assert-Aegis ($backendScaffolderSource -match "_existing_project_validation_command") "Backend native continuity validation command helper is missing."
+Assert-Aegis ($backendScaffolderSource -match "_stack_lock_keywords_for_prompt") "Backend project planner no longer exposes explicit stack-lock routing signals."
+Assert-Aegis ($backendScaffolderSource -match "stack-lock:native-cpp") "Backend project planner no longer marks native C++ stack-lock prompts."
+Assert-Aegis ($backendScaffolderSource -match "my dll") "Backend continuity routing no longer treats existing DLL refinement as existing project work."
+Assert-Aegis ($backendScaffolderSource -match "_prompt_negates_web_stack") "Backend planner no longer ignores negated web phrases like 'without turning it into a website'."
 Assert-Aegis ($backendScaffolderSource -match "cpp-cmake-dll") "Backend C++ DLL/shared-library preset is missing."
 Assert-Aegis ($backendScaffolderSource -match "run_host_validation") "Backend C++ DLL/shared-library preset no longer runs host validation."
 Assert-Aegis ($backendScaffolderSource -match "aegis_plugin_description") "Backend C++ DLL/shared-library preset no longer exports plugin metadata."
@@ -326,6 +339,23 @@ Assert-Aegis ($backendScaffolderSource -match "--include-references") "Backend s
 Assert-Aegis ($backendScaffolderSource -match "included_references") "Backend solution refactor preset no longer reports included project references."
 Assert-Aegis ($backendScaffolderSource -match "build_solution_graph") "Backend solution refactor preset no longer builds a project dependency graph."
 Assert-Aegis ($backendScaffolderSource -match "build_order") "Backend solution refactor preset no longer reports dependency-aware build order."
+
+$existingDllTarget = Join-Path $workspaceRoot "existing-native-dll"
+New-Item -ItemType Directory -Force -Path (Join-Path $existingDllTarget "src") | Out-Null
+Write-AegisUtf8NoBom -Path (Join-Path $existingDllTarget "ExistingNativeDll.vcxproj") -Value @"
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+  </PropertyGroup>
+</Project>
+"@
+Write-AegisUtf8NoBom -Path (Join-Path $existingDllTarget "src\dllmain.cpp") -Value @"
+#include <windows.h>
+
+BOOL APIENTRY DllMain(HMODULE, DWORD, LPVOID) {
+    return TRUE;
+}
+"@
 
 for ($i = 1; $i -le $ApiIterations; $i++) {
     try {
@@ -381,10 +411,23 @@ for ($i = 1; $i -le $ApiIterations; $i++) {
             Assert-Aegis ([bool]$fullStackPlan.scaffold_request.run_validation) "Iteration $i full-stack validation intent did not enable scaffold validation."
             $fullStackProjectName = [string]$fullStackPlan.project_name
 
+            $dllPlan = Invoke-AegisJsonPost "$BackendUrl/api/project-builder/plan" @{
+                prompt = "at this path $existingDllTarget work on my existing DLL that I already made and refine the native project without turning it into a website"
+                workspace_root = $workspaceRoot
+                preferred_target_path = $existingDllTarget
+            } -TimeoutSec 90
+            $dllDetectedKeywords = @($dllPlan.detected_keywords)
+            Assert-Aegis ([bool]$dllPlan.ok) "Iteration $i existing DLL plan did not complete successfully."
+            Assert-Aegis ([string]$dllPlan.preset.id -eq "cpp-cmake-dll") "Iteration $i existing DLL plan selected '$($dllPlan.preset.id)' instead of cpp-cmake-dll."
+            Assert-Aegis ([string]$dllPlan.target_path -eq [string](Resolve-Path -LiteralPath $existingDllTarget)) "Iteration $i existing DLL plan did not preserve the requested target path."
+            Assert-Aegis ($dllDetectedKeywords -contains "stack-lock:native-library") "Iteration $i existing DLL plan did not preserve the native-library stack lock."
+            Assert-Aegis (-not ($dllDetectedKeywords -contains "stack-lock:web")) "Iteration $i existing DLL plan incorrectly added a web stack lock from negated website wording."
+
             return @{
                 preset_count = $presetCount
                 cpp_plan = $cppProjectName
                 full_stack_plan = $fullStackProjectName
+                dll_plan = [string]$dllPlan.preset.id
             }
         }
 
