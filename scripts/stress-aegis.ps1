@@ -1,5 +1,6 @@
 param(
     [string]$BackendUrl = "http://127.0.0.1:8787",
+    [string]$ExpectedProjectRoot = "",
     [int]$ApiIterations = 60,
     [switch]$RunDesktopSmoke,
     [switch]$RunScaffoldSmoke,
@@ -23,7 +24,7 @@ if ([string]::IsNullOrWhiteSpace($OutputDir)) {
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 
 $BackendUrl = $BackendUrl.TrimEnd("/")
-$workspaceRoot = Join-Path $env:TEMP "aegis-stress-workspace"
+$workspaceRoot = Join-Path $OutputDir "workspace"
 $planTarget = Join-Path $workspaceRoot "stress-console"
 New-Item -ItemType Directory -Force -Path $workspaceRoot | Out-Null
 
@@ -81,6 +82,24 @@ function Assert-Aegis {
     if (-not $Condition) {
         throw $Message
     }
+}
+
+function Assert-AegisHealthProjectRoot {
+    param(
+        [Parameter(Mandatory = $true)]$Health,
+        [Parameter(Mandatory = $true)][string]$ExpectedRoot,
+        [Parameter(Mandatory = $true)][string]$Label
+    )
+
+    if ([string]::IsNullOrWhiteSpace($ExpectedRoot)) {
+        return
+    }
+
+    $property = $Health.PSObject.Properties["project_root"]
+    Assert-Aegis ($null -ne $property -and $null -ne $property.Value -and -not [string]::IsNullOrWhiteSpace([string]$property.Value)) "$Label health response did not include project_root."
+    $expectedRootPath = [System.IO.Path]::GetFullPath($ExpectedRoot).TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+    $actualProjectRoot = [System.IO.Path]::GetFullPath([string]$property.Value).TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+    Assert-Aegis ([string]::Equals($actualProjectRoot, $expectedRootPath, [System.StringComparison]::OrdinalIgnoreCase)) "$Label backend project root mismatch. Expected '$expectedRootPath' but health reported '$actualProjectRoot'."
 }
 
 function Write-AegisUtf8NoBom {
@@ -209,6 +228,7 @@ Write-Host "Output: $OutputDir"
 
 $health = Invoke-AegisJsonGet "$BackendUrl/api/health"
 Assert-Aegis ([bool]$health.ready) "Backend health endpoint is not ready."
+Assert-AegisHealthProjectRoot -Health $health -ExpectedRoot $ExpectedProjectRoot -Label "Initial"
 
 $presetIdsToRequire = @(
     "cpp-msvc-console-sln",
@@ -216,6 +236,7 @@ $presetIdsToRequire = @(
     "cpp-imgui-win32-dx11",
     "cpp-windows-internals-hooking",
     "windows-kernel-driver-controller",
+    "python-sln-refactor-tool",
     "static-html-site",
     "node-fullstack-js"
 )
@@ -236,6 +257,7 @@ $desktopAutopilotPromptContractSmoke = $null
 $desktopBuildFollowupContractSmoke = $null
 $backendValidationOnlyContractSmoke = $null
 $backendWorkspaceCacheContractSmoke = $null
+$backendNaturalPromptContractSmoke = $null
 $nativeContinuityCommandSmoke = $null
 $cppDllHostSmoke = $null
 $windowsInternalsMinHookSmoke = $null
@@ -256,6 +278,13 @@ $mainSourcePath = Join-Path $repoRoot "src\Main.cpp"
 Assert-Aegis (Test-Path -LiteralPath $mainSourcePath) "Desktop chrome contract smoke could not find Main.cpp."
 $mainSource = Get-Content -LiteralPath $mainSourcePath -Raw
 Assert-Aegis ($mainSource -match "rect.right - chrome_width") "Desktop frameless hit-test no longer reserves window chrome for ImGui buttons."
+$platformSourcePath = Join-Path $repoRoot "src\Platform.cpp"
+Assert-Aegis (Test-Path -LiteralPath $platformSourcePath) "Desktop backend identity smoke could not find Platform.cpp."
+$platformSource = Get-Content -LiteralPath $platformSourcePath -Raw
+Assert-Aegis ($platformSource -match "BackendHealthProjectRootMatches") "Desktop backend health no longer validates the reported backend project root."
+Assert-Aegis ($platformSource -match "different project root") "Desktop backend startup no longer reports stale backend-root mismatches."
+Assert-Aegis ($platformSource -match "does not include project_root") "Desktop backend startup no longer rejects stale health responses without project_root."
+Assert-Aegis ($platformSource -match "invalid backend health response") "Desktop backend startup no longer rejects invalid health responses from foreign services."
 $clientHeaderPath = Join-Path $repoRoot "src\AegisClient.h"
 $clientSourcePath = Join-Path $repoRoot "src\AegisClient.cpp"
 Assert-Aegis (Test-Path -LiteralPath $clientHeaderPath) "Desktop client contract smoke could not find AegisClient.h."
@@ -267,12 +296,47 @@ Assert-Aegis ($clientHeaderSource -match "first_diagnostic") "Desktop client sta
 Assert-Aegis ($clientHeaderSource -match "repair_brief") "Desktop client status model does not store repair_brief."
 Assert-Aegis ($clientSource -match 'value\["failed_step_command"\]') "Desktop client parser does not read failed_step_command."
 Assert-Aegis ($clientSource -match 'value\["first_diagnostic"\]') "Desktop client parser does not read first_diagnostic."
-Assert-Aegis ($clientSource -match 'value\["repair_brief"\]') "Desktop client parser does not read repair_brief."
-$desktopAutopilotPromptContractSmoke = @{
-    source_path = $chatAppSourcePath
-    queue_contract = $true
-    repair_brief_contract = $true
-    client_parse_contract = $true
+    Assert-Aegis ($clientSource -match 'value\["repair_brief"\]') "Desktop client parser does not read repair_brief."
+    Assert-Aegis ($clientSource -match "BackendHealthProjectRootMatches") "Desktop client no longer rejects health responses from the wrong backend root."
+    $backendCommandsSourcePath = Join-Path $repoRoot "website\backend\aegis_ai\commands.py"
+    Assert-Aegis (Test-Path -LiteralPath $backendCommandsSourcePath) "Backend command parser contract smoke could not find commands.py."
+    $backendCommandsSource = Get-Content -LiteralPath $backendCommandsSourcePath -Raw
+    Assert-Aegis ($backendCommandsSource -match "_space_unquoted_shell_metacharacters") "Backend command parser no longer tokenizes glued shell operators before safe parsing."
+    Assert-Aegis ($backendCommandsSource -match "SHELL_OPERATOR_SCAN_ORDER") "Backend command parser no longer scans longest shell operators first."
+    $desktopAutopilotPromptContractSmoke = @{
+        source_path = $chatAppSourcePath
+        queue_contract = $true
+        repair_brief_contract = $true
+        client_parse_contract = $true
+        command_parser_contract = $true
+    }
+$frontendQueueSourcePath = Join-Path $repoRoot "website\frontend\src\utils\messageQueue.ts"
+$frontendAppSourcePath = Join-Path $repoRoot "website\frontend\src\App.tsx"
+$frontendMissionAnchorSourcePath = Join-Path $repoRoot "website\frontend\src\utils\missionAnchor.ts"
+Assert-Aegis (Test-Path -LiteralPath $frontendQueueSourcePath) "Frontend queue contract smoke could not find messageQueue.ts."
+Assert-Aegis (Test-Path -LiteralPath $frontendAppSourcePath) "Frontend queue contract smoke could not find App.tsx."
+Assert-Aegis (Test-Path -LiteralPath $frontendMissionAnchorSourcePath) "Frontend queue contract smoke could not find missionAnchor.ts."
+$frontendQueueSource = Get-Content -LiteralPath $frontendQueueSourcePath -Raw
+$frontendAppSource = Get-Content -LiteralPath $frontendAppSourcePath -Raw
+$frontendMissionAnchorSource = Get-Content -LiteralPath $frontendMissionAnchorSourcePath -Raw
+Assert-Aegis ($frontendQueueSource -match "threadId") "Frontend queued prompts no longer persist their origin thread id."
+Assert-Aegis ($frontendQueueSource -match "sanitizeHistory") "Frontend queued prompts no longer persist a sanitized history snapshot."
+Assert-Aegis ($frontendQueueSource -match "missionAnchor") "Frontend queued prompts no longer persist their mission anchor."
+Assert-Aegis ($frontendQueueSource -match "normalizeQueuedMessage") "Frontend queued prompt loader no longer normalizes legacy queue entries."
+Assert-Aegis ($frontendAppSource -match "threadIdForSubmit") "Frontend queued prompt replay no longer restores the origin thread before sending."
+Assert-Aegis ($frontendAppSource -match "queuedHistoryAlreadyHasPrompt") "Frontend queued prompt replay no longer protects legacy entries from dropping the user prompt."
+Assert-Aegis ($frontendAppSource -match "buildAgentRequestHistory") "Frontend submit no longer prepends mission anchors to bounded request history."
+Assert-Aegis ($frontendAppSource -match "createMissionAnchorMessage") "Frontend queue/retry path no longer creates mission anchors."
+Assert-Aegis ($frontendMissionAnchorSource -match "Aegis mission anchor") "Frontend mission anchor source no longer labels hidden continuity context."
+Assert-Aegis ($frontendMissionAnchorSource -match "vague follow-ups") "Frontend mission anchor no longer documents continuation behavior."
+$frontendQueueContractSmoke = @{
+    queue_source_path = $frontendQueueSourcePath
+    app_source_path = $frontendAppSourcePath
+    mission_anchor_source_path = $frontendMissionAnchorSourcePath
+    thread_id_contract = $true
+    history_snapshot_contract = $true
+    mission_anchor_contract = $true
+    legacy_queue_contract = $true
 }
 Assert-Aegis ($chatAppSource -match "Auto-selected from existing project files for a build/run follow-up") "Desktop build follow-up contract is still limited to native C++ projects."
 Assert-Aegis ($chatAppSource -match "Preserve the detected stack, build system, and app type") "Desktop continuity directive does not preserve the detected project stack."
@@ -283,7 +347,9 @@ $desktopBuildFollowupContractSmoke = @{
 }
 
 $aegisRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $repoRoot))
-$backendMainSourcePath = Join-Path $aegisRoot "Website\ChatBot\backend\aegis_ai\main.py"
+$localBackendMainSourcePath = Join-Path $repoRoot "website\backend\aegis_ai\main.py"
+$legacyBackendMainSourcePath = Join-Path $aegisRoot "Website\ChatBot\backend\aegis_ai\main.py"
+$backendMainSourcePath = if (Test-Path -LiteralPath $localBackendMainSourcePath) { $localBackendMainSourcePath } else { $legacyBackendMainSourcePath }
 Assert-Aegis (Test-Path -LiteralPath $backendMainSourcePath) "Backend workspace cache contract smoke could not find main.py."
 $backendMainSource = Get-Content -LiteralPath $backendMainSourcePath -Raw
 Assert-Aegis ($backendMainSource -match "_workspace_status_snapshot") "Backend workspace profile/autopilot endpoints no longer share a cached workspace snapshot."
@@ -291,28 +357,164 @@ Assert-Aegis ($backendMainSource -match "_cached_project_plan") "Backend project
 Assert-Aegis ($backendMainSource -match "_invalidate_workspace_caches") "Backend workspace cache invalidation contract is missing."
 Assert-Aegis ($backendMainSource -match "_WORKSPACE_SNAPSHOT_TTL_SECONDS") "Backend workspace snapshot cache TTL is missing."
 Assert-Aegis ($backendMainSource -match "_PROJECT_PLAN_CACHE_TTL_SECONDS") "Backend project plan cache TTL is missing."
+Assert-Aegis ($backendMainSource -match "_chat_stream_workspace_root") "Backend chat stream meta no longer resolves the effective prompt-selected workspace."
 $backendWorkspaceCacheContractSmoke = @{
     source_path = $backendMainSourcePath
     profile_autopilot_snapshot_cache = $true
     project_plan_cache = $true
     invalidation_contract = $true
+    prompt_workspace_stream_meta = $true
 }
 
-$backendAgentSourcePath = Join-Path $aegisRoot "Website\ChatBot\backend\aegis_ai\agent.py"
+$localBackendAgentSourcePath = Join-Path $repoRoot "website\backend\aegis_ai\agent.py"
+$legacyBackendAgentSourcePath = Join-Path $aegisRoot "Website\ChatBot\backend\aegis_ai\agent.py"
+$backendAgentSourcePath = if (Test-Path -LiteralPath $localBackendAgentSourcePath) { $localBackendAgentSourcePath } else { $legacyBackendAgentSourcePath }
 Assert-Aegis (Test-Path -LiteralPath $backendAgentSourcePath) "Backend validation contract smoke could not find agent.py."
 $backendAgentSource = Get-Content -LiteralPath $backendAgentSourcePath -Raw
 Assert-Aegis ($backendAgentSource -match "Validation requested for current workspace") "Backend no-change validation path does not announce current-workspace validation."
 Assert-Aegis ($backendAgentSource -match "Validation deferred until changes are applied") "Backend no-change validation path does not defer preview-only validation safely."
 Assert-Aegis ($backendAgentSource -match "Aegis ran validation and") "Backend no-change validation replies do not summarize validation results."
 Assert-Aegis ($backendAgentSource -match "_draft_stack_mismatch_reasons") "Backend agent no longer rejects stack-drifted model drafts."
+Assert-Aegis ($backendAgentSource -match "_draft_task_adherence_reasons") "Backend agent no longer judges task adherence before accepting autopilot progress."
+Assert-Aegis ($backendAgentSource -match "_workspace_stack_family") "Backend agent no longer infers the active workspace stack for manifest-free projects."
+Assert-Aegis (-not ($backendAgentSource -match '\{"cmakelists\.txt", "cmakepresets\.json", "makefile", "build\.py"\}')) "Backend agent is treating generic build.py validators as native C++ workspace markers again."
+Assert-Aegis ($backendAgentSource -match "not to make a website/web app") "Backend agent no longer rejects web-stack drafts after explicit web negation."
+Assert-Aegis ($backendAgentSource -match "_request_mentions_desktop_project") "Backend agent no longer recognizes explicit desktop/GUI implementation requests."
+Assert-Aegis ($backendAgentSource -match "_draft_has_desktop_host_surface") "Backend agent no longer verifies that desktop drafts include a desktop host surface."
+Assert-Aegis ($backendAgentSource -match "website/static frontend") "Backend agent no longer rejects static website drafts for desktop app requests."
+Assert-Aegis ($backendAgentSource -match "_draft_manifest_contract_mismatch_reasons") "Backend agent no longer rejects drafts that violate the saved workspace mission contract."
+Assert-Aegis ($backendAgentSource -match "_draft_has_concrete_source_surface") "Backend agent no longer requires concrete source changes for implementation drafts."
+Assert-Aegis ($backendAgentSource -match "_draft_destructive_change_reasons") "Backend agent no longer rejects destructive model drafts before apply."
+Assert-Aegis ($backendAgentSource -match "_prompt_explicitly_allows_destructive_changes") "Backend agent no longer checks whether the latest prompt explicitly allows destructive changes."
+Assert-Aegis ($backendAgentSource -match "tried to delete or empty important project files") "Backend agent no longer reports destructive draft replacement."
+Assert-Aegis ($backendAgentSource -match "_draft_existing_project_scaffold_drift_reasons") "Backend agent no longer rejects fresh starter drafts for existing-project continuation."
+Assert-Aegis ($backendAgentSource -match "_prompt_allows_fresh_scaffold_in_existing_project") "Backend agent no longer distinguishes explicit fresh scaffold requests from continuation work."
+Assert-Aegis ($backendAgentSource -match "looked like a fresh starter scaffold for an existing project") "Backend agent no longer reports existing-project starter drift."
+Assert-Aegis ($backendAgentSource -match "_draft_existing_file_overwrite_reasons") "Backend agent no longer rejects create-as-overwrite model drafts for existing files."
+Assert-Aegis ($backendAgentSource -match "used create on existing project files") "Backend agent no longer reports create-as-overwrite draft replacement."
+Assert-Aegis ($backendAgentSource -match "The model draft did not match the saved workspace mission contract") "Backend agent no longer reports mission-contract draft replacement."
 Assert-Aegis ($backendAgentSource -match "The C\+\+ entry point does not wait for user input") "Backend agent no longer checks native console prompts for requested input pause behavior."
+Assert-Aegis ($backendAgentSource -match "authoritative task contract") "Backend model prompt no longer makes the latest user request authoritative over stale chat/workspace context."
+Assert-Aegis ($backendAgentSource -match "Mission rule: preserve this stack") "Backend model prompt no longer surfaces the manifest mission preservation rule."
+Assert-Aegis ($backendAgentSource -match "_mission_continuity_contract_context") "Backend model prompt no longer includes the mission continuity contract block."
+Assert-Aegis ($backendAgentSource -match "_mission_anchor_from_history") "Backend agent no longer parses frontend mission anchors from request history."
+Assert-Aegis ($backendAgentSource -match "_mission_aware_message") "Backend agent no longer converts vague follow-ups into mission-aware planning input."
+Assert-Aegis ($backendAgentSource -match "Aegis mission anchor") "Backend mission anchor parser no longer recognizes the frontend anchor label."
+Assert-Aegis ($backendAgentSource -match "Vague follow-ups must preserve") "Backend mission anchor contract no longer preserves vague follow-up path/stack/artifact intent."
+Assert-Aegis ($backendAgentSource -match "Native/C\+\+ guardrail") "Backend model prompt no longer tells native/C++ work to avoid accidental web scaffolds."
+Assert-Aegis ($backendAgentSource -match "Words after that explicit path are instructions") "Backend model prompt no longer protects explicit paths from trailing instruction text."
+Assert-Aegis ($backendAgentSource -match "_turn_expects_file_work") "Backend full-build contract no longer treats manifest-backed continuation as implementation work."
+Assert-Aegis ($backendAgentSource -match "_resolve_workspace_for_prompted_request") "Backend agent no longer resolves explicit prompt paths as the effective workspace."
+Assert-Aegis ($backendAgentSource -match "stream_meta_workspace_root") "Backend agent no longer exposes the prompt-selected workspace for stream metadata."
+Assert-Aegis ($backendAgentSource -match "Explicit prompt workspace selected") "Backend agent no longer emits a live activity event for prompt-selected workspaces."
+Assert-Aegis ($backendAgentSource -match '"work on"') "Backend direct-chat guard no longer treats natural 'work on' prompts as file-changing work."
+Assert-Aegis ($backendAgentSource -match '"clean up"') "Backend direct-chat guard no longer treats natural 'clean up' prompts as file-changing work."
+Assert-Aegis ($backendAgentSource -match '"polish"') "Backend direct-chat guard no longer treats natural refinement prompts as file-changing work."
+Assert-Aegis ($backendAgentSource -match "_existing_project_no_change_continuation_draft") "Backend no-change existing-project recovery helper is missing."
+Assert-Aegis ($backendAgentSource -match "strict existing-project continuation pass") "Backend no-change existing-project recovery no longer prepares a strict continuation pass."
+Assert-Aegis ($backendAgentSource -match "_existing_project_continuation_validation_command") "Backend no-change existing-project recovery no longer proposes a validation command."
+Assert-Aegis ($backendAgentSource -match "_draft_validation_override_recipe") "Backend draft-proposed validation commands are no longer promoted into the validation loop."
+Assert-Aegis ($backendAgentSource -match "Draft validation command selected") "Backend draft-proposed validation command selection is no longer visible in activity events."
+Assert-Aegis ($backendAgentSource -match 'source="draft-proposal"') "Backend draft-proposed validation recipes no longer carry an auditable source label."
+Assert-Aegis ($backendAgentSource -match "_should_remember_validation_recipe") "Backend validation command learning policy is missing."
+Assert-Aegis ($backendAgentSource -match "Validation command learned") "Backend successful draft validation commands are no longer surfaced as learned workspace knowledge."
+$backendValidationSourcePath = Join-Path $repoRoot "website\backend\aegis_ai\validation.py"
+Assert-Aegis (Test-Path -LiteralPath $backendValidationSourcePath) "Backend validation manager contract smoke could not find validation.py."
+$backendValidationSource = Get-Content -LiteralPath $backendValidationSourcePath -Raw
+Assert-Aegis ($backendValidationSource -match "COMMAND_HISTORY_PATH") "Backend validation manager no longer knows the command history path."
+Assert-Aegis ($backendValidationSource -match "_history_candidate") "Backend validation manager no longer recovers validation commands from command history."
+Assert-Aegis ($backendValidationSource -match "_safe_history_validation_command") "Backend validation manager no longer filters unsafe remembered validation commands."
+Assert-Aegis ($backendValidationSource -match "aegis.command_history.v1") "Backend validation manager no longer verifies the command-history schema."
+$backendFallbackSourcePath = Join-Path $repoRoot "website\backend\aegis_ai\fallback.py"
+Assert-Aegis (Test-Path -LiteralPath $backendFallbackSourcePath) "Backend fallback contract smoke could not find fallback.py."
+$backendFallbackSource = Get-Content -LiteralPath $backendFallbackSourcePath -Raw
+Assert-Aegis ($backendFallbackSource -match "_should_preserve_existing_workspace") "Backend fallback no longer preserves existing workspaces before starter generation."
+Assert-Aegis ($backendFallbackSource -match "_existing_workspace_continuation_changes") "Backend fallback no longer has a stack-preserving existing-project continuation path."
+Assert-Aegis ($backendFallbackSource -match "without recreating source files") "Backend fallback no longer adds validation helpers without recreating source files."
+$backendWorkspaceSourcePath = Join-Path $repoRoot "website\backend\aegis_ai\workspace.py"
+Assert-Aegis (Test-Path -LiteralPath $backendWorkspaceSourcePath) "Backend workspace contract smoke could not find workspace.py."
+$backendWorkspaceSource = Get-Content -LiteralPath $backendWorkspaceSourcePath -Raw
+Assert-Aegis ($backendWorkspaceSource -match "skipped create because the file already exists") "Backend apply layer no longer prevents create actions from overwriting existing files."
+Assert-Aegis ($backendWorkspaceSource -match "use update to modify existing files") "Backend apply layer no longer explains that existing files require update actions."
+Assert-Aegis ($backendWorkspaceSource -match "skipped update because the file does not exist") "Backend apply layer no longer prevents update actions from creating missing files."
+Assert-Aegis ($backendWorkspaceSource -match "use create to add new files") "Backend apply layer no longer explains that missing files require create actions."
+Assert-Aegis ($backendWorkspaceSource -match "skipped append because the file does not exist") "Backend apply layer no longer prevents append actions from creating missing files."
+Assert-Aegis ($backendWorkspaceSource -match "use create before append") "Backend apply layer no longer explains that append actions require a seed create first."
+Assert-Aegis ($backendWorkspaceSource -match "seed create for this file did not apply") "Backend apply layer no longer prevents append actions after a skipped seed create."
+Assert-Aegis ($backendWorkspaceSource -match "refusing to delete the existing file") "Backend apply layer no longer prevents delete actions after a skipped seed create."
+Assert-Aegis ($backendWorkspaceSource -match "skipped_create_paths") "Backend apply layer no longer tracks skipped create actions across an apply batch."
+Assert-Aegis ($backendWorkspaceSource -match "casefold") "Backend apply layer no longer normalizes batch path keys for Windows-style casing."
 $backendValidationOnlyContractSmoke = @{
     source_path = $backendAgentSourcePath
     validates_current_workspace_without_file_changes = $true
     stack_drift_guard = $true
+    authoritative_latest_request = $true
+    mission_continuity_contract = $true
+    native_cpp_guardrail_contract = $true
+    continuation_file_work_contract = $true
+    explicit_prompt_workspace_contract = $true
+    prompt_workspace_stream_meta = $true
+    command_history_validation_recovery_contract = $true
+    backend_mission_anchor_parser = $true
+    mission_aware_followups = $true
 }
 
-$backendScaffolderSourcePath = Join-Path $aegisRoot "Website\ChatBot\backend\aegis_ai\project_scaffolder.py"
+$localBackendPlannerSourcePath = Join-Path $repoRoot "website\backend\aegis_ai\task_planner.py"
+$legacyBackendPlannerSourcePath = Join-Path $aegisRoot "Website\ChatBot\backend\aegis_ai\task_planner.py"
+$backendPlannerSourcePath = if (Test-Path -LiteralPath $localBackendPlannerSourcePath) { $localBackendPlannerSourcePath } else { $legacyBackendPlannerSourcePath }
+Assert-Aegis (Test-Path -LiteralPath $backendPlannerSourcePath) "Backend natural prompt contract smoke could not find task_planner.py."
+$backendPlannerSource = Get-Content -LiteralPath $backendPlannerSourcePath -Raw
+Assert-Aegis ($backendPlannerSource -match '"work on"') "Backend task planner no longer classifies natural 'work on' prompts as implementation work."
+Assert-Aegis ($backendPlannerSource -match '"optimize"') "Backend task planner no longer classifies natural optimization prompts as implementation work."
+Assert-Aegis ($backendPlannerSource -match '"modernize"') "Backend task planner no longer classifies natural modernization prompts as implementation work."
+Assert-Aegis ($backendPlannerSource -match "_prompt_negates_web_stack") "Backend task planner no longer suppresses web routing for negated website phrases."
+Assert-Aegis ($backendPlannerSource -match "without converting it to a website") "Backend task planner no longer suppresses web routing for 'without converting it to a website' phrases."
+Assert-Aegis ($backendPlannerSource -match 'intent == "conversation" and project_manifest is None') "Backend task planner no longer clears specialist route profiles for plain conversational questions."
+Assert-Aegis ($backendPlannerSource -match "_looks_like_external_research") "Backend task planner no longer separates source-code work from external research prompts."
+Assert-Aegis ($backendPlannerSource -match "_looks_like_workspace_bound_research") "Backend task planner no longer clears unrelated research route profiles inside code workspaces."
+Assert-Aegis ($backendPlannerSource -match "source_context = bool") "Backend task planner no longer treats source code/layout follow-ups as local implementation context."
+Assert-Aegis ($backendPlannerSource -match "cmakelists.txt") "Backend task planner no longer recognizes CMake workspaces before desktop/web fallback profiles."
+
+$localBackendRouterSourcePath = Join-Path $repoRoot "website\backend\aegis_ai\routing.py"
+$legacyBackendRouterSourcePath = Join-Path $aegisRoot "Website\ChatBot\backend\aegis_ai\routing.py"
+$backendRouterSourcePath = if (Test-Path -LiteralPath $localBackendRouterSourcePath) { $localBackendRouterSourcePath } else { $legacyBackendRouterSourcePath }
+Assert-Aegis (Test-Path -LiteralPath $backendRouterSourcePath) "Backend natural prompt contract smoke could not find routing.py."
+$backendRouterSource = Get-Content -LiteralPath $backendRouterSourcePath -Raw
+Assert-Aegis ($backendRouterSource -match "_looks_like_code_work") "Backend router no longer keeps source-code follow-ups in code/debug lanes."
+Assert-Aegis ($backendRouterSource -match "_looks_like_external_research") "Backend router no longer protects external research routing from source-code wording."
+Assert-Aegis ($backendRouterSource -match "latest_source_context") "Backend router no longer keeps 'latest source layout' prompts local-first."
+
+$localPromptIntentSourcePath = Join-Path $repoRoot "website\backend\aegis_ai\prompt_intent.py"
+$legacyPromptIntentSourcePath = Join-Path $aegisRoot "Website\ChatBot\backend\aegis_ai\prompt_intent.py"
+$promptIntentSourcePath = if (Test-Path -LiteralPath $localPromptIntentSourcePath) { $localPromptIntentSourcePath } else { $legacyPromptIntentSourcePath }
+Assert-Aegis (Test-Path -LiteralPath $promptIntentSourcePath) "Backend validation-intent contract smoke could not find prompt_intent.py."
+$promptIntentSource = Get-Content -LiteralPath $promptIntentSourcePath -Raw
+Assert-Aegis ($promptIntentSource -match "last failed build") "Backend validation-intent matrix no longer treats failed-build continuations as build/repair work."
+Assert-Aegis ($promptIntentSource -match "rerun validation") "Backend validation-intent matrix no longer treats validation reruns as build/repair work."
+
+$localBackendFallbackSourcePath = Join-Path $repoRoot "website\backend\aegis_ai\fallback.py"
+$legacyBackendFallbackSourcePath = Join-Path $aegisRoot "Website\ChatBot\backend\aegis_ai\fallback.py"
+$backendFallbackSourcePath = if (Test-Path -LiteralPath $localBackendFallbackSourcePath) { $localBackendFallbackSourcePath } else { $legacyBackendFallbackSourcePath }
+Assert-Aegis (Test-Path -LiteralPath $backendFallbackSourcePath) "Backend natural prompt contract smoke could not find fallback.py."
+$backendFallbackSource = Get-Content -LiteralPath $backendFallbackSourcePath -Raw
+Assert-Aegis ($backendFallbackSource -match '"work on"') "Backend fallback no longer treats natural 'work on' prompts as project work."
+Assert-Aegis ($backendFallbackSource -match '"clean up"') "Backend fallback no longer treats natural cleanup prompts as project work."
+Assert-Aegis ($backendFallbackSource -match '"polish"') "Backend fallback no longer treats natural polish prompts as project work."
+$backendNaturalPromptContractSmoke = @{
+    agent_source_path = $backendAgentSourcePath
+    planner_source_path = $backendPlannerSourcePath
+    fallback_source_path = $backendFallbackSourcePath
+    direct_chat_guard = $true
+    task_planner_intent = $true
+    fallback_intent = $true
+    source_code_not_research_contract = $true
+    native_cmake_profile_contract = $true
+    external_research_profile_boundary = $true
+}
+
+$localBackendScaffolderSourcePath = Join-Path $repoRoot "website\backend\aegis_ai\project_scaffolder.py"
+$legacyBackendScaffolderSourcePath = Join-Path $aegisRoot "Website\ChatBot\backend\aegis_ai\project_scaffolder.py"
+$backendScaffolderSourcePath = if (Test-Path -LiteralPath $localBackendScaffolderSourcePath) { $localBackendScaffolderSourcePath } else { $legacyBackendScaffolderSourcePath }
 Assert-Aegis (Test-Path -LiteralPath $backendScaffolderSourcePath) "Backend native continuity contract smoke could not find project_scaffolder.py."
 $backendScaffolderSource = Get-Content -LiteralPath $backendScaffolderSourcePath -Raw
 Assert-Aegis ($backendScaffolderSource -match "cmake -S \. -B build && cmake --build build --config Release") "Backend existing CMake validation no longer configures before the first build."
@@ -320,8 +522,34 @@ Assert-Aegis ($backendScaffolderSource -match '" write me "') "Backend existing-
 Assert-Aegis ($backendScaffolderSource -match "_existing_project_validation_command") "Backend native continuity validation command helper is missing."
 Assert-Aegis ($backendScaffolderSource -match "_stack_lock_keywords_for_prompt") "Backend project planner no longer exposes explicit stack-lock routing signals."
 Assert-Aegis ($backendScaffolderSource -match "stack-lock:native-cpp") "Backend project planner no longer marks native C++ stack-lock prompts."
+Assert-Aegis ($backendScaffolderSource -match "stack-lock:solution-refactor") "Backend project planner no longer marks Visual Studio solution refactor prompts."
+Assert-Aegis ($backendScaffolderSource -match "stack-lock:desktop") "Backend project planner no longer marks desktop app stack-lock prompts."
+Assert-Aegis ($backendScaffolderSource -match '"electron-react-ts",\s*"tauri-react-ts"') "Backend project planner no longer treats Electron/Tauri presets as desktop stack contracts."
 Assert-Aegis ($backendScaffolderSource -match "my dll") "Backend continuity routing no longer treats existing DLL refinement as existing project work."
 Assert-Aegis ($backendScaffolderSource -match "_prompt_negates_web_stack") "Backend planner no longer ignores negated web phrases like 'without turning it into a website'."
+Assert-Aegis ($backendScaffolderSource -match "_stack_locks_conflict_with_preset") "Backend planner no longer rejects stale workspace stack continuity when the latest prompt declares a different stack."
+Assert-Aegis ($backendScaffolderSource -match "current prompt stack override") "Backend planner no longer surfaces current-prompt stack override diagnostics."
+Assert-Aegis ($backendScaffolderSource -match "electron-react-ts") "Backend planner no longer maps existing Electron projects to the valid Electron preset id."
+Assert-Aegis ($backendScaffolderSource -match "_path_stop_phrase_is_boundary") "Backend planner no longer keeps action words inside prompt path folder names."
+Assert-Aegis ($backendScaffolderSource -match "_path_action_boundary_preserves_leaf") "Backend planner no longer preserves folder names that contain instruction-like words before the real action."
+Assert-Aegis ($backendScaffolderSource -match "location_markers") "Backend planner no longer rejects repeated location phrases before choosing an action boundary."
+Assert-Aegis ($backendScaffolderSource.Contains('r"\s+-+$"')) "Backend prompt path parser no longer trims separator dashes before natural instructions."
+Assert-Aegis ($backendScaffolderSource -match "_trailing_wrapper_belongs_to_path") "Backend prompt path parser no longer preserves balanced wrapper punctuation inside folder names."
+Assert-Aegis ($backendScaffolderSource -match "previous_char\.isalnum\(\).*next_char\.isalnum\(\)") "Backend prompt path parser no longer preserves apostrophes inside folder names."
+Assert-Aegis ($backendScaffolderSource -match '" design and "') "Backend prompt path parser no longer stops before natural 'design and build' instructions."
+Assert-Aegis ($backendScaffolderSource -match '" refine "') "Backend prompt path parser no longer stops before natural refinement instructions."
+Assert-Aegis ($backendScaffolderSource -match '" optimize "') "Backend prompt path parser no longer stops before natural optimization instructions."
+Assert-Aegis ($backendScaffolderSource -match '" clean up "') "Backend prompt path parser no longer stops before natural cleanup instructions."
+Assert-Aegis ($backendScaffolderSource -match '"keep going"') "Backend existing-project planner no longer treats vague continuation prompts as existing workspace work."
+Assert-Aegis ($backendScaffolderSource -match '"make it production ready"') "Backend existing-project planner no longer treats production-ready follow-ups as validation work."
+Assert-Aegis ($backendScaffolderSource -match "without making a website") "Backend web-negation guard no longer handles 'without making a website' follow-ups."
+Assert-Aegis ($backendScaffolderSource -match "do not make a website") "Backend web-negation guard no longer handles 'do not make a website' follow-ups."
+Assert-Aegis ($backendScaffolderSource -match "_path_action_stop_positions") "Backend prompt path parser no longer prioritizes action boundaries before later punctuation separators."
+Assert-Aegis ($backendScaffolderSource -match "mission_contract") "Backend project manifest no longer stores the mission contract for long autopilot continuity."
+Assert-Aegis ($backendScaffolderSource -match "_prompt_allows_stack_switch") "Backend project planner no longer distinguishes explicit stack switches from accidental drift words."
+Assert-Aegis ($backendScaffolderSource -match "mission-contract:locked-stack") "Backend project planner no longer reports mission-contract stack locking."
+Assert-Aegis ($backendScaffolderSource -match "continuity_policy") "Backend project manifest no longer records the continuity policy."
+Assert-Aegis ($backendScaffolderSource -match "native dll/plugin library") "Backend preset scoring no longer boosts native DLL/plugin prompts into the DLL preset."
 Assert-Aegis ($backendScaffolderSource -match "cpp-cmake-dll") "Backend C++ DLL/shared-library preset is missing."
 Assert-Aegis ($backendScaffolderSource -match "run_host_validation") "Backend C++ DLL/shared-library preset no longer runs host validation."
 Assert-Aegis ($backendScaffolderSource -match "aegis_plugin_description") "Backend C++ DLL/shared-library preset no longer exports plugin metadata."
@@ -357,11 +585,25 @@ BOOL APIENTRY DllMain(HMODULE, DWORD, LPVOID) {
 }
 "@
 
+$staleWebTarget = Join-Path $workspaceRoot "stale-web-manifest-native-request"
+New-Item -ItemType Directory -Force -Path (Join-Path $staleWebTarget ".aegis") | Out-Null
+Write-AegisUtf8NoBom -Path (Join-Path $staleWebTarget ".aegis\project.json") -Value @"
+{
+  "schema": "aegis.project.v1",
+  "project_name": "stale-web-site",
+  "preset_id": "static-html-site",
+  "preset_label": "Static HTML/CSS/JS Website",
+  "validation_command": "node build.js"
+}
+"@
+Write-AegisUtf8NoBom -Path (Join-Path $staleWebTarget "index.html") -Value "<main>stale web project</main>`n"
+
 for ($i = 1; $i -le $ApiIterations; $i++) {
     try {
         $call = Measure-AegisCall {
             $health = Invoke-AegisJsonGet "$BackendUrl/api/health"
             Assert-Aegis ([bool]$health.ready) "Iteration $i health check was not ready."
+            Assert-AegisHealthProjectRoot -Health $health -ExpectedRoot $ExpectedProjectRoot -Label "Iteration $i"
 
             $config = Invoke-AegisJsonGet "$BackendUrl/api/config"
             Assert-Aegis (-not [string]::IsNullOrWhiteSpace([string]$config.model_name)) "Iteration $i config did not include model_name."
@@ -412,7 +654,7 @@ for ($i = 1; $i -le $ApiIterations; $i++) {
             $fullStackProjectName = [string]$fullStackPlan.project_name
 
             $dllPlan = Invoke-AegisJsonPost "$BackendUrl/api/project-builder/plan" @{
-                prompt = "at this path $existingDllTarget work on my existing DLL that I already made and refine the native project without turning it into a website"
+                prompt = "at this path $existingDllTarget work on my existing DLL that I already made, add a diagnostics UI, refine the native project, build it, and do not make a website"
                 workspace_root = $workspaceRoot
                 preferred_target_path = $existingDllTarget
             } -TimeoutSec 90
@@ -423,11 +665,209 @@ for ($i = 1; $i -le $ApiIterations; $i++) {
             Assert-Aegis ($dllDetectedKeywords -contains "stack-lock:native-library") "Iteration $i existing DLL plan did not preserve the native-library stack lock."
             Assert-Aegis (-not ($dllDetectedKeywords -contains "stack-lock:web")) "Iteration $i existing DLL plan incorrectly added a web stack lock from negated website wording."
 
+            $plainNativeQuestionRoute = Invoke-AegisJsonPost "$BackendUrl/api/routing/preview" @{
+                message = "what is a DLL and why would an app use one?"
+                workspace_root = $existingDllTarget
+                mode = "develop"
+            } -TimeoutSec 60
+            $plainNativeQuestionProfileId = Get-AegisPropertyValue -Object $plainNativeQuestionRoute.task_plan.route_profile -Name "id"
+            Assert-Aegis ([string]$plainNativeQuestionRoute.task_plan.intent -eq "conversation") "Iteration $i plain DLL question did not stay in conversational intent."
+            Assert-Aegis ([string]::IsNullOrWhiteSpace([string]$plainNativeQuestionProfileId)) "Iteration $i plain DLL question incorrectly advertised a specialist route profile '$plainNativeQuestionProfileId'."
+
+            $sourceFollowupHistory = @(
+                @{
+                    role = "system"
+                    content = "Aegis mission anchor:`n- Original user mission: at this path $existingDllTarget refine the existing native C++ source code and build it`n- Active workspace root: $existingDllTarget`n- Continuity rule: Preserve target stack and validation intent."
+                }
+            )
+            $sourceFollowupRoute = Invoke-AegisJsonPost "$BackendUrl/api/routing/preview" @{
+                message = "continue working on the source files"
+                history = $sourceFollowupHistory
+                workspace_root = $workspaceRoot
+                mode = "develop"
+            } -TimeoutSec 60
+            $sourceFollowupProfileId = Get-AegisPropertyValue -Object $sourceFollowupRoute.task_plan.route_profile -Name "id"
+            Assert-Aegis ([string]$sourceFollowupRoute.task_plan.intent -eq "implementation") "Iteration $i source-code follow-up drifted away from implementation intent."
+            Assert-Aegis ([string]$sourceFollowupProfileId -eq "native-binary") "Iteration $i source-code follow-up selected '$sourceFollowupProfileId' instead of native-binary."
+            Assert-Aegis ([string]$sourceFollowupRoute.task_plan.routing.task_role -eq "code") "Iteration $i source-code follow-up selected '$($sourceFollowupRoute.task_plan.routing.task_role)' instead of code."
+            Assert-Aegis ([string]$sourceFollowupRoute.task_plan.routing.privacy_mode -eq "local-first") "Iteration $i source-code follow-up did not stay local-first."
+
+            $latestSourceRoute = Invoke-AegisJsonPost "$BackendUrl/api/routing/preview" @{
+                message = "use the latest source layout and build it"
+                history = $sourceFollowupHistory
+                workspace_root = $workspaceRoot
+                mode = "develop"
+            } -TimeoutSec 60
+            Assert-Aegis ([string]$latestSourceRoute.task_plan.intent -eq "implementation") "Iteration $i latest-source follow-up incorrectly routed as research."
+            Assert-Aegis ([string]$latestSourceRoute.task_plan.routing.privacy_mode -eq "local-first") "Iteration $i latest-source follow-up incorrectly requested cloud privacy."
+
+            $externalResearchRoute = Invoke-AegisJsonPost "$BackendUrl/api/routing/preview" @{
+                message = "look up latest AI news"
+                workspace_root = $existingDllTarget
+                mode = "develop"
+            } -TimeoutSec 60
+            $externalResearchProfileId = Get-AegisPropertyValue -Object $externalResearchRoute.task_plan.route_profile -Name "id"
+            Assert-Aegis ([string]$externalResearchRoute.task_plan.intent -eq "research_and_synthesize") "Iteration $i external research prompt did not stay research intent."
+            Assert-Aegis ([string]$externalResearchRoute.task_plan.routing.task_role -eq "research") "Iteration $i external research prompt selected '$($externalResearchRoute.task_plan.routing.task_role)' instead of research."
+            Assert-Aegis ([string]::IsNullOrWhiteSpace([string]$externalResearchProfileId)) "Iteration $i external research prompt inherited specialist route profile '$externalResearchProfileId'."
+
+            $designInstructionTarget = Join-Path $workspaceRoot "Designed DLL"
+            $designInstructionPlan = Invoke-AegisJsonPost "$BackendUrl/api/project-builder/plan" @{
+                prompt = "at this path $designInstructionTarget design and build a C++ DLL project with CMake and validate it"
+                workspace_root = $workspaceRoot
+                preferred_target_path = $designInstructionTarget
+            } -TimeoutSec 90
+            Assert-Aegis ([bool]$designInstructionPlan.ok) "Iteration $i design-instruction plan did not complete successfully."
+            Assert-Aegis ([string]$designInstructionPlan.preset.id -eq "cpp-cmake-dll") "Iteration $i design-instruction plan selected '$($designInstructionPlan.preset.id)' instead of cpp-cmake-dll."
+            Assert-Aegis ([string]$designInstructionPlan.target_path -eq [string]$designInstructionTarget) "Iteration $i design-instruction prompt swallowed instruction words into the target path."
+
+            $naturalRefinementPlan = Invoke-AegisJsonPost "$BackendUrl/api/project-builder/plan" @{
+                prompt = "at this path $existingDllTarget refine my DLL plugin; it is not a website and should stay native"
+                workspace_root = $workspaceRoot
+                preferred_target_path = $existingDllTarget
+            } -TimeoutSec 90
+            Assert-Aegis ([bool]$naturalRefinementPlan.ok) "Iteration $i natural-refinement plan did not complete successfully."
+            Assert-Aegis ([string]$naturalRefinementPlan.preset.id -eq "cpp-cmake-dll") "Iteration $i natural-refinement DLL plan selected '$($naturalRefinementPlan.preset.id)' instead of cpp-cmake-dll."
+            Assert-Aegis ([string]$naturalRefinementPlan.target_path -eq [string](Resolve-Path -LiteralPath $existingDllTarget)) "Iteration $i natural-refinement prompt swallowed instruction words into the target path."
+
+            $separatorRefinementPlan = Invoke-AegisJsonPost "$BackendUrl/api/project-builder/plan" @{
+                prompt = "at this path $existingDllTarget - refine my DLL plugin; it is not a website and should stay native"
+                workspace_root = $workspaceRoot
+                preferred_target_path = $existingDllTarget
+            } -TimeoutSec 90
+            Assert-Aegis ([bool]$separatorRefinementPlan.ok) "Iteration $i separator-refinement plan did not complete successfully."
+            Assert-Aegis ([string]$separatorRefinementPlan.preset.id -eq "cpp-cmake-dll") "Iteration $i separator-refinement DLL plan selected '$($separatorRefinementPlan.preset.id)' instead of cpp-cmake-dll."
+            Assert-Aegis ([string]$separatorRefinementPlan.target_path -eq [string](Resolve-Path -LiteralPath $existingDllTarget)) "Iteration $i separator-refinement prompt swallowed the separator into the target path."
+
+            $wrapperPathTarget = Join-Path $workspaceRoot "Aegis Tool (1)"
+            $wrapperPathPlan = Invoke-AegisJsonPost "$BackendUrl/api/project-builder/plan" @{
+                prompt = "at this path $wrapperPathTarget create a C++ console app and build it"
+                workspace_root = $workspaceRoot
+            } -TimeoutSec 90
+            Assert-Aegis ([bool]$wrapperPathPlan.ok) "Iteration $i wrapper-path plan did not complete successfully."
+            Assert-Aegis ([string]$wrapperPathPlan.target_path -eq [System.IO.Path]::GetFullPath($wrapperPathTarget)) "Iteration $i wrapper-path plan dropped balanced punctuation from the target path."
+
+            $apostrophePathTarget = Join-Path $workspaceRoot "Rick Culler's Website"
+            $apostrophePathPlan = Invoke-AegisJsonPost "$BackendUrl/api/project-builder/plan" @{
+                prompt = "at this path $apostrophePathTarget create a barber website"
+                workspace_root = $workspaceRoot
+            } -TimeoutSec 90
+            Assert-Aegis ([bool]$apostrophePathPlan.ok) "Iteration $i apostrophe-path plan did not complete successfully."
+            Assert-Aegis ([string]$apostrophePathPlan.preset.id -eq "static-html-site") "Iteration $i apostrophe-path website plan selected '$($apostrophePathPlan.preset.id)' instead of static-html-site."
+            Assert-Aegis ([string]$apostrophePathPlan.target_path -eq [System.IO.Path]::GetFullPath($apostrophePathTarget)) "Iteration $i apostrophe-path plan truncated the target path."
+
+            $instructionWordPathTarget = Join-Path $workspaceRoot "Aegis Tool With Tests"
+            $instructionWordPathPlan = Invoke-AegisJsonPost "$BackendUrl/api/project-builder/plan" @{
+                prompt = "at this path $instructionWordPathTarget create a C++ console app and build it"
+                workspace_root = $workspaceRoot
+            } -TimeoutSec 90
+            Assert-Aegis ([bool]$instructionWordPathPlan.ok) "Iteration $i instruction-word path plan did not complete successfully."
+            Assert-Aegis ([string]$instructionWordPathPlan.preset.id -eq "cpp-cmake-cli") "Iteration $i instruction-word path plan selected '$($instructionWordPathPlan.preset.id)' instead of cpp-cmake-cli."
+            Assert-Aegis ([string]$instructionWordPathPlan.target_path -eq [System.IO.Path]::GetFullPath($instructionWordPathTarget)) "Iteration $i instruction-word path plan trimmed folder words like 'With Tests' out of the target path."
+
+            $launchToolPathTarget = Join-Path $workspaceRoot "New Launch Tool"
+            $launchToolPathPlan = Invoke-AegisJsonPost "$BackendUrl/api/project-builder/plan" @{
+                prompt = "at this path $launchToolPathTarget create a Python CLI called New Launch Tool and build it"
+                workspace_root = $workspaceRoot
+            } -TimeoutSec 90
+            Assert-Aegis ([bool]$launchToolPathPlan.ok) "Iteration $i launch-tool path plan did not complete successfully."
+            Assert-Aegis ([string]$launchToolPathPlan.target_path -eq [System.IO.Path]::GetFullPath($launchToolPathTarget)) "Iteration $i launch-tool path plan trimmed folder words like 'Launch Tool' out of the target path."
+            Assert-Aegis ([bool]$launchToolPathPlan.scaffold_request.run_validation) "Iteration $i launch-tool path plan did not preserve build intent."
+
+            $failedBuildFollowupPlan = Invoke-AegisJsonPost "$BackendUrl/api/project-builder/plan" @{
+                prompt = "continue from the last failed build"
+                workspace_root = $existingDllTarget
+                preferred_target_path = $existingDllTarget
+            } -TimeoutSec 90
+            Assert-Aegis ([bool]$failedBuildFollowupPlan.ok) "Iteration $i failed-build follow-up plan did not complete successfully."
+            Assert-Aegis ([bool]$failedBuildFollowupPlan.scaffold_request.run_validation) "Iteration $i failed-build follow-up plan did not enable validation."
+            Assert-Aegis ([string]$failedBuildFollowupPlan.target_path -eq [string](Resolve-Path -LiteralPath $existingDllTarget)) "Iteration $i failed-build follow-up plan did not preserve the active workspace target path."
+
+            $bareContinuePlan = Invoke-AegisJsonPost "$BackendUrl/api/project-builder/plan" @{
+                prompt = "continue"
+                workspace_root = $existingDllTarget
+                preferred_target_path = $existingDllTarget
+            } -TimeoutSec 90
+            Assert-Aegis ([bool]$bareContinuePlan.ok) "Iteration $i bare continue plan did not complete successfully."
+            Assert-Aegis ([string]$bareContinuePlan.preset.id -eq "cpp-cmake-dll") "Iteration $i bare continue plan selected '$($bareContinuePlan.preset.id)' instead of cpp-cmake-dll."
+            Assert-Aegis ([string]$bareContinuePlan.execution_mode -eq "existing_validation") "Iteration $i bare continue plan did not switch to existing_validation."
+            Assert-Aegis ([bool]$bareContinuePlan.scaffold_request.run_validation) "Iteration $i bare continue plan did not enable validation."
+            Assert-Aegis ([string]$bareContinuePlan.target_path -eq [string](Resolve-Path -LiteralPath $existingDllTarget)) "Iteration $i bare continue plan did not preserve the active workspace target path."
+
+            $negatedNativeUiPlan = Invoke-AegisJsonPost "$BackendUrl/api/project-builder/plan" @{
+                prompt = "add a settings UI but do not turn it into a website"
+                workspace_root = $existingDllTarget
+                preferred_target_path = $existingDllTarget
+            } -TimeoutSec 90
+            $negatedNativeUiKeywords = @($negatedNativeUiPlan.detected_keywords)
+            Assert-Aegis ([bool]$negatedNativeUiPlan.ok) "Iteration $i negated native UI follow-up plan did not complete successfully."
+            Assert-Aegis ([string]$negatedNativeUiPlan.preset.id -eq "cpp-cmake-dll") "Iteration $i negated native UI follow-up selected '$($negatedNativeUiPlan.preset.id)' instead of cpp-cmake-dll."
+            Assert-Aegis ($negatedNativeUiKeywords -contains "existing workspace continuity") "Iteration $i negated native UI follow-up did not reuse the existing native workspace."
+            Assert-Aegis (-not ($negatedNativeUiKeywords -contains "current prompt stack override")) "Iteration $i negated native UI follow-up incorrectly treated negated website wording as a stack override."
+            Assert-Aegis (-not ($negatedNativeUiKeywords -contains "stack-lock:web")) "Iteration $i negated native UI follow-up incorrectly added a web stack lock."
+
+            $frontendDriftPlan = Invoke-AegisJsonPost "$BackendUrl/api/project-builder/plan" @{
+                prompt = "continue the roadmap and add a frontend-style diagnostics dashboard without changing stacks"
+                workspace_root = $existingDllTarget
+                preferred_target_path = $existingDllTarget
+            } -TimeoutSec 90
+            $frontendDriftKeywords = @($frontendDriftPlan.detected_keywords)
+            Assert-Aegis ([bool]$frontendDriftPlan.ok) "Iteration $i frontend drift follow-up plan did not complete successfully."
+            Assert-Aegis ([string]$frontendDriftPlan.preset.id -eq "cpp-cmake-dll") "Iteration $i frontend drift follow-up selected '$($frontendDriftPlan.preset.id)' instead of cpp-cmake-dll."
+            Assert-Aegis ($frontendDriftKeywords -contains "stack-lock:web") "Iteration $i frontend drift follow-up did not expose the ambiguous web stack-lock signal."
+            Assert-Aegis ($frontendDriftKeywords -contains "mission-contract:locked-stack") "Iteration $i frontend drift follow-up did not lock to the existing mission contract."
+            Assert-Aegis ($frontendDriftKeywords -contains "existing workspace continuity") "Iteration $i frontend drift follow-up did not preserve existing workspace continuity."
+            Assert-Aegis (-not ($frontendDriftKeywords -contains "current prompt stack override")) "Iteration $i frontend drift follow-up incorrectly allowed an accidental stack override."
+
+            $withoutMakingWebsitePlan = Invoke-AegisJsonPost "$BackendUrl/api/project-builder/plan" @{
+                prompt = "add a dashboard to show logs without making a website"
+                workspace_root = $existingDllTarget
+                preferred_target_path = $existingDllTarget
+            } -TimeoutSec 90
+            $withoutMakingWebsiteKeywords = @($withoutMakingWebsitePlan.detected_keywords)
+            Assert-Aegis ([bool]$withoutMakingWebsitePlan.ok) "Iteration $i without-making-website follow-up plan did not complete successfully."
+            Assert-Aegis ([string]$withoutMakingWebsitePlan.preset.id -eq "cpp-cmake-dll") "Iteration $i without-making-website follow-up selected '$($withoutMakingWebsitePlan.preset.id)' instead of cpp-cmake-dll."
+            Assert-Aegis (-not ($withoutMakingWebsiteKeywords -contains "stack-lock:web")) "Iteration $i without-making-website follow-up incorrectly added a web stack lock."
+
+            $staleOverridePlan = Invoke-AegisJsonPost "$BackendUrl/api/project-builder/plan" @{
+                prompt = "at this path $staleWebTarget create a C++ DLL shared library with CMake and a host executable, then build it"
+                workspace_root = $workspaceRoot
+                preferred_target_path = $staleWebTarget
+            } -TimeoutSec 90
+            $staleOverrideKeywords = @($staleOverridePlan.detected_keywords)
+            Assert-Aegis ([bool]$staleOverridePlan.ok) "Iteration $i stale-web override plan did not complete successfully."
+            Assert-Aegis ([string]$staleOverridePlan.preset.id -eq "cpp-cmake-dll") "Iteration $i stale-web override selected '$($staleOverridePlan.preset.id)' instead of cpp-cmake-dll."
+            Assert-Aegis ($staleOverrideKeywords -contains "current prompt stack override") "Iteration $i stale-web override did not record current prompt stack override."
+            Assert-Aegis (-not ($staleOverrideKeywords -contains "existing workspace continuity")) "Iteration $i stale-web override incorrectly reused stale web continuity."
+
+            $solutionRouteTarget = Join-Path $workspaceRoot "Solution Tool"
+            $solutionRoutePlan = Invoke-AegisJsonPost "$BackendUrl/api/project-builder/plan" @{
+                prompt = "at this path $solutionRouteTarget combine two Visual Studio sln projects into one and preserve project references"
+                workspace_root = $workspaceRoot
+                preferred_target_path = $solutionRouteTarget
+            } -TimeoutSec 90
+            $solutionRouteKeywords = @($solutionRoutePlan.detected_keywords)
+            Assert-Aegis ([bool]$solutionRoutePlan.ok) "Iteration $i solution route plan did not complete successfully."
+            Assert-Aegis ([string]$solutionRoutePlan.preset.id -eq "python-sln-refactor-tool") "Iteration $i solution route selected '$($solutionRoutePlan.preset.id)' instead of python-sln-refactor-tool."
+            Assert-Aegis ([string]$solutionRoutePlan.target_path -eq [string](Join-Path $workspaceRoot "Solution Tool")) "Iteration $i solution route swallowed the instruction into the target path."
+            Assert-Aegis ($solutionRouteKeywords -contains "stack-lock:solution-refactor") "Iteration $i solution route did not preserve the solution-refactor stack lock."
+
             return @{
                 preset_count = $presetCount
                 cpp_plan = $cppProjectName
                 full_stack_plan = $fullStackProjectName
                 dll_plan = [string]$dllPlan.preset.id
+                design_instruction_plan = [string]$designInstructionPlan.preset.id
+                natural_refinement_plan = [string]$naturalRefinementPlan.preset.id
+                separator_refinement_plan = [string]$separatorRefinementPlan.preset.id
+                wrapper_path_plan = [string]$wrapperPathPlan.preset.id
+                apostrophe_path_plan = [string]$apostrophePathPlan.preset.id
+                failed_build_followup_validation = [bool]$failedBuildFollowupPlan.scaffold_request.run_validation
+                bare_continue_execution_mode = [string]$bareContinuePlan.execution_mode
+                negated_native_ui_plan = [string]$negatedNativeUiPlan.preset.id
+                without_making_website_plan = [string]$withoutMakingWebsitePlan.preset.id
+                stale_override_plan = [string]$staleOverridePlan.preset.id
+                solution_route_plan = [string]$solutionRoutePlan.preset.id
             }
         }
 
@@ -866,16 +1306,30 @@ int main() {
     $cmakeBuildLogText = Get-Content -LiteralPath $cmakeBuildLogPath -Raw
     Assert-Aegis ($cmakeBuildLogText -match "## Command Steps") "CMake validation smoke build log did not include command steps."
 
+    $cmakeValidationProfilePath = Join-Path $cmakeSmokeRoot ".aegis\validation_profile.json"
+    if (Test-Path -LiteralPath $cmakeValidationProfilePath) {
+        Remove-Item -LiteralPath $cmakeValidationProfilePath -Force
+    }
+    $cmakeRecoveredProfile = Invoke-AegisJsonGet "$BackendUrl/api/validation/profile?workspace_root=$encodedCmakeSmokeRoot"
+    Assert-Aegis ($null -ne $cmakeRecoveredProfile.profile) "CMake validation smoke did not recover a validation profile from command history."
+    Assert-Aegis ([string]$cmakeRecoveredProfile.profile.command -eq "cmake -S . -B build && cmake --build build") "CMake validation smoke recovered '$($cmakeRecoveredProfile.profile.command)' instead of the command-history validation command."
+    Assert-Aegis ([string]$cmakeRecoveredProfile.suggestions[0].command -eq "cmake -S . -B build && cmake --build build") "CMake validation smoke command-history recovery was not the top validation suggestion."
+
     $cmakeVerify = Invoke-AegisJsonPost "$BackendUrl/api/verify" @{
         workspace_root = $cmakeSmokeRoot
         max_steps = 1
         continue_on_failure = $false
     } -TimeoutSec 180
     Assert-Aegis ([string]$cmakeVerify.status -eq "passed") "CMake verification smoke returned status '$($cmakeVerify.status)'."
-    Assert-Aegis (@($cmakeVerify.steps).Count -ge 1) "CMake verification smoke did not return any verification steps."
+    Assert-Aegis (@($cmakeVerify.steps).Count -ge 2) "CMake verification smoke did not keep the configure/build chain together."
+    Assert-Aegis ([string]$cmakeVerify.steps[0].phase -eq "configure") "CMake verification smoke first step should be configure, got '$($cmakeVerify.steps[0].phase)'."
     Assert-Aegis ([string]$cmakeVerify.steps[0].status -eq "succeeded") "CMake verification smoke first step did not succeed."
+    Assert-Aegis ([string]$cmakeVerify.steps[1].phase -eq "build") "CMake verification smoke second step should be build, got '$($cmakeVerify.steps[1].phase)'."
+    Assert-Aegis ([string]$cmakeVerify.steps[1].status -eq "succeeded") "CMake verification smoke build step did not succeed."
 
     $cmakeHistory = Get-Content -LiteralPath $cmakeHistoryPath -Raw | ConvertFrom-Json
+    $cmakeConfigureHistory = @($cmakeHistory.commands | Where-Object { [string]$_.kind -eq "verification:configure" })
+    Assert-Aegis ($cmakeConfigureHistory.Count -gt 0) "CMake verification smoke history did not include a verification:configure command."
     $cmakeVerifyHistory = @($cmakeHistory.commands | Where-Object { [string]$_.kind -eq "verification:build" })
     Assert-Aegis ($cmakeVerifyHistory.Count -gt 0) "CMake verification smoke history did not include a verification:build command."
     $latestCmakeVerify = $cmakeVerifyHistory[$cmakeVerifyHistory.Count - 1]
@@ -900,6 +1354,7 @@ int main() {
         validation_exit_code = [int]$cmakeValidation.validation.exit_code
         validation_step_count = @($latestCmakeValidation.steps).Count
         build_log_path = [string]$latestCmakeValidation.build_log_path
+        command_history_recovery = $true
         verification_status = [string]$cmakeVerify.status
         verification_build_log_path = [string]$latestCmakeVerify.build_log_path
         readiness_status = [string]$cmakeReadiness.status
@@ -1137,9 +1592,11 @@ $summary = [ordered]@{
     readiness_continuation_smoke = $readinessContinuationSmoke
     generic_instruction_smoke = $genericInstructionSmoke
     desktop_autopilot_prompt_contract_smoke = $desktopAutopilotPromptContractSmoke
+    frontend_queue_contract_smoke = $frontendQueueContractSmoke
     desktop_build_followup_contract_smoke = $desktopBuildFollowupContractSmoke
     backend_validation_only_contract_smoke = $backendValidationOnlyContractSmoke
     backend_workspace_cache_contract_smoke = $backendWorkspaceCacheContractSmoke
+    backend_natural_prompt_contract_smoke = $backendNaturalPromptContractSmoke
     native_continuity_command_smoke = $nativeContinuityCommandSmoke
     desktop_smoke = $desktopSmoke
     output_dir = $OutputDir
