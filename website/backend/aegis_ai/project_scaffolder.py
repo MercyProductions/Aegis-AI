@@ -9,6 +9,22 @@ from pathlib import Path
 from typing import Callable
 
 from .commands import CommandResult, CommandRunner
+from .project_scaffold_paths import (
+    WINDOWS_PATH_ACTION_FOLLOWERS as SCAFFOLD_WINDOWS_PATH_ACTION_FOLLOWERS,
+    WINDOWS_PATH_CONTEXTUAL_ACTIONS as SCAFFOLD_WINDOWS_PATH_CONTEXTUAL_ACTIONS,
+    WINDOWS_PATH_STOP_PHRASES as SCAFFOLD_WINDOWS_PATH_STOP_PHRASES,
+    WINDOWS_PATH_STRONG_STOP_PHRASES as SCAFFOLD_WINDOWS_PATH_STRONG_STOP_PHRASES,
+    clean_windows_path_fragment as scaffold_clean_windows_path_fragment,
+    extract_windows_path_from_prompt as scaffold_extract_windows_path_from_prompt,
+    path_action_boundary_preserves_leaf as scaffold_path_action_boundary_preserves_leaf,
+    path_action_stop_positions as scaffold_path_action_stop_positions,
+    path_fragment_exists as scaffold_path_fragment_exists,
+    path_instruction_separator_position as scaffold_path_instruction_separator_position,
+    path_stop_phrase_is_boundary as scaffold_path_stop_phrase_is_boundary,
+    prompt_without_windows_paths as scaffold_prompt_without_windows_paths,
+    trailing_wrapper_belongs_to_path as scaffold_trailing_wrapper_belongs_to_path,
+    trim_path_fragment as scaffold_trim_path_fragment,
+)
 from .prompt_intent import prompt_has_explanation_prefix, prompt_requests_execution_validation
 from .scaffolding import template_method_name
 from .schemas import (
@@ -50,220 +66,10 @@ class ProjectScaffolder:
         "AGENTS.md",
         "README.md",
     }
-    WINDOWS_PATH_STOP_PHRASES = (
-        " here ",
-        " i want",
-        " i need",
-        " i'm ",
-        " im ",
-        " can you",
-        " could you",
-        " please",
-        " at this path",
-        " at this location",
-        " in this folder",
-        " in this directory",
-        " and then ",
-        " then ",
-        " so ",
-        " but ",
-        " because ",
-        " with ",
-        " using ",
-        " for me",
-        " if ",
-        " create ",
-        " build ",
-        " launch ",
-        " start ",
-        " execute ",
-        " run ",
-        " validate ",
-        " verify ",
-        " check ",
-        " refine ",
-        " optimize ",
-        " clean up ",
-        " cleanup ",
-        " polish ",
-        " modernize ",
-        " improve ",
-        " ensure ",
-        " test ",
-        " compile ",
-        " make ",
-        " complete ",
-        " combine ",
-        " finish ",
-        " develop ",
-        " design and ",
-        " design a ",
-        " design an ",
-        " design the ",
-        " design this ",
-        " ship ",
-        " merge ",
-        " split ",
-        " separate ",
-        " extract ",
-        " generate ",
-        " scaffold ",
-        " set up ",
-        " setup ",
-        " start ",
-        " write ",
-        " run ",
-        " add ",
-        " implement ",
-        " update ",
-        " modify ",
-        " work on ",
-    )
-    WINDOWS_PATH_STRONG_STOP_PHRASES = (
-        " here ",
-        " i want",
-        " i need",
-        " i'm ",
-        " im ",
-        " can you",
-        " could you",
-        " please",
-        " at this path",
-        " at this location",
-        " in this folder",
-        " in this directory",
-        " and then ",
-        " then ",
-        " so ",
-        " but ",
-        " because ",
-        " with ",
-        " using ",
-        " for me",
-        " if ",
-        " create ",
-        " build ",
-        " make ",
-        " complete ",
-        " refine ",
-        " optimize ",
-        " clean up ",
-        " cleanup ",
-        " polish ",
-        " modernize ",
-        " improve ",
-        " combine ",
-        " finish ",
-        " develop ",
-        " design and ",
-        " design a ",
-        " design an ",
-        " design the ",
-        " design this ",
-        " ship ",
-        " merge ",
-        " split ",
-        " separate ",
-        " extract ",
-        " generate ",
-        " scaffold ",
-        " set up ",
-        " setup ",
-        " write ",
-        " add ",
-        " implement ",
-        " update ",
-        " modify ",
-        " work on ",
-    )
-    WINDOWS_PATH_CONTEXTUAL_ACTIONS = {
-        "add",
-        "build",
-        "check",
-        "compile",
-        "complete",
-        "combine",
-        "create",
-        "clean up",
-        "cleanup",
-        "develop",
-        "execute",
-        "extract",
-        "finish",
-        "generate",
-        "improve",
-        "implement",
-        "launch",
-        "make",
-        "merge",
-        "modify",
-        "modernize",
-        "optimize",
-        "polish",
-        "refine",
-        "run",
-        "scaffold",
-        "separate",
-        "set up",
-        "setup",
-        "ship",
-        "split",
-        "start",
-        "test",
-        "update",
-        "validate",
-        "verify",
-        "work on",
-        "write",
-    }
-    WINDOWS_PATH_ACTION_FOLLOWERS = {
-        "a",
-        "an",
-        "and",
-        "app",
-        "application",
-        "build",
-        "c",
-        "c#",
-        "c++",
-        "check",
-        "cli",
-        "cmake",
-        "code",
-        "console",
-        "cpp",
-        "desktop",
-        "dll",
-        "driver",
-        "exe",
-        "existing",
-        "file",
-        "fix",
-        "folder",
-        "for",
-        "full",
-        "it",
-        "library",
-        "me",
-        "my",
-        "native",
-        "new",
-        "project",
-        "python",
-        "run",
-        "script",
-        "sln",
-        "solution",
-        "test",
-        "the",
-        "this",
-        "typescript",
-        "validate",
-        "web",
-        "website",
-        "working",
-        "your",
-    }
+    WINDOWS_PATH_STOP_PHRASES = SCAFFOLD_WINDOWS_PATH_STOP_PHRASES
+    WINDOWS_PATH_STRONG_STOP_PHRASES = SCAFFOLD_WINDOWS_PATH_STRONG_STOP_PHRASES
+    WINDOWS_PATH_CONTEXTUAL_ACTIONS = SCAFFOLD_WINDOWS_PATH_CONTEXTUAL_ACTIONS
+    WINDOWS_PATH_ACTION_FOLLOWERS = SCAFFOLD_WINDOWS_PATH_ACTION_FOLLOWERS
     TARGET_NAMED_WEB_PRESETS = {
         "nextjs-ts-tailwind",
         "vite-react-ts",
@@ -4461,232 +4267,43 @@ class ProjectScaffolder:
 
     @classmethod
     def _extract_windows_path_from_prompt(cls, prompt: str) -> str:
-        match = re.search(r"[A-Za-z]:[\\/]", prompt)
-        if not match:
-            return ""
-        start = match.start()
-        end = match.end()
-        while end < len(prompt):
-            if prompt[end] == "'":
-                previous_char = prompt[end - 1] if end > start else ""
-                next_char = prompt[end + 1] if end + 1 < len(prompt) else ""
-                if previous_char.isalnum() and next_char.isalnum():
-                    end += 1
-                    continue
-                break
-            if prompt[end] in "\r\n\"`<>|*?":
-                break
-            end += 1
-        return cls._clean_windows_path_fragment(prompt[start:end])
+        return scaffold_extract_windows_path_from_prompt(prompt)
 
     @classmethod
     def _clean_windows_path_fragment(cls, value: str) -> str:
-        candidate = (value or "").strip()
-        if not candidate:
-            return ""
-        candidate = cls._trim_path_fragment(candidate)
-        if cls._path_fragment_exists(candidate):
-            return candidate
-
-        separator_position = cls._path_instruction_separator_position(candidate)
-        if separator_position is not None:
-            earlier_action_positions = cls._path_action_stop_positions(candidate, before=separator_position)
-            if earlier_action_positions:
-                candidate = candidate[: min(earlier_action_positions)].strip()
-                return cls._trim_path_fragment(candidate)
-            separator_prefix = cls._trim_path_fragment(candidate[:separator_position])
-            if separator_prefix:
-                return separator_prefix
-
-        lowered = candidate.lower()
-        stop_positions: list[tuple[int, str]] = []
-        for phrase in cls.WINDOWS_PATH_STOP_PHRASES:
-            search_from = 3
-            while True:
-                found = lowered.find(phrase, search_from)
-                if found == -1:
-                    break
-                stop_positions.append((found, phrase))
-                search_from = found + 1
-
-        if stop_positions:
-            existing_prefixes = [
-                prefix
-                for prefix in (cls._trim_path_fragment(candidate[:position]) for position, _ in stop_positions)
-                if cls._path_fragment_exists(prefix)
-            ]
-            if existing_prefixes:
-                return max(existing_prefixes, key=len)
-            boundary_positions = [
-                position
-                for position, phrase in stop_positions
-                if cls._path_stop_phrase_is_boundary(lowered, position, phrase)
-            ]
-            strong_positions = [
-                position
-                for position, phrase in stop_positions
-                if phrase in cls.WINDOWS_PATH_STRONG_STOP_PHRASES
-                and cls._path_stop_phrase_is_boundary(lowered, position, phrase)
-            ]
-            action_positions = [
-                position
-                for position, phrase in stop_positions
-                if phrase.strip() in cls.WINDOWS_PATH_CONTEXTUAL_ACTIONS
-                and cls._path_stop_phrase_is_boundary(lowered, position, phrase)
-            ]
-            if action_positions and cls._path_action_boundary_preserves_leaf(candidate, min(action_positions)):
-                cut_position = min(action_positions)
-            elif strong_positions:
-                cut_position = min(strong_positions)
-            elif boundary_positions:
-                cut_position = min(boundary_positions)
-            else:
-                cut_position = min(position for position, _ in stop_positions)
-            candidate = candidate[:cut_position].strip()
-        return cls._trim_path_fragment(candidate)
+        return scaffold_clean_windows_path_fragment(value)
 
     @classmethod
     def _path_action_stop_positions(cls, candidate: str, *, before: int | None = None) -> list[int]:
-        lowered = candidate.lower()
-        positions: list[int] = []
-        for phrase in cls.WINDOWS_PATH_STOP_PHRASES:
-            if phrase.strip() not in cls.WINDOWS_PATH_CONTEXTUAL_ACTIONS:
-                continue
-            search_from = 3
-            while True:
-                found = lowered.find(phrase, search_from)
-                if found == -1:
-                    break
-                if before is not None and found >= before:
-                    break
-                if (
-                    cls._path_stop_phrase_is_boundary(lowered, found, phrase)
-                    and cls._path_action_boundary_preserves_leaf(candidate, found)
-                ):
-                    positions.append(found)
-                search_from = found + 1
-        return positions
+        return scaffold_path_action_stop_positions(candidate, before=before)
 
     @classmethod
     def _path_stop_phrase_is_boundary(cls, lowered_candidate: str, position: int, phrase: str) -> bool:
-        normalized_phrase = phrase.strip()
-        if normalized_phrase not in cls.WINDOWS_PATH_CONTEXTUAL_ACTIONS:
-            return True
-        after = lowered_candidate[position + len(phrase) :].lstrip(" \t")
-        if not after:
-            return True
-        match = re.match(r"([a-z0-9_+#.-]+)", after)
-        if not match:
-            return True
-        next_word = match.group(1).strip(".,;:!?()[]{}")
-        if normalized_phrase in {"combine", "merge", "split", "separate", "extract"}:
-            return next_word in {
-                "a",
-                "an",
-                "another",
-                "one",
-                "project",
-                "projects",
-                "sln",
-                "solution",
-                "solutions",
-                "the",
-                "this",
-                "two",
-                "vcxproj",
-                "visual",
-            }
-        return next_word in cls.WINDOWS_PATH_ACTION_FOLLOWERS
+        return scaffold_path_stop_phrase_is_boundary(lowered_candidate, position, phrase)
 
     @staticmethod
     def _path_action_boundary_preserves_leaf(candidate: str, action_position: int) -> bool:
-        leaf = re.split(r"[\\/]", candidate[:action_position].rstrip())[-1].strip()
-        if not leaf:
-            return False
-        normalized_leaf = f" {' '.join(leaf.lower().split())} "
-        location_markers = (
-            " at this path ",
-            " at this location ",
-            " in this folder ",
-            " in this directory ",
-        )
-        if any(marker in normalized_leaf for marker in location_markers):
-            return False
-        words = re.findall(r"[a-zA-Z0-9_+#.-]+", leaf)
-        if not words or len(words) > 8:
-            return False
-        trailing_connector_words = {"and", "because", "but", "for", "if", "please", "so", "then", "to", "using", "with"}
-        return words[-1].lower() not in trailing_connector_words
+        return scaffold_path_action_boundary_preserves_leaf(candidate, action_position)
 
     @classmethod
     def _path_instruction_separator_position(cls, candidate: str) -> int | None:
-        action_phrases = sorted(
-            {phrase.strip() for phrase in cls.WINDOWS_PATH_STOP_PHRASES if phrase.strip()}
-            | cls.WINDOWS_PATH_CONTEXTUAL_ACTIONS,
-            key=len,
-            reverse=True,
-        )
-        for match in re.finditer(r"\s+-\s+|[;:,]\s+", candidate[3:]):
-            position = match.start() + 3
-            leaf = re.split(r"[\\/]", candidate[:position].rstrip())[-1]
-            if len(re.findall(r"[a-zA-Z0-9_+#.-]+", leaf)) > 8:
-                continue
-            after = candidate[position + len(match.group(0)) :].lstrip().lower()
-            if not after:
-                continue
-            for phrase in action_phrases:
-                if after == phrase or after.startswith(f"{phrase} "):
-                    return position
-        return None
+        return scaffold_path_instruction_separator_position(candidate)
 
     @classmethod
     def _trim_path_fragment(cls, candidate: str) -> str:
-        trimmed = re.sub(r"[\s.,;:]+$", "", candidate).strip()
-        trimmed = re.sub(r"\s+-+$", "", trimmed).strip()
-        while trimmed and trimmed[-1] in ")]}'\"`":
-            if cls._trailing_wrapper_belongs_to_path(trimmed):
-                break
-            trimmed = trimmed[:-1].rstrip()
-            trimmed = re.sub(r"[\s.,;:]+$", "", trimmed).strip()
-        return trimmed
+        return scaffold_trim_path_fragment(candidate)
 
     @staticmethod
     def _trailing_wrapper_belongs_to_path(candidate: str) -> bool:
-        if not candidate:
-            return False
-        closer = candidate[-1]
-        pairs = {")": "(", "]": "[", "}": "{"}
-        opener = pairs.get(closer)
-        if not opener:
-            return False
-        depth = 0
-        for char in reversed(candidate):
-            if char == closer:
-                depth += 1
-            elif char == opener:
-                depth -= 1
-                if depth == 0:
-                    return True
-        return False
+        return scaffold_trailing_wrapper_belongs_to_path(candidate)
 
     @staticmethod
     def _path_fragment_exists(candidate: str) -> bool:
-        if not candidate:
-            return False
-        try:
-            return Path(candidate).exists()
-        except OSError:
-            return False
+        return scaffold_path_fragment_exists(candidate)
 
     @classmethod
     def _prompt_without_windows_paths(cls, prompt: str, *, target_path: str = "") -> str:
-        cleaned = prompt
-        extracted_path = cls._extract_windows_path_from_prompt(prompt)
-        for path in dict.fromkeys([target_path, extracted_path]):
-            if path and path in cleaned:
-                cleaned = cleaned.replace(path, " ", 1)
-        cleaned = re.sub(r"\b(?:at\s+this\s+(?:path|location)|in\s+this\s+(?:folder|directory))\b", " ", cleaned, flags=re.IGNORECASE)
-        return " ".join(cleaned.split())
+        return scaffold_prompt_without_windows_paths(prompt, target_path=target_path)
 
     @classmethod
     def _project_name_from_prompt(cls, prompt: str) -> str:
