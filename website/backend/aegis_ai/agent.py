@@ -37,6 +37,10 @@ from .model_execution import ModelExecutionPlan, ModelExecutionPlanner
 from .model_registry import ModelRegistryManager
 from .multi_agent import MultiAgentCoordinator
 from .project_indexer import ProjectIndexer
+from .project_memory_notes import (
+    extract_project_notes as memory_extract_project_notes,
+    memory_title_for as memory_note_title_for,
+)
 from .project_status import (
     display_workspace_relative_path as project_display_workspace_relative_path,
     latest_project_build_log as project_latest_build_log,
@@ -7227,89 +7231,10 @@ Large-file behavior:
         return len(notes)
 
     def _extract_project_notes(self, message: str) -> list[dict[str, Any]]:
-        notes: list[dict[str, Any]] = []
-        seen: set[str] = set()
-        raw_segments = [segment.strip(" -\t") for segment in message.replace("\r", "\n").split("\n")]
-
-        constraint_markers = ("must", "must not", "do not", "don't", "never", "cannot", "can't", "without")
-        preference_markers = ("prefer", "should use", "use ", "uses ", "using ", "stick to", "keep ")
-        architecture_words = (
-            "react",
-            "typescript",
-            "javascript",
-            "python",
-            "fastapi",
-            "sqlite",
-            "postgres",
-            "ollama",
-            "llama.cpp",
-            "vllm",
-            "frontend",
-            "backend",
-            "api",
-            "model",
-        )
-        environment_words = ("windows", "powershell", "batch", "cmd", "linux", "docker", "gpu", "cuda", "node", "npm")
-
-        for segment in raw_segments:
-            lowered = segment.lower()
-            normalized = " ".join(segment.split())
-            if len(normalized) < 18 or len(normalized) > 220:
-                continue
-
-            category: str | None = None
-            confidence = 0.72
-
-            if any(marker in lowered for marker in constraint_markers):
-                category = "constraint"
-                confidence = 0.86
-            elif any(marker in lowered for marker in preference_markers):
-                category = "preference"
-                confidence = 0.78
-            elif any(word in lowered for word in architecture_words):
-                category = "architecture"
-                confidence = 0.68
-            elif any(word in lowered for word in environment_words):
-                category = "environment"
-                confidence = 0.66
-
-            if not category:
-                continue
-
-            if category == "preference" and len(normalized.split()) < 4:
-                continue
-
-            detail = normalized.rstrip(".")
-            title = self._memory_title_for(category, detail)
-            fingerprint = f"{category}:{title}:{detail}".lower()
-            if fingerprint in seen:
-                continue
-            seen.add(fingerprint)
-            notes.append(
-                {
-                    "category": category,
-                    "title": title,
-                    "detail": detail,
-                    "confidence": confidence,
-                }
-            )
-            if len(notes) >= 4:
-                break
-
-        return notes
+        return list(memory_extract_project_notes(message))
 
     def _memory_title_for(self, category: str, detail: str) -> str:
-        compact = detail.replace('"', "'").strip()
-        words = compact.split()
-        if category == "constraint":
-            return "Constraint"
-        if category == "preference":
-            return "Preference"
-        if category == "architecture":
-            return "Architecture"
-        if category == "environment":
-            return "Environment"
-        return "Note" if not words else " ".join(words[:4])[:48]
+        return memory_note_title_for(category, detail)
 
     def _repair_summary(self, before: CommandRun, after: CommandRun | None, repair: AgentDraft) -> str:
         return outcome_repair_summary(before, after, repair.plan)
