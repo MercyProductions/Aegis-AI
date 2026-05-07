@@ -122,6 +122,7 @@ import {
   updateValidationProfile
 } from './api';
 import { brandAssets } from './brandAssets';
+import { LazyPanelBoundary } from './components/LazyPanelBoundary';
 import { ModelSelector } from './components/ModelSelector';
 import { TaskStatusSummary } from './components/TaskStatusSummary';
 import {
@@ -8538,33 +8539,47 @@ function App() {
   const routeIsProtected = isProtectedAppRoute(routePath);
   if (!routeIsProtected) {
     return (
-      <Suspense fallback={<div style={styles.routeFallback(palette)}>Loading {productName}...</div>}>
-        <PublicSite
-          routePath={routePath}
-          authLoading={authLoading}
-          authStatus={authStatus}
-          onNavigate={navigateTo}
-          onLogin={handleLogin}
-          onRegister={handleRegister}
-          onForgotPassword={handleForgotPassword}
-        />
-      </Suspense>
+      <LazyPanelBoundary
+        title={`${productName} website could not load`}
+        detail="The public site surface failed to initialize. Retry or reload when the runtime settles."
+        resetKey={routePath}
+        style={styles.routeBoundary}
+      >
+        <Suspense fallback={<div style={styles.routeFallback(palette)}>Loading {productName}...</div>}>
+          <PublicSite
+            routePath={routePath}
+            authLoading={authLoading}
+            authStatus={authStatus}
+            onNavigate={navigateTo}
+            onLogin={handleLogin}
+            onRegister={handleRegister}
+            onForgotPassword={handleForgotPassword}
+          />
+        </Suspense>
+      </LazyPanelBoundary>
     );
   }
 
   if (!authSession) {
     return (
-      <Suspense fallback={<div style={styles.routeFallback(palette)}>Loading secure access...</div>}>
-        <PublicSite
-          routePath="/login"
-          authLoading={authLoading}
-          authStatus={authStatus}
-          onNavigate={navigateTo}
-          onLogin={handleLogin}
-          onRegister={handleRegister}
-          onForgotPassword={handleForgotPassword}
-        />
-      </Suspense>
+      <LazyPanelBoundary
+        title="Secure access could not load"
+        detail="The login surface failed to initialize. Retry or reload before opening the workspace."
+        resetKey={routePath}
+        style={styles.routeBoundary}
+      >
+        <Suspense fallback={<div style={styles.routeFallback(palette)}>Loading secure access...</div>}>
+          <PublicSite
+            routePath="/login"
+            authLoading={authLoading}
+            authStatus={authStatus}
+            onNavigate={navigateTo}
+            onLogin={handleLogin}
+            onRegister={handleRegister}
+            onForgotPassword={handleForgotPassword}
+          />
+        </Suspense>
+      </LazyPanelBoundary>
     );
   }
 
@@ -9975,9 +9990,15 @@ function App() {
               )}
             </section>
 
-            <Suspense fallback={<div style={styles.emptyPanel(palette)}>Loading observability...</div>}>
-              <ObservabilityPanel workspaceRoot={workspaceRoot} palette={palette} />
-            </Suspense>
+            <LazyPanelBoundary
+              title="Observability panel could not load"
+              detail="Core workspace controls are still available. Retry the panel after telemetry settles."
+              resetKey={workspaceRoot}
+            >
+              <Suspense fallback={<div style={styles.emptyPanel(palette)}>Loading observability...</div>}>
+                <ObservabilityPanel workspaceRoot={workspaceRoot} palette={palette} />
+              </Suspense>
+            </LazyPanelBoundary>
 
             <section style={styles.panelCard(palette)}>
               <div style={styles.panelHeader(palette)}>
@@ -10363,23 +10384,37 @@ function App() {
 
       {showSettings ? renderSettingsModal() : null}
       {showMemoryEditor && workspaceRoot ? (
-        <Suspense fallback={<div style={styles.routeFallback(palette)}>Opening Memory Center...</div>}>
-          <MemoryEditor
-            workspaceRoot={workspaceRoot}
-            onClose={() => setShowMemoryEditor(false)}
-            palette={palette}
-          />
-        </Suspense>
+        <LazyPanelBoundary
+          title="Memory Center could not load"
+          detail="The workspace remains active. Retry the memory surface or reopen it from the header."
+          resetKey={workspaceRoot}
+          style={styles.routeBoundary}
+        >
+          <Suspense fallback={<div style={styles.routeFallback(palette)}>Opening Memory Center...</div>}>
+            <MemoryEditor
+              workspaceRoot={workspaceRoot}
+              onClose={() => setShowMemoryEditor(false)}
+              palette={palette}
+            />
+          </Suspense>
+        </LazyPanelBoundary>
       ) : null}
 
       {showApprovalSettings && workspaceRoot ? (
-        <Suspense fallback={<div style={styles.routeFallback(palette)}>Opening approval controls...</div>}>
-          <ApprovalSettings
-            workspaceRoot={workspaceRoot}
-            onClose={() => setShowApprovalSettings(false)}
-            palette={palette}
-          />
-        </Suspense>
+        <LazyPanelBoundary
+          title="Approval controls could not load"
+          detail="Approval policy did not change. Retry the panel or reopen it from the header."
+          resetKey={workspaceRoot}
+          style={styles.routeBoundary}
+        >
+          <Suspense fallback={<div style={styles.routeFallback(palette)}>Opening approval controls...</div>}>
+            <ApprovalSettings
+              workspaceRoot={workspaceRoot}
+              onClose={() => setShowApprovalSettings(false)}
+              palette={palette}
+            />
+          </Suspense>
+        </LazyPanelBoundary>
       ) : null}
     </div>
   );
@@ -10475,6 +10510,12 @@ const styles = {
     fontSize: 14,
     fontWeight: 800
   }),
+
+  routeBoundary: {
+    minHeight: '100vh',
+    borderRadius: 0,
+    padding: 24
+  } as CSSProperties,
 
   backdrop: (p: Palette): CSSProperties => ({
     position: 'absolute',

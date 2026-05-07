@@ -55,6 +55,7 @@ try {
       executablePath: browserPath,
       headless: !headed
     });
+    await exercisePublicWebsiteRoutes(browser);
     page = await browser.newPage({ acceptDownloads: true, viewport: { width: 1440, height: 1050 } });
     await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: frontendUrl });
     await page.addInitScript(
@@ -215,6 +216,52 @@ async function writeDebugArtifacts(page, error) {
     'utf8'
   );
   console.error(`Wrote E2E debug artifacts to ${workspaceRoot}`);
+}
+
+async function exercisePublicWebsiteRoutes(browser) {
+  const publicPage = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  const publicIssues = [];
+  publicPage.on('console', (message) => {
+    if (['warning', 'error'].includes(message.type())) {
+      if (message.text().includes('Failed to load resource')) return;
+      publicIssues.push(`${message.type()}: ${message.text()}`);
+    }
+  });
+  publicPage.on('pageerror', (error) => {
+    publicIssues.push(`pageerror: ${error.stack || error.message}`);
+  });
+
+  try {
+    const routes = [
+      { path: '/', text: 'Auralith OS' },
+      { path: '/features', text: 'Built around workflows' },
+      { path: '/pricing', text: 'Pricing' },
+      { path: '/security', text: 'Designed for local-first control' },
+      { path: '/login', text: 'Welcome back' },
+      { path: '/register', text: 'Create account' }
+    ];
+
+    for (const route of routes) {
+      await publicPage.goto(`${frontendUrl}${route.path}`, { waitUntil: 'domcontentloaded' });
+      await waitForLocatorCount(publicPage.getByText(route.text, { exact: false }), 1, `public route ${route.path}`);
+      const metrics = await publicPage.evaluate(() => {
+        const root = document.documentElement;
+        const body = document.body;
+        return {
+          innerWidth: window.innerWidth,
+          scrollWidth: Math.max(root.scrollWidth, body.scrollWidth)
+        };
+      });
+      assert(
+        metrics.scrollWidth <= metrics.innerWidth + 4,
+        `Public route ${route.path} overflowed horizontally: scrollWidth ${metrics.scrollWidth}, viewport ${metrics.innerWidth}.`
+      );
+    }
+
+    assert(publicIssues.length === 0, `Public website console reported warning/error output:\n${publicIssues.join('\n')}`);
+  } finally {
+    await publicPage.close().catch(() => {});
+  }
 }
 
 async function restoreWorkspaceValue(fallback) {

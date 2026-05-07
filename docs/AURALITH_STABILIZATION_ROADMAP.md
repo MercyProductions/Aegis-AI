@@ -19,7 +19,9 @@ The stabilization pass covered:
 - Validation command inference.
 - Generated diff/apply/read flows.
 - Compact laptop/mobile app shell behavior.
+- Public marketing/auth route responsiveness.
 - Initial bundle shape and optional panel loading.
+- Lazy-surface crash containment.
 - Live frontend/backend identity checks.
 - Frontend unit tests, production build, and backend pytest suite.
 
@@ -39,6 +41,8 @@ The stabilization pass covered:
 - Lazy-loaded public-site, observability, memory, and approval-control panels so optional surfaces no longer ship in the initial app chunk.
 - Split React and icon vendor code into stable Vite chunks.
 - Removed an unreachable legacy settings modal block from `App.tsx`.
+- Added a reusable lazy-panel error boundary so public-site, observability, memory, and approval surfaces fail into retryable UI instead of blanking the shell.
+- Added public website E2E coverage for home, features, pricing, security, login, and register routes on a mobile viewport.
 
 ## Current Validation Baseline
 
@@ -56,16 +60,16 @@ Validation details:
 - Backend tests: 494 passed, 108 subtests passed.
 - Live doctor check: passed.
 - Live smoke check: passed.
-- Browser E2E: passed, including laptop/mobile responsive shell checks.
+- Browser E2E: passed, including public mobile route checks and protected laptop/mobile responsive shell checks.
 
 Known warning:
 
-- Vite still reports one generated JavaScript chunk above 500 kB. The initial app chunk has been reduced from roughly 576.8 kB to 507.7 kB, but removing the warning cleanly requires more behavior-preserving extraction from `App.tsx`.
+- Vite still reports one generated JavaScript chunk above 500 kB. The initial app chunk remains far below the original baseline but is currently about 509.9 kB after adding lazy-surface error containment. Removing the warning cleanly requires more behavior-preserving extraction from `App.tsx`, not simply hiding the warning.
 
 ## Critical Next Fixes
 
 - Extract the largest protected workspace sections from `App.tsx` into dedicated modules so route-level code splitting can finish the initial bundle reduction without hiding warnings.
-- Extend responsive E2E coverage to settings modal, auth pages, and public marketing pages.
+- Extend responsive E2E coverage to the settings modal, authenticated overlays, and tablet-specific dimensions.
 - Add a focused visual regression pass for the public site, protected workspace shell, right observability panel, and auth pages.
 - Add auth-session cleanup or database isolation for repeated E2E account registration runs.
 - Standardize script default ports or document the live validation port strategy to avoid confusion between `5173/8787` defaults and active `5177/8793` runs.
