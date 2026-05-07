@@ -87,6 +87,7 @@ try {
     await exerciseCustomAgentEditor(page);
     await exerciseHeaderModelSwitcher(page);
     await exerciseSavedSessionDelete(page);
+    await exerciseLargeSavedSessionHistory(page);
     await exerciseWorkspaceFileFilter(page);
     await exerciseDetailsPanelCollapse(page);
     await exerciseDetailsPanelVisibilityPreference(page);
@@ -517,6 +518,76 @@ async function exerciseSavedSessionDelete(page) {
     return parsed.some((item) => item?.id === 'thread-e2e-delete');
   }, conversationStorageKey);
   assert(!stillStored, 'Deleted saved session was still present in local storage.');
+}
+
+async function exerciseLargeSavedSessionHistory(page) {
+  await page.evaluate(
+    ({ storageKey, workspaceRoot: storedWorkspaceRoot }) => {
+      const sessions = Array.from({ length: 50 }, (_, index) => {
+        const sequence = String(index + 1).padStart(2, '0');
+        const isNeedle = index === 41;
+        return {
+          id: `thread-e2e-bulk-${sequence}`,
+          title: isNeedle ? 'Needle session 42' : `Bulk session ${sequence}`,
+          preview: isNeedle
+            ? 'A uniquely searchable saved session for the stress path.'
+            : `Saved stress session ${sequence}`,
+          count: 2,
+          updatedAt: `2026-05-05T00:${sequence}:00.000Z`,
+          workspaceRoot: storedWorkspaceRoot,
+          messages: [
+            { role: 'user', content: isNeedle ? 'open the needle saved session' : `bulk user prompt ${sequence}` },
+            {
+              role: 'assistant',
+              content: isNeedle
+                ? 'Needle session restored successfully from long history.'
+                : `bulk assistant reply ${sequence}`
+            }
+          ]
+        };
+      });
+      localStorage.setItem(storageKey, JSON.stringify(sessions));
+    },
+    { storageKey: conversationStorageKey, workspaceRoot }
+  );
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await waitForLocatorCount(page.getByTestId('details-panel'), 1, 'details panel after large saved session reload');
+  const storedCount = await page.evaluate((storageKey) => {
+    const parsed = JSON.parse(localStorage.getItem(storageKey) || '[]');
+    return Array.isArray(parsed) ? parsed.length : 0;
+  }, conversationStorageKey);
+  assert(storedCount === 50, `Expected 50 stored saved sessions, found ${storedCount}.`);
+
+  const metrics = await page.evaluate(() => {
+    const root = document.documentElement;
+    const body = document.body;
+    const commandInput = document.querySelector('.aegis-command-input');
+    const commandInputBox = commandInput?.getBoundingClientRect();
+    return {
+      innerWidth: window.innerWidth,
+      scrollWidth: Math.max(root.scrollWidth, body.scrollWidth),
+      commandInputVisible: Boolean(commandInputBox && commandInputBox.width > 120 && commandInputBox.height > 32)
+    };
+  });
+  assert(
+    metrics.scrollWidth <= metrics.innerWidth + 4,
+    `Large saved session history overflowed horizontally: scrollWidth ${metrics.scrollWidth}, viewport ${metrics.innerWidth}.`
+  );
+  assert(metrics.commandInputVisible, 'Command input was not visible with a large saved session history.');
+
+  const sessionSearch = page.getByPlaceholder('Search sessions');
+  await sessionSearch.fill('Needle');
+  const needleSession = page.getByRole('button', { name: 'Needle session 42', exact: true });
+  await needleSession.waitFor({ state: 'visible', timeout: 30_000 });
+  await waitForLocatorExactCount(page.getByRole('button', { name: 'Bulk session 01', exact: true }), 0, 'filtered bulk session');
+  await clickUnique(needleSession, 'needle saved session button');
+  await waitForLocatorCount(
+    page.getByText('Needle session restored successfully from long history.', { exact: true }),
+    1,
+    'opened saved session content'
+  );
+  await clickUnique(page.getByRole('button', { name: 'New session', exact: true }), 'new session after large history stress');
+  await waitForLocatorCount(page.getByText('Welcome to Auralith OS', { exact: true }), 1, 'empty state after large history stress');
 }
 
 async function exerciseProjectHistorySwitcher(page) {

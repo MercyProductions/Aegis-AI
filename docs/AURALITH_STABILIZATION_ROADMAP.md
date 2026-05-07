@@ -22,6 +22,7 @@ The stabilization pass covered:
 - Public marketing/auth route responsiveness.
 - Compact settings modal behavior.
 - Authenticated overlay responsiveness.
+- Long saved-session history behavior.
 - Initial bundle shape and optional panel loading.
 - Lazy-surface crash containment.
 - Live frontend/backend identity checks.
@@ -51,6 +52,7 @@ The stabilization pass covered:
 - Made Memory Center collapse from a fixed two-column layout into a single-column compact overlay with bounded note list height and visible close affordance.
 - Made approval controls resize within the viewport, stack footer actions on compact screens, and expose a labeled close affordance.
 - Added E2E coverage that opens and closes Memory Center and approval controls on tablet/mobile viewports while checking horizontal overflow.
+- Added E2E coverage for a 50-session saved history: reload persistence, sidebar/search filtering, opening a saved result, command-surface visibility, and horizontal-overflow detection.
 
 ## Current Validation Baseline
 
@@ -68,7 +70,7 @@ Validation details:
 - Backend tests: 494 passed, 108 subtests passed.
 - Live doctor check: passed.
 - Live smoke check: passed.
-- Browser E2E: passed, including public mobile route checks, protected laptop/mobile responsive shell checks, tablet/mobile settings modal checks, and tablet/mobile authenticated overlay checks.
+- Browser E2E: passed, including public mobile route checks, protected laptop/mobile responsive shell checks, tablet/mobile settings modal checks, tablet/mobile authenticated overlay checks, and 50-session history stress.
 
 Known warning:
 
