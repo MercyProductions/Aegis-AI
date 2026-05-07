@@ -86,6 +86,7 @@ try {
     await page.goto(`${frontendUrl}/app`, { waitUntil: 'domcontentloaded' });
     await waitForLocatorCount(page.getByTestId('details-panel'), 1, 'details panel visible on clean startup');
     await exerciseMalformedPersistedUiState(page);
+    await exerciseLazyProtectedSurfaces(page);
     await exerciseProjectHistorySwitcher(page);
     await exerciseCustomAgentEditor(page);
     await exerciseHeaderModelSwitcher(page);
@@ -1111,6 +1112,23 @@ async function exerciseMalformedPersistedUiState(page) {
   assert(persistedKeys.conversations === null, 'Malformed saved-session storage was not cleared.');
   assert(persistedKeys.draft === null, 'Malformed composer draft storage was not cleared.');
   assert(isNullOrEmptyArrayPayload(persistedKeys.queued), 'Malformed queued-prompt storage was not normalized.');
+}
+
+async function exerciseLazyProtectedSurfaces(page) {
+  await page.goto(`${frontendUrl}/app/hardening`, { waitUntil: 'domcontentloaded' });
+  await waitForBrowserPath(page, '/app/hardening', 'hardening route');
+  await waitForLocatorCount(page.getByRole('heading', { name: 'Runtime Recovery', exact: true }), 1, 'lazy hardening runtime recovery panel');
+  await waitForLocatorCount(page.getByRole('heading', { name: 'Plugin SDK', exact: true }), 1, 'lazy hardening plugin sdk panel');
+  await assertNoHorizontalOverflow(page, 'lazy hardening route');
+
+  await page.goto(`${frontendUrl}/app/creative-studio`, { waitUntil: 'domcontentloaded' });
+  await waitForBrowserPath(page, '/app/creative-studio', 'creative studio route');
+  await waitForLocatorCount(page.getByRole('heading', { name: 'Prompt Builder', exact: true }), 1, 'lazy creative prompt builder panel');
+  await waitForLocatorCount(page.getByRole('heading', { name: 'Generation Jobs', exact: true }), 1, 'lazy creative jobs panel');
+  await assertNoHorizontalOverflow(page, 'lazy creative studio route');
+
+  await page.goto(`${frontendUrl}/app`, { waitUntil: 'domcontentloaded' });
+  await waitForLocatorCount(page.getByTestId('details-panel'), 1, 'details panel restored after lazy route checks');
 }
 
 async function exerciseWorkspaceFileFilter(page) {

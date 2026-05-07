@@ -123,8 +123,6 @@ import {
 } from './api';
 import { brandAssets } from './brandAssets';
 import { LazyPanelBoundary } from './components/LazyPanelBoundary';
-import { ModelSelector } from './components/ModelSelector';
-import { TaskStatusSummary } from './components/TaskStatusSummary';
 import {
   connectionStateDetail,
   connectionStateLabel,
@@ -300,6 +298,18 @@ const ObservabilityPanel = lazy(() =>
 );
 const PublicSite = lazy(() =>
   import('./components/PublicSite').then((module) => ({ default: module.PublicSite }))
+);
+const ProductizationSurface = lazy(() =>
+  import('./components/ProductizationSurface').then((module) => ({ default: module.ProductizationSurface }))
+);
+const CreativeStudioSurface = lazy(() =>
+  import('./components/CreativeStudioSurface').then((module) => ({ default: module.CreativeStudioSurface }))
+);
+const ModelSelector = lazy(() =>
+  import('./components/ModelSelector').then((module) => ({ default: module.ModelSelector }))
+);
+const TaskStatusSummary = lazy(() =>
+  import('./components/TaskStatusSummary').then((module) => ({ default: module.TaskStatusSummary }))
 );
 
 const starterPrompts = [
@@ -4303,16 +4313,81 @@ function App() {
     );
   }
 
+  function renderProductizationRoute() {
+    return (
+      <LazyPanelBoundary
+        title="Hardening surface could not load"
+        detail="The workspace remains active. Retry the hardening route or return to another section."
+        resetKey={`${workspaceRoot}:hardening`}
+      >
+        <Suspense fallback={<div style={styles.routeFallback(palette)}>Opening hardening controls...</div>}>
+          <ProductizationSurface
+            productization={productization}
+            productizationLoading={productizationLoading}
+            productizationStatus={productizationStatus}
+            productizationAction={productizationAction}
+            palette={palette}
+            styles={styles}
+            renderSurfaceHeader={renderSurfaceHeader}
+            refreshProductizationSignals={refreshProductizationSignals}
+            validateSamplePluginManifest={validateSamplePluginManifest}
+            updatePluginState={updatePluginState}
+          />
+        </Suspense>
+      </LazyPanelBoundary>
+    );
+  }
+
+  function renderCreativeStudioRoute() {
+    return (
+      <LazyPanelBoundary
+        title="Creative Studio could not load"
+        detail="The workspace remains active. Retry the creative route or return to another section."
+        resetKey={`${workspaceRoot}:creative`}
+      >
+        <Suspense fallback={<div style={styles.routeFallback(palette)}>Opening Creative Studio...</div>}>
+          <CreativeStudioSurface
+            creativeStudioTab={creativeStudioTab}
+            creativePrompt={creativePrompt}
+            creativeStyle={creativeStyle}
+            creativeCapabilities={creativeCapabilities}
+            creativeLibrary={creativeLibrary}
+            creativeJobs={creativeJobs}
+            selectedCreativeJob={selectedCreativeJob}
+            creativeStatus={creativeStatus}
+            creativeLoading={creativeLoading}
+            creativeAction={creativeAction}
+            palette={palette}
+            styles={styles}
+            renderSurfaceHeader={renderSurfaceHeader}
+            creativeKindForTab={creativeKindForTab}
+            creativeProviderForTab={creativeProviderForTab}
+            setCreativeStudioTab={setCreativeStudioTab}
+            setCreativePrompt={setCreativePrompt}
+            setCreativeStyle={setCreativeStyle}
+            setCreativeProviderId={setCreativeProviderId}
+            setSelectedCreativeJob={setSelectedCreativeJob}
+            setCreativeStatus={setCreativeStatus}
+            refreshCreativeStudio={refreshCreativeStudio}
+            generateCreativeAsset={generateCreativeAsset}
+            exportSelectedCreativeJob={exportSelectedCreativeJob}
+            cancelSelectedCreativeJob={cancelSelectedCreativeJob}
+          />
+        </Suspense>
+      </LazyPanelBoundary>
+    );
+  }
+
   function renderWorkspaceSurface() {
     if (activeSection === 'projects') return renderProjectsSurface();
     if (activeSection === 'intelligence') return renderProjectIntelligenceSurface();
     if (activeSection === 'workspace-intelligence') return renderWorkspaceIntelligenceSurface();
     if (activeSection === 'runtime') return renderDistributedRuntimeSurface();
     if (activeSection === 'adaptive') return renderAdaptiveIntelligenceSurface();
-    if (activeSection === 'hardening') return renderProductizationSurface();
+    if (activeSection === 'hardening') return renderProductizationRoute();
     if (activeSection === 'ecosystem') return renderEcosystemSurface();
     if (activeSection === 'autonomous') return renderAutonomousEngineeringSurface();
-    if (activeSection === 'creative') return renderCreativeStudioSurface();
+    if (activeSection === 'creative') return renderCreativeStudioRoute();
     if (activeSection === 'tasks') return renderTasksSurface();
     if (activeSection === 'agents') return renderAgentsSurface();
     return renderModelsSurface();
@@ -5119,16 +5194,18 @@ function App() {
           </button>
         )}
 
-        <TaskStatusSummary
-          tasks={taskBoardTasks}
-          style={styles.metricGrid}
-          renderMetric={(metric) => (
-            <div style={styles.metricCard(palette)}>
-              <span style={styles.metricLabel(palette)}>{metric.label}</span>
-              <strong style={styles.metricValue(palette)}>{metric.value}</strong>
-            </div>
-          )}
-        />
+        <Suspense fallback={<div style={styles.emptyPanel(palette)}>Loading task summary...</div>}>
+          <TaskStatusSummary
+            tasks={taskBoardTasks}
+            style={styles.metricGrid}
+            renderMetric={(metric) => (
+              <div style={styles.metricCard(palette)}>
+                <span style={styles.metricLabel(palette)}>{metric.label}</span>
+                <strong style={styles.metricValue(palette)}>{metric.value}</strong>
+              </div>
+            )}
+          />
+        </Suspense>
 
         <div style={styles.surfaceColumns}>
           <section style={styles.settingsSection(palette)}>
@@ -6372,298 +6449,6 @@ function App() {
     );
   }
 
-  function renderProductizationSurface() {
-    const snapshot = productization;
-    const plugins = snapshot?.plugins ?? [];
-    const stableApis = snapshot?.stable_apis ?? [];
-    const metrics = snapshot?.metrics ?? [];
-    const recovery = snapshot?.recovery;
-    const policy = snapshot?.enterprise_policy;
-    const degradedMetrics = metrics.filter((metric) => metric.status === 'degraded');
-    const invalidPlugins = (snapshot?.plugin_validation ?? []).filter((item) => !item.valid);
-    const sqliteSize = Number(snapshot?.performance?.sqlite_size_bytes ?? 0);
-    const metricLabel = (metric: { value: number; unit: string }) => {
-      if (metric.unit === 'ratio') return `${Math.round(metric.value * 100)}%`;
-      if (metric.unit === 'boolean') return metric.value >= 1 ? 'Ready' : 'No';
-      if (metric.unit === 'ms') return `${Math.round(metric.value)} ms`;
-      return String(metric.value);
-    };
-
-    return (
-      <div style={styles.surfacePage}>
-        {renderSurfaceHeader(
-          <Wrench size={22} />,
-          'Hardening',
-          'Productization controls for stable APIs, plugins, recovery, enterprise policy, packaging, and reliability.',
-          <div style={styles.surfaceActions}>
-            <button
-              type="button"
-              style={styles.secondaryButton(palette)}
-              onClick={() => void refreshProductizationSignals(undefined, false)}
-              disabled={productizationLoading}
-            >
-              {productizationLoading ? <Loader2 size={16} className="spin" /> : <Zap size={16} />}
-              Refresh
-            </button>
-            <button
-              type="button"
-              style={styles.primaryButton(palette)}
-              onClick={() => void refreshProductizationSignals(undefined, true)}
-              disabled={productizationLoading}
-            >
-              {productizationLoading ? <Loader2 size={16} className="spin" /> : <Save size={16} />}
-              Snapshot
-            </button>
-          </div>
-        )}
-
-        <div style={styles.metricGrid}>
-          <div style={styles.metricCard(palette)}>
-            <span style={styles.metricLabel(palette)}>Stable APIs</span>
-            <strong style={styles.metricValue(palette)}>{stableApis.length}</strong>
-          </div>
-          <div style={styles.metricCard(palette)}>
-            <span style={styles.metricLabel(palette)}>Plugins</span>
-            <strong style={styles.metricValue(palette)}>{plugins.length}</strong>
-          </div>
-          <div style={styles.metricCard(palette)}>
-            <span style={styles.metricLabel(palette)}>Recovery</span>
-            <strong style={styles.metricValue(palette)}>{recovery?.safe_shutdown_ready ? 'Ready' : 'Review'}</strong>
-          </div>
-          <div style={styles.metricCard(palette)}>
-            <span style={styles.metricLabel(palette)}>Reliability</span>
-            <strong style={styles.metricValue(palette)}>{degradedMetrics.length ? `${degradedMetrics.length} degraded` : 'Healthy'}</strong>
-          </div>
-        </div>
-
-        {productizationStatus ? (
-          <div style={styles.eventRow(palette, productizationStatus.includes('Could not') || productizationStatus.includes('invalid') ? 'error' : 'ok')}>
-            <div>
-              <strong style={styles.eventTitle(palette)}>Hardening Status</strong>
-              <div style={styles.eventDetail(palette)}>{productizationStatus}</div>
-            </div>
-          </div>
-        ) : null}
-
-        <div style={styles.surfaceColumns}>
-          <section style={styles.settingsSection(palette)}>
-            <div style={styles.sectionHeaderInline}>
-              <h3 style={styles.settingsHeading(palette)}>Runtime Recovery</h3>
-              <span style={styles.diagnosticChip(palette, recovery?.safe_shutdown_ready ? 'ok' : 'warning')}>
-                {recovery?.safe_shutdown_ready ? 'Ready' : 'Needs review'}
-              </span>
-            </div>
-            <div style={styles.workspaceMeta(palette)}>
-              <strong>SQLite</strong>
-              <span>{recovery?.database_ok ? 'quick_check ok' : recovery?.database_message || 'pending'}</span>
-              <strong>Database size</strong>
-              <span>{formatBytes(sqliteSize)}</span>
-              <strong>Open tasks</strong>
-              <span>{recovery?.open_tasks ?? 0}</span>
-              <strong>Checkpoints</strong>
-              <span>{recovery?.checkpoint_count ?? 0}</span>
-            </div>
-            <div style={styles.eventList}>
-              {(recovery?.recommended_actions ?? []).slice(0, 6).map((item) => (
-                <div key={item} style={styles.eventRow(palette, 'warning')}>
-                  <div>
-                    <strong style={styles.eventTitle(palette)}>Recovery action</strong>
-                    <div style={styles.eventDetail(palette)}>{item}</div>
-                  </div>
-                </div>
-              ))}
-              {!recovery?.recommended_actions.length ? (
-                <div style={styles.emptyPanel(palette)}>No recovery actions are pending.</div>
-              ) : null}
-            </div>
-          </section>
-
-          <section style={styles.settingsSection(palette)}>
-            <div style={styles.sectionHeaderInline}>
-              <h3 style={styles.settingsHeading(palette)}>Enterprise Controls</h3>
-              <span style={styles.contextTag(palette)}>{policy?.privacy_mode ?? 'local_first'}</span>
-            </div>
-            <div style={styles.workspaceMeta(palette)}>
-              <strong>Permission profile</strong>
-              <span>{policy?.permission_profile ?? 'guided:standard'}</span>
-              <strong>Audit trails</strong>
-              <span>{policy?.audit_trails ? 'enabled' : 'disabled'}</span>
-              <strong>Plugin signing</strong>
-              <span>{policy?.plugin_signing_required ? 'required' : 'optional'}</span>
-              <strong>Remote workers</strong>
-              <span>{policy?.allow_remote_workers ? 'allowed' : 'disabled'}</span>
-            </div>
-            <div style={styles.tagWrap}>
-              {(policy?.network_allowlist ?? []).map((item) => (
-                <span key={item} style={styles.contextTag(palette)}>
-                  {item}
-                </span>
-              ))}
-              {policy?.enforce_local_models ? <span style={styles.goodTag(palette)}>local models enforced</span> : null}
-              {policy?.encrypted_workspace_storage ? <span style={styles.goodTag(palette)}>encrypted storage</span> : null}
-            </div>
-          </section>
-        </div>
-
-        <div style={styles.surfaceColumns}>
-          <section style={styles.settingsSection(palette)}>
-            <div style={styles.sectionHeaderInline}>
-              <h3 style={styles.settingsHeading(palette)}>Plugin SDK</h3>
-              <div style={styles.tagWrap}>
-                <span style={styles.contextTag(palette)}>{invalidPlugins.length} invalid</span>
-                <button
-                  type="button"
-                  style={styles.iconTextButton(palette)}
-                  onClick={() => void validateSamplePluginManifest()}
-                  disabled={Boolean(productizationAction)}
-                >
-                  {productizationAction === 'validate-sample' ? <Loader2 size={14} className="spin" /> : <CheckCircle2 size={14} />}
-                  Validate sample
-                </button>
-              </div>
-            </div>
-            <div style={styles.modelList}>
-              {plugins.map((plugin) => {
-                const busy = productizationAction.endsWith(`:${plugin.id}`);
-                return (
-                  <div key={plugin.id} style={styles.modelRow(palette, plugin.enabled)}>
-                    <div style={styles.modelRowMain}>
-                      <div style={styles.modelRowTop}>
-                        <div style={styles.cardTitle(palette)}>{plugin.name}</div>
-                        <span style={styles.diagnosticChip(palette, plugin.enabled ? 'ok' : 'warning')}>
-                          {plugin.enabled ? 'enabled' : 'disabled'}
-                        </span>
-                      </div>
-                      <div style={styles.eventDetail(palette)}>{plugin.description || plugin.id}</div>
-                      <div style={styles.tagWrap}>
-                        <span style={styles.contextTag(palette)}>{plugin.version}</span>
-                        <span style={styles.contextTag(palette)}>{plugin.sandbox_profile}</span>
-                        {plugin.trusted ? <span style={styles.goodTag(palette)}>trusted</span> : null}
-                        {plugin.capabilities.slice(0, 4).map((item) => (
-                          <span key={`${plugin.id}-${item}`} style={styles.contextTag(palette)}>
-                            {formatStatusLabel(item)}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                    <div style={styles.rowActions}>
-                      <button
-                        type="button"
-                        style={styles.iconTextButton(palette)}
-                        onClick={() => void updatePluginState(plugin, plugin.enabled ? 'disable' : 'enable')}
-                        disabled={busy}
-                      >
-                        {busy ? <Loader2 size={14} className="spin" /> : plugin.enabled ? <Pause size={14} /> : <Play size={14} />}
-                        {plugin.enabled ? 'Disable' : 'Enable'}
-                      </button>
-                      <button
-                        type="button"
-                        style={styles.iconTextButton(palette)}
-                        onClick={() => void updatePluginState(plugin, 'trust')}
-                        disabled={plugin.trusted || busy}
-                      >
-                        <CheckCircle2 size={14} />
-                        Trust
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-              {!plugins.length ? <div style={styles.emptyPanel(palette)}>No plugins are registered yet.</div> : null}
-            </div>
-            {(snapshot?.plugin_validation ?? []).slice(0, 4).map((result, index) => (
-              <div key={`${result.normalized_manifest?.id ?? 'plugin'}-${index}`} style={styles.eventRow(palette, result.valid ? 'ok' : 'error')}>
-                <div>
-                  <strong style={styles.eventTitle(palette)}>{result.normalized_manifest?.name ?? 'Plugin manifest'}</strong>
-                  <div style={styles.eventDetail(palette)}>
-                    {result.valid ? result.warnings.join('; ') || 'Manifest validates.' : result.errors.join('; ')}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </section>
-
-          <section style={styles.settingsSection(palette)}>
-            <div style={styles.sectionHeaderInline}>
-              <h3 style={styles.settingsHeading(palette)}>Stable Internal APIs</h3>
-              <span style={styles.contextTag(palette)}>v{snapshot?.api_version ?? '2026.05.07'}</span>
-            </div>
-            <div style={styles.eventList}>
-              {stableApis.map((api) => (
-                <div key={api.id} style={styles.eventRow(palette, api.status === 'stable' ? 'ok' : 'warning')}>
-                  <div>
-                    <strong style={styles.eventTitle(palette)}>{api.name}</strong>
-                    <div style={styles.eventDetail(palette)}>{api.path_prefixes.slice(0, 4).join(', ')}</div>
-                    <div style={styles.tagWrap}>
-                      <span style={styles.contextTag(palette)}>{api.id}</span>
-                      <span style={styles.contextTag(palette)}>{api.status}</span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-              {!stableApis.length ? <div style={styles.emptyPanel(palette)}>Stable API contracts will appear after refresh.</div> : null}
-            </div>
-          </section>
-        </div>
-
-        <div style={styles.surfaceColumns}>
-          <section style={styles.settingsSection(palette)}>
-            <div style={styles.sectionHeaderInline}>
-              <h3 style={styles.settingsHeading(palette)}>Reliability Metrics</h3>
-              <span style={styles.contextTag(palette)}>{metrics.length} metric(s)</span>
-            </div>
-            <div style={styles.eventList}>
-              {metrics.map((metric) => (
-                <div key={metric.name} style={styles.eventRow(palette, reliabilityStatusToEventStatus(metric.status))}>
-                  <div>
-                    <strong style={styles.eventTitle(palette)}>{formatStatusLabel(metric.name)}</strong>
-                    <div style={styles.eventDetail(palette)}>{metric.detail}</div>
-                  </div>
-                  <span style={styles.eventTime(palette)}>{metricLabel(metric)}</span>
-                </div>
-              ))}
-              {!metrics.length ? <div style={styles.emptyPanel(palette)}>Reliability metrics will appear after snapshot refresh.</div> : null}
-            </div>
-          </section>
-
-          <section style={styles.settingsSection(palette)}>
-            <div style={styles.sectionHeaderInline}>
-              <h3 style={styles.settingsHeading(palette)}>Scaling, Packaging, Docs</h3>
-              <span style={styles.contextTag(palette)}>{snapshot?.docs.length ?? 0} docs</span>
-            </div>
-            <div style={styles.workspaceMeta(palette)}>
-              <strong>Monorepo</strong>
-              <span>{snapshot?.scaling?.monorepo_ready ? 'ready' : 'pending'}</span>
-              <strong>Distributed</strong>
-              <span>{snapshot?.scaling?.distributed_runtime_ready ? 'ready' : 'pending'}</span>
-              <strong>Installer</strong>
-              <span>{String(snapshot?.packaging?.signed_installers ?? 'planned')}</span>
-              <strong>Updates</strong>
-              <span>{String(snapshot?.packaging?.auto_updates ?? 'planned')}</span>
-            </div>
-            <div style={styles.tagWrap}>
-              {(snapshot?.docs ?? []).slice(0, 8).map((doc) => (
-                <span key={doc} style={styles.contextTag(palette)}>
-                  {doc.replace('docs/', '')}
-                </span>
-              ))}
-            </div>
-            <div style={styles.eventList}>
-              {(snapshot?.recommendations ?? []).slice(0, 6).map((item) => (
-                <div key={item} style={styles.eventRow(palette, 'warning')}>
-                  <div>
-                    <strong style={styles.eventTitle(palette)}>Recommendation</strong>
-                    <div style={styles.eventDetail(palette)}>{item}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-        </div>
-      </div>
-    );
-  }
-
   function renderEcosystemSurface() {
     const snapshot = ecosystemSnapshot;
     const packages = snapshot?.packages ?? [];
@@ -7392,241 +7177,6 @@ function App() {
     );
   }
 
-  function renderCreativeStudioSurface() {
-    const tabs: Array<{ id: typeof creativeStudioTab; label: string; prompt: string }> = [
-      { id: 'image', label: 'Image', prompt: 'Create a premium product mockup for Auralith Creative Studio' },
-      { id: 'video', label: 'Video', prompt: 'Create a short app showcase video for Auralith Creative Studio' },
-      { id: 'beat', label: 'Beat', prompt: 'Generate a clean tech beat with crisp drums and a loopable hook' },
-      { id: 'voice', label: 'Voice', prompt: 'Create a calm narration for a premium product launch' },
-      { id: 'library', label: 'Library', prompt: creativePrompt }
-    ];
-    const currentKind = creativeKindForTab();
-    const providers = (creativeCapabilities?.providers ?? []).filter((provider) => provider.supports.includes(currentKind));
-    const selectedProviderId = creativeProviderForTab();
-    const selectedProvider = creativeCapabilities?.providers.find((provider) => provider.id === selectedProviderId);
-    const imageAssets = selectedCreativeJob?.assets.filter((asset) => ['png', 'jpg', 'gif', 'svg'].includes(asset.format)) ?? [];
-    const previewAsset = imageAssets[0] ?? null;
-    const audioAssets = selectedCreativeJob?.assets.filter((asset) => ['wav', 'mp3', 'midi'].includes(asset.format)) ?? [];
-    const assetUrl = (path: string) =>
-      `${(import.meta.env.VITE_API_BASE ?? 'http://127.0.0.1:8787').replace(/\/+$/, '')}/api/creative-studio/assets/file?path=${encodeURIComponent(path)}`;
-
-    return (
-      <div style={styles.surfacePage}>
-        {renderSurfaceHeader(
-          <Zap size={22} />,
-          'Creative Studio',
-          'Generate, organize, revise, and export local images, motion packages, beats, voice drafts, prompts, and asset packs.',
-          <div style={styles.surfaceActions}>
-            <button type="button" style={styles.secondaryButton(palette)} onClick={() => void refreshCreativeStudio()} disabled={creativeLoading}>
-              {creativeLoading ? <Loader2 size={16} className="spin" /> : <Search size={16} />}
-              Refresh
-            </button>
-            <button type="button" style={styles.primaryButton(palette)} onClick={() => void generateCreativeAsset()} disabled={Boolean(creativeAction) || creativeStudioTab === 'library'}>
-              {creativeAction.startsWith('generate') ? <Loader2 size={16} className="spin" /> : <Play size={16} />}
-              Generate
-            </button>
-          </div>
-        )}
-
-        <div style={styles.metricGrid}>
-          <div style={styles.metricCard(palette)}>
-            <span style={styles.metricLabel(palette)}>Jobs</span>
-            <strong style={styles.metricValue(palette)}>{creativeJobs.length}</strong>
-          </div>
-          <div style={styles.metricCard(palette)}>
-            <span style={styles.metricLabel(palette)}>Assets</span>
-            <strong style={styles.metricValue(palette)}>{creativeLibrary?.total_assets ?? 0}</strong>
-          </div>
-          <div style={styles.metricCard(palette)}>
-            <span style={styles.metricLabel(palette)}>Providers</span>
-            <strong style={styles.metricValue(palette)}>{creativeCapabilities?.providers.length ?? 0}</strong>
-          </div>
-          <div style={styles.metricCard(palette)}>
-            <span style={styles.metricLabel(palette)}>Formats</span>
-            <strong style={styles.metricValue(palette)}>{creativeLibrary?.formats.slice(0, 4).join(', ') || 'pending'}</strong>
-          </div>
-        </div>
-
-        {creativeStatus ? (
-          <div style={styles.eventRow(palette, creativeStatus.includes('Could not') || creativeStatus.includes('requires') ? 'error' : 'ok')}>
-            <div>
-              <strong style={styles.eventTitle(palette)}>Creative Status</strong>
-              <div style={styles.eventDetail(palette)}>{creativeStatus}</div>
-            </div>
-          </div>
-        ) : null}
-
-        <section style={styles.settingsSection(palette)}>
-          <div style={styles.segmentedControl(palette)} role="group" aria-label="Creative Studio sections">
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                style={styles.segmentedButton(palette, creativeStudioTab === tab.id)}
-                onClick={() => {
-                  setCreativeStudioTab(tab.id);
-                  if (tab.id !== 'library') setCreativePrompt(tab.prompt);
-                }}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-        </section>
-
-        {creativeStudioTab !== 'library' ? (
-          <div style={styles.surfaceColumns}>
-            <section style={styles.settingsSection(palette)}>
-              <div style={styles.sectionHeaderInline}>
-                <h3 style={styles.settingsHeading(palette)}>Prompt Builder</h3>
-                <span style={styles.contextTag(palette)}>{formatStatusLabel(currentKind)}</span>
-              </div>
-              <label style={styles.fieldLabel(palette)}>
-                <span>Prompt</span>
-                <textarea
-                  value={creativePrompt}
-                  onChange={(event) => setCreativePrompt(event.target.value)}
-                  rows={5}
-                  style={styles.fieldTextarea(palette)}
-                />
-              </label>
-              <label style={styles.fieldLabel(palette)}>
-                <span>Style</span>
-                <input value={creativeStyle} onChange={(event) => setCreativeStyle(event.target.value)} style={styles.fieldInput(palette)} />
-              </label>
-              <label style={styles.fieldLabel(palette)}>
-                <span>Provider</span>
-                <select value={selectedProviderId} onChange={(event) => setCreativeProviderId(event.target.value)} style={styles.fieldInput(palette)}>
-                  {providers.map((provider) => (
-                    <option key={provider.id} value={provider.id}>
-                      {provider.name}{provider.paid ? ' (approval)' : ''}
-                    </option>
-                  ))}
-                  {!providers.length ? <option value={selectedProviderId}>{selectedProvider?.name || selectedProviderId}</option> : null}
-                </select>
-              </label>
-              <div style={styles.tagWrap}>
-                <span style={styles.contextTag(palette)}>local drafts first</span>
-                <span style={styles.contextTag(palette)}>prompt pack saved</span>
-                <span style={styles.contextTag(palette)}>exports supported</span>
-              </div>
-              {selectedProvider ? <div style={styles.eventDetail(palette)}>{selectedProvider.notes}</div> : null}
-            </section>
-
-            <section style={styles.settingsSection(palette)}>
-              <div style={styles.sectionHeaderInline}>
-                <h3 style={styles.settingsHeading(palette)}>Selected Job</h3>
-                <span style={styles.diagnosticChip(palette, selectedCreativeJob?.status === 'failed' ? 'error' : selectedCreativeJob ? 'ok' : 'warning')}>
-                  {selectedCreativeJob ? formatStatusLabel(selectedCreativeJob.status) : 'None'}
-                </span>
-              </div>
-              {selectedCreativeJob ? (
-                <>
-                  {previewAsset ? (
-                    <img
-                      src={assetUrl(previewAsset.thumbnail_path || previewAsset.path)}
-                      alt={previewAsset.role}
-                      style={{ width: '100%', maxHeight: 260, objectFit: 'cover', borderRadius: 8, border: `1px solid ${palette.inputBorder}` }}
-                    />
-                  ) : audioAssets.length ? (
-                    <audio src={assetUrl(audioAssets[0].path)} controls style={{ width: '100%' }} />
-                  ) : (
-                    <div style={styles.emptyPanel(palette)}>This job saved source assets without a browser preview.</div>
-                  )}
-                  <div style={styles.workspaceMeta(palette)}>
-                    <strong>Provider</strong>
-                    <span>{selectedCreativeJob.provider_name}</span>
-                    <strong>Assets</strong>
-                    <span>{selectedCreativeJob.assets.length}</span>
-                    <strong>Seed</strong>
-                    <span>{selectedCreativeJob.seed ?? 'n/a'}</span>
-                    <strong>Time</strong>
-                    <span>{selectedCreativeJob.time_taken_seconds}s</span>
-                  </div>
-                  <div style={styles.rowActions}>
-                    {['zip', 'png', 'jpg', 'svg', 'wav', 'midi'].map((format) => (
-                      <button key={format} type="button" style={styles.iconTextButton(palette)} onClick={() => void exportSelectedCreativeJob(format)} disabled={Boolean(creativeAction)}>
-                        <Download size={14} />
-                        {format.toUpperCase()}
-                      </button>
-                    ))}
-                    <button type="button" style={styles.iconTextButton(palette)} onClick={() => void cancelSelectedCreativeJob()} disabled={Boolean(creativeAction)}>
-                      <Square size={14} />
-                      Cancel
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <div style={styles.emptyPanel(palette)}>Generate or select a creative job to preview assets and exports.</div>
-              )}
-            </section>
-          </div>
-        ) : null}
-
-        <div style={styles.surfaceColumns}>
-          <section style={styles.settingsSection(palette)}>
-            <div style={styles.sectionHeaderInline}>
-              <h3 style={styles.settingsHeading(palette)}>Generation Jobs</h3>
-              <span style={styles.contextTag(palette)}>{creativeJobs.length} tracked</span>
-            </div>
-            <div style={styles.modelList}>
-              {creativeJobs.slice(0, 12).map((job) => (
-                <button
-                  key={job.id}
-                  type="button"
-                  style={styles.modelRow(palette, selectedCreativeJob?.id === job.id)}
-                  onClick={() => {
-                    setSelectedCreativeJob(job);
-                    void getCreativeJob(job.id).then(setSelectedCreativeJob).catch((error) => {
-                      setCreativeStatus(error instanceof Error ? error.message : 'Could not open creative job');
-                    });
-                  }}
-                >
-                  <div style={styles.modelRowMain}>
-                    <div style={styles.modelRowTop}>
-                      <div style={styles.cardTitle(palette)}>{formatStatusLabel(job.kind)}</div>
-                      <span style={styles.diagnosticChip(palette, job.status === 'failed' ? 'error' : job.status === 'canceled' ? 'warning' : 'ok')}>{formatStatusLabel(job.status)}</span>
-                    </div>
-                    <div style={styles.eventDetail(palette)}>{job.prompt}</div>
-                    <div style={styles.tagWrap}>
-                      <span style={styles.contextTag(palette)}>{job.provider_name || job.provider_id}</span>
-                      <span style={styles.contextTag(palette)}>{job.assets.length} assets</span>
-                      <span style={styles.contextTag(palette)}>{formatDateTime(job.created_at)}</span>
-                    </div>
-                  </div>
-                </button>
-              ))}
-              {!creativeJobs.length ? <div style={styles.emptyPanel(palette)}>Creative jobs will appear after the first generation.</div> : null}
-            </div>
-          </section>
-
-          <section style={styles.settingsSection(palette)}>
-            <div style={styles.sectionHeaderInline}>
-              <h3 style={styles.settingsHeading(palette)}>Asset Library</h3>
-              <span style={styles.contextTag(palette)}>{creativeLibrary?.total_assets ?? 0} asset(s)</span>
-            </div>
-            <div style={styles.eventList}>
-              {(creativeLibrary?.assets ?? []).slice(0, 14).map((asset) => (
-                <div key={asset.id || asset.path} style={styles.eventRow(palette, 'ok')}>
-                  <div>
-                    <strong style={styles.eventTitle(palette)}>{asset.role}</strong>
-                    <div style={styles.eventDetail(palette)}>{asset.path}</div>
-                    <div style={styles.tagWrap}>
-                      <span style={styles.contextTag(palette)}>{asset.format}</span>
-                      <span style={styles.contextTag(palette)}>{formatStatusLabel(asset.kind)}</span>
-                      {asset.editable ? <span style={styles.goodTag(palette)}>Editable</span> : null}
-                    </div>
-                  </div>
-                </div>
-              ))}
-              {!creativeLibrary?.assets.length ? <div style={styles.emptyPanel(palette)}>No creative assets are saved yet.</div> : null}
-            </div>
-          </section>
-        </div>
-      </div>
-    );
-  }
-
   function renderAgentsSurface() {
     return (
       <div style={styles.surfacePage}>
@@ -7874,16 +7424,18 @@ function App() {
             <span>{modelEndpoint}</span>
           </div>
           <div style={styles.formGridTwo}>
-            <ModelSelector
-              label="Switch Model"
-              value={{ api: modelApi, endpoint: modelEndpoint, name: modelName }}
-              options={selectableModelOptions}
-              onSelect={selectModelDraft}
-              labelStyle={styles.fieldLabel(palette)}
-              selectStyle={styles.fieldInput(palette)}
-              optionKeyPrefix="surface-model"
-              renderOptionLabel={(item) => `${item.name} ${item.active ? '(active)' : ''}`}
-            />
+            <Suspense fallback={<div style={styles.emptyPanel(palette)}>Loading model selector...</div>}>
+              <ModelSelector
+                label="Switch Model"
+                value={{ api: modelApi, endpoint: modelEndpoint, name: modelName }}
+                options={selectableModelOptions}
+                onSelect={selectModelDraft}
+                labelStyle={styles.fieldLabel(palette)}
+                selectStyle={styles.fieldInput(palette)}
+                optionKeyPrefix="surface-model"
+                renderOptionLabel={(item) => `${item.name} ${item.active ? '(active)' : ''}`}
+              />
+            </Suspense>
             <div style={styles.fieldButtonSlot}>
               <button
                 type="button"
@@ -8310,16 +7862,18 @@ function App() {
               Refresh
             </button>
           </div>
-          <ModelSelector
-            label="Installed / Configured Model"
-            value={{ api: modelApi, endpoint: modelEndpoint, name: modelName }}
-            options={selectableModelOptions}
-            onSelect={selectModelDraft}
-            labelStyle={styles.fieldLabel(palette)}
-            selectStyle={styles.fieldInput(palette)}
-            optionKeyPrefix="settings-model"
-            renderOptionLabel={(item) => `${item.name} / ${item.api}`}
-          />
+          <Suspense fallback={<div style={styles.emptyPanel(palette)}>Loading model selector...</div>}>
+            <ModelSelector
+              label="Installed / Configured Model"
+              value={{ api: modelApi, endpoint: modelEndpoint, name: modelName }}
+              options={selectableModelOptions}
+              onSelect={selectModelDraft}
+              labelStyle={styles.fieldLabel(palette)}
+              selectStyle={styles.fieldInput(palette)}
+              optionKeyPrefix="settings-model"
+              renderOptionLabel={(item) => `${item.name} / ${item.api}`}
+            />
+          </Suspense>
           <div style={styles.formGridTwo}>
             <label style={styles.fieldLabel(palette)}>
               <span>API Type</span>

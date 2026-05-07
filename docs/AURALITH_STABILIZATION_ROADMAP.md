@@ -27,6 +27,7 @@ The stabilization pass covered:
 - Malformed persisted UI state recovery for saved sessions, composer drafts, and queued prompts.
 - Initial bundle shape and optional panel loading.
 - Lazy-surface crash containment.
+- Optional route-surface code splitting for Hardening, Creative Studio, model selectors, and task summaries.
 - Live frontend/backend identity checks.
 - Frontend unit tests, production build, and backend pytest suite.
 
@@ -59,6 +60,10 @@ The stabilization pass covered:
 - Added E2E coverage for unauthenticated protected-route redirects and malformed auth-session cleanup.
 - Invalid saved-session, composer-draft, and queued-prompt localStorage payloads now self-heal by clearing or normalizing the stored data during load.
 - Added unit coverage and browser E2E coverage for malformed persisted UI state so a corrupted browser profile cannot break the protected command surface.
+- Extracted the Productization/Hardening surface into `ProductizationSurface` and lazy-loaded it behind a route-level boundary.
+- Extracted the Creative Studio surface into `CreativeStudioSurface` and lazy-loaded it behind a route-level boundary.
+- Lazy-loaded the model selector and task status summary widgets so optional settings/tasks surfaces no longer inflate the initial protected app route.
+- Added browser E2E coverage for the lazy Hardening and Creative Studio routes, including horizontal-overflow checks.
 
 ## Current Validation Baseline
 
@@ -76,15 +81,15 @@ Validation details:
 - Backend tests: 494 passed, 108 subtests passed.
 - Live doctor check: passed.
 - Live smoke check: passed.
-- Browser E2E: passed, including public mobile route checks, protected-route auth gates, malformed auth cleanup, malformed persisted UI state recovery, protected laptop/mobile responsive shell checks, tablet/mobile settings modal checks, tablet/mobile authenticated overlay checks, and 50-session history stress.
+- Browser E2E: passed, including public mobile route checks, protected-route auth gates, malformed auth cleanup, malformed persisted UI state recovery, lazy Hardening and Creative Studio route checks, protected laptop/mobile responsive shell checks, tablet/mobile settings modal checks, tablet/mobile authenticated overlay checks, and 50-session history stress.
 
-Known warning:
+Bundle baseline:
 
-- Vite still reports one generated JavaScript chunk above 500 kB. The initial app chunk remains far below the original baseline but is currently about 510.2 kB after adding lazy-surface error containment and compact settings hardening. Removing the warning cleanly requires more behavior-preserving extraction from `App.tsx`, not simply hiding the warning.
+- The prior Vite generated chunk warning is resolved without raising the warning limit. The initial protected app chunk is now about 494.7 kB after splitting optional route surfaces.
 
 ## Critical Next Fixes
 
-- Extract the largest protected workspace sections from `App.tsx` into dedicated modules so route-level code splitting can finish the initial bundle reduction without hiding warnings.
+- Continue extracting large protected workspace sections from `App.tsx` into dedicated modules so the initial route has more margin below the chunk warning and route surfaces stay independently testable.
 - Add focused visual regression snapshots for the compact authenticated overlays after the next component extraction pass.
 - Add a focused visual regression pass for the public site, protected workspace shell, right observability panel, and auth pages.
 - Add auth-session cleanup or database isolation for repeated E2E account registration runs.
