@@ -18,7 +18,7 @@ $EnvPath = Join-Path $Root ".env"
 $EnvExample = Join-Path $Root ".env.example"
 $BackendHealthUrl = "http://127.0.0.1:8787/api/health"
 $BackendOpenApiUrl = "http://127.0.0.1:8787/openapi.json"
-$RequiredBackendRoutes = @("/api/workspace/setup")
+$RequiredBackendRoutes = @("/api/workspace/setup", "/api/auth/register")
 $RequirePartialConfigUpdate = $true
 $FrontendUrl = "http://127.0.0.1:5173"
 

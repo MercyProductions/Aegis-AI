@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  __resetApiBaseForTests,
+  __setApiDiscoveryForTests,
   activateAdaptivePolicyProfile,
   approveAutonomousGate,
   cancelExecutionQueueItem,
@@ -111,6 +113,7 @@ const originalFetch = globalThis.fetch;
 
 afterEach(() => {
   vi.restoreAllMocks();
+  __resetApiBaseForTests();
   globalThis.fetch = originalFetch;
 });
 
@@ -195,21 +198,77 @@ describe('streamAgentMessage', () => {
 });
 
 describe('auth api', () => {
-  it('creates sessions, sends bearer tokens, and requests password recovery', async () => {
-    const session = {
-      token: 'aegis_test_token',
-      token_type: 'bearer',
-      expires_at: '2026-05-08T00:00:00Z',
-      user: {
-        id: 'user-1',
+  it('discovers the current Auralith backend before accepting a legacy healthy local process', async () => {
+    __setApiDiscoveryForTests(true);
+    const session = createAuthSession();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ ok: true, ready: true, app: 'Aegis Coding AI' }))
+      .mockResolvedValueOnce(jsonResponse({ ok: true, ready: true, app: 'Aegis Coding AI' }))
+      .mockResolvedValueOnce(jsonResponse({ ok: true, ready: true, app: 'Auralith OS' }))
+      .mockResolvedValueOnce(jsonResponse(session));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      registerAccount({
         name: 'Gabriel',
         email: 'gabriel@example.com',
-        plan: 'pro',
-        role: 'user',
-        status: 'active',
-        created_at: '2026-05-07T00:00:00Z'
-      }
-    };
+        password: 'password123',
+        confirm_password: 'password123'
+      })
+    ).resolves.toMatchObject({ token: 'aegis_test_token' });
+
+    expect(fetchMock.mock.calls.map((call) => String(call[0]))).toEqual([
+      '/api/health',
+      'http://127.0.0.1:8787/api/health',
+      'http://127.0.0.1:8793/api/health',
+      'http://127.0.0.1:8793/api/auth/register'
+    ]);
+  });
+
+  it('falls through stale local API bases when register is missing on an older backend', async () => {
+    const session = createAuthSession();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ detail: 'Not Found' }, 404, 'Not Found'))
+      .mockResolvedValueOnce(jsonResponse({ detail: 'Not Found' }, 404, 'Not Found'))
+      .mockResolvedValueOnce(jsonResponse(session));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      registerAccount({
+        name: 'Gabriel',
+        email: 'gabriel@example.com',
+        password: 'password123',
+        confirm_password: 'password123'
+      })
+    ).resolves.toMatchObject({ token: 'aegis_test_token' });
+
+    expect(fetchMock.mock.calls.map((call) => String(call[0]))).toEqual([
+      '/api/auth/register',
+      'http://127.0.0.1:8787/api/auth/register',
+      'http://127.0.0.1:8793/api/auth/register'
+    ]);
+  });
+
+  it('does not hide real auth validation errors behind API base fallback', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ detail: 'Passwords do not match.' }, 400, 'Bad Request'));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      registerAccount({
+        name: 'Gabriel',
+        email: 'gabriel@example.com',
+        password: 'password123',
+        confirm_password: 'different'
+      })
+    ).rejects.toThrow('Passwords do not match.');
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('creates sessions, sends bearer tokens, and requests password recovery', async () => {
+    const session = createAuthSession();
     const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
       const url = String(input);
       if (url.includes('/logout')) {
@@ -1357,11 +1416,29 @@ function mockStreamResponse(chunks: string[]) {
   );
 }
 
-function jsonResponse(payload: unknown) {
+function jsonResponse(payload: unknown, status = 200, statusText = 'OK') {
   return new Response(JSON.stringify(payload), {
-    status: 200,
+    status,
+    statusText,
     headers: { 'Content-Type': 'application/json' }
   });
+}
+
+function createAuthSession() {
+  return {
+    token: 'aegis_test_token',
+    token_type: 'bearer',
+    expires_at: '2026-05-08T00:00:00Z',
+    user: {
+      id: 'user-1',
+      name: 'Gabriel',
+      email: 'gabriel@example.com',
+      plan: 'pro',
+      role: 'user',
+      status: 'active',
+      created_at: '2026-05-07T00:00:00Z'
+    }
+  };
 }
 
 function createStreamBody(chunks: string[]) {

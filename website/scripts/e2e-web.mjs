@@ -57,6 +57,7 @@ try {
       headless: !headed
     });
     await exercisePublicWebsiteRoutes(browser);
+    await exercisePublicRegisterForm(browser);
     await exerciseProtectedAuthGate(browser);
     page = await browser.newPage({ acceptDownloads: true, viewport: { width: 1440, height: 1050 } });
     await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: frontendUrl });
@@ -268,6 +269,48 @@ async function exercisePublicWebsiteRoutes(browser) {
     assert(publicIssues.length === 0, `Public website console reported warning/error output:\n${publicIssues.join('\n')}`);
   } finally {
     await publicPage.close().catch(() => {});
+  }
+}
+
+async function exercisePublicRegisterForm(browser) {
+  const registerContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const registerPage = await registerContext.newPage();
+  const registerIssues = [];
+  const registerResponses = [];
+  registerPage.on('console', (message) => {
+    if (['warning', 'error'].includes(message.type())) {
+      if (message.text().includes('Failed to load resource')) return;
+      registerIssues.push(`${message.type()}: ${message.text()}`);
+    }
+  });
+  registerPage.on('pageerror', (error) => {
+    registerIssues.push(`pageerror: ${error.stack || error.message}`);
+  });
+  registerPage.on('response', (response) => {
+    if (response.url().includes('/api/auth/register')) {
+      registerResponses.push(`${response.status()} ${response.url()}`);
+    }
+  });
+
+  try {
+    await registerPage.goto(`${frontendUrl}/register`, { waitUntil: 'domcontentloaded' });
+    await registerPage.getByLabel('Name').fill('Auralith Register E2E');
+    await registerPage.getByLabel('Email').fill(`auralith-register-form-${Date.now()}-${process.pid}@example.test`);
+    await registerPage.getByRole('textbox', { name: 'Password', exact: true }).fill('AuralithPass123!');
+    await registerPage.getByRole('textbox', { name: 'Confirm Password', exact: true }).fill('AuralithPass123!');
+    await clickUnique(registerPage.getByRole('button', { name: 'Register', exact: true }), 'public register submit button');
+    await waitForBrowserPath(registerPage, '/app', 'public register redirect', 15_000);
+    const storedAuthSession = await registerPage.evaluate((key) => localStorage.getItem(key), authSessionStorageKey);
+    assert(storedAuthSession, 'Public register form did not persist an auth session.');
+    assert(
+      registerResponses.some((entry) => entry.startsWith('200 ')),
+      `Public register form did not receive a successful auth response. Responses:\n${registerResponses.join('\n')}`
+    );
+    await assertNoHorizontalOverflow(registerPage, 'public register form after submit');
+
+    assert(registerIssues.length === 0, `Public register form console reported warning/error output:\n${registerIssues.join('\n')}`);
+  } finally {
+    await registerContext.close().catch(() => {});
   }
 }
 

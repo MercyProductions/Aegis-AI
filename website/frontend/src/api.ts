@@ -158,10 +158,130 @@ import type {
   WorkflowRunResponse
 } from './types';
 
-const API_BASE = (import.meta.env.VITE_API_BASE ?? 'http://127.0.0.1:8787').replace(/\/+$/, '');
+const EXPLICIT_API_BASE = (import.meta.env.VITE_API_BASE ?? '').replace(/\/+$/, '');
+const DEFAULT_API_BASES = ['', 'http://127.0.0.1:8787', 'http://127.0.0.1:8793'];
+const IS_TEST_MODE = import.meta.env.MODE === 'test';
+
+let resolvedApiBase = EXPLICIT_API_BASE;
+let apiBaseDiscovered = Boolean(EXPLICIT_API_BASE);
+let apiDiscoveryEnabledForTests = false;
+
+function apiBaseCandidates(): string[] {
+  if (EXPLICIT_API_BASE) return [EXPLICIT_API_BASE];
+
+  return [resolvedApiBase, ...DEFAULT_API_BASES].filter((base, index, bases) => bases.indexOf(base) === index);
+}
+
+function apiUrl(base: string, path: string): string {
+  return `${base}${path}`;
+}
+
+function shouldRetryApiBase(response: Response): boolean {
+  return !EXPLICIT_API_BASE && [404, 502, 503, 504].includes(response.status);
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === 'AbortError';
+}
+
+function shouldRetryFetchError(error: unknown): boolean {
+  return !EXPLICIT_API_BASE && !isAbortError(error);
+}
+
+function shouldDiscoverApiBase(): boolean {
+  return !EXPLICIT_API_BASE && !apiBaseDiscovered && (!IS_TEST_MODE || apiDiscoveryEnabledForTests);
+}
+
+function isAuralithHealthPayload(payload: unknown): boolean {
+  if (!payload || typeof payload !== 'object') return false;
+
+  const candidate = payload as { app?: unknown; runtime_name?: unknown; product?: unknown };
+  return [candidate.app, candidate.runtime_name, candidate.product].some(
+    (value) => typeof value === 'string' && value.toLowerCase().includes('auralith')
+  );
+}
+
+async function discoverApiBase(): Promise<void> {
+  if (!shouldDiscoverApiBase()) return;
+
+  let firstHealthyBase: string | null = null;
+
+  for (const base of DEFAULT_API_BASES) {
+    try {
+      const response = await fetch(apiUrl(base, '/api/health'), {
+        headers: { Accept: 'application/json' }
+      });
+
+      if (!response.ok) continue;
+      const payload = (await response.json().catch(() => null)) as unknown;
+
+      if (firstHealthyBase === null) {
+        firstHealthyBase = base;
+      }
+
+      if (isAuralithHealthPayload(payload)) {
+        resolvedApiBase = base;
+        apiBaseDiscovered = true;
+        return;
+      }
+    } catch {
+      // Try the next local candidate.
+    }
+  }
+
+  resolvedApiBase = firstHealthyBase ?? '';
+  apiBaseDiscovered = true;
+}
+
+async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
+  let lastResponse: Response | null = null;
+  let lastError: unknown = null;
+
+  await discoverApiBase();
+
+  if (init?.signal?.aborted) {
+    throw new DOMException('The operation was aborted.', 'AbortError');
+  }
+
+  for (const base of apiBaseCandidates()) {
+    try {
+      const response = await fetch(apiUrl(base, path), init);
+
+      if (response.ok || !shouldRetryApiBase(response)) {
+        resolvedApiBase = base;
+        return response;
+      }
+
+      lastResponse = response;
+    } catch (error) {
+      lastError = error;
+      if (!shouldRetryFetchError(error)) {
+        throw error;
+      }
+    }
+  }
+
+  if (lastResponse) return lastResponse;
+
+  if (lastError instanceof Error) {
+    throw lastError;
+  }
+
+  throw new Error('Aegis Core API is not reachable');
+}
+
+export function __resetApiBaseForTests(): void {
+  resolvedApiBase = EXPLICIT_API_BASE;
+  apiBaseDiscovered = Boolean(EXPLICIT_API_BASE);
+  apiDiscoveryEnabledForTests = false;
+}
+
+export function __setApiDiscoveryForTests(enabled: boolean): void {
+  apiDiscoveryEnabledForTests = enabled;
+}
 
 async function jsonFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
+  const response = await apiFetch(path, {
     headers: {
       'Content-Type': 'application/json',
       ...(init?.headers ?? {})
@@ -327,7 +447,7 @@ export async function streamAgentMessage(
     signal?: AbortSignal;
   } = {}
 ): Promise<AgentResponse> {
-  const response = await fetch(`${API_BASE}/api/chat/stream`, {
+  const response = await apiFetch('/api/chat/stream', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
