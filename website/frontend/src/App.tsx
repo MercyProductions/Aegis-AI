@@ -240,6 +240,15 @@ import {
   validationResultStatus,
   validationRunClipboardText
 } from './utils/validationStatus';
+import {
+  createValidationRepairTrailId,
+  filterValidationRepairTrail,
+  validationRepairTrailEventStatus,
+  validationRepairTrailStatusFilters,
+  validationRepairTrailStatusLabel,
+  type ValidationRepairTrailItem,
+  type ValidationRepairTrailStatusFilter
+} from './utils/validationRepairTrail';
 import type { ConnectionState } from './utils/connection';
 import type { ChatThreadPreview, SavedConversation } from './utils/conversations';
 import type { QueuedMessage } from './utils/messageQueue';
@@ -356,33 +365,8 @@ const defaultAssistantMission =
 type SubmitOptions = Partial<QueuedMessage> & {
   repairTrailId?: string;
 };
-type ValidationRepairTrailStatus = 'sent' | 'passed' | 'failed';
-type ValidationRepairTrailStatusFilter = 'all' | ValidationRepairTrailStatus;
 type ActivityFilter = 'all' | 'issues' | 'commands';
-type ValidationRepairTrailChange = Pick<FileChange, 'action' | 'path'>;
 type TaskBoardFilter = 'active' | 'completed' | 'failed' | 'all';
-type ValidationRepairTrailItem = {
-  id: string;
-  createdAt: string;
-  command: string;
-  prompt: string;
-  followUpPrompt: string;
-  sourceSummary: string;
-  sourceReason: string;
-  sourceExitCode: number | null;
-  contextChanges: ValidationRepairTrailChange[];
-  contextPaths: string[];
-  status: ValidationRepairTrailStatus;
-  resultSummary: string;
-  resultExitCode: number | null;
-  responseTaskId: string;
-};
-const validationRepairTrailStatusFilters: Array<{ value: ValidationRepairTrailStatusFilter; label: string }> = [
-  { value: 'all', label: 'All' },
-  { value: 'sent', label: 'Sent' },
-  { value: 'failed', label: 'Failed' },
-  { value: 'passed', label: 'Passed' }
-];
 const activityFilterOptions: Array<{ value: ActivityFilter; label: string; ariaLabel: string }> = [
   { value: 'all', label: 'All', ariaLabel: 'Show all activity events' },
   { value: 'issues', label: 'Issues', ariaLabel: 'Show issue activity events' },
@@ -9874,56 +9858,6 @@ function latestProjectThread(
   if (!candidate) return current;
   if (!current) return candidate;
   return new Date(candidate.updatedAt).getTime() > new Date(current.updatedAt).getTime() ? candidate : current;
-}
-
-function validationRepairTrailStatusLabel(status: ValidationRepairTrailStatus): string {
-  if (status === 'passed') return 'Passed';
-  if (status === 'failed') return 'Failed';
-  return 'Sent';
-}
-
-function validationRepairTrailEventStatus(status: ValidationRepairTrailStatus): 'ok' | 'warning' | 'error' {
-  if (status === 'passed') return 'ok';
-  if (status === 'failed') return 'error';
-  return 'warning';
-}
-
-function filterValidationRepairTrail(
-  items: ValidationRepairTrailItem[],
-  search: string,
-  statusFilter: ValidationRepairTrailStatusFilter
-): ValidationRepairTrailItem[] {
-  const term = search.trim().toLowerCase();
-
-  return items.filter((item) => {
-    if (statusFilter !== 'all' && item.status !== statusFilter) return false;
-    if (!term) return true;
-    return validationRepairTrailSearchText(item).includes(term);
-  });
-}
-
-function validationRepairTrailSearchText(item: ValidationRepairTrailItem): string {
-  return [
-    item.command,
-    validationRepairTrailStatusLabel(item.status),
-    item.prompt,
-    item.followUpPrompt,
-    item.sourceSummary,
-    item.sourceReason,
-    item.resultSummary,
-    item.resultExitCode === null ? '' : `exit ${item.resultExitCode}`,
-    item.sourceExitCode === null ? '' : `exit ${item.sourceExitCode}`,
-    item.responseTaskId,
-    ...item.contextPaths,
-    ...item.contextChanges.map((change) => `${change.action} ${change.path}`)
-  ]
-    .filter(Boolean)
-    .join('\n')
-    .toLowerCase();
-}
-
-function createValidationRepairTrailId(): string {
-  return `repair-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 export default App;
