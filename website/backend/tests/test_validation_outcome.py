@@ -2,17 +2,21 @@ from __future__ import annotations
 
 from pathlib import Path
 import sys
+from types import SimpleNamespace
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from aegis_ai.commands import CommandResult
 from aegis_ai.schemas import CommandRun
 from aegis_ai.validation_outcome import (
+    categorize_command_result,
     categorize_validation_failure,
     error_signature,
     repair_outcome,
     repair_strategy_hint,
     repair_summary,
+    summarize_command_result,
     validation_ok,
     validation_score,
 )
@@ -50,6 +54,64 @@ class ValidationOutcomeTests(unittest.TestCase):
         for validation, expected in cases:
             with self.subTest(expected=expected):
                 self.assertEqual(categorize_validation_failure(validation), expected)
+
+    def test_categorizes_command_results_by_control_state_recipe_and_output(self) -> None:
+        recipe = SimpleNamespace(source="detected", notes="Detected from package.json")
+        cases = [
+            (command_result(timed_out=True), None, "timeout"),
+            (command_result(allowed=False), None, "permission"),
+            (command_result(exit_code=0), None, "success"),
+            (command_result(stderr="SyntaxError: unexpected token"), None, "syntax"),
+            (command_result(stderr="Cannot find module './missing'"), None, "dependency"),
+            (command_result(stderr="TypeError from tsc"), None, "typecheck"),
+            (command_result(stderr="AssertionError expected 200"), None, "test"),
+            (command_result(stderr="permission denied"), None, "permission"),
+            (command_result(stderr="Traceback RuntimeError exception"), None, "runtime"),
+            (command_result(command="vite build", stderr="compilation error"), None, "build"),
+            (command_result(stderr="unclassified output"), recipe, "build"),
+            (command_result(stderr="unclassified output"), None, "unknown"),
+        ]
+
+        for result, result_recipe, expected in cases:
+            with self.subTest(expected=expected):
+                self.assertEqual(categorize_command_result(result, recipe=result_recipe), expected)
+
+    def test_summarizes_command_results_without_agent_runtime_dependency(self) -> None:
+        recipe = SimpleNamespace(label="Build App")
+
+        self.assertEqual(
+            summarize_command_result(command_result(timed_out=True), category="timeout", recipe=recipe),
+            "Build App timed out before finishing.",
+        )
+        self.assertEqual(
+            summarize_command_result(
+                command_result(allowed=False, reason="Command blocked by policy."),
+                category="permission",
+            ),
+            "Command blocked by policy.",
+        )
+        self.assertEqual(
+            summarize_command_result(command_result(exit_code=0, command="npm test"), category="success"),
+            "npm test completed successfully.",
+        )
+        self.assertEqual(
+            summarize_command_result(
+                command_result(
+                    command="npm run validate",
+                    steps=[{"index": 2, "command": "npm test", "ok": False}],
+                ),
+                category="test",
+            ),
+            "npm run validate failed at step 2: npm test.",
+        )
+        self.assertEqual(
+            summarize_command_result(command_result(stderr="Cannot find module './missing'"), category="dependency"),
+            "Validation failed because a dependency, import, or module could not be resolved.",
+        )
+        self.assertEqual(
+            summarize_command_result(command_result(stderr="unknown failure"), category="not-a-category"),
+            "Validation failed.",
+        )
 
     def test_validation_score_orders_failure_risk(self) -> None:
         self.assertEqual(validation_score(command_run(exit_code=0)), 0)
@@ -128,6 +190,30 @@ def command_run(
         reason=reason,
         category=category,
         summary="",
+    )
+
+
+def command_result(
+    *,
+    command: str = "npm run validate",
+    allowed: bool = True,
+    exit_code: int | None = 1,
+    stdout: str = "",
+    stderr: str = "",
+    timed_out: bool = False,
+    reason: str = "",
+    steps: list[dict[str, object]] | None = None,
+) -> CommandResult:
+    return CommandResult(
+        command=command,
+        cwd="workspace",
+        allowed=allowed,
+        exit_code=exit_code,
+        stdout=stdout,
+        stderr=stderr,
+        timed_out=timed_out,
+        reason=reason,
+        steps=steps or [],
     )
 
 

@@ -90,11 +90,13 @@ from .validation_diagnostics import (
     validation_steps_log,
 )
 from .validation_outcome import (
+    categorize_command_result as outcome_categorize_command_result,
     categorize_validation_failure as outcome_categorize_validation_failure,
     error_signature as outcome_error_signature,
     repair_outcome as outcome_repair_outcome,
     repair_strategy_hint as outcome_repair_strategy_hint,
     repair_summary as outcome_repair_summary,
+    summarize_command_result as outcome_summarize_command_result,
     validation_ok as outcome_validation_ok,
     validation_score as outcome_validation_score,
 )
@@ -6888,66 +6890,10 @@ Large-file behavior:
         return outcome_categorize_validation_failure(validation)
 
     def _categorize_command_result(self, result: CommandResult, *, recipe=None) -> str:
-        if result.timed_out:
-            return "timeout"
-        if not result.allowed:
-            return "permission"
-        if result.exit_code == 0:
-            return "success"
-
-        text = "\n".join(
-            [
-                result.command,
-                result.reason,
-                result.stdout[-4000:],
-                result.stderr[-4000:],
-            ]
-        ).lower()
-
-        if any(token in text for token in ("syntaxerror", "parseerror", "unexpected token", "expected ':'", "expected ')'", "eof while scanning")):
-            return "syntax"
-        if any(token in text for token in ("module not found", "cannot find module", "no module named", "importerror", "modulenotfounderror", "could not resolve")):
-            return "dependency"
-        if any(token in text for token in ("type error", "typeerror", "typescript", "tsc", "mypy", "pyright", "typecheck", "type-check")):
-            return "typecheck"
-        if any(token in text for token in ("assertionerror", "failed", "expected", "pytest", "jest", "vitest", "failing test", "test suite")):
-            return "test"
-        if any(token in text for token in ("permission denied", "access is denied", "not permitted")):
-            return "permission"
-        if any(token in text for token in ("traceback", "exception", "runtimeerror", "referenceerror", "valueerror", "nullreferenceexception")):
-            return "runtime"
-        if any(token in text for token in ("build", "compile", "compilation", "error ts", "vite", "webpack", "cargo", "dotnet build")):
-            return "build"
-        if getattr(recipe, "source", "") == "detected" and getattr(recipe, "notes", ""):
-            return "build"
-        return "unknown"
+        return outcome_categorize_command_result(result, recipe=recipe)
 
     def _summarize_command_result(self, result: CommandResult, *, category: str, recipe=None) -> str:
-        label = getattr(recipe, "label", "") or result.command
-
-        if result.timed_out:
-            return f"{label} timed out before finishing."
-        if not result.allowed:
-            return result.reason or f"{label} was blocked by the current control settings."
-        if result.exit_code == 0:
-            return f"{label} completed successfully."
-
-        failed_step, failed_step_command = self._failed_step_parts_from_steps(list(result.steps))
-        if failed_step_command:
-            step_label = f"step {failed_step}" if failed_step else "a chained validation step"
-            return f"{label} failed at {step_label}: {failed_step_command}."
-
-        summaries = {
-            "syntax": "Validation failed with a syntax or parse error.",
-            "dependency": "Validation failed because a dependency, import, or module could not be resolved.",
-            "typecheck": "Validation failed with a type-checking error.",
-            "test": "Validation failed because the test suite reported failing assertions.",
-            "build": "Validation failed during build or compilation.",
-            "runtime": "Validation failed because the code raised a runtime exception.",
-            "permission": "Validation could not run because the current control settings blocked it.",
-            "unknown": "Validation failed, but the root cause was not classified cleanly.",
-        }
-        return summaries.get(category, "Validation failed.")
+        return outcome_summarize_command_result(result, category=category, recipe=recipe)
 
     def _repair_outcome(self, before: CommandRun, after: CommandRun | None) -> str:
         return outcome_repair_outcome(before, after)

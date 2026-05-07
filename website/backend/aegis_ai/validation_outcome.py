@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+from typing import Any
+
+from .commands import CommandResult
 from .schemas import CommandRun
+from .validation_diagnostics import failed_step_parts_from_steps
 
 
 def validation_ok(validation: CommandRun) -> bool:
@@ -43,6 +47,70 @@ def categorize_validation_failure(validation: CommandRun) -> str:
     if any(token in text for token in ("traceback", "exception", "runtimeerror", "referenceerror", "valueerror")):
         return "runtime"
     return "unknown"
+
+
+def categorize_command_result(result: CommandResult, *, recipe: Any = None) -> str:
+    if result.timed_out:
+        return "timeout"
+    if not result.allowed:
+        return "permission"
+    if result.exit_code == 0:
+        return "success"
+
+    text = "\n".join(
+        [
+            result.command,
+            result.reason,
+            result.stdout[-4000:],
+            result.stderr[-4000:],
+        ]
+    ).lower()
+
+    if any(token in text for token in ("syntaxerror", "parseerror", "unexpected token", "expected ':'", "expected ')'", "eof while scanning")):
+        return "syntax"
+    if any(token in text for token in ("module not found", "cannot find module", "no module named", "importerror", "modulenotfounderror", "could not resolve")):
+        return "dependency"
+    if any(token in text for token in ("type error", "typeerror", "typescript", "tsc", "mypy", "pyright", "typecheck", "type-check")):
+        return "typecheck"
+    if any(token in text for token in ("assertionerror", "failed", "expected", "pytest", "jest", "vitest", "failing test", "test suite")):
+        return "test"
+    if any(token in text for token in ("permission denied", "access is denied", "not permitted")):
+        return "permission"
+    if any(token in text for token in ("traceback", "exception", "runtimeerror", "referenceerror", "valueerror", "nullreferenceexception")):
+        return "runtime"
+    if any(token in text for token in ("build", "compile", "compilation", "error ts", "vite", "webpack", "cargo", "dotnet build")):
+        return "build"
+    if getattr(recipe, "source", "") == "detected" and getattr(recipe, "notes", ""):
+        return "build"
+    return "unknown"
+
+
+def summarize_command_result(result: CommandResult, *, category: str, recipe: Any = None) -> str:
+    label = getattr(recipe, "label", "") or result.command
+
+    if result.timed_out:
+        return f"{label} timed out before finishing."
+    if not result.allowed:
+        return result.reason or f"{label} was blocked by the current control settings."
+    if result.exit_code == 0:
+        return f"{label} completed successfully."
+
+    failed_step, failed_step_command = failed_step_parts_from_steps(list(result.steps))
+    if failed_step_command:
+        step_label = f"step {failed_step}" if failed_step else "a chained validation step"
+        return f"{label} failed at {step_label}: {failed_step_command}."
+
+    summaries = {
+        "syntax": "Validation failed with a syntax or parse error.",
+        "dependency": "Validation failed because a dependency, import, or module could not be resolved.",
+        "typecheck": "Validation failed with a type-checking error.",
+        "test": "Validation failed because the test suite reported failing assertions.",
+        "build": "Validation failed during build or compilation.",
+        "runtime": "Validation failed because the code raised a runtime exception.",
+        "permission": "Validation could not run because the current control settings blocked it.",
+        "unknown": "Validation failed, but the root cause was not classified cleanly.",
+    }
+    return summaries.get(category, "Validation failed.")
 
 
 def validation_score(validation: CommandRun) -> int:
