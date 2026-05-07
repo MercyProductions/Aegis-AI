@@ -235,14 +235,16 @@ import { filterWorkspaceFiles } from './utils/workspaceFiles';
 import {
   combinedApplyValidationStatus,
   validationRepairBriefClipboardText,
-  validationRepairFollowUpPromptText,
-  validationRepairPromptText,
   validationResultStatus,
   validationRunClipboardText
 } from './utils/validationStatus';
 import {
+  buildValidationRepairSubmission,
+  createValidationRepairTrailItem,
   createValidationRepairTrailId,
   filterValidationRepairTrail,
+  updateValidationRepairTrailFollowUpSent,
+  updateValidationRepairTrailResult,
   validationRepairTrailEventStatus,
   validationRepairTrailStatusFilters,
   validationRepairTrailStatusLabel,
@@ -3640,24 +3642,8 @@ function App() {
     );
   }
 
-  function buildValidationRepairSubmission() {
-    if (!validation || !validationNeedsRepair) return null;
-
-    const contextChanges =
-      activeValidationContext?.changes.map((change) => ({
-        action: change.action,
-        path: change.path
-      })) ?? [];
-    const context = contextChanges.length ? { changes: contextChanges } : undefined;
-    return {
-      prompt: validationRepairPromptText(validation, context),
-      contextChanges,
-      contextPaths: contextChanges.map((change) => change.path)
-    };
-  }
-
   function draftValidationRepairPrompt() {
-    const repair = buildValidationRepairSubmission();
+    const repair = buildValidationRepairSubmission(validation, validationNeedsRepair, activeValidationContext);
     if (!repair) return;
 
     setMessage(repair.prompt);
@@ -3677,27 +3663,17 @@ function App() {
   }
 
   async function sendValidationRepairPrompt() {
-    const repair = buildValidationRepairSubmission();
+    const repair = buildValidationRepairSubmission(validation, validationNeedsRepair, activeValidationContext);
     if (!repair || !validation || loading) return;
 
     const repairTrailId = createValidationRepairTrailId();
     setValidationRepairTrail((current) => [
-      {
+      createValidationRepairTrailItem({
         id: repairTrailId,
         createdAt: new Date().toISOString(),
-        command: validation.command || 'validation',
-        prompt: repair.prompt,
-        followUpPrompt: '',
-        sourceSummary: validation.summary || 'Validation failed.',
-        sourceReason: validation.reason,
-        sourceExitCode: validation.exit_code,
-        contextChanges: repair.contextChanges,
-        contextPaths: repair.contextPaths,
-        status: 'sent',
-        resultSummary: 'Repair request sent. Waiting for follow-up validation.',
-        resultExitCode: null,
-        responseTaskId: ''
-      },
+        validation,
+        submission: repair
+      }),
       ...current
     ]);
 
@@ -3711,37 +3687,7 @@ function App() {
   }
 
   function recordValidationRepairResult(repairTrailId: string, response: AgentResponse) {
-    setValidationRepairTrail((current) =>
-      current.map((item) => {
-        if (item.id !== repairTrailId) return item;
-
-        const validationResult = response.validation;
-        if (!validationResult) {
-          return {
-            ...item,
-            resultSummary: 'Repair response finished without follow-up validation.',
-            responseTaskId: response.task_id
-          };
-        }
-
-        const passed = validationResult.allowed && !validationResult.timed_out && validationResult.exit_code === 0;
-        const followUpPrompt = passed
-          ? ''
-          : validationRepairFollowUpPromptText(
-              item.prompt,
-              validationResult,
-              item.contextChanges.length ? { changes: item.contextChanges } : undefined
-            );
-        return {
-          ...item,
-          status: passed ? 'passed' : 'failed',
-          resultSummary: validationResult.summary || validationResult.reason || validationResult.stderr || validationResult.stdout || 'Validation result available.',
-          resultExitCode: validationResult.exit_code,
-          followUpPrompt,
-          responseTaskId: response.task_id
-        };
-      })
-    );
+    setValidationRepairTrail((current) => updateValidationRepairTrailResult(current, repairTrailId, response));
   }
 
   function draftValidationRepairFollowUp(item: ValidationRepairTrailItem) {
@@ -3762,21 +3708,7 @@ function App() {
   async function sendValidationRepairFollowUp(item: ValidationRepairTrailItem) {
     if (!item.followUpPrompt || loading) return;
 
-    setValidationRepairTrail((current) =>
-      current.map((candidate) =>
-        candidate.id === item.id
-          ? {
-              ...candidate,
-              prompt: item.followUpPrompt,
-              followUpPrompt: '',
-              status: 'sent',
-              resultSummary: 'Follow-up repair request sent. Waiting for validation.',
-              resultExitCode: null,
-              responseTaskId: ''
-            }
-          : candidate
-      )
-    );
+    setValidationRepairTrail((current) => updateValidationRepairTrailFollowUpSent(current, item.id));
 
     await submit(undefined, item.followUpPrompt, undefined, {
       applyChanges: false,

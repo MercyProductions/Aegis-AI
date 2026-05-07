@@ -1,4 +1,5 @@
-import type { FileChange } from '../types';
+import type { AgentResponse, CommandRun, FileChange } from '../types';
+import { validationRepairFollowUpPromptText, validationRepairPromptText } from './validationStatus';
 
 export type ValidationRepairTrailStatus = 'sent' | 'passed' | 'failed';
 export type ValidationRepairTrailStatusFilter = 'all' | ValidationRepairTrailStatus;
@@ -19,6 +20,16 @@ export type ValidationRepairTrailItem = {
   resultSummary: string;
   resultExitCode: number | null;
   responseTaskId: string;
+};
+
+export type ValidationRepairSubmission = {
+  prompt: string;
+  contextChanges: ValidationRepairTrailChange[];
+  contextPaths: string[];
+};
+
+export type ValidationRepairSubmissionContext = {
+  changes: ValidationRepairTrailChange[];
 };
 
 export const validationRepairTrailStatusFilters: Array<{
@@ -81,4 +92,115 @@ export function validationRepairTrailSearchText(item: ValidationRepairTrailItem)
 
 export function createValidationRepairTrailId(): string {
   return `repair-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+export function buildValidationRepairSubmission(
+  validation: CommandRun | null,
+  validationNeedsRepair: boolean,
+  activeContext?: ValidationRepairSubmissionContext | null
+): ValidationRepairSubmission | null {
+  if (!validation || !validationNeedsRepair) return null;
+
+  const contextChanges =
+    activeContext?.changes.map((change) => ({
+      action: change.action,
+      path: change.path
+    })) ?? [];
+  const context = contextChanges.length ? { changes: contextChanges } : undefined;
+
+  return {
+    prompt: validationRepairPromptText(validation, context),
+    contextChanges,
+    contextPaths: contextChanges.map((change) => change.path)
+  };
+}
+
+export function createValidationRepairTrailItem(input: {
+  id: string;
+  createdAt: string;
+  validation: CommandRun;
+  submission: ValidationRepairSubmission;
+}): ValidationRepairTrailItem {
+  return {
+    id: input.id,
+    createdAt: input.createdAt,
+    command: input.validation.command || 'validation',
+    prompt: input.submission.prompt,
+    followUpPrompt: '',
+    sourceSummary: input.validation.summary || 'Validation failed.',
+    sourceReason: input.validation.reason,
+    sourceExitCode: input.validation.exit_code,
+    contextChanges: input.submission.contextChanges,
+    contextPaths: input.submission.contextPaths,
+    status: 'sent',
+    resultSummary: 'Repair request sent. Waiting for follow-up validation.',
+    resultExitCode: null,
+    responseTaskId: ''
+  };
+}
+
+export function applyValidationRepairResult(
+  item: ValidationRepairTrailItem,
+  response: Pick<AgentResponse, 'task_id' | 'validation'>
+): ValidationRepairTrailItem {
+  const validationResult = response.validation;
+  if (!validationResult) {
+    return {
+      ...item,
+      resultSummary: 'Repair response finished without follow-up validation.',
+      responseTaskId: response.task_id
+    };
+  }
+
+  const passed = validationResult.allowed && !validationResult.timed_out && validationResult.exit_code === 0;
+  const followUpPrompt = passed
+    ? ''
+    : validationRepairFollowUpPromptText(
+        item.prompt,
+        validationResult,
+        item.contextChanges.length ? { changes: item.contextChanges } : undefined
+      );
+
+  return {
+    ...item,
+    status: passed ? 'passed' : 'failed',
+    resultSummary:
+      validationResult.summary ||
+      validationResult.reason ||
+      validationResult.stderr ||
+      validationResult.stdout ||
+      'Validation result available.',
+    resultExitCode: validationResult.exit_code,
+    followUpPrompt,
+    responseTaskId: response.task_id
+  };
+}
+
+export function updateValidationRepairTrailResult(
+  items: ValidationRepairTrailItem[],
+  repairTrailId: string,
+  response: Pick<AgentResponse, 'task_id' | 'validation'>
+): ValidationRepairTrailItem[] {
+  return items.map((item) =>
+    item.id === repairTrailId ? applyValidationRepairResult(item, response) : item
+  );
+}
+
+export function markValidationRepairFollowUpSent(item: ValidationRepairTrailItem): ValidationRepairTrailItem {
+  return {
+    ...item,
+    prompt: item.followUpPrompt,
+    followUpPrompt: '',
+    status: 'sent',
+    resultSummary: 'Follow-up repair request sent. Waiting for validation.',
+    resultExitCode: null,
+    responseTaskId: ''
+  };
+}
+
+export function updateValidationRepairTrailFollowUpSent(
+  items: ValidationRepairTrailItem[],
+  repairTrailId: string
+): ValidationRepairTrailItem[] {
+  return items.map((item) => (item.id === repairTrailId ? markValidationRepairFollowUpSent(item) : item));
 }
