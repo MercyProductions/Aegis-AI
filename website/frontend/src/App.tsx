@@ -1,6 +1,6 @@
 // frontend/src/App.tsx
 import type { CSSProperties, FormEvent, ReactNode } from 'react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   ArrowDown,
@@ -122,11 +122,7 @@ import {
   updateValidationProfile
 } from './api';
 import { brandAssets } from './brandAssets';
-import { MemoryEditor } from './components/MemoryEditor';
 import { ModelSelector } from './components/ModelSelector';
-import { ApprovalSettings } from './components/ApprovalSettings';
-import { ObservabilityPanel } from './components/ObservabilityPanel';
-import { PublicSite } from './components/PublicSite';
 import { TaskStatusSummary } from './components/TaskStatusSummary';
 import {
   connectionStateDetail,
@@ -291,6 +287,19 @@ import type {
   WorkspaceFile,
   WorkspaceProfileResponse
 } from './types';
+
+const ApprovalSettings = lazy(() =>
+  import('./components/ApprovalSettings').then((module) => ({ default: module.ApprovalSettings }))
+);
+const MemoryEditor = lazy(() =>
+  import('./components/MemoryEditor').then((module) => ({ default: module.MemoryEditor }))
+);
+const ObservabilityPanel = lazy(() =>
+  import('./components/ObservabilityPanel').then((module) => ({ default: module.ObservabilityPanel }))
+);
+const PublicSite = lazy(() =>
+  import('./components/PublicSite').then((module) => ({ default: module.PublicSite }))
+);
 
 const starterPrompts = [
   'Help me debug this error',
@@ -462,6 +471,11 @@ function currentBrowserRoute() {
   return normalizeRoutePath(window.location.pathname);
 }
 
+function currentViewportSize() {
+  if (typeof window === 'undefined') return { width: 1440, height: 900 };
+  return { width: window.innerWidth, height: window.innerHeight };
+}
+
 function isProtectedAppRoute(path: string) {
   const route = normalizeRoutePath(path);
   return route === '/app' || route.startsWith('/app/');
@@ -579,6 +593,7 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showMemoryEditor, setShowMemoryEditor] = useState(false);
   const [showApprovalSettings, setShowApprovalSettings] = useState(false);
+  const [viewportSize, setViewportSize] = useState(currentViewportSize);
   const [retryCount, setRetryCount] = useState(0);
   const [maxRetries, setMaxRetries] = useState(3);
   const [chatSearch, setChatSearch] = useState('');
@@ -776,6 +791,16 @@ function App() {
     }
     window.addEventListener('popstate', handleRouteChange);
     return () => window.removeEventListener('popstate', handleRouteChange);
+  }, []);
+
+  useEffect(() => {
+    function handleViewportResize() {
+      setViewportSize(currentViewportSize());
+    }
+
+    handleViewportResize();
+    window.addEventListener('resize', handleViewportResize);
+    return () => window.removeEventListener('resize', handleViewportResize);
   }, []);
 
   useEffect(() => {
@@ -1200,6 +1225,9 @@ function App() {
   }, [selectedTaskId]);
 
   const detailsPanelVisible = showDetailsPanel;
+  const compactLayout = viewportSize.width < 1180;
+  const narrowLayout = viewportSize.width < 720;
+  const effectiveDetailsPanelVisible = detailsPanelVisible && !compactLayout;
   const composerWillQueue = loading || connectionState !== 'connected';
   const runtimeDiagnostics = useMemo(
     () =>
@@ -8510,29 +8538,33 @@ function App() {
   const routeIsProtected = isProtectedAppRoute(routePath);
   if (!routeIsProtected) {
     return (
-      <PublicSite
-        routePath={routePath}
-        authLoading={authLoading}
-        authStatus={authStatus}
-        onNavigate={navigateTo}
-        onLogin={handleLogin}
-        onRegister={handleRegister}
-        onForgotPassword={handleForgotPassword}
-      />
+      <Suspense fallback={<div style={styles.routeFallback(palette)}>Loading {productName}...</div>}>
+        <PublicSite
+          routePath={routePath}
+          authLoading={authLoading}
+          authStatus={authStatus}
+          onNavigate={navigateTo}
+          onLogin={handleLogin}
+          onRegister={handleRegister}
+          onForgotPassword={handleForgotPassword}
+        />
+      </Suspense>
     );
   }
 
   if (!authSession) {
     return (
-      <PublicSite
-        routePath="/login"
-        authLoading={authLoading}
-        authStatus={authStatus}
-        onNavigate={navigateTo}
-        onLogin={handleLogin}
-        onRegister={handleRegister}
-        onForgotPassword={handleForgotPassword}
-      />
+      <Suspense fallback={<div style={styles.routeFallback(palette)}>Loading secure access...</div>}>
+        <PublicSite
+          routePath="/login"
+          authLoading={authLoading}
+          authStatus={authStatus}
+          onNavigate={navigateTo}
+          onLogin={handleLogin}
+          onRegister={handleRegister}
+          onForgotPassword={handleForgotPassword}
+        />
+      </Suspense>
     );
   }
 
@@ -8542,9 +8574,9 @@ function App() {
   return (
     <div style={styles.appShell(palette)}>
       <div style={styles.backdrop(palette)} />
-      <div style={styles.frame}>
-        <header style={styles.header(palette)}>
-          <div style={styles.topSearch(palette)} className="aegis-search-surface">
+      <div style={styles.frame(compactLayout)}>
+        <header style={styles.header(palette, compactLayout, narrowLayout)}>
+          <div style={styles.topSearch(palette, compactLayout)} className="aegis-search-surface">
             <Search size={17} />
             <input
               value={chatSearch}
@@ -8555,7 +8587,7 @@ function App() {
             />
           </div>
 
-          <div style={styles.headerActions}>
+          <div style={styles.headerActions(narrowLayout)}>
             <span style={styles.topStatusPill(palette, connectionState === 'connected')}>
               <span style={styles.statusDot(palette, connectionState === 'connected')} />
               {connectionStateLabel(connectionState)}
@@ -8606,7 +8638,7 @@ function App() {
           </div>
         </header>
 
-        <div style={styles.utilityBar(palette)}>
+        <div style={styles.utilityBar(palette, compactLayout)}>
           <div style={styles.sidebarBrand}>
             <div style={styles.brandIcon(palette)}>
               <img style={styles.brandIconImage} src={brandAssets.mark} alt="" aria-hidden="true" />
@@ -8617,7 +8649,7 @@ function App() {
             </div>
           </div>
 
-          <div style={styles.utilityActions}>
+          <div style={styles.utilityActions(compactLayout)}>
             <button
               type="button"
               className="aegis-primary-action"
@@ -8649,10 +8681,10 @@ function App() {
             </button>
           </div>
 
-          <div style={styles.sidebarNav}>
+          <div style={styles.sidebarNav(compactLayout)}>
             <button
               type="button"
-              style={styles.sidebarNavItem(palette, activeSection === 'chat')}
+              style={styles.sidebarNavItem(palette, activeSection === 'chat', compactLayout)}
               onClick={() => openAppSection('chat')}
               aria-label="Home"
             >
@@ -8661,7 +8693,7 @@ function App() {
             </button>
             <button
               type="button"
-              style={styles.sidebarNavItem(palette, activeSection === 'projects')}
+              style={styles.sidebarNavItem(palette, activeSection === 'projects', compactLayout)}
               onClick={() => openAppSection('projects')}
               aria-label="Projects"
             >
@@ -8670,7 +8702,7 @@ function App() {
             </button>
             <button
               type="button"
-              style={styles.sidebarNavItem(palette, activeSection === 'intelligence')}
+              style={styles.sidebarNavItem(palette, activeSection === 'intelligence', compactLayout)}
               onClick={() => {
                 openAppSection('intelligence');
                 void refreshProjectIntelligence();
@@ -8682,7 +8714,7 @@ function App() {
             </button>
             <button
               type="button"
-              style={styles.sidebarNavItem(palette, activeSection === 'workspace-intelligence')}
+              style={styles.sidebarNavItem(palette, activeSection === 'workspace-intelligence', compactLayout)}
               onClick={() => {
                 openAppSection('workspace-intelligence');
                 void refreshWorkspaceOperations();
@@ -8694,7 +8726,7 @@ function App() {
             </button>
             <button
               type="button"
-              style={styles.sidebarNavItem(palette, activeSection === 'tasks')}
+              style={styles.sidebarNavItem(palette, activeSection === 'tasks', compactLayout)}
               onClick={() => {
                 openAppSection('tasks');
                 void refreshTasks();
@@ -8706,7 +8738,7 @@ function App() {
             </button>
             <button
               type="button"
-              style={styles.sidebarNavItem(palette, activeSection === 'runtime')}
+              style={styles.sidebarNavItem(palette, activeSection === 'runtime', compactLayout)}
               onClick={() => {
                 openAppSection('runtime');
                 void refreshDistributedRuntime();
@@ -8718,7 +8750,7 @@ function App() {
             </button>
             <button
               type="button"
-              style={styles.sidebarNavItem(palette, activeSection === 'adaptive')}
+              style={styles.sidebarNavItem(palette, activeSection === 'adaptive', compactLayout)}
               onClick={() => {
                 openAppSection('adaptive');
                 void refreshAdaptiveSignals();
@@ -8730,7 +8762,7 @@ function App() {
             </button>
             <button
               type="button"
-              style={styles.sidebarNavItem(palette, activeSection === 'hardening')}
+              style={styles.sidebarNavItem(palette, activeSection === 'hardening', compactLayout)}
               onClick={() => {
                 openAppSection('hardening');
                 void refreshProductizationSignals();
@@ -8742,7 +8774,7 @@ function App() {
             </button>
             <button
               type="button"
-              style={styles.sidebarNavItem(palette, activeSection === 'ecosystem')}
+              style={styles.sidebarNavItem(palette, activeSection === 'ecosystem', compactLayout)}
               onClick={() => {
                 openAppSection('ecosystem');
                 void refreshEcosystemSignals();
@@ -8754,7 +8786,7 @@ function App() {
             </button>
             <button
               type="button"
-              style={styles.sidebarNavItem(palette, activeSection === 'autonomous')}
+              style={styles.sidebarNavItem(palette, activeSection === 'autonomous', compactLayout)}
               onClick={() => {
                 openAppSection('autonomous');
                 void refreshAutonomousSignals();
@@ -8766,7 +8798,7 @@ function App() {
             </button>
             <button
               type="button"
-              style={styles.sidebarNavItem(palette, activeSection === 'creative')}
+              style={styles.sidebarNavItem(palette, activeSection === 'creative', compactLayout)}
               onClick={() => {
                 openAppSection('creative');
                 void refreshCreativeStudio();
@@ -8778,7 +8810,7 @@ function App() {
             </button>
             <button
               type="button"
-              style={styles.sidebarNavItem(palette, activeSection === 'agents')}
+              style={styles.sidebarNavItem(palette, activeSection === 'agents', compactLayout)}
               onClick={() => openAppSection('agents')}
               aria-label="Agents"
             >
@@ -8787,7 +8819,7 @@ function App() {
             </button>
             <button
               type="button"
-              style={styles.sidebarNavItem(palette, activeSection === 'models')}
+              style={styles.sidebarNavItem(palette, activeSection === 'models', compactLayout)}
               onClick={() => {
                 openAppSection('models');
                 void refreshModelCatalog();
@@ -8799,7 +8831,7 @@ function App() {
             </button>
             <button
               type="button"
-              style={styles.sidebarNavItem(palette, false)}
+              style={styles.sidebarNavItem(palette, false, compactLayout)}
               onClick={() => openSettings('general')}
               aria-label="Open settings from sidebar"
             >
@@ -8864,7 +8896,7 @@ function App() {
           </div>
         </div>
 
-        <div style={styles.mainGrid(detailsPanelVisible)}>
+        <div style={styles.mainGrid(effectiveDetailsPanelVisible, compactLayout)}>
           <section style={styles.chatCard(palette)}>
             <div ref={chatScrollRef} style={styles.chatScroll} data-testid="chat-scroll">
               {activeSection === 'chat' ? (
@@ -9211,7 +9243,7 @@ function App() {
             </div>
           </section>
 
-          {detailsPanelVisible ? (
+          {effectiveDetailsPanelVisible ? (
           <aside style={styles.sidebar} data-testid="details-panel">
             <section style={styles.panelCard(palette)}>
               <div style={styles.panelHeader(palette)}>
@@ -9943,7 +9975,9 @@ function App() {
               )}
             </section>
 
-            <ObservabilityPanel workspaceRoot={workspaceRoot} palette={palette} />
+            <Suspense fallback={<div style={styles.emptyPanel(palette)}>Loading observability...</div>}>
+              <ObservabilityPanel workspaceRoot={workspaceRoot} palette={palette} />
+            </Suspense>
 
             <section style={styles.panelCard(palette)}>
               <div style={styles.panelHeader(palette)}>
@@ -10328,258 +10362,24 @@ function App() {
       </div>
 
       {showSettings ? renderSettingsModal() : null}
-      {false && showSettings ? (
-        <div style={styles.modalOverlay} onClick={() => setShowSettings(false)}>
-          <div style={styles.modalCard(palette)} onClick={(event) => event.stopPropagation()}>
-            <div style={styles.modalHeader(palette)}>
-              <h3 style={styles.modalTitle(palette)}>Settings</h3>
-              <button type="button" style={styles.closeButton(palette)} onClick={() => setShowSettings(false)}>
-                ×
-              </button>
-            </div>
-
-            <div style={styles.modalBody}>
-              <section style={styles.settingsSection(palette)}>
-                <h4 style={styles.settingsHeading(palette)}>Assistant</h4>
-
-                <label style={styles.fieldLabel(palette)}>
-                  <span>Name</span>
-                  <input
-                    value={assistantName}
-                    onChange={(event) => setAssistantName(event.target.value)}
-                    style={styles.fieldInput(palette)}
-                  />
-                </label>
-
-                <label style={styles.fieldLabel(palette)}>
-                  <span>Mission</span>
-                  <textarea
-                    value={assistantMission}
-                    onChange={(event) => setAssistantMission(event.target.value)}
-                    rows={3}
-                    style={styles.fieldTextarea(palette)}
-                  />
-                </label>
-              </section>
-
-              <section style={styles.settingsSection(palette)}>
-                <h4 style={styles.settingsHeading(palette)}>AI Model</h4>
-
-                <label style={styles.fieldLabel(palette)}>
-                  <span>API Type</span>
-                  <select
-                    value={modelApi}
-                    onChange={(event) => setModelApi(event.target.value)}
-                    style={styles.fieldInput(palette)}
-                  >
-                    <option value="ollama">Ollama (Local)</option>
-                    <option value="openai">OpenAI Compatible</option>
-                  </select>
-                </label>
-
-                <label style={styles.fieldLabel(palette)}>
-                  <span>Endpoint</span>
-                  <input
-                    value={modelEndpoint}
-                    onChange={(event) => setModelEndpoint(event.target.value)}
-                    style={styles.fieldInput(palette)}
-                  />
-                </label>
-
-                <label style={styles.fieldLabel(palette)}>
-                  <span>Model Name</span>
-                  <input
-                    value={modelName}
-                    onChange={(event) => setModelName(event.target.value)}
-                    style={styles.fieldInput(palette)}
-                  />
-                </label>
-              </section>
-
-              <section style={styles.settingsSection(palette)}>
-                <h4 style={styles.settingsHeading(palette)}>Workspace</h4>
-
-                <label style={styles.fieldLabel(palette)}>
-                  <span>Root Directory</span>
-                  <input
-                    value={workspaceRoot}
-                    onChange={(event) => setActiveWorkspaceRoot(event.target.value)}
-                    style={styles.fieldInput(palette)}
-                  />
-                </label>
-
-                <label style={styles.checkboxLabel(palette)}>
-                  <input
-                    type="checkbox"
-                    checked={autoRunValidation}
-                    onChange={(event) => setAutoRunValidation(event.target.checked)}
-                  />
-                  <span>Auto-run validation after file changes</span>
-                </label>
-
-                <div style={styles.sectionBlock}>
-                  <div style={styles.sectionHeaderInline}>
-                    <div style={styles.sectionLabel(palette)}>Checkpoints</div>
-                    <button
-                      type="button"
-                      style={styles.iconTextButton(palette)}
-                      onClick={() => void refreshCheckpoints()}
-                      disabled={checkpointLoading || !workspaceRoot.trim()}
-                      aria-label="Refresh checkpoints"
-                    >
-                      {checkpointLoading ? <Loader2 size={14} className="spin" /> : <Zap size={14} />}
-                      Refresh
-                    </button>
-                  </div>
-                  {checkpoints.length ? (
-                    <div style={styles.eventList}>
-                      {checkpoints.slice(0, 5).map((checkpoint) => (
-                        <div key={checkpoint.id} style={styles.eventRow(palette, 'warning')}>
-                          <div>
-                            <strong style={styles.eventTitle(palette)}>
-                              {checkpoint.created_at ? formatDateTime(checkpoint.created_at) : checkpoint.id}
-                            </strong>
-                            <div style={styles.eventDetail(palette)}>
-                              {checkpoint.file_count} tracked file{checkpoint.file_count === 1 ? '' : 's'} / {checkpoint.present_count} saved / {checkpoint.missing_count} new
-                            </div>
-                            {checkpoint.files.length ? (
-                              <div style={styles.eventDetail(palette)}>
-                                {checkpoint.files.slice(0, 3).map((item) => item.path).join(', ')}
-                                {checkpoint.files.length > 3 ? `, +${checkpoint.files.length - 3} more` : ''}
-                              </div>
-                            ) : null}
-                          </div>
-                          <button
-                            type="button"
-                            style={styles.iconTextButton(palette)}
-                            onClick={() => void restoreWorkspaceCheckpoint(checkpoint)}
-                            disabled={loading || Boolean(restoringCheckpointId)}
-                            aria-label={`Restore checkpoint ${checkpoint.id}`}
-                          >
-                            {restoringCheckpointId === checkpoint.id ? <Loader2 size={14} className="spin" /> : <Wrench size={14} />}
-                            Restore
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div style={styles.emptyPanel(palette)}>
-                      {checkpointStatus || 'No checkpoints have been created for this workspace yet.'}
-                    </div>
-                  )}
-                  {checkpointStatus && checkpoints.length ? (
-                    <div style={styles.inlineStatus(palette)}>{checkpointStatus}</div>
-                  ) : null}
-                </div>
-              </section>
-
-              <section style={styles.settingsSection(palette)}>
-                <h4 style={styles.settingsHeading(palette)}>Advanced</h4>
-
-                <label style={styles.fieldLabel(palette)}>
-                  <span>Command Allowlist</span>
-                  <input
-                    value={commandAllowlist}
-                    onChange={(event) => setCommandAllowlist(event.target.value)}
-                    style={styles.fieldInput(palette)}
-                  />
-                </label>
-
-                <label style={styles.fieldLabel(palette)}>
-                  <span>Command Timeout (seconds)</span>
-                  <input
-                    type="number"
-                    min={5}
-                    value={commandTimeout}
-                    onChange={(event) => setCommandTimeout(Number(event.target.value) || 120)}
-                    style={styles.fieldInput(palette)}
-                  />
-                </label>
-
-                <label style={styles.fieldLabel(palette)}>
-                  <span>Max Retries</span>
-                  <input
-                    type="number"
-                    min={0}
-                    max={5}
-                    value={maxRetries}
-                    onChange={(event) => setMaxRetries(Number(event.target.value) || 0)}
-                    style={styles.fieldInput(palette)}
-                  />
-                </label>
-              </section>
-
-              {config ? (
-                <section style={styles.settingsSection(palette)}>
-                  <h4 style={styles.settingsHeading(palette)}>Backend</h4>
-                  <div style={styles.workspaceMeta(palette)}>
-                    <strong>Engine</strong>
-                    <span>{config?.engine}</span>
-                    <strong>Database</strong>
-                    <span>{config?.database_path}</span>
-                    <strong>Project</strong>
-                    <span>{lastHealth?.project_root || 'Health check pending'}</span>
-                  </div>
-                  <div style={styles.sectionBlock}>
-                    <div style={styles.sectionHeaderInline}>
-                      <div style={styles.sectionLabel(palette)}>Runtime Diagnostics</div>
-                      <button
-                        type="button"
-                        style={styles.iconTextButton(palette)}
-                        onClick={() => void refreshRuntimeDiagnostics()}
-                      >
-                        <Zap size={14} />
-                        Refresh
-                      </button>
-                    </div>
-                    <div style={styles.eventList}>
-                      {runtimeDiagnostics.checks.map((check) => (
-                        <div
-                          key={check.id}
-                          style={styles.eventRow(palette, diagnosticStatusToEventStatus(check.status))}
-                        >
-                          <div>
-                            <strong style={styles.eventTitle(palette)}>{check.label}</strong>
-                            <div style={styles.eventDetail(palette)}>{check.detail}</div>
-                          </div>
-                          {renderRuntimeDiagnosticAction(check)}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </section>
-              ) : null}
-            </div>
-
-            <div style={styles.modalFooter}>
-              <button type="button" style={styles.secondaryButton(palette)} onClick={() => setShowSettings(false)}>
-                Cancel
-              </button>
-              <button type="button" style={styles.primaryButton(palette)} onClick={() => void saveAegisSettings()}>
-                <Save size={16} />
-                Save Settings
-              </button>
-            </div>
-
-            {saveStatus ? <div style={styles.saveStatus(palette)}>{saveStatus}</div> : null}
-          </div>
-        </div>
-      ) : null}
-
       {showMemoryEditor && workspaceRoot ? (
-        <MemoryEditor
-          workspaceRoot={workspaceRoot}
-          onClose={() => setShowMemoryEditor(false)}
-          palette={palette}
-        />
+        <Suspense fallback={<div style={styles.routeFallback(palette)}>Opening Memory Center...</div>}>
+          <MemoryEditor
+            workspaceRoot={workspaceRoot}
+            onClose={() => setShowMemoryEditor(false)}
+            palette={palette}
+          />
+        </Suspense>
       ) : null}
 
       {showApprovalSettings && workspaceRoot ? (
-        <ApprovalSettings
-          workspaceRoot={workspaceRoot}
-          onClose={() => setShowApprovalSettings(false)}
-          palette={palette}
-        />
+        <Suspense fallback={<div style={styles.routeFallback(palette)}>Opening approval controls...</div>}>
+          <ApprovalSettings
+            workspaceRoot={workspaceRoot}
+            onClose={() => setShowApprovalSettings(false)}
+            palette={palette}
+          />
+        </Suspense>
       ) : null}
     </div>
   );
@@ -10663,6 +10463,19 @@ const styles = {
     padding: 12
   }),
 
+  routeFallback: (p: Palette): CSSProperties => ({
+    minHeight: '100vh',
+    display: 'grid',
+    placeItems: 'center',
+    padding: 24,
+    background: p.bgGlow,
+    color: p.text,
+    fontFamily:
+      'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    fontSize: 14,
+    fontWeight: 800
+  }),
+
   backdrop: (p: Palette): CSSProperties => ({
     position: 'absolute',
     inset: 0,
@@ -10671,25 +10484,26 @@ const styles = {
     zIndex: 0
   }),
 
-  frame: {
+  frame: (compact: boolean): CSSProperties => ({
     position: 'relative',
     zIndex: 1,
     maxWidth: 'none',
     margin: '0 auto',
     height: 'calc(100vh - 24px)',
     display: 'grid',
-    gridTemplateColumns: '260px minmax(0, 1fr)',
-    gridTemplateRows: '54px minmax(0, 1fr)',
-    gap: 12
-  } as CSSProperties,
+    gridTemplateColumns: compact ? 'minmax(0, 1fr)' : '260px minmax(0, 1fr)',
+    gridTemplateRows: compact ? 'auto minmax(112px, 220px) minmax(0, 1fr)' : '54px minmax(0, 1fr)',
+    gap: compact ? 10 : 12
+  }),
 
-  header: (p: Palette): CSSProperties => ({
-    gridColumn: '2 / 3',
+  header: (p: Palette, compact = false, narrow = false): CSSProperties => ({
+    gridColumn: compact ? '1 / 2' : '2 / 3',
     gridRow: '1 / 2',
     display: 'flex',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: narrow ? 'stretch' : 'center',
     gap: 16,
+    flexWrap: narrow ? 'wrap' : 'nowrap',
     padding: 0,
     borderRadius: 0,
     background: 'transparent',
@@ -10697,8 +10511,9 @@ const styles = {
     boxShadow: 'none'
   }),
 
-  topSearch: (p: Palette): CSSProperties => ({
-    width: 'min(620px, 52vw)',
+  topSearch: (p: Palette, compact = false): CSSProperties => ({
+    width: compact ? '100%' : 'min(620px, 52vw)',
+    flex: compact ? '1 1 320px' : '0 1 auto',
     height: 46,
     borderRadius: 999,
     border: `1px solid ${p.inputBorder}`,
@@ -10762,11 +10577,14 @@ const styles = {
     textOverflow: 'ellipsis'
   }),
 
-  headerActions: {
+  headerActions: (narrow = false): CSSProperties => ({
     display: 'flex',
     alignItems: 'center',
-    gap: 8
-  } as CSSProperties,
+    justifyContent: narrow ? 'flex-start' : 'flex-end',
+    gap: 8,
+    flexWrap: 'wrap',
+    minWidth: 0
+  }),
 
   topStatusPill: (p: Palette, ok: boolean): CSSProperties => ({
     height: 40,
@@ -10921,14 +10739,15 @@ const styles = {
     boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)'
   }),
 
-  utilityBar: (p: Palette): CSSProperties => ({
+  utilityBar: (p: Palette, compact = false): CSSProperties => ({
     gridColumn: '1 / 2',
-    gridRow: '1 / 3',
+    gridRow: compact ? '2 / 3' : '1 / 3',
     display: 'flex',
     flexDirection: 'column',
     gap: 16,
     alignItems: 'stretch',
     minHeight: 0,
+    maxHeight: compact ? 220 : undefined,
     padding: 12,
     borderRadius: 18,
     background: p.sidebar,
@@ -10940,12 +10759,12 @@ const styles = {
     backdropFilter: 'blur(28px)'
   }),
 
-  utilityActions: {
+  utilityActions: (compact = false): CSSProperties => ({
     display: 'flex',
-    flexDirection: 'column',
+    flexDirection: compact ? 'row' : 'column',
     alignItems: 'center',
     gap: 8
-  } as CSSProperties,
+  }),
 
   sidebarBrand: {
     display: 'flex',
@@ -10985,12 +10804,13 @@ const styles = {
     transition: 'transform 180ms ease, border-color 180ms ease, background 180ms ease'
   }),
 
-  sidebarNav: {
+  sidebarNav: (compact = false): CSSProperties => ({
     display: 'grid',
+    gridTemplateColumns: compact ? 'repeat(auto-fit, minmax(132px, 1fr))' : undefined,
     gap: 6
-  } as CSSProperties,
+  }),
 
-  sidebarNavItem: (p: Palette, active: boolean): CSSProperties => ({
+  sidebarNavItem: (p: Palette, active: boolean, compact = false): CSSProperties => ({
     width: '100%',
     minHeight: 42,
     borderRadius: 12,
@@ -10999,6 +10819,7 @@ const styles = {
     color: p.text,
     display: 'flex',
     alignItems: 'center',
+    justifyContent: compact ? 'center' : 'flex-start',
     gap: 12,
     padding: '0 12px',
     cursor: 'pointer',
@@ -11136,11 +10957,11 @@ const styles = {
     zIndex: 1
   }),
 
-  mainGrid: (detailsVisible: boolean): CSSProperties => ({
-    gridColumn: '2 / 3',
-    gridRow: '2 / 3',
+  mainGrid: (detailsVisible: boolean, compact = false): CSSProperties => ({
+    gridColumn: compact ? '1 / 2' : '2 / 3',
+    gridRow: compact ? '3 / 4' : '2 / 3',
     display: 'grid',
-    gridTemplateColumns: detailsVisible ? 'minmax(0, 1fr) 360px' : 'minmax(0, 1fr)',
+    gridTemplateColumns: detailsVisible && !compact ? 'minmax(0, 1fr) 360px' : 'minmax(0, 1fr)',
     gap: 12,
     height: '100%',
     minHeight: 0

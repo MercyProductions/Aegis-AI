@@ -98,6 +98,7 @@ try {
     await exerciseChatAutoScroll(page);
     await exerciseQueuedPromptTray(page);
     await exerciseStopActiveResponse(page);
+    await exerciseResponsiveShell(page);
 
     await clickUnique(page.getByRole('button', { name: 'Settings', exact: true }), 'Settings button');
 
@@ -2394,6 +2395,45 @@ async function exerciseStopActiveResponse(page) {
   );
   assert(stopRequests === 1, `Expected one stopped stream request, got ${stopRequests}.`);
   await page.unroute(`${backendUrl}/api/chat/stream`);
+}
+
+async function exerciseResponsiveShell(page) {
+  const desktopViewport = { width: 1440, height: 1050 };
+  const responsiveViewports = [
+    { label: 'laptop', width: 1024, height: 820 },
+    { label: 'mobile', width: 390, height: 844 }
+  ];
+
+  for (const viewport of responsiveViewports) {
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    await delay(700);
+    const metrics = await page.evaluate(() => {
+      const root = document.documentElement;
+      const body = document.body;
+      const commandInput = document.querySelector('.aegis-command-input');
+      const commandInputBox = commandInput?.getBoundingClientRect();
+      return {
+        innerWidth: window.innerWidth,
+        scrollWidth: Math.max(root.scrollWidth, body.scrollWidth),
+        commandInputVisible: Boolean(commandInputBox && commandInputBox.width > 80 && commandInputBox.height > 32),
+        detailsPanelCount: document.querySelectorAll('[data-testid="details-panel"]').length
+      };
+    });
+
+    assert(
+      metrics.scrollWidth <= metrics.innerWidth + 4,
+      `${viewport.label} layout overflowed horizontally: scrollWidth ${metrics.scrollWidth}, viewport ${metrics.innerWidth}.`
+    );
+    assert(metrics.commandInputVisible, `${viewport.label} command input was not visible after resizing.`);
+    assert(
+      metrics.detailsPanelCount === 0,
+      `${viewport.label} layout should suppress the details panel on compact viewports.`
+    );
+  }
+
+  await page.setViewportSize(desktopViewport);
+  await delay(700);
+  await waitForLocatorCount(page.getByTestId('details-panel'), 1, 'details panel restored after responsive checks');
 }
 
 function queueTestResponse(overrides = {}) {

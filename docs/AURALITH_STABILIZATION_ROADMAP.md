@@ -18,6 +18,8 @@ The stabilization pass covered:
 - Config mutation and restore safety.
 - Validation command inference.
 - Generated diff/apply/read flows.
+- Compact laptop/mobile app shell behavior.
+- Initial bundle shape and optional panel loading.
 - Live frontend/backend identity checks.
 - Frontend unit tests, production build, and backend pytest suite.
 
@@ -32,6 +34,11 @@ The stabilization pass covered:
 - Fixed saved session delete hit targets by making session rows full-width two-column grids with the delete action above neighboring interactive layers.
 - Aligned user-facing language around Auralith OS, Auralith Prime, sessions, and Aegis Core across runtime summaries, transcripts, validation scripts, and E2E checks.
 - Aligned streaming stop language to `Session request stopped.` in both UI behavior and E2E expectations.
+- Added compact app-shell layout behavior so the sidebar becomes a bounded top rail and the right observability column is suppressed on narrow viewports.
+- Added E2E resize coverage for laptop and mobile widths, including horizontal-overflow detection and command-input visibility checks.
+- Lazy-loaded public-site, observability, memory, and approval-control panels so optional surfaces no longer ship in the initial app chunk.
+- Split React and icon vendor code into stable Vite chunks.
+- Removed an unreachable legacy settings modal block from `App.tsx`.
 
 ## Current Validation Baseline
 
@@ -49,16 +56,16 @@ Validation details:
 - Backend tests: 494 passed, 108 subtests passed.
 - Live doctor check: passed.
 - Live smoke check: passed.
-- Browser E2E: passed.
+- Browser E2E: passed, including laptop/mobile responsive shell checks.
 
 Known warning:
 
-- Vite reports one generated JavaScript chunk above 500 kB. This is not a functional failure, but it should drive the next performance pass.
+- Vite still reports one generated JavaScript chunk above 500 kB. The initial app chunk has been reduced from roughly 576.8 kB to 507.7 kB, but removing the warning cleanly requires more behavior-preserving extraction from `App.tsx`.
 
 ## Critical Next Fixes
 
-- Add route-level or panel-level code splitting for heavy app sections to reduce initial JavaScript payload.
-- Extend E2E coverage for tablet/mobile widths, especially the sidebar, history rail, settings modal, and command input.
+- Extract the largest protected workspace sections from `App.tsx` into dedicated modules so route-level code splitting can finish the initial bundle reduction without hiding warnings.
+- Extend responsive E2E coverage to settings modal, auth pages, and public marketing pages.
 - Add a focused visual regression pass for the public site, protected workspace shell, right observability panel, and auth pages.
 - Add auth-session cleanup or database isolation for repeated E2E account registration runs.
 - Standardize script default ports or document the live validation port strategy to avoid confusion between `5173/8787` defaults and active `5177/8793` runs.
