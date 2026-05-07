@@ -100,6 +100,7 @@ try {
     await exerciseQueuedPromptTray(page);
     await exerciseStopActiveResponse(page);
     await exerciseResponsiveShell(page);
+    await exerciseResponsiveSettingsModal(page);
 
     await clickUnique(page.getByRole('button', { name: 'Settings', exact: true }), 'Settings button');
 
@@ -2481,6 +2482,49 @@ async function exerciseResponsiveShell(page) {
   await page.setViewportSize(desktopViewport);
   await delay(700);
   await waitForLocatorCount(page.getByTestId('details-panel'), 1, 'details panel restored after responsive checks');
+}
+
+async function exerciseResponsiveSettingsModal(page) {
+  const desktopViewport = { width: 1440, height: 1050 };
+  const responsiveViewports = [
+    { label: 'tablet', width: 768, height: 1024 },
+    { label: 'mobile', width: 390, height: 844 }
+  ];
+
+  for (const viewport of responsiveViewports) {
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    await delay(700);
+    await clickUnique(page.getByRole('button', { name: 'Settings', exact: true }), `${viewport.label} settings button`);
+    await waitForLocatorCount(page.getByRole('heading', { name: 'Settings', exact: true }), 1, `${viewport.label} settings modal`);
+    await waitForLocatorCount(page.getByLabel('Settings sections'), 1, `${viewport.label} settings rail`);
+    const metrics = await page.evaluate(() => {
+      const root = document.documentElement;
+      const body = document.body;
+      const heading = Array.from(document.querySelectorAll('h3')).find((item) => item.textContent === 'Settings');
+      const modal = heading?.parentElement?.parentElement;
+      const modalBox = modal?.getBoundingClientRect();
+      return {
+        innerWidth: window.innerWidth,
+        scrollWidth: Math.max(root.scrollWidth, body.scrollWidth),
+        modalVisible: Boolean(modalBox && modalBox.width > 240 && modalBox.height > 220)
+      };
+    });
+    assert(
+      metrics.scrollWidth <= metrics.innerWidth + 4,
+      `${viewport.label} settings modal overflowed horizontally: scrollWidth ${metrics.scrollWidth}, viewport ${metrics.innerWidth}.`
+    );
+    assert(metrics.modalVisible, `${viewport.label} settings modal was not visibly sized.`);
+    await clickUnique(page.getByRole('button', { name: 'Close settings', exact: true }), `${viewport.label} close settings button`);
+    await waitForLocatorExactCount(
+      page.getByRole('heading', { name: 'Settings', exact: true }),
+      0,
+      `${viewport.label} settings modal closed`
+    );
+  }
+
+  await page.setViewportSize(desktopViewport);
+  await delay(700);
+  await waitForLocatorCount(page.getByTestId('details-panel'), 1, 'details panel restored after responsive settings checks');
 }
 
 function queueTestResponse(overrides = {}) {

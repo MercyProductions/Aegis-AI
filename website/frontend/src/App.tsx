@@ -8129,13 +8129,13 @@ function App() {
             </button>
           </div>
 
-          <div style={styles.settingsShell}>
-            <aside style={styles.settingsRail(palette)} aria-label="Settings sections">
+          <div style={styles.settingsShell(narrowLayout)}>
+            <aside style={styles.settingsRail(palette, narrowLayout)} aria-label="Settings sections">
               {tabs.map((tab) => (
                 <button
                   key={tab.id}
                   type="button"
-                  style={styles.settingsTabButton(palette, settingsTab === tab.id)}
+                  style={styles.settingsTabButton(palette, settingsTab === tab.id, narrowLayout)}
                   onClick={() => {
                     setSettingsTab(tab.id);
                     if (tab.id === 'models') void refreshModelCatalog();
@@ -12763,25 +12763,30 @@ const styles = {
     padding: 22
   } as CSSProperties,
 
-  settingsShell: {
+  settingsShell: (narrow = false): CSSProperties => ({
     display: 'grid',
-    gridTemplateColumns: '220px minmax(0, 1fr)',
+    gridTemplateColumns: narrow ? 'minmax(0, 1fr)' : '220px minmax(0, 1fr)',
+    gridTemplateRows: narrow ? 'auto minmax(0, 1fr)' : undefined,
     minHeight: 0,
     overflow: 'hidden'
-  } as CSSProperties,
-
-  settingsRail: (p: Palette): CSSProperties => ({
-    display: 'grid',
-    alignContent: 'start',
-    gap: 6,
-    padding: 18,
-    borderRight: `1px solid ${p.inputBorder}`,
-    background: p.settingsRail
   }),
 
-  settingsTabButton: (p: Palette, active: boolean): CSSProperties => ({
-    width: '100%',
+  settingsRail: (p: Palette, narrow = false): CSSProperties => ({
+    display: narrow ? 'flex' : 'grid',
+    alignContent: 'start',
+    flexWrap: narrow ? 'wrap' : undefined,
+    gap: 6,
+    padding: narrow ? 12 : 18,
+    borderRight: narrow ? 'none' : `1px solid ${p.inputBorder}`,
+    borderBottom: narrow ? `1px solid ${p.inputBorder}` : 'none',
+    background: p.settingsRail,
+    overflowX: narrow ? 'auto' : undefined
+  }),
+
+  settingsTabButton: (p: Palette, active: boolean, narrow = false): CSSProperties => ({
+    width: narrow ? 'auto' : '100%',
     minHeight: 46,
+    flex: narrow ? '1 1 120px' : undefined,
     borderRadius: 10,
     border: 'none',
     background: active ? p.settingsActive : 'transparent',
