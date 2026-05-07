@@ -82,6 +82,15 @@ from .schemas import (
     WorkspaceWatcherSnapshot,
 )
 from .settings import Settings
+from .storage_helpers import (
+    fingerprint,
+    memory_match_score,
+    merge_json_list,
+    parse_json_list,
+    parse_json_payload,
+    task_title_from_message,
+    tokenize,
+)
 from .task_engine import DEFAULT_SUBTASKS, normalize_task_status, validate_task_transition
 
 
@@ -4114,27 +4123,13 @@ class EventStore:
         return PluginManifest.model_validate(payload)
 
     def _json_list(self, raw: Any) -> list[str]:
-        try:
-            parsed = json.loads(raw or "[]")
-        except (TypeError, json.JSONDecodeError):
-            parsed = []
-        if not isinstance(parsed, list):
-            return []
-        return [str(item) for item in parsed if str(item).strip()]
+        return parse_json_list(raw)
 
     def _merge_json_list(self, raw: Any, additions: list[str]) -> list[str]:
-        merged: list[str] = []
-        for item in [*self._json_list(raw), *additions]:
-            cleaned = str(item).strip()
-            if cleaned and cleaned not in merged:
-                merged.append(cleaned)
-        return merged
+        return merge_json_list(raw, additions)
 
     def _task_title_from_message(self, message: str, mode: str) -> str:
-        cleaned = " ".join((message or "").split())
-        if cleaned:
-            return cleaned[:80]
-        return f"{mode.title()} task"
+        return task_title_from_message(message, mode)
 
     def _recent_task_dicts(self, *, project_root: Path, limit: int) -> list[dict[str, Any]]:
         aliases = self._project_root_aliases(project_root)
@@ -7118,31 +7113,13 @@ class EventStore:
         return ContextBudgetInfo.model_validate(self._json_payload(value))
 
     def _json_payload(self, value: str) -> dict[str, Any]:
-        try:
-            payload = json.loads(value)
-        except (TypeError, json.JSONDecodeError):
-            return {}
-        return payload if isinstance(payload, dict) else {}
+        return parse_json_payload(value)
 
     def _memory_match_score(self, query: str, *parts: str) -> float:
-        query_tokens = self._tokenize(query)
-        memory_tokens = self._tokenize("\n".join(parts))
-        if not query_tokens or not memory_tokens:
-            return 0.0
-
-        overlap = len(query_tokens & memory_tokens)
-        if overlap == 0:
-            return 0.0
-
-        return overlap / max(len(query_tokens), 1)
+        return memory_match_score(query, *parts)
 
     def _fingerprint(self, *parts: str) -> str:
-        normalized = "\n".join(part.strip().lower() for part in parts if part.strip())
-        return hashlib.sha1(normalized.encode("utf-8")).hexdigest()
+        return fingerprint(*parts)
 
     def _tokenize(self, value: str) -> set[str]:
-        cleaned = [
-            "".join(character for character in chunk.lower() if character.isalnum())
-            for chunk in value.split()
-        ]
-        return {token for token in cleaned if len(token) >= 3}
+        return tokenize(value)
