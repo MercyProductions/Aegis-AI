@@ -50,7 +50,7 @@ function Invoke-Step {
 Set-Location -LiteralPath $Root
 
 Write-Host ""
-Write-Host "Aegis web acceptance gate" -ForegroundColor Cyan
+Write-Host "Auralith OS acceptance gate" -ForegroundColor Cyan
 Write-Host "Project: $Root"
 Write-Host "Frontend: $FrontendUrl"
 Write-Host "Backend:  $BackendUrl"
@@ -61,7 +61,7 @@ Invoke-Step -Name "Validate frontend and backend" -Command {
 
 $backendHealthUrl = "$BackendUrl/api/health"
 if (-not (Test-HttpReady -Url $backendHealthUrl) -or -not (Test-HttpReady -Url $FrontendUrl)) {
-    throw "The live Aegis app is not reachable. Start it with .\launch.ps1, then rerun npm run acceptance:web. Checked $backendHealthUrl and $FrontendUrl."
+    throw "The live Auralith OS app is not reachable. Start it with .\launch.ps1, then rerun npm run acceptance:web. Checked $backendHealthUrl and $FrontendUrl."
 }
 
 Invoke-Step -Name "Runtime doctor" -Command {
@@ -77,4 +77,4 @@ Invoke-Step -Name "Browser e2e flow" -Command {
 }
 
 Write-Host ""
-Write-Host "Aegis web acceptance gate passed." -ForegroundColor Green
+Write-Host "Auralith OS acceptance gate passed." -ForegroundColor Green

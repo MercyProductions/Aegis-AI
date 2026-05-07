@@ -63,7 +63,7 @@ if (-not (Test-HttpReady $FrontendUrl)) {
     throw "Frontend is not reachable at $FrontendUrl."
 }
 
-Write-Host "Aegis web UI E2E"
+Write-Host "Auralith OS UI E2E"
 Write-Host "Project: $Root"
 Write-Host "Frontend: $FrontendUrl"
 Write-Host "Backend: $BackendUrl"
@@ -84,7 +84,7 @@ Invoke-WithConfigMutationLock -Root $Root -Body {
 
         & node $Script
         if ($LASTEXITCODE -ne 0) {
-            throw "Aegis web UI E2E failed."
+            throw "Auralith OS UI E2E failed."
         }
     } finally {
         $env:AEGIS_E2E_ROOT = $previousRoot

@@ -242,7 +242,7 @@ describe('conversation utilities', () => {
     expect(workspaceLeaf('C:\\Users\\gabri\\Desktop\\Aegis\\')).toBe('Aegis');
   });
 
-  it('builds a portable Markdown transcript for saved chats', () => {
+  it('builds a portable Markdown transcript for saved sessions', () => {
     const markdown = buildConversationMarkdown(
       'Fix chatbot streaming',
       [
@@ -258,7 +258,7 @@ describe('conversation utilities', () => {
     expect(markdown).toContain('- Exported: 2026-05-05T10:30:00.000Z');
     expect(markdown).toContain('- Workspace: C:\\Projects\\Aegis');
     expect(markdown).toContain('## User\n\nPlease fix streaming');
-    expect(markdown).toContain('## Aegis\n\nStreaming is now more robust.');
+    expect(markdown).toContain('## Auralith Prime\n\nStreaming is now more robust.');
     expect(markdown).toContain('## System\n\nMission anchor');
   });
 

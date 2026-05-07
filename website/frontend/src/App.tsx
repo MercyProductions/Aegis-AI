@@ -691,6 +691,8 @@ function App() {
   const activeChatAbortController = useRef<AbortController | null>(null);
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
   const workspaceRootRef = useRef(workspaceRoot);
+  const workspaceOpenRequestRef = useRef(0);
+  const sectionNavigationVersionRef = useRef(0);
   const autoMemoryFingerprints = useRef<Set<string>>(new Set(loadAutoMemoryFingerprints()));
 
   function navigateTo(path: string, replace = false) {
@@ -706,6 +708,8 @@ function App() {
   }
 
   function openAppSection(section: SidebarSection) {
+    sectionNavigationVersionRef.current += 1;
+    setActiveSection(section);
     navigateTo(sidebarSectionToRoute(section));
   }
 
@@ -815,7 +819,7 @@ function App() {
     setActiveSection(nextSection);
 
     if (routePath === '/app/settings') {
-      setSettingsTab('general');
+      setSettingsTab((current) => (showSettings ? current : 'general'));
       setShowSettings(true);
     }
     if (routePath === '/app/memory') {
@@ -1214,7 +1218,7 @@ function App() {
     const draft = buildConversationPreview(currentThreadId, history, workspaceRoot);
     return draft ?? {
       id: currentThreadId,
-      title: 'Current chat',
+      title: 'Current session',
       preview: 'No messages yet',
       count: 0
     };
@@ -1309,7 +1313,7 @@ function App() {
 
     addRoot(workspaceRoot, 'Current workspace');
     for (const thread of savedThreads) {
-      addRoot(thread.workspaceRoot, thread.title || 'Saved chat workspace', thread);
+      addRoot(thread.workspaceRoot, thread.title || 'Saved session workspace', thread);
     }
     return Array.from(roots.values()).sort((left, right) => {
       if (left.active !== right.active) return left.active ? -1 : 1;
@@ -1508,6 +1512,13 @@ function App() {
     }
     if (tab === 'models') {
       void refreshModelCatalog();
+    }
+  }
+
+  function closeSettings() {
+    setShowSettings(false);
+    if (routePath === '/app/settings') {
+      navigateTo('/app', true);
     }
   }
 
@@ -2861,6 +2872,9 @@ function App() {
     const targetRoot = root.trim();
     if (!targetRoot || loading) return;
 
+    const openRequestId = workspaceOpenRequestRef.current + 1;
+    const navigationVersionAtOpen = sectionNavigationVersionRef.current;
+    workspaceOpenRequestRef.current = openRequestId;
     setStatus(`Opening workspace ${targetRoot}...`);
     setActiveWorkspaceRoot(targetRoot);
     setFileSearch('');
@@ -2869,7 +2883,7 @@ function App() {
     setFileStatus('');
     try {
       const result = await listFiles(targetRoot);
-      if (!workspaceRequestIsCurrent(targetRoot)) return;
+      if (workspaceOpenRequestRef.current !== openRequestId) return;
       setActiveWorkspaceRoot(result.workspace_root);
       setFiles(result.files);
       await restoreSelectedWorkspaceFile(result.workspace_root, result.files);
@@ -2887,7 +2901,9 @@ function App() {
         refreshTasks(result.workspace_root),
         refreshCheckpoints(result.workspace_root)
       ]);
-      setActiveSection('chat');
+      if (sectionNavigationVersionRef.current === navigationVersionAtOpen) {
+        setActiveSection('chat');
+      }
       setStatus(`Workspace set to ${result.workspace_root}.`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Could not open project workspace');
@@ -3493,7 +3509,7 @@ function App() {
           setStatus(`Attempt ${nextRetry} failed: ${errorMessage}. Retrying...`);
           await delay(1000 * nextRetry);
           if (abortController.signal.aborted) {
-            throw new DOMException('Chat request stopped.', 'AbortError');
+            throw new DOMException('Session request stopped.', 'AbortError');
           }
           return attemptSubmit(nextRetry);
         }
@@ -4408,8 +4424,8 @@ function App() {
               <input
                 value={projectSearch}
                 onChange={(event) => setProjectSearch(event.target.value)}
-                placeholder="Search projects or chats"
-                aria-label="Search projects or chats"
+                placeholder="Search projects or sessions"
+                aria-label="Search projects or sessions"
                 style={styles.searchInput(palette)}
               />
             </div>
@@ -4423,7 +4439,7 @@ function App() {
                     <div style={styles.tagWrap}>
                       {project.active ? <span style={styles.goodTag(palette)}>Current</span> : null}
                       <span style={styles.contextTag(palette)}>
-                        {project.count} chat{project.count === 1 ? '' : 's'}
+                        {project.count} session{project.count === 1 ? '' : 's'}
                       </span>
                     </div>
                   </div>
@@ -4436,7 +4452,7 @@ function App() {
                       <div style={styles.eventTime(palette)}>{formatDateTime(project.latestUpdatedAt)}</div>
                     </>
                   ) : (
-                    <div style={styles.previewMeta(palette)}>No saved chats for this root yet.</div>
+                    <div style={styles.previewMeta(palette)}>No saved sessions for this root yet.</div>
                   )}
                 </div>
                 <div style={styles.rowActions}>
@@ -4454,10 +4470,10 @@ function App() {
                       type="button"
                       style={styles.iconTextButton(palette)}
                       onClick={() => openProjectConversation(project.latestThread as SavedConversation)}
-                      aria-label={`Open latest chat for ${project.title}`}
+                      aria-label={`Open latest session for ${project.title}`}
                     >
                       <MessageSquarePlus size={14} />
-                      Latest chat
+                      Latest session
                     </button>
                   ) : null}
                 </div>
@@ -4465,7 +4481,7 @@ function App() {
             ))}
             {!visibleProjectRoots.length ? (
               <div style={styles.emptyPanel(palette)}>
-                No projects or saved chats matched that filter.
+                No projects or saved sessions matched that filter.
               </div>
             ) : null}
           </div>
@@ -8075,11 +8091,11 @@ function App() {
     ];
 
     return (
-      <div style={styles.modalOverlay} onClick={() => setShowSettings(false)}>
+      <div style={styles.modalOverlay} onClick={closeSettings}>
         <div style={styles.modalCard(palette)} onClick={(event) => event.stopPropagation()}>
           <div style={styles.modalHeader(palette)}>
             <h3 style={styles.modalTitle(palette)}>Settings</h3>
-            <button type="button" style={styles.closeButton(palette)} onClick={() => setShowSettings(false)} aria-label="Close settings">
+            <button type="button" style={styles.closeButton(palette)} onClick={closeSettings} aria-label="Close settings">
               <X size={18} />
             </button>
           </div>
@@ -8107,7 +8123,7 @@ function App() {
           </div>
 
           <div style={styles.modalFooter}>
-            <button type="button" style={styles.secondaryButton(palette)} onClick={() => setShowSettings(false)}>
+            <button type="button" style={styles.secondaryButton(palette)} onClick={closeSettings}>
               Cancel
             </button>
             <button type="button" style={styles.primaryButton(palette)} onClick={() => void saveAegisSettings()}>
@@ -8617,8 +8633,8 @@ function App() {
               style={styles.utilityActionButton(palette)}
               onClick={exportCurrentChatTranscript}
               disabled={!history.length}
-              aria-label="Export chat transcript"
-              title="Export current chat as Markdown"
+              aria-label="Export session transcript"
+              title="Export current session as Markdown"
             >
               <Download size={16} />
             </button>
@@ -8827,8 +8843,8 @@ function App() {
                   type="button"
                   style={styles.threadDeleteButton(palette)}
                   onClick={() => deleteSavedThread(thread)}
-                  title={`Delete saved chat ${thread.title}`}
-                  aria-label={`Delete saved chat ${thread.title}`}
+                  title={`Delete saved session ${thread.title}`}
+                  aria-label={`Delete saved session ${thread.title}`}
                   disabled={loading}
                 >
                   <Trash2 size={13} />
@@ -9279,7 +9295,7 @@ function App() {
                   <div style={styles.replyCard(palette)}>
                     <div style={styles.replyText(palette)}>
                       {lastResponse?.reply ||
-                        'Restored file review from this saved chat. Exact line counts are rebuilt from available checkpoints and workspace files.'}
+                        'Restored file review from this saved session. Exact line counts are rebuilt from available checkpoints and workspace files.'}
                     </div>
                   </div>
 
@@ -10918,7 +10934,9 @@ const styles = {
     background: p.sidebar,
     border: `1px solid ${p.shellBorder}`,
     boxShadow: '0 28px 80px rgba(2,6,23,0.34), inset 0 1px 0 rgba(255,255,255,0.04)',
-    overflow: 'hidden',
+    overflowX: 'hidden',
+    overflowY: 'auto',
+    scrollbarWidth: 'thin',
     backdropFilter: 'blur(28px)'
   }),
 
@@ -11038,8 +11056,10 @@ const styles = {
   historyRail: {
     display: 'grid',
     gap: 4,
-    overflowY: 'auto',
-    minHeight: 0,
+    flex: '0 0 auto',
+    alignContent: 'start',
+    overflowY: 'visible',
+    minHeight: 'auto',
     paddingRight: 2,
     scrollbarWidth: 'thin'
   } as CSSProperties,
@@ -11061,18 +11081,20 @@ const styles = {
 
   threadGroup: (p: Palette): CSSProperties => ({
     minHeight: 36,
-    display: 'inline-flex',
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr) auto',
     alignItems: 'center',
     gap: 4,
     padding: '0 4px 0 0',
     borderRadius: 6,
     border: 'none',
     background: 'transparent',
-    flex: '0 0 auto'
+    flex: '0 0 auto',
+    width: '100%'
   }),
 
   sidebarUserCard: (p: Palette): CSSProperties => ({
-    marginTop: 'auto',
+    marginTop: 8,
     display: 'flex',
     alignItems: 'center',
     gap: 10,
@@ -11109,7 +11131,9 @@ const styles = {
     color: p.muted,
     display: 'grid',
     placeItems: 'center',
-    cursor: 'pointer'
+    cursor: 'pointer',
+    position: 'relative',
+    zIndex: 1
   }),
 
   mainGrid: (detailsVisible: boolean): CSSProperties => ({

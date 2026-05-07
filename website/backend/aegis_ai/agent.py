@@ -2098,12 +2098,12 @@ class AgentEngine:
         if not applied:
             if validation is not None and self._validation_ok(validation):
                 command = validation.command or "validation"
-                prefix = f"Aegis ran validation and `{command}` passed."
+                prefix = f"Auralith Prime ran validation and `{command}` passed."
                 return prefix if not draft_reply.strip() else f"{prefix}\n\n{draft_reply}"
             if validation is not None and not self._validation_ok(validation):
                 command = validation.command or "validation"
                 detail = validation.summary or validation.reason or "Review the captured validation output and continue the repair loop."
-                prefix = f"Aegis ran validation and `{command}` still needs repair.\n\n{detail}"
+                prefix = f"Auralith Prime ran validation and `{command}` still needs repair.\n\n{detail}"
                 return prefix if not draft_reply.strip() else f"{prefix}\n\n{draft_reply}"
             return draft_reply
 
@@ -2112,7 +2112,7 @@ class AgentEngine:
         if validation is not None and self._validation_ok(validation):
             command = validation.command or "validation"
             return (
-                f"Aegis applied {changed} file {noun} and validation passed with `{command}`.\n\n"
+                f"Auralith Prime applied {changed} file {noun} and validation passed with `{command}`.\n\n"
                 f"Completion quality: {completion_quality.status} ({completion_quality.score:.0%})."
             )
 
@@ -2120,11 +2120,11 @@ class AgentEngine:
             command = validation.command or "validation"
             detail = validation.summary or "Review the captured validation output and continue the repair loop."
             return (
-                f"Aegis applied {changed} file {noun}, but `{command}` still needs repair.\n\n"
+                f"Auralith Prime applied {changed} file {noun}, but `{command}` still needs repair.\n\n"
                 f"{detail}"
             )
 
-        return f"Aegis applied {changed} file {noun} to the workspace."
+        return f"Auralith Prime applied {changed} file {noun} to the workspace."
 
     def _resolve_mode(self, requested: ModeName | None) -> ModeName:
         if requested in {"build", "develop", "review", "chat"}:

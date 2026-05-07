@@ -15,10 +15,12 @@ const alternateProjectRoot = path.join(workspaceRoot, 'project-switch-fixture');
 const conversationStorageKey = 'aegis.web.conversations.v1';
 const composerDraftStorageKey = 'aegis.web.composerDraft.v1';
 const customAgentsStorageKey = 'aegis.customAgents.v1';
+const authSessionStorageKey = 'aegis.auth.session.v1';
 const detailsPanelVisibleStorageKey = 'aegis.detailsPanelVisible.v1';
 const detailPanelSectionsStorageKey = 'aegis.detailPanelSections.v1';
 
 let browser;
+let page;
 let cleanupWorkspace = false;
 
 try {
@@ -43,12 +45,24 @@ try {
     );
 
     const browserPath = await findBrowserExecutable();
+    const authSession = await apiJson('POST', '/api/auth/register', {
+      name: 'Auralith E2E',
+      email: `auralith-e2e-${Date.now()}-${process.pid}@example.test`,
+      password: 'AuralithPass123!',
+      confirm_password: 'AuralithPass123!'
+    });
     browser = await chromium.launch({
       executablePath: browserPath,
       headless: !headed
     });
-    const page = await browser.newPage({ acceptDownloads: true, viewport: { width: 1440, height: 1050 } });
+    page = await browser.newPage({ acceptDownloads: true, viewport: { width: 1440, height: 1050 } });
     await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: frontendUrl });
+    await page.addInitScript(
+      ({ key, session }) => {
+        window.localStorage.setItem(key, JSON.stringify(session));
+      },
+      { key: authSessionStorageKey, session: authSession }
+    );
     const runtimeIssues = [];
     page.on('console', (message) => {
       if (['warning', 'error'].includes(message.type())) {
@@ -66,12 +80,12 @@ try {
       runtimeIssues.push(`http ${response.status()}: ${request.method()} ${response.url()}`);
     });
 
-    await page.goto(frontendUrl, { waitUntil: 'domcontentloaded' });
+    await page.goto(`${frontendUrl}/app`, { waitUntil: 'domcontentloaded' });
     await waitForLocatorCount(page.getByTestId('details-panel'), 1, 'details panel visible on clean startup');
     await exerciseProjectHistorySwitcher(page);
     await exerciseCustomAgentEditor(page);
     await exerciseHeaderModelSwitcher(page);
-    await exerciseSavedChatDelete(page);
+    await exerciseSavedSessionDelete(page);
     await exerciseWorkspaceFileFilter(page);
     await exerciseDetailsPanelCollapse(page);
     await exerciseDetailsPanelVisibilityPreference(page);
@@ -153,13 +167,18 @@ try {
     await restoreConfig(originalWorkspace);
 
     if (keepWorkspace) {
-      console.log(`Aegis web UI E2E passed. Workspace kept at ${workspaceRoot}`);
+      console.log(`Auralith OS UI E2E passed. Workspace kept at ${workspaceRoot}`);
     } else {
       await removeE2eWorkspace(workspaceRoot);
       cleanupWorkspace = false;
-      console.log('Aegis web UI E2E passed. Temporary workspace cleaned up.');
+      console.log('Auralith OS UI E2E passed. Temporary workspace cleaned up.');
     }
   } catch (error) {
+    if (page) {
+      await writeDebugArtifacts(page, error).catch((artifactError) => {
+        console.error(`Could not write E2E debug artifacts: ${artifactError.message || artifactError}`);
+      });
+    }
     await restoreConfig(originalWorkspace);
     throw error;
   }
@@ -176,6 +195,25 @@ try {
 
 async function restoreConfig(defaultWorkspace) {
   await apiJson('POST', '/api/config', { default_workspace: defaultWorkspace || 'workspace' });
+}
+
+async function writeDebugArtifacts(page, error) {
+  await mkdir(workspaceRoot, { recursive: true });
+  const screenshotPath = path.join(workspaceRoot, 'e2e-failure.png');
+  const htmlPath = path.join(workspaceRoot, 'e2e-failure.html');
+  const summaryPath = path.join(workspaceRoot, 'e2e-failure.txt');
+  await page.screenshot({ path: screenshotPath, fullPage: true });
+  await writeFile(htmlPath, await page.content(), 'utf8');
+  await writeFile(
+    summaryPath,
+    [
+      `URL: ${page.url()}`,
+      `Error: ${error instanceof Error ? error.stack || error.message : String(error)}`,
+      ''
+    ].join('\n'),
+    'utf8'
+  );
+  console.error(`Wrote E2E debug artifacts to ${workspaceRoot}`);
 }
 
 async function restoreWorkspaceValue(fallback) {
@@ -385,7 +423,7 @@ async function expectWorkspacePreview(page, relativePath, expectedContent) {
   );
 }
 
-async function exerciseSavedChatDelete(page) {
+async function exerciseSavedSessionDelete(page) {
   await page.evaluate(
     ({ storageKey, workspaceRoot: storedWorkspaceRoot }) => {
       localStorage.setItem(
@@ -393,14 +431,14 @@ async function exerciseSavedChatDelete(page) {
         JSON.stringify([
           {
             id: 'thread-e2e-delete',
-            title: 'Delete me saved chat',
-            preview: 'This saved chat should be removed by the E2E flow.',
+            title: 'Delete me saved session',
+            preview: 'This saved session should be removed by the E2E flow.',
             count: 2,
             updatedAt: '2026-05-05T00:00:00.000Z',
             workspaceRoot: storedWorkspaceRoot,
             messages: [
-              { role: 'user', content: 'Delete me saved chat' },
-              { role: 'assistant', content: 'This saved chat should be removed by the E2E flow.' }
+              { role: 'user', content: 'Delete me saved session' },
+              { role: 'assistant', content: 'This saved session should be removed by the E2E flow.' }
             ]
           }
         ])
@@ -410,25 +448,25 @@ async function exerciseSavedChatDelete(page) {
   );
   await page.reload({ waitUntil: 'domcontentloaded' });
 
-  const savedChatPill = page.getByRole('button', { name: 'Delete me saved chat', exact: true });
-  await savedChatPill.waitFor({ state: 'visible', timeout: 30_000 });
+  const savedSessionPill = page.getByRole('button', { name: 'Delete me saved session', exact: true });
+  await savedSessionPill.waitFor({ state: 'visible', timeout: 30_000 });
 
   page.once('dialog', async (dialog) => {
-    assert(dialog.message().includes('Delete me saved chat'), 'Saved chat delete confirmation named the wrong chat.');
+    assert(dialog.message().includes('Delete me saved session'), 'Saved session delete confirmation named the wrong session.');
     await dialog.accept();
   });
   await clickUnique(
-    page.getByRole('button', { name: 'Delete saved chat Delete me saved chat', exact: true }),
-    'delete saved chat button'
+    page.getByRole('button', { name: 'Delete saved session Delete me saved session', exact: true }),
+    'delete saved session button'
   );
-  await waitForLocatorExactCount(savedChatPill, 0, 'deleted saved chat pill');
-  await waitForLocatorCount(page.getByText('Saved chat deleted.', { exact: true }), 1, 'saved chat deleted status');
+  await waitForLocatorExactCount(savedSessionPill, 0, 'deleted saved session pill');
+  await waitForLocatorCount(page.getByText('Saved session deleted.', { exact: true }), 1, 'saved session deleted status');
 
   const stillStored = await page.evaluate((storageKey) => {
     const parsed = JSON.parse(localStorage.getItem(storageKey) || '[]');
     return parsed.some((item) => item?.id === 'thread-e2e-delete');
   }, conversationStorageKey);
-  assert(!stillStored, 'Deleted saved chat was still present in local storage.');
+  assert(!stillStored, 'Deleted saved session was still present in local storage.');
 }
 
 async function exerciseProjectHistorySwitcher(page) {
@@ -477,7 +515,7 @@ async function exerciseProjectHistorySwitcher(page) {
   await clickUnique(page.getByRole('button', { name: 'Projects', exact: true }), 'Projects sidebar entry');
   await waitForLocatorCount(page.getByRole('heading', { name: 'Projects', exact: true }), 1, 'Projects surface heading');
 
-  const projectSearch = page.getByPlaceholder('Search projects or chats', { exact: true });
+  const projectSearch = page.getByPlaceholder('Search projects or sessions', { exact: true });
   await projectSearch.waitFor({ state: 'visible', timeout: 30_000 });
   await projectSearch.fill('alternate project');
   await waitForLocatorCount(
@@ -488,7 +526,7 @@ async function exerciseProjectHistorySwitcher(page) {
   await waitForLocatorCount(
     page.getByText('Generated a focused repair summary for the alternate project.', { exact: false }),
     1,
-    'alternate project latest chat preview'
+    'alternate project latest session preview'
   );
 
   await clickUnique(
@@ -509,9 +547,11 @@ async function exerciseProjectHistorySwitcher(page) {
   );
 
   await clickUnique(page.getByRole('button', { name: 'Projects', exact: true }), 'Projects sidebar entry after alternate open');
+  const latestSessionButton = page.getByRole('button', { name: 'Open latest session', exact: false });
+  await waitForLocatorCount(latestSessionButton, 1, 'alternate latest session button');
   await clickUnique(
-    page.getByRole('button', { name: 'Open latest chat for Alternate workspace repair completed', exact: true }),
-    'alternate latest chat button'
+    latestSessionButton,
+    'alternate latest session button'
   );
   await waitForLocatorCount(
     page.getByText('Can you repair the alternate workspace?', { exact: true }),
@@ -526,11 +566,11 @@ async function exerciseProjectHistorySwitcher(page) {
   await waitForLocatorCount(
     page.getByRole('button', { name: 'Open workspace file alt-project.txt', exact: true }),
     1,
-    'alternate workspace files after chat restore'
+    'alternate workspace files after session restore'
   );
 
   await clickUnique(page.getByRole('button', { name: 'Projects', exact: true }), 'Projects sidebar entry before returning');
-  await page.getByPlaceholder('Search projects or chats', { exact: true }).fill('');
+  await page.getByPlaceholder('Search projects or sessions', { exact: true }).fill('');
   await clickUnique(
     page.getByRole('button', { name: 'Open workspace Baseline e2e workspace notes', exact: true }),
     'main project workspace button'
@@ -1016,7 +1056,7 @@ async function exercisePinnedContextFiles(page) {
   );
   await page.unroute(`${backendUrl}/api/chat/stream`);
 
-  await clickUnique(page.getByRole('button', { name: 'New chat', exact: true }), 'new chat after pinned context test');
+  await clickUnique(page.getByRole('button', { name: 'New session', exact: true }), 'new session after pinned context test');
   await waitForLocatorCount(page.getByText('Welcome to Auralith OS', { exact: true }), 1, 'empty session after pinned context test');
 }
 
@@ -1678,7 +1718,7 @@ async function exerciseGeneratedChangeApplyScopes(page) {
   await page.unroute(`${backendUrl}/api/validate`);
   await runValidationToggle.uncheck();
 
-  await clickUnique(page.getByRole('button', { name: 'New chat', exact: true }), 'new chat after apply scope test');
+  await clickUnique(page.getByRole('button', { name: 'New session', exact: true }), 'new session after apply scope test');
   await waitForLocatorCount(page.getByText('Welcome to Auralith OS', { exact: true }), 1, 'empty session after apply scope test');
 }
 
@@ -1815,7 +1855,7 @@ async function exerciseManualApplyWarningStatus(page) {
   assert(warningStatusRequests === 1, `Expected one warning status stream request, got ${warningStatusRequests}.`);
   await page.unroute(`${backendUrl}/api/chat/stream`);
 
-  await clickUnique(page.getByRole('button', { name: 'New chat', exact: true }), 'new chat after warning status test');
+  await clickUnique(page.getByRole('button', { name: 'New session', exact: true }), 'new session after warning status test');
   await waitForLocatorCount(page.getByText('Welcome to Auralith OS', { exact: true }), 1, 'empty session after warning status test');
 }
 
@@ -1914,7 +1954,7 @@ async function exerciseSamePathWarningPrecision(page) {
   assert(samePathRequests === 1, `Expected one same-path warning stream request, got ${samePathRequests}.`);
   await page.unroute(`${backendUrl}/api/chat/stream`);
 
-  await clickUnique(page.getByRole('button', { name: 'New chat', exact: true }), 'new chat after same-path warning test');
+  await clickUnique(page.getByRole('button', { name: 'New session', exact: true }), 'new session after same-path warning test');
   await waitForLocatorCount(page.getByText('Welcome to Auralith OS', { exact: true }), 1, 'empty session after same-path warning test');
 }
 
@@ -2006,7 +2046,7 @@ async function exerciseGeneratedChangeReviewRestore(page) {
   await clickUnique(page.getByRole('button', { name: 'Hide generated file list', exact: true }), 'hide live inline file list');
   await waitForLocatorExactCount(page.getByTestId('inline-change-list'), 0, 'live inline review file list collapsed after hiding');
 
-  await clickUnique(page.getByRole('button', { name: 'New chat', exact: true }), 'new chat after saved review response');
+  await clickUnique(page.getByRole('button', { name: 'New session', exact: true }), 'new session after saved review response');
   await waitForLocatorCount(page.getByText('Welcome to Auralith OS', { exact: true }), 1, 'empty session after saving review thread');
 
   const savedThread = await page.evaluate(
@@ -2036,7 +2076,7 @@ async function exerciseGeneratedChangeReviewRestore(page) {
   await page.reload({ waitUntil: 'domcontentloaded' });
   const savedChatButton = page.getByRole('button', { name: savedThread.title, exact: true });
   await savedChatButton.waitFor({ state: 'visible', timeout: 30_000 });
-  await clickUnique(savedChatButton, 'restored saved generated review chat');
+  await clickUnique(savedChatButton, 'restored saved generated review session');
   await waitForLocatorCount(
     page.getByText('Restored review fixture generated.', { exact: true }),
     1,
@@ -2069,7 +2109,7 @@ async function exerciseGeneratedChangeReviewRestore(page) {
   assert(restoreRequests === 1, `Expected one saved review stream request, got ${restoreRequests}.`);
   await page.unroute(`${backendUrl}/api/chat/stream`);
 
-  await clickUnique(page.getByRole('button', { name: 'New chat', exact: true }), 'new chat after restore review test');
+  await clickUnique(page.getByRole('button', { name: 'New session', exact: true }), 'new session after restore review test');
   await waitForLocatorCount(page.getByText('Welcome to Auralith OS', { exact: true }), 1, 'empty session after restore review test');
 }
 
@@ -2124,12 +2164,12 @@ async function exerciseComposerDraftRestore(page) {
 }
 
 async function exerciseCurrentChatExport(page, userMessage, assistantMessage) {
-  const exportButton = page.getByRole('button', { name: 'Export chat transcript', exact: true });
+  const exportButton = page.getByRole('button', { name: 'Export session transcript', exact: true });
   await exportButton.waitFor({ state: 'visible', timeout: 10_000 });
 
   const [download] = await Promise.all([
     page.waitForEvent('download', { timeout: 10_000 }),
-    clickUnique(exportButton, 'export chat transcript button')
+    clickUnique(exportButton, 'export session transcript button')
   ]);
   const suggestedFilename = download.suggestedFilename();
   assert(suggestedFilename.endsWith('.md'), `Expected Markdown transcript filename, got ${suggestedFilename}.`);
@@ -2140,13 +2180,13 @@ async function exerciseCurrentChatExport(page, userMessage, assistantMessage) {
   assert(markdown.includes(`# ${assistantMessage}`), 'Transcript markdown did not include the summarized chat title.');
   assert(markdown.includes('## User'), 'Transcript markdown did not include the user section.');
   assert(markdown.includes(userMessage), 'Transcript markdown did not include the user message.');
-  assert(markdown.includes('## Aegis'), 'Transcript markdown did not include the assistant section.');
+  assert(markdown.includes('## Auralith Prime'), 'Transcript markdown did not include the assistant section.');
   assert(markdown.includes(assistantMessage), 'Transcript markdown did not include the assistant message.');
   await waitForLocatorCount(page.getByText('Exported transcript', { exact: false }), 1, 'transcript export status');
 }
 
 async function exerciseChatAutoScroll(page) {
-  await clickUnique(page.getByRole('button', { name: 'New chat', exact: true }), 'new chat before auto-scroll test');
+  await clickUnique(page.getByRole('button', { name: 'New session', exact: true }), 'new session before auto-scroll test');
   await waitForLocatorCount(page.getByText('Welcome to Auralith OS', { exact: true }), 1, 'empty session before auto-scroll test');
   await waitForLocatorCount(page.getByTestId('details-panel'), 1, 'details panel visible before auto-scroll test');
 
@@ -2184,7 +2224,7 @@ async function exerciseChatAutoScroll(page) {
   assert(autoScrollRequests === 1, `Expected one auto-scroll stream request, got ${autoScrollRequests}.`);
   await page.unroute(`${backendUrl}/api/chat/stream`);
 
-  await clickUnique(page.getByRole('button', { name: 'New chat', exact: true }), 'new chat after auto-scroll test');
+  await clickUnique(page.getByRole('button', { name: 'New session', exact: true }), 'new session after auto-scroll test');
   await waitForLocatorCount(page.getByText('Welcome to Auralith OS', { exact: true }), 1, 'empty session after auto-scroll test');
 }
 
@@ -2343,7 +2383,7 @@ async function exerciseStopActiveResponse(page) {
   await stopButton.waitFor({ state: 'visible', timeout: 5_000 });
   await clickUnique(stopButton, 'stop current response button');
 
-  await waitForLocatorCount(page.getByText('Chat request stopped.', { exact: true }), 1, 'stopped response status');
+  await waitForLocatorCount(page.getByText('Session request stopped.', { exact: true }), 1, 'stopped response status');
   await waitForLocatorExactCount(stopButton, 0, 'stop response button after abort', 10_000);
   await delay(1_500);
   await waitForLocatorExactCount(

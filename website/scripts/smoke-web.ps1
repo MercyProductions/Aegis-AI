@@ -218,10 +218,10 @@ if (!fs.existsSync('generated/smoke.txt')) {
   throw new Error('generated smoke file is missing');
 }
 const content = fs.readFileSync('generated/smoke.txt', 'utf8');
-if (!content.includes('Aegis smoke test passed')) {
+if (!content.includes('Auralith OS smoke test passed')) {
   throw new Error('generated smoke file content was not applied');
 }
-console.log('aegis validation smoke ok');
+console.log('auralith validation smoke ok');
 "@ | Set-Content -LiteralPath (Join-Path $smokeRoot "smoke.js") -Encoding UTF8
 
 $workspaceQuery = Encode-QueryValue -Value $smokeRoot
@@ -250,9 +250,9 @@ $diff = Invoke-AegisJson -Method POST -Path "/api/diff/compare" -Body @{
     path = "generated/smoke.txt"
     action = "create"
     old_content = ""
-    new_content = "Aegis smoke test passed`n"
+    new_content = "Auralith OS smoke test passed`n"
 }
-Assert-True ($diff.patch -match "Aegis smoke test passed") "diff response did not include generated content"
+Assert-True ($diff.patch -match "Auralith OS smoke test passed") "diff response did not include generated content"
 
 Write-Step "applying generated file through API"
 $apply = Invoke-AegisJson -Method POST -Path "/api/apply" -Body @{
@@ -261,7 +261,7 @@ $apply = Invoke-AegisJson -Method POST -Path "/api/apply" -Body @{
         @{
             action = "create"
             path = "generated/smoke.txt"
-            content = "Aegis smoke test passed`n"
+            content = "Auralith OS smoke test passed`n"
             summary = "Create smoke-test output file"
         }
     )
@@ -270,7 +270,7 @@ Assert-True (($apply.applied | Where-Object { $_ -like "*generated/smoke.txt" } 
 
 Write-Step "reading generated file through API"
 $file = Invoke-AegisJson -Method GET -Path "/api/file?workspace_root=$workspaceQuery&path=generated%2Fsmoke.txt"
-Assert-True ($file.content -eq "Aegis smoke test passed`n") "read-back content did not match applied content"
+Assert-True ($file.content -eq "Auralith OS smoke test passed`n") "read-back content did not match applied content"
 
 Write-Step "running inferred validation command"
 $validation = Invoke-AegisJson -Method POST -Path "/api/validate" -Body @{
@@ -279,7 +279,7 @@ $validation = Invoke-AegisJson -Method POST -Path "/api/validate" -Body @{
 Assert-True ($null -ne $validation.validation) "validation response did not include a command result"
 Assert-True ($validation.validation.allowed) "validation command was blocked: $($validation.validation.reason)"
 Assert-True ($validation.validation.exit_code -eq 0) "validation command failed: $($validation.validation.summary)"
-Assert-True ($validation.validation.stdout -match "aegis validation smoke ok") "validation output did not include smoke success text"
+Assert-True ($validation.validation.stdout -match "auralith validation smoke ok") "validation output did not include smoke success text"
 
 Write-Step "checking readiness after validation"
 $readyProfile = Invoke-AegisJson -Method GET -Path "/api/workspace/profile?workspace_root=$workspaceQuery"
@@ -290,7 +290,7 @@ Assert-True ($readyProfile.readiness.score -ge 85) "readiness score stayed too l
 if (-not $SkipChat) {
     Write-Step "sending a real chat turn"
     $chat = Invoke-AegisJson -Method POST -Path "/api/chat" -Body @{
-        message = "Smoke test: reply with one short sentence confirming Aegis is responding."
+        message = "Smoke test: reply with one short sentence confirming Auralith Prime is responding."
         mode = "chat"
         workspace_root = $smokeRoot
         apply_changes = $false
@@ -301,7 +301,7 @@ if (-not $SkipChat) {
     Assert-True (-not [string]::IsNullOrWhiteSpace($chat.task_id)) "chat response did not include a task id"
 }
 
-Write-Host "Aegis web smoke test passed."
+Write-Host "Auralith OS smoke test passed."
 if ($KeepWorkspace) {
     Write-Host "Workspace: $smokeRoot"
     Write-Host "Config probe workspace: $configProbeRoot"

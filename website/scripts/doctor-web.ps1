@@ -193,7 +193,7 @@ $script:Failures = @()
 $script:Warnings = @()
 $expectedRoot = Normalize-PathForCompare -Path $Root
 
-Write-Host "Aegis web doctor"
+Write-Host "Auralith OS doctor"
 Write-Host "Project: $Root"
 Write-Host "Frontend: $FrontendUrl"
 Write-Host "Backend: $BackendUrl"
@@ -203,7 +203,7 @@ try {
     if ($frontend.StatusCode -ge 200 -and $frontend.StatusCode -lt 300 -and $frontend.Content -match "Auralith OS") {
         Add-Pass "frontend returned Auralith OS HTML"
     } else {
-        Add-Failure "frontend responded but did not look like the Aegis app"
+        Add-Failure "frontend responded but did not look like Auralith OS"
     }
 } catch {
     Add-Failure "frontend is not reachable at $FrontendUrl ($($_.Exception.Message))"
@@ -311,12 +311,12 @@ if ($SkipConfigMutation) {
 
 Write-Host ""
 if ($Failures.Count -gt 0) {
-    Write-Host "Aegis web doctor found $($Failures.Count) issue(s)." -ForegroundColor Red
+    Write-Host "Auralith OS doctor found $($Failures.Count) issue(s)." -ForegroundColor Red
     exit 1
 }
 
 if ($Warnings.Count -gt 0) {
-    Write-Host "Aegis web doctor passed with $($Warnings.Count) warning(s)." -ForegroundColor Yellow
+    Write-Host "Auralith OS doctor passed with $($Warnings.Count) warning(s)." -ForegroundColor Yellow
 } else {
-    Write-Host "Aegis web doctor passed." -ForegroundColor Green
+    Write-Host "Auralith OS doctor passed." -ForegroundColor Green
 }

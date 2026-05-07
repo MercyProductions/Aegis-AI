@@ -154,12 +154,12 @@ export function buildConversationMarkdown(
 }
 
 export function conversationMarkdownFilename(title: string, exportedAt = new Date().toISOString()): string {
-  const datePart = exportedAt.slice(0, 10) || 'chat';
-  const normalizedTitle = compactText(title || 'aegis-chat', 80)
+  const datePart = exportedAt.slice(0, 10) || 'session';
+  const normalizedTitle = compactText(title || 'auralith-session', 80)
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
-  return `${datePart}-${normalizedTitle || 'aegis-chat'}.md`;
+  return `${datePart}-${normalizedTitle || 'auralith-session'}.md`;
 }
 
 export function isSavedConversation(value: unknown): value is SavedConversation {
@@ -249,7 +249,7 @@ export function workspaceLeaf(value: string): string {
 
 function roleLabel(role: ChatMessage['role']): string {
   if (role === 'user') return 'User';
-  if (role === 'assistant') return 'Aegis';
+  if (role === 'assistant') return 'Auralith Prime';
   return 'System';
 }
 

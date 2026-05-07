@@ -158,7 +158,7 @@ class AgentParserTests(unittest.TestCase):
             self.assertEqual(response.applied, ["create: obfuscate.ts"])
             self.assertTrue((target / "obfuscate.ts").exists())
             self.assertIn("export function obfuscate", (target / "obfuscate.ts").read_text(encoding="utf-8"))
-            self.assertIn("Aegis applied 1 file change", response.reply)
+            self.assertIn("Auralith Prime applied 1 file change", response.reply)
 
     def test_sanitize_model_change_paths_strips_workspace_folder_prefix(self) -> None:
         workspace = Path(self.tempdir.name) / "sample-app"
@@ -849,7 +849,7 @@ class AgentParserTests(unittest.TestCase):
             completion_quality=CompletionQualityInfo(status="ready", score=1.0),
         )
 
-        self.assertIn("Aegis applied 3 file changes", reply)
+        self.assertIn("Auralith Prime applied 3 file changes", reply)
         self.assertIn("validation passed", reply)
         self.assertIn("python build.py", reply)
         self.assertNotIn("preview", reply.lower())
@@ -2349,7 +2349,7 @@ class AgentParserTests(unittest.TestCase):
         self.assertIsNotNone(response.validation)
         self.assertEqual(response.validation.exit_code, 0)
         self.assertIn("python build.py", response.validation.command)
-        self.assertIn("Aegis ran validation", response.reply)
+        self.assertIn("Auralith Prime ran validation", response.reply)
         self.assertIn("passed", response.reply)
 
     def test_draft_validation_command_runs_when_no_profile_is_detected(self) -> None:
