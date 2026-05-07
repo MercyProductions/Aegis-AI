@@ -17,6 +17,15 @@ from .project_scaffold_build_logs import (
 from .project_scaffold_command_stage import (
     run_command_stage as scaffold_run_command_stage,
 )
+from .project_scaffold_existing_validation import (
+    EXISTING_PROJECT_MODE_WARNING as SCAFFOLD_EXISTING_PROJECT_MODE_WARNING,
+    existing_project_install_stage as scaffold_existing_project_install_stage,
+    existing_project_memory_stage as scaffold_existing_project_memory_stage,
+    existing_project_next_steps as scaffold_existing_project_next_steps,
+    existing_project_preamble_stages as scaffold_existing_project_preamble_stages,
+    existing_project_repair_stage as scaffold_existing_project_repair_stage,
+    existing_project_skipped_validation_stage as scaffold_existing_project_skipped_validation_stage,
+)
 from .project_scaffold_handoff import (
     aegis_handoff_files as scaffold_aegis_handoff_files,
     first_product_pass_items as scaffold_first_product_pass_items,
@@ -1250,34 +1259,9 @@ class ProjectScaffolder:
             existing_profile,
             validation_command,
         )
-        warnings = [
-            "Existing project mode: Aegis skipped starter-file generation and focused on the current workspace validation state."
-        ]
+        warnings = [SCAFFOLD_EXISTING_PROJECT_MODE_WARNING]
         risk_warnings = self._risk_warnings_for_target(target, overwrite=request.overwrite)
-        stages.append(
-            ProjectBuildStage(
-                id="structure",
-                label="Skip scaffold generation",
-                status="skipped",
-                detail="The target already looks like a project and the prompt asked to build, validate, or repair it.",
-            )
-        )
-        stages.append(
-            ProjectBuildStage(
-                id="diff",
-                label="Prepare file diff preview",
-                status="succeeded",
-                detail="No starter files are planned for this existing-project pass.",
-            )
-        )
-        stages.append(
-            ProjectBuildStage(
-                id="apply",
-                label="Write files with checkpoint",
-                status="skipped",
-                detail="No file changes were needed before validation.",
-            )
-        )
+        stages.extend(scaffold_existing_project_preamble_stages())
 
         validation: CommandRun | None = None
         if apply and validation_command:
@@ -1289,19 +1273,7 @@ class ProjectScaffolder:
                 notes="Existing project build/fix pass; no starter scaffold files were generated.",
             )
 
-        stages.append(
-            ProjectBuildStage(
-                id="install",
-                label="Install dependencies",
-                status="skipped" if install_command else "planned",
-                detail=(
-                    "Install command captured but not run automatically for an existing project build/fix pass."
-                    if install_command
-                    else "No install command is defined for this project."
-                ),
-                command=install_command,
-            )
-        )
+        stages.append(scaffold_existing_project_install_stage(install_command))
 
         if apply and request.run_validation and validation_command:
             validation_stage, validation = self._run_command_stage(
@@ -1312,51 +1284,13 @@ class ProjectScaffolder:
             )
             stages.append(validation_stage)
         else:
-            stages.append(
-                ProjectBuildStage(
-                    id="validate",
-                    label="Run existing project validation",
-                    status="skipped" if validation_command else "planned",
-                    detail=(
-                        "Validation command saved; enable validation to run it immediately."
-                        if validation_command
-                        else "No validation command could be inferred for this existing project."
-                    ),
-                    command=validation_command,
-                )
-            )
+            stages.append(scaffold_existing_project_skipped_validation_stage(validation_command))
 
         if validation is not None and not self._command_ok(validation):
-            stages.append(
-                ProjectBuildStage(
-                    id="repair",
-                    label="Repair loop handoff",
-                    status="blocked" if not validation.allowed else "planned",
-                    detail="Captured validation output for the chat repair loop without creating starter files.",
-                    command=validation_command,
-                    output_excerpt=self._command_excerpt(validation),
-                    error=validation.summary or validation.reason,
-                )
-            )
+            stages.append(scaffold_existing_project_repair_stage(validation, validation_command=validation_command))
             warnings.append("Validation did not pass. Aegis captured the failure for the repair loop.")
-        elif validation is not None:
-            stages.append(
-                ProjectBuildStage(
-                    id="repair",
-                    label="Repair loop handoff",
-                    status="skipped",
-                    detail="Validation passed; no repair loop is needed.",
-                )
-            )
         else:
-            stages.append(
-                ProjectBuildStage(
-                    id="repair",
-                    label="Repair loop handoff",
-                    status="skipped",
-                    detail="No validation output was produced.",
-                )
-            )
+            stages.append(scaffold_existing_project_repair_stage(validation, validation_command=validation_command))
 
         build_log_path = ""
         if apply:
@@ -1406,37 +1340,11 @@ class ProjectScaffolder:
                 applied=[],
             )
             warnings.extend(memory_warnings)
-            stages.append(
-                ProjectBuildStage(
-                    id="memory",
-                    label="Update project memory",
-                    status="succeeded",
-                    detail=(
-                        "Updated .aegis file index, command history, known-error memory, and instruction checkpoint."
-                        if not memory_warnings
-                        else "Project memory updated with warnings: " + "; ".join(memory_warnings[:2])
-                    ),
-                )
-            )
+            stages.append(scaffold_existing_project_memory_stage(apply=True, warnings=memory_warnings))
         else:
-            stages.append(
-                ProjectBuildStage(
-                    id="memory",
-                    label="Update project memory",
-                    status="skipped",
-                    detail="Preview mode only; project memory was not written.",
-                )
-            )
+            stages.append(scaffold_existing_project_memory_stage(apply=False, warnings=[]))
 
-        next_steps = [
-            f"Open the workspace at {target}.",
-            (
-                "Validation passed; continue with the next project task."
-                if validation is not None and self._command_ok(validation)
-                else "Review captured validation output and continue the repair loop from the chat workspace."
-            ),
-            "Ask Auralith Prime to continue from the saved .aegis command history and known-error memory.",
-        ]
+        next_steps = scaffold_existing_project_next_steps(target, validation)
 
         return ProjectScaffoldResponse(
             ok=True,
