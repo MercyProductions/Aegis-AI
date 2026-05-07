@@ -8,6 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from aegis_ai.workspace_autopilot import (
     compact_repair_brief,
+    compact_validation_repair_brief,
     first_diagnostic_brief,
     latest_history_validation,
     status_value,
@@ -82,6 +83,31 @@ class WorkspaceAutopilotHelperTests(unittest.TestCase):
         self.assertEqual(
             compact_repair_brief({}, validation_command="npm run build"),
             "Repair npm run build; rerun validation",
+        )
+
+    def test_compact_validation_repair_brief_preserves_planner_failed_step_wording(self) -> None:
+        self.assertEqual(
+            compact_validation_repair_brief(
+                {
+                    "failed_step": "2",
+                    "failed_step_command": "npm run build",
+                    "diagnostics": [
+                        {
+                            "file": "src/app.ts",
+                            "line": 10,
+                            "severity": "error",
+                            "code": "TS2322",
+                        }
+                    ],
+                }
+            ),
+            "Repair step 2: npm run build; diagnostic src/app.ts:10 error TS2322; rerun validation",
+        )
+
+    def test_compact_validation_repair_brief_keeps_step_only_legacy_fallback(self) -> None:
+        self.assertEqual(
+            compact_validation_repair_brief({"failed_step": "2"}, validation_command="npm run build"),
+            "Repair 2; rerun validation",
         )
 
 

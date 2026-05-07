@@ -140,6 +140,10 @@ from .validation_outcome import (
     validation_score as outcome_validation_score,
 )
 from .workspace import WorkspaceManager
+from .workspace_autopilot import (
+    compact_validation_repair_brief as workspace_compact_validation_repair_brief,
+    latest_history_validation as workspace_latest_history_validation,
+)
 
 
 MODE_OPTIONS: list[tuple[ModeName, str, str]] = [
@@ -2314,34 +2318,10 @@ class AgentEngine:
         return self._compact_repair_brief_from_validation(payload, validation_command=validation_command)
 
     def _latest_history_validation(self, command_history: dict[str, Any]) -> dict[str, Any]:
-        commands = command_history.get("commands") if isinstance(command_history, dict) else []
-        if not isinstance(commands, list):
-            return {}
-        for item in reversed(commands):
-            if not isinstance(item, dict):
-                continue
-            kind = str(item.get("kind") or "").strip().lower()
-            if kind == "validation" or kind.startswith("verification:"):
-                return item
-        return {}
+        return workspace_latest_history_validation(command_history)
 
     def _compact_repair_brief_from_validation(self, payload: dict[str, Any], *, validation_command: str = "") -> str:
-        failed_step = self._failed_step_display(payload)
-        diagnostic = self._first_diagnostic_brief(payload)
-        failed_command = str(payload.get("command") or validation_command).strip()
-        parts: list[str] = []
-        if failed_step:
-            parts.append(f"Repair {failed_step}")
-        elif diagnostic:
-            parts.append(f"Repair diagnostic {diagnostic}")
-        elif failed_command:
-            parts.append(f"Repair {failed_command}")
-        else:
-            parts.append("Repair failed validation")
-        if failed_step and diagnostic:
-            parts.append(f"diagnostic {diagnostic}")
-        parts.append("rerun validation")
-        return "; ".join(parts)
+        return workspace_compact_validation_repair_brief(payload, validation_command=validation_command)
 
     def _looks_like_broad_project_continuation(self, message: str) -> bool:
         normalized = " ".join(message.strip().lower().split())

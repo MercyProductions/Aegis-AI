@@ -2,6 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from .validation_diagnostics import (
+    failed_step_display,
+    first_diagnostic_brief as validation_first_diagnostic_brief,
+)
+
 
 def latest_history_validation(command_history: dict[str, Any]) -> dict[str, Any]:
     commands = command_history.get("commands") if isinstance(command_history, dict) else []
@@ -66,6 +71,25 @@ def compact_repair_brief(payload: dict[str, Any], *, validation_command: str = "
         parts.append("Repair failed validation")
 
     if diagnostic and not parts[0].endswith(diagnostic):
+        parts.append(f"diagnostic {diagnostic}")
+    parts.append("rerun validation")
+    return "; ".join(parts)
+
+
+def compact_validation_repair_brief(payload: dict[str, Any], *, validation_command: str = "") -> str:
+    failed_step = failed_step_display(payload)
+    diagnostic = validation_first_diagnostic_brief(payload)
+    failed_command = str(payload.get("command") or validation_command).strip()
+    parts: list[str] = []
+    if failed_step:
+        parts.append(f"Repair {failed_step}")
+    elif diagnostic:
+        parts.append(f"Repair diagnostic {diagnostic}")
+    elif failed_command:
+        parts.append(f"Repair {failed_command}")
+    else:
+        parts.append("Repair failed validation")
+    if failed_step and diagnostic:
         parts.append(f"diagnostic {diagnostic}")
     parts.append("rerun validation")
     return "; ".join(parts)
