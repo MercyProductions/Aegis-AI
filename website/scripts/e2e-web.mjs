@@ -56,6 +56,7 @@ try {
       headless: !headed
     });
     await exercisePublicWebsiteRoutes(browser);
+    await exerciseProtectedAuthGate(browser);
     page = await browser.newPage({ acceptDownloads: true, viewport: { width: 1440, height: 1050 } });
     await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: frontendUrl });
     await page.addInitScript(
@@ -267,6 +268,41 @@ async function exercisePublicWebsiteRoutes(browser) {
   }
 }
 
+async function exerciseProtectedAuthGate(browser) {
+  const authPage = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  const authIssues = [];
+  authPage.on('console', (message) => {
+    if (['warning', 'error'].includes(message.type())) {
+      if (message.text().includes('Failed to load resource')) return;
+      authIssues.push(`${message.type()}: ${message.text()}`);
+    }
+  });
+  authPage.on('pageerror', (error) => {
+    authIssues.push(`pageerror: ${error.stack || error.message}`);
+  });
+
+  try {
+    await authPage.goto(`${frontendUrl}/app/tasks`, { waitUntil: 'domcontentloaded' });
+    await waitForLocatorCount(authPage.getByRole('heading', { name: 'Login to Auralith OS', exact: true }), 1, 'protected route login gate');
+    await waitForBrowserPath(authPage, '/login', 'protected route login redirect');
+    await assertNoHorizontalOverflow(authPage, 'protected route login gate');
+
+    await authPage.evaluate((key) => {
+      localStorage.setItem(key, '{ this is not valid session json');
+    }, authSessionStorageKey);
+    await authPage.goto(`${frontendUrl}/app/settings`, { waitUntil: 'domcontentloaded' });
+    await waitForLocatorCount(authPage.getByRole('heading', { name: 'Login to Auralith OS', exact: true }), 1, 'malformed auth login gate');
+    await waitForBrowserPath(authPage, '/login', 'malformed auth redirect');
+    const storedAuthSession = await authPage.evaluate((key) => localStorage.getItem(key), authSessionStorageKey);
+    assert(storedAuthSession === null, 'Malformed auth session was not cleared from localStorage.');
+    await assertNoHorizontalOverflow(authPage, 'malformed auth login gate');
+
+    assert(authIssues.length === 0, `Auth gate console reported warning/error output:\n${authIssues.join('\n')}`);
+  } finally {
+    await authPage.close().catch(() => {});
+  }
+}
+
 async function restoreWorkspaceValue(fallback) {
   const envValue = await readDotEnvValue('DEFAULT_WORKSPACE');
   const candidate = envValue || fallback || 'workspace';
@@ -409,6 +445,32 @@ async function waitForLocatorText(locator, expectedText, label, timeout = 30_000
     await delay(250);
   }
   throw new Error(`Timed out waiting for ${label}; expected text ${JSON.stringify(expectedText)}, got ${JSON.stringify(lastText)}.`);
+}
+
+async function waitForBrowserPath(page, expectedPath, label, timeout = 10_000) {
+  const deadline = Date.now() + timeout;
+  let lastPath = '';
+  while (Date.now() < deadline) {
+    lastPath = await page.evaluate(() => window.location.pathname);
+    if (lastPath === expectedPath) return lastPath;
+    await delay(250);
+  }
+  throw new Error(`Timed out waiting for ${label}; expected ${expectedPath}, got ${lastPath}.`);
+}
+
+async function assertNoHorizontalOverflow(page, label) {
+  const metrics = await page.evaluate(() => {
+    const root = document.documentElement;
+    const body = document.body;
+    return {
+      innerWidth: window.innerWidth,
+      scrollWidth: Math.max(root.scrollWidth, body.scrollWidth)
+    };
+  });
+  assert(
+    metrics.scrollWidth <= metrics.innerWidth + 4,
+    `${label} overflowed horizontally: scrollWidth ${metrics.scrollWidth}, viewport ${metrics.innerWidth}.`
+  );
 }
 
 async function waitForChatScrollAtBottom(page, label, timeout = 10_000) {

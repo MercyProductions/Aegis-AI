@@ -23,6 +23,7 @@ The stabilization pass covered:
 - Compact settings modal behavior.
 - Authenticated overlay responsiveness.
 - Long saved-session history behavior.
+- Protected-route auth gating and malformed session recovery.
 - Initial bundle shape and optional panel loading.
 - Lazy-surface crash containment.
 - Live frontend/backend identity checks.
@@ -53,6 +54,8 @@ The stabilization pass covered:
 - Made approval controls resize within the viewport, stack footer actions on compact screens, and expose a labeled close affordance.
 - Added E2E coverage that opens and closes Memory Center and approval controls on tablet/mobile viewports while checking horizontal overflow.
 - Added E2E coverage for a 50-session saved history: reload persistence, sidebar/search filtering, opening a saved result, command-surface visibility, and horizontal-overflow detection.
+- Invalid or malformed persisted auth sessions are now cleared automatically instead of lingering in localStorage.
+- Added E2E coverage for unauthenticated protected-route redirects and malformed auth-session cleanup.
 
 ## Current Validation Baseline
 
@@ -70,7 +73,7 @@ Validation details:
 - Backend tests: 494 passed, 108 subtests passed.
 - Live doctor check: passed.
 - Live smoke check: passed.
-- Browser E2E: passed, including public mobile route checks, protected laptop/mobile responsive shell checks, tablet/mobile settings modal checks, tablet/mobile authenticated overlay checks, and 50-session history stress.
+- Browser E2E: passed, including public mobile route checks, protected-route auth gates, malformed auth cleanup, protected laptop/mobile responsive shell checks, tablet/mobile settings modal checks, tablet/mobile authenticated overlay checks, and 50-session history stress.
 
 Known warning:
 

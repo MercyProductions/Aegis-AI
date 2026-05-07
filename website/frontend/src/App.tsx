@@ -502,8 +502,11 @@ function loadStoredAuthSession(): AuthSessionResponse | null {
     const raw = window.localStorage.getItem(authSessionStorageKey);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as unknown;
-    return isStoredAuthSession(parsed) ? parsed : null;
+    if (isStoredAuthSession(parsed)) return parsed;
+    window.localStorage.removeItem(authSessionStorageKey);
+    return null;
   } catch {
+    window.localStorage.removeItem(authSessionStorageKey);
     return null;
   }
 }
