@@ -83,12 +83,23 @@ from .schemas import (
 )
 from .settings import Settings
 from .storage_helpers import (
+    average,
+    context_budget_utilization,
     fingerprint,
+    float_value,
+    int_value,
     memory_match_score,
     merge_json_list,
+    optional_bool,
+    optional_int,
+    optional_positive_int,
     parse_json_list,
     parse_json_payload,
+    rate,
+    reliability_score,
     task_title_from_message,
+    token_metadata_int,
+    token_relative_error,
     tokenize,
 )
 from .task_engine import DEFAULT_SUBTASKS, normalize_task_status, validate_task_transition
@@ -5865,27 +5876,13 @@ class EventStore:
         return family or source
 
     def _optional_positive_int(self, value: Any) -> int | None:
-        if value in (None, ""):
-            return None
-        try:
-            number = int(value)
-        except (TypeError, ValueError):
-            return None
-        return number if number >= 0 else None
+        return optional_positive_int(value)
 
     def _token_metadata_int(self, metadata: dict[str, Any], keys: tuple[str, ...]) -> int | None:
-        if not isinstance(metadata, dict):
-            return None
-        for key in keys:
-            value = self._optional_positive_int(metadata.get(key))
-            if value is not None:
-                return value
-        return None
+        return token_metadata_int(metadata, keys)
 
     def _token_relative_error(self, estimated: int | None, reported: int | None) -> float | None:
-        if estimated is None or reported is None:
-            return None
-        return round(abs(estimated - reported) / max(reported, 1), 4)
+        return token_relative_error(estimated, reported)
 
     def _structured_preview_metrics(self, metadata: dict[str, Any]) -> dict[str, Any] | None:
         if not isinstance(metadata, dict):
@@ -6023,13 +6020,7 @@ class EventStore:
         return f"{label} established a calibration baseline during {bucket.period_start}."
 
     def _context_budget_utilization(self, entry: ContextBudgetTelemetryEntry) -> float | None:
-        max_tokens = entry.max_context_tokens or entry.payload.max_context_tokens
-        if max_tokens <= 0:
-            return None
-        requested = (entry.estimated_context_tokens or entry.payload.estimated_context_tokens) + (
-            entry.reserve_response_tokens or entry.payload.reserve_response_tokens
-        )
-        return min(1.0, max(0.0, requested / max_tokens))
+        return context_budget_utilization(entry)
 
     def _reliability_score(
         self,
@@ -6039,60 +6030,31 @@ class EventStore:
         positive_feedback_rate: float = 0.0,
         negative_feedback_rate: float = 0.0,
     ) -> float:
-        pressure_penalty = max(0.0, ((context_utilization or 0.0) - 0.72) * 0.40)
-        feedback_adjustment = (positive_feedback_rate * 0.08) - (negative_feedback_rate * 0.16)
-        score = success_rate - (fallback_rate * 0.20) - pressure_penalty + feedback_adjustment
-        return round(max(0.0, min(1.0, score)) * 100.0, 2)
+        return reliability_score(
+            success_rate,
+            fallback_rate,
+            context_utilization,
+            positive_feedback_rate,
+            negative_feedback_rate,
+        )
 
     def _average(self, values: list[Any]) -> float | None:
-        cleaned = [self._float_value(value, None) for value in values]
-        cleaned = [value for value in cleaned if value is not None]
-        if not cleaned:
-            return None
-        return round(sum(cleaned) / len(cleaned), 4)
+        return average(values)
 
     def _rate(self, numerator: int, denominator: int) -> float:
-        if denominator <= 0:
-            return 0.0
-        return round(numerator / denominator, 4)
+        return rate(numerator, denominator)
 
     def _int_value(self, value: Any, default: int = 0) -> int:
-        if value in (None, ""):
-            return default
-        try:
-            return int(value)
-        except (TypeError, ValueError):
-            return default
+        return int_value(value, default)
 
     def _optional_int(self, value: Any) -> int | None:
-        if value in (None, ""):
-            return None
-        try:
-            return int(value)
-        except (TypeError, ValueError):
-            return None
+        return optional_int(value)
 
     def _optional_bool(self, value: Any) -> bool | None:
-        if value is None:
-            return None
-        if isinstance(value, bool):
-            return value
-        if isinstance(value, (int, float)):
-            return bool(value)
-        lowered = str(value).strip().lower()
-        if lowered in {"true", "1", "yes", "y"}:
-            return True
-        if lowered in {"false", "0", "no", "n"}:
-            return False
-        return None
+        return optional_bool(value)
 
     def _float_value(self, value: Any, default: float | None = 0.0) -> float | None:
-        if value in (None, ""):
-            return default
-        try:
-            return float(value)
-        except (TypeError, ValueError):
-            return default
+        return float_value(value, default)
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path)
