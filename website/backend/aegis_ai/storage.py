@@ -124,6 +124,18 @@ from .storage_telemetry import (
     telemetry_snapshot_from_row as storage_telemetry_snapshot_from_row,
     telemetry_snapshot_key as storage_telemetry_snapshot_key,
 )
+from .storage_quality import (
+    attempt_status as storage_attempt_status,
+    feedback_metadata as storage_feedback_metadata,
+    is_fallback_attempt as storage_is_fallback_attempt,
+    structured_preview_metrics as storage_structured_preview_metrics,
+    structured_preview_recommendation as storage_structured_preview_recommendation,
+    structured_preview_status as storage_structured_preview_status,
+    token_calibration_recommendation as storage_token_calibration_recommendation,
+    token_calibration_status as storage_token_calibration_status,
+    token_calibration_trend_recommendation as storage_token_calibration_trend_recommendation,
+    token_estimator_label as storage_token_estimator_label,
+)
 from .storage_records import (
     execution_job_from_row as storage_execution_job_from_row,
     execution_job_values as storage_execution_job_values,
@@ -5324,30 +5336,16 @@ class EventStore:
         return content_hash(content)
 
     def _feedback_metadata(self, request: FeedbackRecordRequest) -> dict[str, Any]:
-        metadata = dict(request.metadata or {})
-        metadata["content_length"] = len(request.content or "")
-        metadata["has_content"] = bool((request.content or "").strip())
-        return {
-            str(key)[:80]: value
-            for key, value in metadata.items()
-            if isinstance(value, (str, int, float, bool)) or value is None
-        }
+        return storage_feedback_metadata(request)
 
     def _attempt_status(self, entry: ModelAttemptTelemetryEntry) -> str:
-        return (entry.attempt.status or "planned").strip().lower()
+        return storage_attempt_status(entry)
 
     def _is_fallback_attempt(self, entry: ModelAttemptTelemetryEntry) -> bool:
-        attempt = entry.attempt
-        return attempt.attempt > 1 or (attempt.status or "").lower() == "fallback" or (attempt.role or "").lower() == "fallback"
+        return storage_is_fallback_attempt(entry)
 
     def _token_estimator_label(self, metadata: dict[str, Any]) -> str:
-        if not isinstance(metadata, dict):
-            return ""
-        family = str(metadata.get("token_estimator_family") or "").strip()
-        source = str(metadata.get("token_estimate_source") or "").strip()
-        if family and source:
-            return f"{family}:{source}"
-        return family or source
+        return storage_token_estimator_label(metadata)
 
     def _optional_positive_int(self, value: Any) -> int | None:
         return optional_positive_int(value)
@@ -5359,34 +5357,7 @@ class EventStore:
         return token_relative_error(estimated, reported)
 
     def _structured_preview_metrics(self, metadata: dict[str, Any]) -> dict[str, Any] | None:
-        if not isinstance(metadata, dict):
-            return None
-        keys = {
-            "structured_preview_delta_count",
-            "structured_preview_char_count",
-            "structured_preview_reset_count",
-            "structured_preview_emitted",
-            "structured_preview_retired",
-            "structured_preview_final_winner",
-            "structured_preview_retired_reason",
-        }
-        if not any(key in metadata for key in keys):
-            return None
-        delta_count = self._int_value(metadata.get("structured_preview_delta_count"))
-        char_count = self._int_value(metadata.get("structured_preview_char_count"))
-        reset_count = self._int_value(metadata.get("structured_preview_reset_count"))
-        emitted = self._optional_bool(metadata.get("structured_preview_emitted"))
-        retired = self._optional_bool(metadata.get("structured_preview_retired"))
-        final_winner = self._optional_bool(metadata.get("structured_preview_final_winner"))
-        return {
-            "delta_count": max(0, delta_count),
-            "char_count": max(0, char_count),
-            "reset_count": max(0, reset_count),
-            "emitted": bool(emitted) or delta_count > 0 or char_count > 0,
-            "retired": bool(retired) or reset_count > 0,
-            "final_winner": bool(final_winner),
-            "retired_reason": str(metadata.get("structured_preview_retired_reason") or "").strip(),
-        }
+        return storage_structured_preview_metrics(metadata)
 
     def _structured_preview_status(
         self,
@@ -5396,17 +5367,12 @@ class EventStore:
         retired_attempts: int,
         reset_count: int,
     ) -> str:
-        if previewed_attempts <= 0:
-            return "insufficient"
-        retired_rate = self._rate(retired_attempts, previewed_attempts)
-        final_winner_rate = self._rate(final_winning_attempts, previewed_attempts)
-        if previewed_attempts >= 2 and (retired_rate >= 0.50 or reset_count >= 2):
-            return "unstable"
-        if previewed_attempts < 2:
-            return "insufficient"
-        if retired_rate > 0.0 or final_winner_rate < 0.67:
-            return "watch"
-        return "stable"
+        return storage_structured_preview_status(
+            previewed_attempts=previewed_attempts,
+            final_winning_attempts=final_winning_attempts,
+            retired_attempts=retired_attempts,
+            reset_count=reset_count,
+        )
 
     def _structured_preview_recommendation(
         self,
@@ -5418,20 +5384,14 @@ class EventStore:
         retired_attempts: int,
         reset_count: int,
     ) -> str:
-        label = provider_label or "provider"
-        if status == "unstable":
-            return (
-                f"{label} retired {retired_attempts}/{previewed_attempts} structured preview attempt(s) "
-                f"with {reset_count} reset(s); route policy should prefer a more stable structured-output provider."
-            )
-        if status == "watch":
-            return (
-                f"{label} previews are mixed: {final_winning_attempts}/{previewed_attempts} became final output. "
-                "Keep collecting samples before promoting this provider for structured workspace streams."
-            )
-        if status == "stable":
-            return f"{label} structured previews are stable enough for normal streamed coding/build routes."
-        return f"Collect more structured preview samples for {label} before making route-policy decisions."
+        return storage_structured_preview_recommendation(
+            status=status,
+            provider_label=provider_label,
+            previewed_attempts=previewed_attempts,
+            final_winning_attempts=final_winning_attempts,
+            retired_attempts=retired_attempts,
+            reset_count=reset_count,
+        )
 
     def _token_calibration_status(
         self,
@@ -5442,15 +5402,13 @@ class EventStore:
         worst_input_error: float | None,
         worst_output_error: float | None,
     ) -> str:
-        if calibrated_attempts <= 0:
-            return "insufficient"
-        average_error = max(average_input_error or 0.0, average_output_error or 0.0)
-        worst_error = max(worst_input_error or 0.0, worst_output_error or 0.0)
-        if average_error <= 0.12 and worst_error <= 0.25:
-            return "stable"
-        if average_error <= 0.25 and worst_error <= 0.45:
-            return "watch"
-        return "drift"
+        return storage_token_calibration_status(
+            calibrated_attempts=calibrated_attempts,
+            average_input_error=average_input_error,
+            average_output_error=average_output_error,
+            worst_input_error=worst_input_error,
+            worst_output_error=worst_output_error,
+        )
 
     def _token_calibration_recommendation(
         self,
@@ -5462,36 +5420,20 @@ class EventStore:
         average_output_error: float | None,
         reported_sources: list[str],
     ) -> str:
-        label = provider_label or "provider"
-        if status == "insufficient":
-            return f"Collect provider-reported token usage for {label} before tuning route context budgets from estimator data."
-        source = ", ".join(reported_sources[:2]) if reported_sources else "provider usage metadata"
-        input_text = f"{average_input_error:.0%}" if average_input_error is not None else "n/a"
-        output_text = f"{average_output_error:.0%}" if average_output_error is not None else "n/a"
-        if status == "stable":
-            return f"{label} calibration is stable across {calibrated_attempts} attempt(s) via {source}; avg error in/out {input_text}/{output_text}."
-        if status == "watch":
-            return f"{label} token estimates have moderate drift; continue sampling {source} before changing profile overhead."
-        return f"{label} token estimates are drifting from reported usage; adjust tokenizer profile or context overhead before relying on tight budgets."
+        return storage_token_calibration_recommendation(
+            status=status,
+            provider_label=provider_label,
+            calibrated_attempts=calibrated_attempts,
+            average_input_error=average_input_error,
+            average_output_error=average_output_error,
+            reported_sources=reported_sources,
+        )
 
     def _token_calibration_trend_recommendation(
         self,
         bucket: RouteQualityTokenCalibrationTrendBucket,
     ) -> str:
-        label = bucket.provider_label or bucket.provider_id or "provider"
-        if bucket.calibrated_attempts <= 0:
-            return f"No provider-reported usage landed for {label} during {bucket.period_start}; keep collecting samples."
-        if bucket.trend_direction == "improving":
-            return f"{label} token estimates improved during {bucket.period_start}; keep the current estimator profile under observation."
-        if bucket.trend_direction == "worsening":
-            return f"{label} token-estimate error worsened during {bucket.period_start}; review recent prompt/context mix before expanding budgets."
-        if bucket.calibration_status == "drift":
-            return f"{label} is still drifting during {bucket.period_start}; tune estimator overhead before using tight context limits."
-        if bucket.calibration_status == "watch":
-            return f"{label} is in watch state for {bucket.period_start}; collect more samples before automated routing changes use token cost signals."
-        if bucket.trend_direction == "flat":
-            return f"{label} calibration stayed flat during {bucket.period_start}; continue sampling before changing the profile."
-        return f"{label} established a calibration baseline during {bucket.period_start}."
+        return storage_token_calibration_trend_recommendation(bucket)
 
     def _context_budget_utilization(self, entry: ContextBudgetTelemetryEntry) -> float | None:
         return context_budget_utilization(entry)
