@@ -26,6 +26,11 @@ from .project_scaffold_existing_validation import (
     existing_project_repair_stage as scaffold_existing_project_repair_stage,
     existing_project_skipped_validation_stage as scaffold_existing_project_skipped_validation_stage,
 )
+from .project_scaffold_file_preview import (
+    diff_preview_stage as scaffold_diff_preview_stage,
+    diff_summary as scaffold_diff_summary,
+    scaffold_file_change_preview,
+)
 from .project_scaffold_handoff import (
     aegis_handoff_files as scaffold_aegis_handoff_files,
     first_product_pass_items as scaffold_first_product_pass_items,
@@ -135,7 +140,6 @@ from .project_scaffold_validation_plan import (
 from .scaffolding import template_method_name
 from .schemas import (
     CommandRun,
-    FileChange,
     ProjectBuildStage,
     ProjectScaffoldFile,
     ProjectScaffoldPlanRequest,
@@ -916,36 +920,9 @@ class ProjectScaffolder:
             )
         )
 
-        changes: list[FileChange] = []
-        file_infos: list[ProjectScaffoldFile] = []
-        for relative_path, content in files.items():
-            target_file = target / relative_path
-            action = "update" if target_file.exists() else "create"
-            changes.append(
-                FileChange(
-                    action=action,
-                    path=relative_path,
-                    content=content,
-                    summary=f"{action.title()} {relative_path} for the {preset.label} preset.",
-                )
-            )
-            file_infos.append(
-                ProjectScaffoldFile(
-                    path=relative_path,
-                    action=action,
-                    summary=f"{action.title()} scaffold file.",
-                    size=len(content.encode("utf-8")),
-                )
-            )
+        changes, file_infos = scaffold_file_change_preview(target, preset, files)
         diff_summary = self._diff_summary(file_infos)
-        stages.append(
-            ProjectBuildStage(
-                id="diff",
-                label="Prepare file diff preview",
-                status="succeeded",
-                detail=", ".join(diff_summary) if diff_summary else "No file changes are planned.",
-            )
-        )
+        stages.append(scaffold_diff_preview_stage(file_infos))
 
         apply_result = None
         validation: CommandRun | None = None
@@ -2150,17 +2127,7 @@ class ProjectScaffolder:
 
     @staticmethod
     def _diff_summary(files: list[ProjectScaffoldFile]) -> list[str]:
-        creates = sum(1 for file in files if file.action == "create")
-        updates = sum(1 for file in files if file.action == "update")
-        deletes = sum(1 for file in files if file.action == "delete")
-        summary: list[str] = []
-        if creates:
-            summary.append(f"+ {creates} create")
-        if updates:
-            summary.append(f"~ {updates} update")
-        if deletes:
-            summary.append(f"- {deletes} delete")
-        return summary
+        return scaffold_diff_summary(files)
 
     def _record_runtime_memory(
         self,
