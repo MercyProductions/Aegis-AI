@@ -174,6 +174,18 @@ import {
   type DetailPanelSection
 } from './utils/appStorage';
 import {
+  clearStoredAuthSession,
+  currentBrowserRoute,
+  currentViewportSize,
+  isProtectedAppRoute,
+  loadStoredAuthSession,
+  normalizeRoutePath,
+  routeToSidebarSection,
+  saveStoredAuthSession,
+  sidebarSectionToRoute,
+  type SidebarSection
+} from './utils/appRouting';
+import {
   buildConversationPreview,
   buildConversationMarkdown,
   conversationMarkdownFilename,
@@ -406,130 +418,8 @@ function reliabilityStatusToEventStatus(status: string): ToolEvent['status'] {
   if (status === 'watch' || status === 'unknown' || status === 'warning') return 'warning';
   return 'ok';
 }
-type SidebarSection =
-  | 'chat'
-  | 'projects'
-  | 'intelligence'
-  | 'workspace-intelligence'
-  | 'runtime'
-  | 'adaptive'
-  | 'hardening'
-  | 'ecosystem'
-  | 'autonomous'
-  | 'creative'
-  | 'tasks'
-  | 'agents'
-  | 'models';
 type SettingsTab = 'general' | 'models' | 'agents' | 'workspace' | 'advanced';
 
-const authSessionStorageKey = 'aegis.auth.session.v1';
-const legacyProtectedRoutes: Record<string, string> = {
-  '/chat': '/app/chat',
-  '/workspace': '/app/workspace',
-  '/projects': '/app/projects',
-  '/tasks': '/app/tasks',
-  '/agents': '/app/agents',
-  '/models': '/app/models',
-  '/automation': '/app/automation',
-  '/research': '/app/research',
-  '/creative-studio': '/app/creative-studio',
-  '/memory': '/app/memory',
-  '/settings': '/app/settings'
-};
-const protectedSectionRoutes: Record<SidebarSection, string> = {
-  chat: '/app/chat',
-  projects: '/app/projects',
-  intelligence: '/app/research',
-  'workspace-intelligence': '/app/workspace',
-  runtime: '/app/runtime',
-  adaptive: '/app/adaptive',
-  hardening: '/app/hardening',
-  ecosystem: '/app/ecosystem',
-  autonomous: '/app/automation',
-  creative: '/app/creative-studio',
-  tasks: '/app/tasks',
-  agents: '/app/agents',
-  models: '/app/models'
-};
-const protectedRouteSections: Record<string, SidebarSection> = {
-  '/app': 'chat',
-  '/app/chat': 'chat',
-  '/app/workspace': 'workspace-intelligence',
-  '/app/projects': 'projects',
-  '/app/tasks': 'tasks',
-  '/app/agents': 'agents',
-  '/app/models': 'models',
-  '/app/automation': 'autonomous',
-  '/app/research': 'intelligence',
-  '/app/creative-studio': 'creative',
-  '/app/memory': 'chat',
-  '/app/settings': 'chat',
-  '/app/runtime': 'runtime',
-  '/app/intelligence': 'intelligence',
-  '/app/adaptive': 'adaptive',
-  '/app/hardening': 'hardening',
-  '/app/ecosystem': 'ecosystem',
-  '/app/autonomous': 'autonomous'
-};
-
-function normalizeRoutePath(path: string) {
-  const cleanPath = (path || '/').split(/[?#]/)[0].replace(/\/+$/, '') || '/';
-  return legacyProtectedRoutes[cleanPath] ?? cleanPath;
-}
-
-function currentBrowserRoute() {
-  if (typeof window === 'undefined') return '/';
-  return normalizeRoutePath(window.location.pathname);
-}
-
-function currentViewportSize() {
-  if (typeof window === 'undefined') return { width: 1440, height: 900 };
-  return { width: window.innerWidth, height: window.innerHeight };
-}
-
-function isProtectedAppRoute(path: string) {
-  const route = normalizeRoutePath(path);
-  return route === '/app' || route.startsWith('/app/');
-}
-
-function routeToSidebarSection(path: string): SidebarSection {
-  return protectedRouteSections[normalizeRoutePath(path)] ?? 'chat';
-}
-
-function sidebarSectionToRoute(section: SidebarSection) {
-  return protectedSectionRoutes[section] ?? '/app/chat';
-}
-
-function isStoredAuthSession(value: unknown): value is AuthSessionResponse {
-  if (!value || typeof value !== 'object') return false;
-  const session = value as Partial<AuthSessionResponse>;
-  return Boolean(session.token && session.user && typeof session.user.email === 'string');
-}
-
-function loadStoredAuthSession(): AuthSessionResponse | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const raw = window.localStorage.getItem(authSessionStorageKey);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as unknown;
-    if (isStoredAuthSession(parsed)) return parsed;
-    window.localStorage.removeItem(authSessionStorageKey);
-    return null;
-  } catch {
-    window.localStorage.removeItem(authSessionStorageKey);
-    return null;
-  }
-}
-
-function saveStoredAuthSession(session: AuthSessionResponse) {
-  if (typeof window === 'undefined') return;
-  window.localStorage.setItem(authSessionStorageKey, JSON.stringify(session));
-}
-
-function clearStoredAuthSession() {
-  if (typeof window === 'undefined') return;
-  window.localStorage.removeItem(authSessionStorageKey);
-}
 type ProjectRootSummary = {
   root: string;
   title: string;
