@@ -4,6 +4,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from .prompt_intent import prompt_requests_creative_media
 from .routing import ModelRouter, RoutingDecision
 from .schemas import ModeName, WorkspaceDependencyProfile, WorkspaceFile, WorkspaceProjectManifest
 
@@ -124,7 +125,9 @@ class TaskPlanner:
         route_profile = self._route_profile(project_manifest, message, workspace_files)
         route_profile = self._with_dependency_profile(route_profile, dependency_profile)
         intent = self._intent(lowered, mode, has_project_manifest=project_manifest is not None)
-        if intent == "conversation" and project_manifest is None:
+        if prompt_requests_creative_media(lowered):
+            route_profile = {}
+        elif intent == "conversation" and project_manifest is None:
             route_profile = {}
         elif intent == "research_and_synthesize" and not self._looks_like_workspace_bound_research(lowered):
             route_profile = {}
@@ -407,6 +410,8 @@ class TaskPlanner:
             return "debug_and_repair"
         if any(term in lowered for term in ("review", "audit", "risk", "security")) or mode == "review":
             return "review_and_assess"
+        if prompt_requests_creative_media(lowered):
+            return "conversation"
         if self._looks_like_implementation(lowered):
             return "implementation"
         if self._looks_like_external_research(lowered):

@@ -52,6 +52,81 @@ class PromptRoutingTests(unittest.TestCase):
         self.assertEqual(decision.task_role, "code")
         self.assertTrue(decision.requires_workspace)
 
+    def test_logo_generation_routes_to_creative_not_code(self) -> None:
+        decision = self.router.recommend(
+            "generate a random logo for a company called Aspire in computer science",
+            "build",
+            has_workspace_context=False,
+        )
+
+        self.assertEqual(decision.task_role, "creative")
+        self.assertFalse(decision.requires_workspace)
+
+    def test_task_planner_keeps_logo_generation_out_of_workspace_profiles(self) -> None:
+        manifest = WorkspaceProjectManifest(
+            schema_version="aegis.project.v1",
+            project_name="existing-web-app",
+            title="Existing Web App",
+            preset_label="Vite React TypeScript",
+            framework="Vite + React",
+            language="TypeScript",
+            package_manager="npm",
+            install_command="npm install",
+            validation_command="npm run build",
+            tags=["web", "vite", "react"],
+        )
+        plan = self.planner.build_plan(
+            message="generate a random logo for a company called Aspire in computer science",
+            mode="build",
+            workspace_files=[WorkspaceFile(path="package.json", size=100, kind="text")],
+            context_files=[],
+            project_manifest=manifest,
+        )
+
+        self.assertEqual(plan.intent, "conversation")
+        self.assertEqual(plan.route_profile, {})
+        self.assertIsNotNone(plan.routing)
+        self.assertEqual(plan.routing.task_role, "creative")
+
+    def test_chat_run_creates_creative_job_for_logo_prompt_even_with_apply_checked(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            engine = AgentEngine(
+                workspace,
+                Settings(_env_file=None, aegis_model_api="none", aegis_database_path="data/test.sqlite3"),
+            )
+
+            direct_stream = asyncio.run(
+                engine.can_stream_direct_chat(
+                    AgentRequest(
+                        message="generate a random logo for a company called Aspire in computer science",
+                        workspace_root=str(workspace),
+                        mode="build",
+                    )
+                )
+            )
+            response = asyncio.run(
+                engine.run(
+                    AgentRequest(
+                        message="generate a random logo for a company called Aspire in computer science",
+                        workspace_root=str(workspace),
+                        mode="build",
+                        apply_changes=True,
+                        run_validation=True,
+                    )
+                )
+            )
+
+        self.assertFalse(direct_stream)
+        self.assertEqual(response.engine, "Auralith Creative Studio")
+        self.assertEqual(response.changes, [])
+        self.assertEqual(response.applied, [])
+        self.assertIsNone(response.validation)
+        self.assertIn("Creative Studio", response.reply)
+        self.assertIn("Apply changes was ignored", " ".join(response.warnings))
+        self.assertTrue(any(event.kind == "creative.intent" for event in response.events))
+        self.assertFalse((workspace / "go.mod").exists())
+
     def test_task_planner_is_prompt_first_not_mode_first(self) -> None:
         plan = self.planner.build_plan(
             message="count to 10 starting from 11",

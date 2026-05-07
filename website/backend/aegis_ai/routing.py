@@ -4,6 +4,7 @@ import re
 
 from dataclasses import dataclass, field
 
+from .prompt_intent import prompt_requests_creative_media
 from .schemas import ModeName
 from .settings import Settings
 
@@ -114,6 +115,8 @@ class ModelRouter:
             return "review"
         if any(term in lowered for term in ("review", "audit", "risk", "regression")) or mode == "review":
             return "review"
+        if prompt_requests_creative_media(lowered):
+            return "creative"
         if any(term in lowered for term in ("plan", "architecture", "roadmap", "design", "todo")):
             return "architecture"
         if self._looks_like_code_work(lowered):
@@ -124,7 +127,18 @@ class ModelRouter:
             "visual" in lowered and "visual studio" not in lowered
         ):
             return "vision"
-        if any(term in lowered for term in ("image", "video", "audio", "music", "creative", "thumbnail")):
+        if any(
+            term in lowered
+            for term in (
+                "image generation",
+                "text-to-image",
+                "text to image",
+                "video generation",
+                "music generation",
+                "logo generation",
+                "creative studio",
+            )
+        ):
             return "creative"
         if any(term in lowered for term in self._code_terms()):
             return "code"
