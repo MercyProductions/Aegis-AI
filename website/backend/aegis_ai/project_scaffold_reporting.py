@@ -4,6 +4,101 @@ from typing import Any
 import re
 
 from .commands import CommandResult
+from .schemas import CommandRun
+
+
+def command_run(result: CommandResult, *, label: str) -> CommandRun:
+    category = categorize_command_result(result)
+    summary = summarize_command_result(result, category=category, label=label)
+    failed_step, failed_step_command = failed_step_parts_from_steps(list(result.steps))
+    return CommandRun(
+        command=result.command,
+        cwd=result.cwd,
+        allowed=result.allowed,
+        exit_code=result.exit_code,
+        stdout=result.stdout,
+        stderr=result.stderr,
+        timed_out=result.timed_out,
+        reason=result.reason,
+        category=category,
+        summary=summary,
+        steps=list(result.steps),
+        failed_step=failed_step,
+        failed_step_command=failed_step_command,
+        diagnostics=extract_validation_diagnostics(result),
+    )
+
+
+def command_ok(run: CommandRun) -> bool:
+    return run.allowed and not run.timed_out and run.exit_code == 0
+
+
+def command_excerpt(run: CommandRun, *, limit: int = 1600) -> str:
+    parts = []
+    if run.stdout.strip():
+        parts.append(run.stdout.strip())
+    if run.stderr.strip():
+        parts.append("[stderr]\n" + run.stderr.strip())
+    if not parts and run.reason.strip():
+        parts.append(run.reason.strip())
+    text = "\n".join(parts)
+    if len(text) <= limit:
+        return text
+    return text[:limit] + "\n... output truncated ..."
+
+
+def categorize_command_result(result: CommandResult) -> str:
+    if result.timed_out:
+        return "timeout"
+    if not result.allowed:
+        return "permission"
+    if result.exit_code == 0:
+        return "success"
+
+    text = "\n".join(
+        [
+            result.command,
+            result.reason,
+            result.stdout[-4000:],
+            result.stderr[-4000:],
+        ]
+    ).lower()
+    if any(token in text for token in ("syntaxerror", "parseerror", "unexpected token", "expected ':'", "expected ')'")):
+        return "syntax"
+    if any(
+        token in text
+        for token in ("module not found", "cannot find module", "no module named", "importerror", "modulenotfounderror", "could not resolve")
+    ):
+        return "dependency"
+    if any(token in text for token in ("type error", "typeerror", "typescript", "tsc", "mypy", "pyright", "typecheck", "type-check")):
+        return "typecheck"
+    if any(token in text for token in ("assertionerror", "failed", "expected", "pytest", "jest", "vitest", "failing test", "test suite")):
+        return "test"
+    if any(token in text for token in ("build", "compile", "compilation", "error ts", "vite", "webpack", "cargo", "dotnet build")):
+        return "build"
+    if any(token in text for token in ("traceback", "exception", "runtimeerror", "referenceerror", "valueerror")):
+        return "runtime"
+    return "unknown"
+
+
+def summarize_command_result(result: CommandResult, *, category: str, label: str) -> str:
+    if result.timed_out:
+        return f"{label} timed out before finishing."
+    if not result.allowed:
+        return result.reason or f"{label} was blocked by the current sandbox or command allowlist."
+    if result.exit_code == 0:
+        return f"{label} completed successfully."
+    summaries = {
+        "syntax": f"{label} failed with a syntax or parse error.",
+        "dependency": f"{label} failed because a dependency, import, or module could not be resolved.",
+        "typecheck": f"{label} failed with a type-checking error.",
+        "test": f"{label} failed because the test suite reported a failure.",
+        "build": f"{label} failed during build or compilation.",
+        "runtime": f"{label} failed because code raised a runtime exception.",
+        "permission": f"{label} was blocked by the current sandbox or command allowlist.",
+        "unknown": f"{label} failed, but the root cause was not classified cleanly.",
+    }
+    return summaries.get(category, summaries["unknown"])
 
 
 def failed_step_parts_from_steps(steps: list[dict[str, Any]]) -> tuple[str, str]:

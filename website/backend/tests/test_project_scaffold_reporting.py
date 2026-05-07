@@ -6,6 +6,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from aegis_ai.commands import CommandResult
 from aegis_ai.project_scaffold_reporting import (
+    categorize_command_result,
+    command_excerpt,
+    command_ok,
+    command_run,
     diagnostic_display,
     diagnostics_log,
     extract_validation_diagnostics,
@@ -14,6 +18,7 @@ from aegis_ai.project_scaffold_reporting import (
     normalize_diagnostic_path,
     status_text,
     strip_ansi,
+    summarize_command_result,
     to_positive_int,
 )
 
@@ -87,18 +92,71 @@ class ProjectScaffoldReportingTests(unittest.TestCase):
         self.assertEqual(diagnostics[0]["line"], 8)
         self.assertEqual(diagnostics[0]["message"], "raise ValueError('bad')")
 
+    def test_command_run_classifies_summarizes_and_keeps_failed_step(self) -> None:
+        result = command_result(
+            command="npx tsc --noEmit",
+            stderr="src/app.ts(3,4): error TS2322: Type 'string' is not assignable.",
+            steps=[
+                {"index": 1, "command": "npm install", "ok": True},
+                {"index": 2, "command": "npm run build", "ok": False},
+            ],
+        )
 
-def command_result(*, stdout: str = "", stderr: str = "", reason: str = "") -> CommandResult:
+        run = command_run(result, label="Validation")
+
+        self.assertFalse(command_ok(run))
+        self.assertEqual(run.category, "typecheck")
+        self.assertEqual(run.summary, "Validation failed with a type-checking error.")
+        self.assertEqual(run.failed_step, "2")
+        self.assertEqual(run.failed_step_command, "npm run build")
+        self.assertIn("[stderr]", command_excerpt(run))
+        self.assertEqual(len(run.diagnostics), 1)
+
+    def test_command_result_categories_cover_terminal_states(self) -> None:
+        self.assertEqual(categorize_command_result(command_result(exit_code=0)), "success")
+        self.assertEqual(categorize_command_result(command_result(timed_out=True, reason="timeout")), "timeout")
+        self.assertEqual(categorize_command_result(command_result(allowed=False, reason="blocked")), "permission")
+        self.assertEqual(categorize_command_result(command_result(stderr="Module not found: react")), "dependency")
+        self.assertEqual(categorize_command_result(command_result(stderr="SyntaxError: bad token")), "syntax")
+        self.assertEqual(categorize_command_result(command_result(stderr="AssertionError: expected true")), "test")
+        self.assertEqual(categorize_command_result(command_result(command="python app.py", stderr="Traceback ValueError")), "runtime")
+
+    def test_summarize_command_result_uses_label_and_block_reason(self) -> None:
+        self.assertEqual(
+            summarize_command_result(command_result(exit_code=0), category="success", label="Validation"),
+            "Validation completed successfully.",
+        )
+        self.assertEqual(
+            summarize_command_result(command_result(timed_out=True), category="timeout", label="Validation"),
+            "Validation timed out before finishing.",
+        )
+        self.assertEqual(
+            summarize_command_result(command_result(allowed=False, reason="Blocked by policy"), category="permission", label="Install"),
+            "Blocked by policy",
+        )
+
+
+def command_result(
+    *,
+    command: str = "npm run build",
+    stdout: str = "",
+    stderr: str = "",
+    reason: str = "",
+    allowed: bool = True,
+    exit_code: int | None = 1,
+    timed_out: bool = False,
+    steps: list[dict[str, object]] | None = None,
+) -> CommandResult:
     return CommandResult(
-        command="npm run build",
+        command=command,
         cwd="workspace",
-        allowed=True,
-        exit_code=1,
+        allowed=allowed,
+        exit_code=exit_code,
         stdout=stdout,
         stderr=stderr,
-        timed_out=False,
+        timed_out=timed_out,
         reason=reason,
-        steps=[],
+        steps=steps or [],
     )
 
 
