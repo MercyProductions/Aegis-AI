@@ -55,6 +55,17 @@ from .project_scaffold_reporting import (
     summarize_command_result as scaffold_summarize_command_result,
     to_positive_int as scaffold_to_positive_int,
 )
+from .project_scaffold_targets import (
+    command_for_project as scaffold_command_for_project,
+    conflicting_paths as scaffold_conflicting_paths,
+    has_non_metadata_entries as scaffold_has_non_metadata_entries,
+    is_metadata_only_refresh as scaffold_is_metadata_only_refresh,
+    is_same_scaffold_project as scaffold_is_same_scaffold_project,
+    next_available_child_target as scaffold_next_available_child_target,
+    should_install_before_validation as scaffold_should_install_before_validation,
+    title_from_name as scaffold_title_from_name,
+    visible_entries as scaffold_visible_entries,
+)
 from .project_scaffold_validation_plan import (
     failed_chain_step as scaffold_failed_chain_step,
     split_safe_command_chain as scaffold_split_safe_command_chain,
@@ -3820,67 +3831,31 @@ class ProjectScaffolder:
 
     @staticmethod
     def _visible_entries(target: Path) -> list[Path]:
-        try:
-            return [entry for entry in target.iterdir() if entry.name != ".aegis"]
-        except OSError:
-            return []
+        return scaffold_visible_entries(target)
 
     @staticmethod
     def _conflicting_paths(target: Path, files: dict[str, str]) -> list[str]:
-        return sorted(relative_path for relative_path in files if (target / relative_path).exists())
+        return scaffold_conflicting_paths(target, files)
 
     @classmethod
     def _has_non_metadata_entries(cls, target: Path) -> bool:
-        try:
-            for entry in target.iterdir():
-                relative = entry.name.replace("\\", "/")
-                if entry.is_dir() and relative == ".aegis":
-                    continue
-                if relative not in cls.SAFE_METADATA_REFRESH_PATHS:
-                    return True
-        except OSError:
-            return False
-        return False
+        return scaffold_has_non_metadata_entries(target, safe_metadata_paths=cls.SAFE_METADATA_REFRESH_PATHS)
 
     @staticmethod
     def _next_available_child_target(target: Path, project_name: str) -> Path:
-        safe_name = re.sub(r"[^A-Za-z0-9_.-]+", "-", project_name).strip(".-") or "aegis-project"
-        primary = target / safe_name
-        if (primary / ".aegis" / "project.json").exists():
-            return primary
-        candidates = [primary]
-        candidates.extend(target / f"{safe_name}-{index}" for index in range(2, 100))
-        for candidate in candidates:
-            if not candidate.exists():
-                return candidate
-        return target / f"{safe_name}-{uuid.uuid4().hex[:8]}"
+        return scaffold_next_available_child_target(target, project_name)
 
     @staticmethod
     def _is_same_scaffold_project(target: Path, preset_id: str, project_name: str) -> bool:
-        manifest_path = target / ".aegis" / "project.json"
-        if not manifest_path.exists():
-            return False
-        try:
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return False
-        return (
-            str(manifest.get("preset_id", "")) == preset_id
-            and str(manifest.get("project_name", "")) == project_name
-        )
+        return scaffold_is_same_scaffold_project(target, preset_id, project_name)
 
     @classmethod
     def _is_metadata_only_refresh(cls, target: Path, conflicting_paths: list[str]) -> bool:
-        if not conflicting_paths:
-            return False
-        if not (target / ".aegis" / "project.json").exists():
-            return False
-        normalized = {path.replace("\\", "/") for path in conflicting_paths}
-        return normalized.issubset(cls.SAFE_METADATA_REFRESH_PATHS)
+        return scaffold_is_metadata_only_refresh(target, conflicting_paths, safe_metadata_paths=cls.SAFE_METADATA_REFRESH_PATHS)
 
     @staticmethod
     def _command_for_project(command: str, project_name: str) -> str:
-        return command.replace("{project_name}", project_name).replace("{project_title}", _title_from_name(project_name))
+        return scaffold_command_for_project(command, project_name)
 
     @staticmethod
     def _should_install_before_validation(
@@ -3891,29 +3866,13 @@ class ProjectScaffolder:
         validation_command: str,
         request: ProjectScaffoldRequest,
     ) -> bool:
-        if request.run_install or not request.run_validation or not install_command or not validation_command:
-            return False
-        package_manager = preset.package_manager.lower()
-        normalized_install = " ".join(install_command.lower().split())
-        explicit_install_override = bool(request.install_command.strip())
-        if "npm" in package_manager:
-            return (
-                (explicit_install_override or "npm install" in normalized_install)
-                and (target / "package.json").exists()
-                and not (target / "node_modules").exists()
-            )
-        if any(token in package_manager for token in ("pip", "python")):
-            has_python_manifest = (target / "pyproject.toml").exists() or (target / "requirements.txt").exists()
-            return (explicit_install_override or "pip install" in normalized_install) and has_python_manifest and not (target / ".venv").exists()
-        if "dotnet" in package_manager:
-            has_dotnet_manifest = (target / f"{preset.id}.sln").exists() or any(target.rglob("*.csproj"))
-            has_restore_assets = any(target.rglob("project.assets.json"))
-            return (explicit_install_override or "dotnet restore" in normalized_install) and has_dotnet_manifest and not has_restore_assets
-        if package_manager == "go":
-            return (explicit_install_override or "go mod tidy" in normalized_install) and (target / "go.mod").exists() and not (target / "go.sum").exists()
-        if package_manager == "cargo":
-            return (explicit_install_override or "cargo fetch" in normalized_install) and (target / "Cargo.toml").exists() and not (target / "Cargo.lock").exists()
-        return False
+        return scaffold_should_install_before_validation(
+            preset,
+            target,
+            install_command=install_command,
+            validation_command=validation_command,
+            request=request,
+        )
 
     @staticmethod
     def _has_explicit_project_name(prompt: str) -> bool:
@@ -16265,5 +16224,4 @@ def _strip(value: str) -> str:
 
 
 def _title_from_name(project_name: str) -> str:
-    words = [part for part in re.split(r"[-_]+", project_name) if part]
-    return " ".join(word[:1].upper() + word[1:] for word in words) or "Aegis App"
+    return scaffold_title_from_name(project_name)
