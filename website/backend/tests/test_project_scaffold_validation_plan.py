@@ -7,10 +7,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from aegis_ai.project_scaffold_validation_plan import (
     failed_chain_step,
     split_safe_command_chain,
+    validation_plan_payload,
     validation_step_label,
     validation_step_phase,
 )
-from aegis_ai.schemas import CommandRun
+from aegis_ai.schemas import CommandRun, ProjectScaffoldPreset
 
 
 class ProjectScaffoldValidationPlanTests(unittest.TestCase):
@@ -53,8 +54,50 @@ class ProjectScaffoldValidationPlanTests(unittest.TestCase):
         self.assertEqual(failed_chain_step(command_run(reason="Validation failed at step 2.")), "2")
         self.assertEqual(failed_chain_step(command_run(reason="Validation failed.")), "")
 
+    def test_validation_plan_payload_records_install_and_split_validation_steps(self) -> None:
+        payload = validation_plan_payload(
+            scaffold_preset("cpp-cmake-cli", "CMake CLI"),
+            "native-tool",
+            install_command="python -m pip install -e .",
+            validation_command="cmake -S . -B build && cmake --build build",
+            validation=None,
+            build_log_path="",
+        )
 
-def command_run(*, failed_step: str = "", reason: str = "") -> CommandRun:
+        self.assertEqual(payload["schema"], "aegis.validation_plan.v1")
+        self.assertEqual(payload["last_run"]["status"], "not_run")
+        self.assertEqual([step["phase"] for step in payload["steps"]], ["install", "configure", "build"])
+        self.assertEqual(payload["steps"][1]["chain_total"], 2)
+        self.assertEqual(payload["steps"][2]["source_command"], "cmake -S . -B build && cmake --build build")
+
+    def test_validation_plan_payload_records_failed_validation_state(self) -> None:
+        run = command_run(
+            reason="Validation failed at step 2.",
+            diagnostics=[{"path": "src/app.ts", "line": 4, "message": "boom"}],
+        )
+        run.failed_step_command = "npm test"
+        payload = validation_plan_payload(
+            scaffold_preset("vite-react-ts", "Vite React"),
+            "aegis-app",
+            install_command="",
+            validation_command="npm run build && npm test",
+            validation=run,
+            build_log_path=".aegis/build_logs/failing.md",
+        )
+
+        self.assertEqual(payload["last_run"]["status"], "failed")
+        self.assertEqual(payload["last_run"]["failed_step"], "2")
+        self.assertEqual(payload["last_run"]["failed_step_command"], "npm test")
+        self.assertEqual(payload["last_run"]["diagnostics"][0]["path"], "src/app.ts")
+        self.assertEqual(payload["last_run"]["build_log_path"], ".aegis/build_logs/failing.md")
+
+
+def command_run(
+    *,
+    failed_step: str = "",
+    reason: str = "",
+    diagnostics: list[dict[str, object]] | None = None,
+) -> CommandRun:
     return CommandRun(
         command="npm test",
         cwd="workspace",
@@ -69,7 +112,16 @@ def command_run(*, failed_step: str = "", reason: str = "") -> CommandRun:
         steps=[],
         failed_step=failed_step,
         failed_step_command="",
-        diagnostics=[],
+        diagnostics=diagnostics or [],
+    )
+
+
+def scaffold_preset(preset_id: str, label: str) -> ProjectScaffoldPreset:
+    return ProjectScaffoldPreset(
+        id=preset_id,
+        label=label,
+        framework="test",
+        language="test",
     )
 
 

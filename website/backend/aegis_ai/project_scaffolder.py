@@ -91,6 +91,7 @@ from .project_scaffold_stack_rules import (
 from .project_scaffold_validation_plan import (
     failed_chain_step as scaffold_failed_chain_step,
     split_safe_command_chain as scaffold_split_safe_command_chain,
+    validation_plan_payload as scaffold_validation_plan_payload,
     validation_step_label as scaffold_validation_step_label,
     validation_step_phase as scaffold_validation_step_phase,
 )
@@ -2633,80 +2634,14 @@ class ProjectScaffolder:
         validation: CommandRun | None,
         build_log_path: str,
     ) -> dict[str, object]:
-        steps: list[dict[str, object]] = []
-        if install_command:
-            steps.append(
-                {
-                    "id": "install-1",
-                    "phase": "install",
-                    "command": install_command,
-                    "label": "Install dependencies",
-                    "required": False,
-                    "source_command": install_command,
-                    "chain_index": 1,
-                    "chain_total": 1,
-                }
-            )
-
-        validation_segments = cls._split_safe_command_chain(validation_command)
-        for index, command in enumerate(validation_segments, start=1):
-            phase = cls._validation_step_phase(command)
-            steps.append(
-                {
-                    "id": f"{phase}-{index}",
-                    "phase": phase,
-                    "command": command,
-                    "label": cls._validation_step_label(command, index=index, total=len(validation_segments)),
-                    "required": True,
-                    "source_command": validation_command,
-                    "chain_index": index,
-                    "chain_total": len(validation_segments),
-                }
-            )
-
-        last_run: dict[str, object]
-        if validation is None:
-            last_run = {
-                "status": "not_run",
-                "command": validation_command,
-                "summary": "Validation has not run yet.",
-                "exit_code": None,
-                "build_log_path": build_log_path,
-                "failed_step": "",
-                "failed_step_command": "",
-                "diagnostics": [],
-            }
-        else:
-            last_run = {
-                "status": "passed" if validation.allowed and not validation.timed_out and validation.exit_code == 0 else "failed",
-                "command": validation.command or validation_command,
-                "summary": validation.summary or validation.reason,
-                "category": validation.category,
-                "exit_code": validation.exit_code,
-                "timed_out": validation.timed_out,
-                "build_log_path": build_log_path,
-                "steps": validation.steps,
-                "failed_step": validation.failed_step or cls._failed_chain_step(validation),
-                "failed_step_command": validation.failed_step_command,
-                "diagnostics": validation.diagnostics,
-            }
-
-        return {
-            "schema": "aegis.validation_plan.v1",
-            "updated_at": utc_now(),
-            "project_name": project_name,
-            "preset_id": preset.id,
-            "preset_label": preset.label,
-            "install_command": install_command,
-            "validation_command": validation_command,
-            "steps": steps,
-            "last_run": last_run,
-            "notes": [
-                "Run validation steps in order; stop at the first failed required step.",
-                "Repair the smallest failing step before expanding project scope.",
-                "After a repair, rerun the same validation command or its failed segment.",
-            ],
-        }
+        return scaffold_validation_plan_payload(
+            preset,
+            project_name,
+            install_command=install_command,
+            validation_command=validation_command,
+            validation=validation,
+            build_log_path=build_log_path,
+        )
 
     @staticmethod
     def _split_safe_command_chain(command: str) -> list[str]:
