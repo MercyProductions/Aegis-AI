@@ -9,6 +9,11 @@ from pathlib import Path
 from typing import Callable
 
 from .commands import CommandResult, CommandRunner
+from .project_scaffold_build_logs import (
+    build_log_content as scaffold_build_log_content,
+    command_log_section as scaffold_command_log_section,
+    write_build_log as scaffold_write_build_log,
+)
 from .project_scaffold_names import (
     GENERIC_TARGET_NAMES as SCAFFOLD_GENERIC_TARGET_NAMES,
     INSTRUCTIONAL_PROJECT_NAME_TOKENS as SCAFFOLD_INSTRUCTIONAL_PROJECT_NAME_TOKENS,
@@ -2694,15 +2699,8 @@ class ProjectScaffolder:
         install_command: str,
         validation_command: str,
     ) -> str:
-        if install is None and validation is None:
-            return ""
-
-        timestamp = re.sub(r"[^0-9A-Za-z]+", "-", utc_now()).strip("-") or "now"
-        log_name = f"{timestamp}-{uuid.uuid4().hex[:8]}.md"
-        relative_path = f".aegis/build_logs/{log_name}"
-        path = target / relative_path
-        path.parent.mkdir(parents=True, exist_ok=True)
-        content = self._build_log_content(
+        return scaffold_write_build_log(
+            target,
             preset=preset,
             project_name=project_name,
             checkpoint=checkpoint,
@@ -2711,8 +2709,6 @@ class ProjectScaffolder:
             install_command=install_command,
             validation_command=validation_command,
         )
-        path.write_text(content, encoding="utf-8")
-        return relative_path
 
     def _build_log_content(
         self,
@@ -2725,61 +2721,19 @@ class ProjectScaffolder:
         install_command: str,
         validation_command: str,
     ) -> str:
-        sections = [
-            "# Aegis Build Log",
-            "",
-            f"- Created: {utc_now()}",
-            f"- Project: {_title_from_name(project_name)}",
-            f"- Preset: {preset.label}",
-            f"- Checkpoint: {checkpoint or 'none'}",
-            f"- Install command: {install_command or 'not configured'}",
-            f"- Validation command: {validation_command or 'not configured'}",
-            "",
-        ]
-        if install is not None:
-            sections.append(self._command_log_section("Install", install))
-        if validation is not None:
-            sections.append(self._command_log_section("Validation", validation))
-        return "\n".join(sections).rstrip() + "\n"
+        return scaffold_build_log_content(
+            preset=preset,
+            project_name=project_name,
+            checkpoint=checkpoint,
+            install=install,
+            validation=validation,
+            install_command=install_command,
+            validation_command=validation_command,
+        )
 
     @classmethod
     def _command_log_section(cls, title: str, run: CommandRun) -> str:
-        return "\n".join(
-            [
-                f"## {title}",
-                "",
-                f"- Command: {run.command}",
-                f"- CWD: {run.cwd}",
-                f"- Allowed: {str(run.allowed).lower()}",
-                f"- Exit code: {run.exit_code if run.exit_code is not None else 'none'}",
-                f"- Timed out: {str(run.timed_out).lower()}",
-                f"- Category: {run.category or 'unknown'}",
-                f"- Summary: {run.summary or run.reason or 'No summary was provided.'}",
-                "",
-                "### Diagnostics",
-                "",
-                cls._diagnostics_log(run.diagnostics),
-                "",
-                "### Stdout",
-                "",
-                "```text",
-                cls._log_text(run.stdout),
-                "```",
-                "",
-                "### Stderr",
-                "",
-                "```text",
-                cls._log_text(run.stderr),
-                "```",
-                "",
-                "### Reason",
-                "",
-                "```text",
-                cls._log_text(run.reason),
-                "```",
-                "",
-            ]
-        )
+        return scaffold_command_log_section(title, run)
 
     @staticmethod
     def _log_text(value: str, *, limit: int = 20000) -> str:
