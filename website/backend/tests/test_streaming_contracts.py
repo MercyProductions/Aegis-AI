@@ -109,7 +109,7 @@ class StreamingContractTests(unittest.TestCase):
                 response = AgentResponse(
                     task_id="stream-test",
                     reply="hello from stream",
-                    assistant_name="Aegis AI",
+                    assistant_name="Auralith Prime",
                     mode="chat",
                     engine="fake-stream",
                     workspace_root="",
@@ -153,7 +153,7 @@ class StreamingContractTests(unittest.TestCase):
                 return AgentResponse(
                     task_id="prompt-workspace-stream-test",
                     reply="Prepared files in the prompt-selected workspace.",
-                    assistant_name="Aegis AI",
+                    assistant_name="Auralith Prime",
                     mode="build",
                     engine="fake-structured",
                     workspace_root=prompt_workspace,
@@ -195,7 +195,7 @@ class StreamingContractTests(unittest.TestCase):
                 return AgentResponse(
                     task_id="structured-test",
                     reply="Prepared the structured response.",
-                    assistant_name="Aegis AI",
+                    assistant_name="Auralith Prime",
                     mode="build",
                     engine="fake-structured",
                     workspace_root="",
@@ -239,7 +239,7 @@ class StreamingContractTests(unittest.TestCase):
                     warnings=[
                         "The model returned no file changes for a create/build request, so Aegis used the deterministic starter generator."
                     ],
-                    assistant_name="Aegis AI",
+                    assistant_name="Auralith Prime",
                     mode="build",
                     engine="fake-structured",
                     workspace_root="",
@@ -279,7 +279,7 @@ class StreamingContractTests(unittest.TestCase):
                         ModelAttemptInfo(attempt=1, role="code", status="failed", provider_label="Provider A"),
                         ModelAttemptInfo(attempt=2, role="code", status="succeeded", provider_label="Provider B"),
                     ],
-                    assistant_name="Aegis AI",
+                    assistant_name="Auralith Prime",
                     mode="build",
                     engine="fake-structured",
                     workspace_root="",
@@ -342,7 +342,7 @@ class StreamingContractTests(unittest.TestCase):
                 return AgentResponse(
                     task_id="attempt-reset-test",
                     reply="Prepared the final structured response.",
-                    assistant_name="Aegis AI",
+                    assistant_name="Auralith Prime",
                     mode="build",
                     engine="fake-structured",
                     workspace_root="",

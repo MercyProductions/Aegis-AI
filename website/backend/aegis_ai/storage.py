@@ -10,8 +10,26 @@ from typing import Any
 from uuid import uuid4
 
 from .schemas import (
+    AdaptiveBenchmarkReport,
+    AdaptivePolicyCheckpoint,
+    AutonomousAgentAssignment,
+    AutonomousApprovalGate,
+    AutonomousExplainabilityEntry,
+    AutonomousObjective,
+    AutonomousObjectiveDetail,
+    AutonomousPhase,
+    AutonomousRefactorPlan,
+    AutonomousSimulationEstimate,
+    AutonomousVerificationSignal,
+    EnterprisePolicyProfile,
+    EcosystemAuditEvent,
+    EcosystemPackageManifest,
+    EcosystemWorkflowDefinition,
+    EvaluationReplayResult,
+    IntelligencePolicyProfile,
     ContextBudgetInfo,
     ContextBudgetTelemetryEntry,
+    ExecutionQueueItem,
     FallbackInspectorCandidate,
     FallbackInspectorResponse,
     FallbackInspectorTask,
@@ -22,11 +40,17 @@ from .schemas import (
     FeedbackTelemetrySummary,
     FeedbackTrendBucket,
     FixMemoryEntry,
+    KnowledgeGraphSnapshot,
     ModelAdapterHealthInfo,
     ModelAttemptInfo,
     ModelAttemptTelemetryEntry,
     ModelRouteHealthInfo,
+    PluginManifest,
+    ProductizationSnapshot,
     ProjectMemoryEntry,
+    ProjectIntelligenceSnapshot,
+    OrganizationPolicyProfile,
+    ReproducibilityRecord,
     RepairAttempt,
     RouteQualityContextRollup,
     RouteQualityContextDrilldown,
@@ -40,13 +64,25 @@ from .schemas import (
     RoutePolicyDiffResponse,
     RoutePolicyProviderProposal,
     RoutePolicyRoleProposal,
+    ScheduledIntelligenceJob,
+    SharedIntelligenceProfile,
+    TaskArtifactsResponse,
+    TaskOutcomeRecord,
     TaskPlanInfo,
     TaskSummary,
     TelemetrySnapshot,
     TelemetrySnapshotPruneInfo,
     ToolEvent,
+    RemoteWorkspaceSyncManifest,
+    WorkerAuditEvent,
+    WorkerRuntimeInfo,
+    WorkspaceOperationsSnapshot,
+    WorkspaceRecommendation,
+    WorkspaceWatchEvent,
+    WorkspaceWatcherSnapshot,
 )
 from .settings import Settings
+from .task_engine import DEFAULT_SUBTASKS, normalize_task_status, validate_task_transition
 
 
 def utc_now() -> str:
@@ -61,21 +97,150 @@ class EventStore:
         self._init_db()
         self._import_legacy_db_if_needed()
 
-    def create_task(self, *, mode: str, workspace_root: Path, message: str) -> str:
+    def create_task(
+        self,
+        *,
+        mode: str,
+        workspace_root: Path,
+        message: str,
+        project_id: str = "",
+        parent_task_id: str | None = None,
+        title: str = "",
+        user_goal: str = "",
+        status: str = "queued",
+        priority: int = 0,
+        assigned_agent_role: str = "",
+        related_files: list[str] | None = None,
+        validation_commands: list[str] | None = None,
+    ) -> str:
         task_id = str(uuid4())
+        now = utc_now()
+        workspace = workspace_root.resolve()
+        task_title = title.strip() or self._task_title_from_message(message, mode)
         with self._session() as conn:
             conn.execute(
                 """
-                insert into tasks (id, created_at, mode, workspace_root, message, status)
-                values (?, ?, ?, ?, ?, ?)
+                insert into tasks (
+                    id, created_at, updated_at, finished_at, completed_at, mode, workspace_root, message, status,
+                    project_id, parent_task_id, title, user_goal, priority, assigned_agent_role,
+                    related_files_json, validation_commands_json, checkpoints_json, error_summary, final_summary
+                ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (task_id, utc_now(), mode, str(workspace_root), message, "running"),
+                (
+                    task_id,
+                    now,
+                    now,
+                    None,
+                    None,
+                    mode,
+                    str(workspace),
+                    message,
+                    normalize_task_status(status),
+                    project_id.strip() or str(workspace),
+                    parent_task_id,
+                    task_title,
+                    user_goal.strip() or message,
+                    priority,
+                    assigned_agent_role,
+                    json.dumps(sorted(set(related_files or [])), ensure_ascii=True),
+                    json.dumps(sorted(set(validation_commands or [])), ensure_ascii=True),
+                    json.dumps([], ensure_ascii=True),
+                    "",
+                    "",
+                ),
             )
         return task_id
 
     def finish_task(self, task_id: str, status: str) -> None:
+        final_status = normalize_task_status(status)
+        now = utc_now()
         with self._session() as conn:
-            conn.execute("update tasks set status = ?, finished_at = ? where id = ?", (status, utc_now(), task_id))
+            conn.execute(
+                """
+                update tasks
+                set status = ?, updated_at = ?, finished_at = ?, completed_at = ?
+                where id = ?
+                """,
+                (final_status, now, now, now if final_status in {"completed", "failed", "canceled"} else None, task_id),
+            )
+
+    def transition_task(
+        self,
+        task_id: str,
+        status: str,
+        *,
+        title: str = "",
+        detail: str = "",
+        error_summary: str = "",
+        final_summary: str = "",
+        payload: dict[str, Any] | None = None,
+    ) -> ToolEvent | None:
+        with self._session() as conn:
+            row = conn.execute("select status from tasks where id = ?", (task_id,)).fetchone()
+            if row is None:
+                raise KeyError(task_id)
+            next_status = validate_task_transition(str(row["status"]), status)
+            now = utc_now()
+            completed_at = now if next_status in {"completed", "failed", "canceled"} else None
+            conn.execute(
+                """
+                update tasks
+                set status = ?, updated_at = ?, finished_at = ?, completed_at = ?,
+                    error_summary = case when ? != '' then ? else error_summary end,
+                    final_summary = case when ? != '' then ? else final_summary end
+                where id = ?
+                """,
+                (
+                    next_status,
+                    now,
+                    completed_at,
+                    completed_at,
+                    error_summary,
+                    error_summary,
+                    final_summary,
+                    final_summary,
+                    task_id,
+                ),
+            )
+        event_title = title or f"Task {next_status.replace('_', ' ')}"
+        return self.record_event(
+            task_id,
+            kind="task.state",
+            title=event_title,
+            status="error" if next_status == "failed" else "warning" if next_status in {"blocked", "needs_approval"} else "ok",
+            detail=detail,
+            payload={"status": next_status, **(payload or {})},
+        )
+
+    def create_default_subtasks(self, *, parent_task_id: str, workspace_root: Path, mode: str, user_goal: str) -> list[str]:
+        existing = self.subtasks(parent_task_id)
+        if existing:
+            return [item.id for item in existing]
+        created: list[str] = []
+        for index, spec in enumerate(DEFAULT_SUBTASKS, start=1):
+            created.append(
+                self.create_task(
+                    mode=mode,
+                    workspace_root=workspace_root,
+                    message=user_goal,
+                    parent_task_id=parent_task_id,
+                    title=spec.title,
+                    user_goal=spec.user_goal,
+                    status="queued",
+                    priority=index,
+                    assigned_agent_role=spec.assigned_agent_role,
+                )
+            )
+        return created
+
+    def transition_subtask(self, parent_task_id: str, title: str, status: str, *, detail: str = "") -> None:
+        for subtask in self.subtasks(parent_task_id):
+            if subtask.title == title:
+                try:
+                    self.transition_task(subtask.id, status, title=f"{title} {status}", detail=detail)
+                except ValueError:
+                    pass
+                return
 
     def record_event(
         self,
@@ -143,25 +308,167 @@ class EventStore:
             )
 
     def recent_tasks(self, *, project_root: Path, limit: int = 8) -> list[TaskSummary]:
+        return self.list_tasks(project_root=project_root, limit=limit, include_subtasks=False)
+
+    def list_tasks(
+        self,
+        *,
+        project_root: Path,
+        limit: int = 50,
+        status: str | None = None,
+        include_subtasks: bool = False,
+    ) -> list[TaskSummary]:
         aliases = self._project_root_aliases(project_root)
         placeholders = ",".join("?" for _ in aliases)
+        params: list[Any] = [*aliases]
+        where = [f"workspace_root in ({placeholders})"]
+        if not include_subtasks:
+            where.append("parent_task_id is null")
+        if status and status != "all":
+            where.append("status = ?")
+            params.append(normalize_task_status(status))
+        params.append(limit)
         with self._session() as conn:
             rows = conn.execute(
                 f"""
-                select id, created_at, finished_at, mode, workspace_root, message, status
+                select *
                 from tasks
-                where workspace_root in ({placeholders})
+                where {' and '.join(where)}
                 order by created_at desc
                 limit ?
                 """,
-                (*aliases, limit),
+                tuple(params),
             ).fetchall()
-        tasks: list[TaskSummary] = []
+        return [self._task_summary_from_row(row, workspace_root=project_root) for row in rows]
+
+    def subtasks(self, parent_task_id: str) -> list[TaskSummary]:
+        with self._session() as conn:
+            rows = conn.execute(
+                """
+                select *
+                from tasks
+                where parent_task_id = ?
+                order by priority asc, created_at asc
+                """,
+                (parent_task_id,),
+            ).fetchall()
+        return [self._task_summary_from_row(row) for row in rows]
+
+    def task(self, task_id: str) -> TaskSummary:
+        with self._session() as conn:
+            row = conn.execute("select * from tasks where id = ?", (task_id,)).fetchone()
+        if row is None:
+            raise KeyError(task_id)
+        return self._task_summary_from_row(row)
+
+    def task_events(self, task_id: str) -> list[ToolEvent]:
+        with self._session() as conn:
+            rows = conn.execute(
+                """
+                select created_at, kind, title, status, detail, payload_json
+                from events
+                where task_id = ?
+                order by id asc
+                """,
+                (task_id,),
+            ).fetchall()
+        events: list[ToolEvent] = []
         for row in rows:
-            payload = dict(row)
-            payload["workspace_root"] = str(project_root.resolve())
-            tasks.append(TaskSummary.model_validate(payload))
-        return tasks
+            try:
+                payload = json.loads(row["payload_json"] or "{}")
+            except json.JSONDecodeError:
+                payload = {}
+            events.append(
+                ToolEvent(
+                    kind=row["kind"],
+                    title=row["title"],
+                    status=row["status"],
+                    detail=row["detail"],
+                    payload=payload,
+                    created_at=row["created_at"],
+                )
+            )
+        return events
+
+    def task_artifacts(self, task_id: str) -> TaskArtifactsResponse:
+        task = self.task(task_id)
+        events = self.task_events(task_id)
+        return TaskArtifactsResponse(
+            task_id=task_id,
+            related_files=task.related_files,
+            validation_commands=task.validation_commands,
+            checkpoints=task.checkpoints,
+            repair_attempts=self.repair_attempts(task_id),
+            command_events=[event for event in events if event.kind == "command"],
+            validation_events=[event for event in events if event.kind.startswith("validation")],
+        )
+
+    def add_task_artifacts(
+        self,
+        task_id: str,
+        *,
+        related_files: list[str] | None = None,
+        validation_commands: list[str] | None = None,
+        checkpoints: list[str] | None = None,
+        error_summary: str = "",
+        final_summary: str = "",
+    ) -> None:
+        with self._session() as conn:
+            row = conn.execute(
+                "select related_files_json, validation_commands_json, checkpoints_json from tasks where id = ?",
+                (task_id,),
+            ).fetchone()
+            if row is None:
+                return
+            next_related = self._merge_json_list(row["related_files_json"], related_files or [])
+            next_validation = self._merge_json_list(row["validation_commands_json"], validation_commands or [])
+            next_checkpoints = self._merge_json_list(row["checkpoints_json"], checkpoints or [])
+            now = utc_now()
+            conn.execute(
+                """
+                update tasks
+                set updated_at = ?,
+                    related_files_json = ?,
+                    validation_commands_json = ?,
+                    checkpoints_json = ?,
+                    error_summary = case when ? != '' then ? else error_summary end,
+                    final_summary = case when ? != '' then ? else final_summary end
+                where id = ?
+                """,
+                (
+                    now,
+                    json.dumps(next_related, ensure_ascii=True),
+                    json.dumps(next_validation, ensure_ascii=True),
+                    json.dumps(next_checkpoints, ensure_ascii=True),
+                    error_summary,
+                    error_summary,
+                    final_summary,
+                    final_summary,
+                    task_id,
+                ),
+            )
+
+    def cancel_task(self, task_id: str, *, reason: str = "") -> ToolEvent | None:
+        return self.transition_task(task_id, "canceled", title="Task canceled", detail=reason)
+
+    def approve_task_action(self, task_id: str, *, reason: str = "", approved: bool = True) -> ToolEvent:
+        event = self.record_event(
+            task_id,
+            kind="approval",
+            title="User approved task action" if approved else "User rejected task action",
+            status="ok" if approved else "warning",
+            detail=reason,
+            payload={"approved": approved},
+        )
+        if approved:
+            try:
+                self.transition_task(task_id, "running", title="Task resumed after approval", detail=reason)
+            except ValueError:
+                pass
+        return event
+
+    def retry_task(self, task_id: str, *, reason: str = "") -> ToolEvent | None:
+        return self.transition_task(task_id, "queued", title="Task queued for retry", detail=reason)
 
     def fix_history(self, *, project_root: Path, limit: int = 8) -> list[FixMemoryEntry]:
         aliases = self._project_root_aliases(project_root)
@@ -272,6 +579,1723 @@ class EventStore:
         ]
         ranked = [item for score, item in sorted(scored, key=lambda pair: pair[0], reverse=True) if score > 0]
         return ranked[:limit]
+
+    def clear_project_memory(self, *, project_root: Path) -> int:
+        aliases = self._project_root_aliases(project_root)
+        placeholders = ",".join("?" for _ in aliases)
+        with self._session() as conn:
+            cursor = conn.execute(f"delete from project_memory where project_root in ({placeholders})", tuple(aliases))
+            return int(cursor.rowcount or 0)
+
+    def save_project_intelligence(self, snapshot: ProjectIntelligenceSnapshot) -> None:
+        now = utc_now()
+        root = str(Path(snapshot.workspace_root).resolve())
+        with self._session() as conn:
+            conn.execute(
+                """
+                insert into project_intelligence (
+                    project_root, updated_at, indexed_at, status, profile_json, architecture_json,
+                    file_importance_json, snapshot_json
+                ) values (?, ?, ?, ?, ?, ?, ?, ?)
+                on conflict(project_root) do update set
+                    updated_at = excluded.updated_at,
+                    indexed_at = excluded.indexed_at,
+                    status = excluded.status,
+                    profile_json = excluded.profile_json,
+                    architecture_json = excluded.architecture_json,
+                    file_importance_json = excluded.file_importance_json,
+                    snapshot_json = excluded.snapshot_json
+                """,
+                (
+                    root,
+                    now,
+                    snapshot.indexing.last_indexed_at or now,
+                    snapshot.indexing.status,
+                    json.dumps(snapshot.profile.model_dump(mode="json"), ensure_ascii=False),
+                    json.dumps(snapshot.architecture.model_dump(mode="json"), ensure_ascii=False),
+                    json.dumps([item.model_dump(mode="json") for item in snapshot.file_importance], ensure_ascii=False),
+                    json.dumps(snapshot.model_dump(mode="json"), ensure_ascii=False),
+                ),
+            )
+
+    def project_intelligence(self, *, project_root: Path) -> ProjectIntelligenceSnapshot | None:
+        aliases = self._project_root_aliases(project_root)
+        placeholders = ",".join("?" for _ in aliases)
+        with self._session() as conn:
+            row = conn.execute(
+                f"""
+                select snapshot_json
+                from project_intelligence
+                where project_root in ({placeholders})
+                order by indexed_at desc, updated_at desc
+                limit 1
+                """,
+                tuple(aliases),
+            ).fetchone()
+        if row is None:
+            return None
+        try:
+            return ProjectIntelligenceSnapshot.model_validate(json.loads(str(row["snapshot_json"] or "{}")))
+        except Exception:
+            return None
+
+    def save_workspace_watch_snapshot(self, snapshot: WorkspaceWatcherSnapshot) -> None:
+        root = str(Path(snapshot.workspace_root).resolve())
+        with self._session() as conn:
+            conn.execute(
+                """
+                insert into workspace_watch_snapshots (
+                    workspace_root, scanned_at, fingerprint, dependency_fingerprint, snapshot_json
+                ) values (?, ?, ?, ?, ?)
+                on conflict(workspace_root) do update set
+                    scanned_at = excluded.scanned_at,
+                    fingerprint = excluded.fingerprint,
+                    dependency_fingerprint = excluded.dependency_fingerprint,
+                    snapshot_json = excluded.snapshot_json
+                """,
+                (
+                    root,
+                    snapshot.scanned_at,
+                    snapshot.fingerprint,
+                    snapshot.dependency_fingerprint,
+                    json.dumps(snapshot.model_dump(mode="json"), ensure_ascii=False),
+                ),
+            )
+
+    def workspace_watch_snapshot(self, *, project_root: Path) -> WorkspaceWatcherSnapshot | None:
+        aliases = self._project_root_aliases(project_root)
+        placeholders = ",".join("?" for _ in aliases)
+        with self._session() as conn:
+            row = conn.execute(
+                f"""
+                select snapshot_json
+                from workspace_watch_snapshots
+                where workspace_root in ({placeholders})
+                order by scanned_at desc
+                limit 1
+                """,
+                tuple(aliases),
+            ).fetchone()
+        if row is None:
+            return None
+        try:
+            return WorkspaceWatcherSnapshot.model_validate(json.loads(str(row["snapshot_json"] or "{}")))
+        except Exception:
+            return None
+
+    def save_workspace_operations_snapshot(self, snapshot: WorkspaceOperationsSnapshot) -> None:
+        root = str(Path(snapshot.workspace_root).resolve())
+        with self._session() as conn:
+            conn.execute(
+                """
+                insert into workspace_operations_snapshots (
+                    workspace_root, generated_at, health_score, status, snapshot_json
+                ) values (?, ?, ?, ?, ?)
+                on conflict(workspace_root) do update set
+                    generated_at = excluded.generated_at,
+                    health_score = excluded.health_score,
+                    status = excluded.status,
+                    snapshot_json = excluded.snapshot_json
+                """,
+                (
+                    root,
+                    snapshot.generated_at,
+                    snapshot.health.score,
+                    snapshot.health.status,
+                    json.dumps(snapshot.model_dump(mode="json"), ensure_ascii=False),
+                ),
+            )
+
+    def workspace_operations_snapshot(self, *, project_root: Path) -> WorkspaceOperationsSnapshot | None:
+        aliases = self._project_root_aliases(project_root)
+        placeholders = ",".join("?" for _ in aliases)
+        with self._session() as conn:
+            row = conn.execute(
+                f"""
+                select snapshot_json
+                from workspace_operations_snapshots
+                where workspace_root in ({placeholders})
+                order by generated_at desc
+                limit 1
+                """,
+                tuple(aliases),
+            ).fetchone()
+        if row is None:
+            return None
+        try:
+            return WorkspaceOperationsSnapshot.model_validate(json.loads(str(row["snapshot_json"] or "{}")))
+        except Exception:
+            return None
+
+    def record_workspace_events(self, events: list[WorkspaceWatchEvent]) -> None:
+        if not events:
+            return
+        with self._session() as conn:
+            for event in events:
+                conn.execute(
+                    """
+                    insert or ignore into workspace_events (
+                        id, workspace_root, created_at, kind, severity, title, detail,
+                        path, related_files_json, metadata_json
+                    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        event.id,
+                        str(Path(event.workspace_root).resolve()),
+                        event.created_at,
+                        event.kind,
+                        event.severity,
+                        event.title,
+                        event.detail,
+                        event.path,
+                        json.dumps(event.related_files, ensure_ascii=False),
+                        json.dumps(event.metadata, ensure_ascii=False),
+                    ),
+                )
+
+    def workspace_events(self, *, project_root: Path, limit: int = 80) -> list[WorkspaceWatchEvent]:
+        aliases = self._project_root_aliases(project_root)
+        placeholders = ",".join("?" for _ in aliases)
+        with self._session() as conn:
+            rows = conn.execute(
+                f"""
+                select *
+                from workspace_events
+                where workspace_root in ({placeholders})
+                order by created_at desc
+                limit ?
+                """,
+                (*aliases, limit),
+            ).fetchall()
+        events: list[WorkspaceWatchEvent] = []
+        for row in rows:
+            events.append(
+                WorkspaceWatchEvent(
+                    id=str(row["id"]),
+                    workspace_root=str(project_root.resolve()),
+                    created_at=str(row["created_at"]),
+                    kind=str(row["kind"]),
+                    severity=str(row["severity"]),
+                    title=str(row["title"]),
+                    detail=str(row["detail"]),
+                    path=str(row["path"]),
+                    related_files=self._json_list(str(row["related_files_json"] or "[]")),
+                    metadata=self._json_payload(str(row["metadata_json"] or "{}")),
+                )
+            )
+        return events
+
+    def upsert_workspace_recommendations(self, recommendations: list[WorkspaceRecommendation]) -> None:
+        if not recommendations:
+            return
+        now = utc_now()
+        with self._session() as conn:
+            for item in recommendations:
+                existing = conn.execute(
+                    "select created_at, status, dismissed_at, fix_task_id from workspace_recommendations where id = ?",
+                    (item.id,),
+                ).fetchone()
+                if existing is not None and str(existing["status"]) == "dismissed":
+                    continue
+                created_at = str(existing["created_at"]) if existing else item.created_at or now
+                fix_task_id = str(existing["fix_task_id"]) if existing and existing["fix_task_id"] else item.fix_task_id
+                conn.execute(
+                    """
+                    insert into workspace_recommendations (
+                        id, workspace_root, created_at, updated_at, dismissed_at, severity, category,
+                        title, detail, rationale, status, related_files_json, related_tasks_json,
+                        evidence_json, fix_prompt, fix_task_id
+                    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    on conflict(id) do update set
+                        updated_at = excluded.updated_at,
+                        severity = excluded.severity,
+                        category = excluded.category,
+                        title = excluded.title,
+                        detail = excluded.detail,
+                        rationale = excluded.rationale,
+                        status = excluded.status,
+                        related_files_json = excluded.related_files_json,
+                        related_tasks_json = excluded.related_tasks_json,
+                        evidence_json = excluded.evidence_json,
+                        fix_prompt = excluded.fix_prompt,
+                        fix_task_id = case
+                            when workspace_recommendations.fix_task_id != '' then workspace_recommendations.fix_task_id
+                            else excluded.fix_task_id
+                        end
+                    """,
+                    (
+                        item.id,
+                        str(Path(item.workspace_root).resolve()),
+                        created_at,
+                        item.updated_at or now,
+                        item.dismissed_at,
+                        item.severity,
+                        item.category,
+                        item.title,
+                        item.detail,
+                        item.rationale,
+                        item.status,
+                        json.dumps(item.related_files, ensure_ascii=False),
+                        json.dumps(item.related_tasks, ensure_ascii=False),
+                        json.dumps(item.evidence, ensure_ascii=False),
+                        item.fix_prompt,
+                        fix_task_id,
+                    ),
+                )
+
+    def workspace_recommendations(
+        self,
+        *,
+        project_root: Path,
+        include_dismissed: bool = False,
+        limit: int = 100,
+    ) -> list[WorkspaceRecommendation]:
+        aliases = self._project_root_aliases(project_root)
+        placeholders = ",".join("?" for _ in aliases)
+        where = [f"workspace_root in ({placeholders})"]
+        params: list[Any] = [*aliases]
+        if not include_dismissed:
+            where.append("status != 'dismissed'")
+        params.append(limit)
+        with self._session() as conn:
+            rows = conn.execute(
+                f"""
+                select *
+                from workspace_recommendations
+                where {' and '.join(where)}
+                order by
+                    case severity
+                        when 'critical' then 0
+                        when 'high' then 1
+                        when 'medium' then 2
+                        when 'low' then 3
+                        else 4
+                    end,
+                    updated_at desc
+                limit ?
+                """,
+                tuple(params),
+            ).fetchall()
+        return [self._workspace_recommendation_from_row(row, project_root) for row in rows]
+
+    def workspace_recommendation(self, recommendation_id: str) -> WorkspaceRecommendation:
+        with self._session() as conn:
+            row = conn.execute("select * from workspace_recommendations where id = ?", (recommendation_id,)).fetchone()
+        if row is None:
+            raise KeyError(recommendation_id)
+        return self._workspace_recommendation_from_row(row, Path(str(row["workspace_root"])))
+
+    def dismiss_workspace_recommendation(self, recommendation_id: str, *, reason: str = "") -> WorkspaceRecommendation:
+        now = utc_now()
+        with self._session() as conn:
+            row = conn.execute("select * from workspace_recommendations where id = ?", (recommendation_id,)).fetchone()
+            if row is None:
+                raise KeyError(recommendation_id)
+            evidence = self._json_payload(str(row["evidence_json"] or "{}"))
+            if reason:
+                evidence["dismiss_reason"] = reason
+            conn.execute(
+                """
+                update workspace_recommendations
+                set status = 'dismissed', dismissed_at = ?, updated_at = ?, evidence_json = ?
+                where id = ?
+                """,
+                (now, now, json.dumps(evidence, ensure_ascii=False), recommendation_id),
+            )
+        return self.workspace_recommendation(recommendation_id)
+
+    def link_recommendation_task(self, recommendation_id: str, task_id: str) -> WorkspaceRecommendation:
+        now = utc_now()
+        with self._session() as conn:
+            row = conn.execute("select related_tasks_json from workspace_recommendations where id = ?", (recommendation_id,)).fetchone()
+            if row is None:
+                raise KeyError(recommendation_id)
+            related_tasks = self._json_list(str(row["related_tasks_json"] or "[]"))
+            if task_id not in related_tasks:
+                related_tasks.append(task_id)
+            conn.execute(
+                """
+                update workspace_recommendations
+                set updated_at = ?, related_tasks_json = ?, fix_task_id = ?
+                where id = ?
+                """,
+                (now, json.dumps(related_tasks, ensure_ascii=False), task_id, recommendation_id),
+            )
+        return self.workspace_recommendation(recommendation_id)
+
+    def scheduled_intelligence_jobs(self, *, project_root: Path) -> list[ScheduledIntelligenceJob]:
+        aliases = self._project_root_aliases(project_root)
+        placeholders = ",".join("?" for _ in aliases)
+        with self._session() as conn:
+            rows = conn.execute(
+                f"""
+                select *
+                from workspace_intelligence_job_runs
+                where workspace_root in ({placeholders})
+                order by last_run_at desc
+                """,
+                tuple(aliases),
+            ).fetchall()
+        latest: dict[str, ScheduledIntelligenceJob] = {}
+        for row in rows:
+            job = ScheduledIntelligenceJob(
+                id=str(row["job_id"]),
+                name=str(row["name"]),
+                kind=str(row["kind"]),
+                schedule_label=str(row["schedule_label"]),
+                enabled=bool(row["enabled"]),
+                safe_by_default=bool(row["safe_by_default"]),
+                last_run_at=str(row["last_run_at"]),
+                status=str(row["status"]),
+                summary=str(row["summary"]),
+            )
+            latest.setdefault(job.id, job)
+        return list(latest.values())
+
+    def record_scheduled_intelligence_job(self, *, project_root: Path, job: ScheduledIntelligenceJob) -> None:
+        with self._session() as conn:
+            conn.execute(
+                """
+                insert into workspace_intelligence_job_runs (
+                    id, workspace_root, job_id, name, kind, schedule_label, enabled,
+                    safe_by_default, last_run_at, status, summary
+                ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    str(uuid4()),
+                    str(project_root.resolve()),
+                    job.id,
+                    job.name,
+                    job.kind,
+                    job.schedule_label,
+                    1 if job.enabled else 0,
+                    1 if job.safe_by_default else 0,
+                    job.last_run_at or utc_now(),
+                    job.status,
+                    job.summary,
+                ),
+            )
+
+    def upsert_runtime_worker(self, worker: WorkerRuntimeInfo) -> None:
+        with self._session() as conn:
+            existing = conn.execute("select registered_at, total_jobs, failed_jobs from runtime_workers where worker_id = ?", (worker.worker_id,)).fetchone()
+            conn.execute(
+                """
+                insert into runtime_workers (
+                    worker_id, name, kind, endpoint, status, trust_state, trust_scope,
+                    registered_at, last_heartbeat_at, capabilities_json, current_jobs,
+                    total_jobs, failed_jobs, average_latency_ms, public_key_fingerprint,
+                    permission_scopes_json, isolation_level, metadata_json
+                ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                on conflict(worker_id) do update set
+                    name = excluded.name,
+                    kind = excluded.kind,
+                    endpoint = excluded.endpoint,
+                    status = excluded.status,
+                    trust_state = excluded.trust_state,
+                    trust_scope = excluded.trust_scope,
+                    last_heartbeat_at = excluded.last_heartbeat_at,
+                    capabilities_json = excluded.capabilities_json,
+                    current_jobs = excluded.current_jobs,
+                    total_jobs = excluded.total_jobs,
+                    failed_jobs = excluded.failed_jobs,
+                    average_latency_ms = excluded.average_latency_ms,
+                    public_key_fingerprint = excluded.public_key_fingerprint,
+                    permission_scopes_json = excluded.permission_scopes_json,
+                    isolation_level = excluded.isolation_level,
+                    metadata_json = excluded.metadata_json
+                """,
+                (
+                    worker.worker_id,
+                    worker.name,
+                    worker.kind,
+                    worker.endpoint,
+                    worker.status,
+                    worker.trust_state,
+                    worker.trust_scope,
+                    (existing["registered_at"] if existing else worker.registered_at) or utc_now(),
+                    worker.last_heartbeat_at or utc_now(),
+                    json.dumps(worker.capabilities.model_dump(mode="json"), ensure_ascii=True),
+                    worker.current_jobs,
+                    max(worker.total_jobs, int(existing["total_jobs"]) if existing else 0),
+                    max(worker.failed_jobs, int(existing["failed_jobs"]) if existing else 0),
+                    worker.average_latency_ms,
+                    worker.public_key_fingerprint,
+                    json.dumps(worker.permission_scopes, ensure_ascii=True),
+                    worker.isolation_level,
+                    json.dumps(worker.metadata, ensure_ascii=True),
+                ),
+            )
+
+    def runtime_workers(self, *, include_revoked: bool = False) -> list[WorkerRuntimeInfo]:
+        where = "" if include_revoked else "where trust_state != 'revoked' and status != 'revoked'"
+        with self._session() as conn:
+            rows = conn.execute(
+                f"""
+                select *
+                from runtime_workers
+                {where}
+                order by case kind when 'local' then 0 when 'sandbox' then 1 when 'lan' then 2 else 3 end, name
+                """
+            ).fetchall()
+        return [self._runtime_worker_from_row(row) for row in rows]
+
+    def runtime_worker(self, worker_id: str) -> WorkerRuntimeInfo:
+        with self._session() as conn:
+            row = conn.execute("select * from runtime_workers where worker_id = ?", (worker_id,)).fetchone()
+        if row is None:
+            raise KeyError(worker_id)
+        return self._runtime_worker_from_row(row)
+
+    def heartbeat_runtime_worker(self, worker_id: str, *, status: str, current_jobs: int, capabilities_json: str | None = None, metadata: dict[str, Any] | None = None) -> WorkerRuntimeInfo:
+        now = utc_now()
+        with self._session() as conn:
+            row = conn.execute("select capabilities_json, metadata_json from runtime_workers where worker_id = ?", (worker_id,)).fetchone()
+            if row is None:
+                raise KeyError(worker_id)
+            next_capabilities = capabilities_json or str(row["capabilities_json"])
+            existing_metadata = self._json_payload(str(row["metadata_json"] or "{}"))
+            next_metadata = {**existing_metadata, **(metadata or {})}
+            conn.execute(
+                """
+                update runtime_workers
+                set status = ?, current_jobs = ?, last_heartbeat_at = ?,
+                    capabilities_json = ?, metadata_json = ?
+                where worker_id = ?
+                """,
+                (status, current_jobs, now, next_capabilities, json.dumps(next_metadata, ensure_ascii=True), worker_id),
+            )
+        return self.runtime_worker(worker_id)
+
+    def revoke_runtime_worker(self, worker_id: str, *, reason: str = "") -> WorkerRuntimeInfo:
+        with self._session() as conn:
+            row = conn.execute("select metadata_json from runtime_workers where worker_id = ?", (worker_id,)).fetchone()
+            if row is None:
+                raise KeyError(worker_id)
+            metadata = self._json_payload(str(row["metadata_json"] or "{}"))
+            if reason:
+                metadata["revocation_reason"] = reason
+            conn.execute(
+                """
+                update runtime_workers
+                set status = 'revoked', trust_state = 'revoked', metadata_json = ?
+                where worker_id = ?
+                """,
+                (json.dumps(metadata, ensure_ascii=True), worker_id),
+            )
+        return self.runtime_worker(worker_id)
+
+    def create_execution_job(self, item: ExecutionQueueItem) -> ExecutionQueueItem:
+        with self._session() as conn:
+            conn.execute(
+                """
+                insert into execution_queue (
+                    id, task_id, workspace_root, kind, title, user_goal, status, priority,
+                    created_at, updated_at, assigned_worker_id, attempts, max_attempts,
+                    depends_on_json, required_capabilities_json, permission_scope,
+                    sandbox_profile, payload_json, error_summary, result_summary, lease_expires_at
+                ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                self._execution_job_values(item),
+            )
+        return self.execution_job(item.id)
+
+    def execution_jobs(
+        self,
+        *,
+        project_root: Path | None = None,
+        status: str | None = None,
+        limit: int = 100,
+    ) -> list[ExecutionQueueItem]:
+        where: list[str] = []
+        params: list[Any] = []
+        if project_root is not None:
+            aliases = self._project_root_aliases(project_root)
+            placeholders = ",".join("?" for _ in aliases)
+            where.append(f"workspace_root in ({placeholders})")
+            params.extend(aliases)
+        if status and status != "all":
+            where.append("status = ?")
+            params.append(status)
+        params.append(limit)
+        where_sql = f"where {' and '.join(where)}" if where else ""
+        with self._session() as conn:
+            rows = conn.execute(
+                f"""
+                select *
+                from execution_queue
+                {where_sql}
+                order by
+                    case status when 'running' then 0 when 'assigned' then 1 when 'queued' then 2 when 'retrying' then 3 else 4 end,
+                    priority desc,
+                    created_at asc
+                limit ?
+                """,
+                tuple(params),
+            ).fetchall()
+        return [self._execution_job_from_row(row, project_root=project_root) for row in rows]
+
+    def execution_job(self, job_id: str) -> ExecutionQueueItem:
+        with self._session() as conn:
+            row = conn.execute("select * from execution_queue where id = ?", (job_id,)).fetchone()
+        if row is None:
+            raise KeyError(job_id)
+        return self._execution_job_from_row(row)
+
+    def update_execution_job(
+        self,
+        job_id: str,
+        *,
+        status: str,
+        assigned_worker_id: str | None = None,
+        attempts: int | None = None,
+        error_summary: str = "",
+        result_summary: str = "",
+        lease_expires_at: str = "",
+    ) -> ExecutionQueueItem:
+        now = utc_now()
+        with self._session() as conn:
+            row = conn.execute("select * from execution_queue where id = ?", (job_id,)).fetchone()
+            if row is None:
+                raise KeyError(job_id)
+            conn.execute(
+                """
+                update execution_queue
+                set status = ?,
+                    updated_at = ?,
+                    assigned_worker_id = case when ? is not null then ? else assigned_worker_id end,
+                    attempts = case when ? is not null then ? else attempts end,
+                    error_summary = case when ? != '' then ? else error_summary end,
+                    result_summary = case when ? != '' then ? else result_summary end,
+                    lease_expires_at = ?
+                where id = ?
+                """,
+                (
+                    status,
+                    now,
+                    assigned_worker_id,
+                    assigned_worker_id,
+                    attempts,
+                    attempts,
+                    error_summary,
+                    error_summary,
+                    result_summary,
+                    result_summary,
+                    lease_expires_at,
+                    job_id,
+                ),
+            )
+        return self.execution_job(job_id)
+
+    def retry_execution_job(self, job_id: str, *, reason: str = "") -> ExecutionQueueItem:
+        job = self.execution_job(job_id)
+        if job.attempts >= job.max_attempts:
+            return self.update_execution_job(job_id, status="failed", error_summary=reason or "Retry limit reached.")
+        return self.update_execution_job(job_id, status="retrying", assigned_worker_id="", error_summary=reason)
+
+    def cancel_execution_job(self, job_id: str, *, reason: str = "") -> ExecutionQueueItem:
+        return self.update_execution_job(job_id, status="canceled", error_summary=reason)
+
+    def complete_execution_job_for_worker(self, worker_id: str, *, failed: bool = False, latency_ms: float = 0.0) -> None:
+        with self._session() as conn:
+            row = conn.execute("select total_jobs, failed_jobs, average_latency_ms from runtime_workers where worker_id = ?", (worker_id,)).fetchone()
+            if row is None:
+                return
+            total_jobs = int(row["total_jobs"] or 0) + 1
+            failed_jobs = int(row["failed_jobs"] or 0) + (1 if failed else 0)
+            previous_latency = float(row["average_latency_ms"] or 0.0)
+            next_latency = latency_ms if previous_latency <= 0 else ((previous_latency * (total_jobs - 1)) + latency_ms) / total_jobs
+            conn.execute(
+                """
+                update runtime_workers
+                set current_jobs = 0, status = case when trust_state = 'trusted' then 'available' else status end,
+                    total_jobs = ?, failed_jobs = ?, average_latency_ms = ?
+                where worker_id = ?
+                """,
+                (total_jobs, failed_jobs, next_latency, worker_id),
+            )
+
+    def record_worker_audit_event(self, event: WorkerAuditEvent) -> WorkerAuditEvent:
+        with self._session() as conn:
+            conn.execute(
+                """
+                insert into worker_audit_events (
+                    id, created_at, worker_id, job_id, event_type, status, detail, metadata_json
+                ) values (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    event.id,
+                    event.created_at,
+                    event.worker_id,
+                    event.job_id,
+                    event.event_type,
+                    event.status,
+                    event.detail,
+                    json.dumps(event.metadata, ensure_ascii=True),
+                ),
+            )
+        return event
+
+    def worker_audit_events(self, *, worker_id: str = "", job_id: str = "", limit: int = 100) -> list[WorkerAuditEvent]:
+        where: list[str] = []
+        params: list[Any] = []
+        if worker_id:
+            where.append("worker_id = ?")
+            params.append(worker_id)
+        if job_id:
+            where.append("job_id = ?")
+            params.append(job_id)
+        params.append(limit)
+        where_sql = f"where {' and '.join(where)}" if where else ""
+        with self._session() as conn:
+            rows = conn.execute(
+                f"""
+                select *
+                from worker_audit_events
+                {where_sql}
+                order by created_at desc
+                limit ?
+                """,
+                tuple(params),
+            ).fetchall()
+        return [self._worker_audit_event_from_row(row) for row in rows]
+
+    def save_workspace_sync_manifest(self, manifest: RemoteWorkspaceSyncManifest) -> RemoteWorkspaceSyncManifest:
+        with self._session() as conn:
+            conn.execute(
+                """
+                insert into workspace_sync_manifests (
+                    id, workspace_root, created_at, encrypted, encryption_label,
+                    included_sections_json, manifest_hash, payload_json
+                ) values (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    manifest.id,
+                    manifest.workspace_root,
+                    manifest.created_at,
+                    1 if manifest.encrypted else 0,
+                    manifest.encryption_label,
+                    json.dumps(manifest.included_sections, ensure_ascii=True),
+                    manifest.manifest_hash,
+                    json.dumps(manifest.payload, ensure_ascii=True),
+                ),
+            )
+        return manifest
+
+    def workspace_sync_manifests(self, *, project_root: Path, limit: int = 20) -> list[RemoteWorkspaceSyncManifest]:
+        aliases = self._project_root_aliases(project_root)
+        placeholders = ",".join("?" for _ in aliases)
+        with self._session() as conn:
+            rows = conn.execute(
+                f"""
+                select *
+                from workspace_sync_manifests
+                where workspace_root in ({placeholders})
+                order by created_at desc
+                limit ?
+                """,
+                (*aliases, limit),
+            ).fetchall()
+        return [self._workspace_sync_manifest_from_row(row, project_root=project_root) for row in rows]
+
+    def upsert_plugin_manifest(self, manifest: PluginManifest) -> PluginManifest:
+        now = utc_now()
+        saved = manifest.model_copy(
+            update={
+                "created_at": manifest.created_at or now,
+                "updated_at": now,
+            }
+        )
+        with self._session() as conn:
+            existing = conn.execute("select created_at from plugin_manifests where id = ?", (saved.id,)).fetchone()
+            created_at = str(existing["created_at"]) if existing else saved.created_at
+            saved = saved.model_copy(update={"created_at": created_at})
+            conn.execute(
+                """
+                insert into plugin_manifests (
+                    id, name, version, api_version, enabled, trusted, created_at, updated_at,
+                    capabilities_json, permission_scopes_json, manifest_json
+                ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                on conflict(id) do update set
+                    name = excluded.name,
+                    version = excluded.version,
+                    api_version = excluded.api_version,
+                    enabled = excluded.enabled,
+                    trusted = excluded.trusted,
+                    updated_at = excluded.updated_at,
+                    capabilities_json = excluded.capabilities_json,
+                    permission_scopes_json = excluded.permission_scopes_json,
+                    manifest_json = excluded.manifest_json
+                """,
+                (
+                    saved.id,
+                    saved.name,
+                    saved.version,
+                    saved.api_version,
+                    1 if saved.enabled else 0,
+                    1 if saved.trusted else 0,
+                    saved.created_at,
+                    saved.updated_at,
+                    json.dumps(saved.capabilities, ensure_ascii=True),
+                    json.dumps(saved.permissions, ensure_ascii=True),
+                    json.dumps(saved.model_dump(mode="json"), ensure_ascii=True),
+                ),
+            )
+        return self.plugin_manifest(saved.id)
+
+    def plugin_manifests(self, *, include_disabled: bool = True) -> list[PluginManifest]:
+        where = "" if include_disabled else "where enabled = 1"
+        with self._session() as conn:
+            rows = conn.execute(
+                f"""
+                select *
+                from plugin_manifests
+                {where}
+                order by enabled desc, trusted desc, name asc
+                """
+            ).fetchall()
+        return [self._plugin_manifest_from_row(row) for row in rows]
+
+    def plugin_manifest(self, plugin_id: str) -> PluginManifest:
+        with self._session() as conn:
+            row = conn.execute("select * from plugin_manifests where id = ?", (plugin_id,)).fetchone()
+        if row is None:
+            raise KeyError(plugin_id)
+        return self._plugin_manifest_from_row(row)
+
+    def update_plugin_state(
+        self,
+        plugin_id: str,
+        *,
+        enabled: bool | None = None,
+        trusted: bool | None = None,
+        reason: str = "",
+    ) -> PluginManifest:
+        now = utc_now()
+        with self._session() as conn:
+            row = conn.execute("select manifest_json from plugin_manifests where id = ?", (plugin_id,)).fetchone()
+            if row is None:
+                raise KeyError(plugin_id)
+            payload = self._json_payload(str(row["manifest_json"] or "{}"))
+            if enabled is not None:
+                payload["enabled"] = bool(enabled)
+            if trusted is not None:
+                payload["trusted"] = bool(trusted)
+            payload["updated_at"] = now
+            metadata = dict(payload.get("metadata") or {})
+            if reason:
+                metadata["latest_state_change_reason"] = reason
+            payload["metadata"] = metadata
+            conn.execute(
+                """
+                update plugin_manifests
+                set enabled = ?,
+                    trusted = ?,
+                    updated_at = ?,
+                    manifest_json = ?
+                where id = ?
+                """,
+                (
+                    1 if payload.get("enabled") else 0,
+                    1 if payload.get("trusted") else 0,
+                    now,
+                    json.dumps(payload, ensure_ascii=True),
+                    plugin_id,
+                ),
+            )
+        return self.plugin_manifest(plugin_id)
+
+    def active_enterprise_policy(self) -> EnterprisePolicyProfile | None:
+        with self._session() as conn:
+            row = conn.execute(
+                """
+                select payload_json
+                from enterprise_policy_profiles
+                where active = 1
+                order by updated_at desc
+                limit 1
+                """
+            ).fetchone()
+        if row is None:
+            return None
+        try:
+            return EnterprisePolicyProfile.model_validate(json.loads(str(row["payload_json"] or "{}")))
+        except Exception:
+            return None
+
+    def save_enterprise_policy(self, profile: EnterprisePolicyProfile) -> EnterprisePolicyProfile:
+        now = utc_now()
+        saved = profile.model_copy(
+            update={
+                "created_at": profile.created_at or now,
+                "updated_at": now,
+                "active": True,
+            }
+        )
+        with self._session() as conn:
+            conn.execute("update enterprise_policy_profiles set active = 0")
+            existing = conn.execute("select created_at from enterprise_policy_profiles where id = ?", (saved.id,)).fetchone()
+            if existing:
+                saved = saved.model_copy(update={"created_at": str(existing["created_at"] or saved.created_at)})
+            conn.execute(
+                """
+                insert into enterprise_policy_profiles (
+                    id, name, active, created_at, updated_at, payload_json
+                ) values (?, ?, ?, ?, ?, ?)
+                on conflict(id) do update set
+                    name = excluded.name,
+                    active = excluded.active,
+                    updated_at = excluded.updated_at,
+                    payload_json = excluded.payload_json
+                """,
+                (
+                    saved.id,
+                    saved.name,
+                    1,
+                    saved.created_at,
+                    saved.updated_at,
+                    json.dumps(saved.model_dump(mode="json"), ensure_ascii=True),
+                ),
+            )
+        return saved
+
+    def save_reliability_metric_snapshot(self, snapshot: ProductizationSnapshot) -> ProductizationSnapshot:
+        degraded_count = sum(1 for metric in snapshot.metrics if metric.status == "degraded")
+        with self._session() as conn:
+            conn.execute(
+                """
+                insert into reliability_metric_snapshots (
+                    id, workspace_root, created_at, metric_count, degraded_count, payload_json
+                ) values (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    str(uuid4()),
+                    snapshot.workspace_root,
+                    snapshot.generated_at or utc_now(),
+                    len(snapshot.metrics),
+                    degraded_count,
+                    json.dumps(snapshot.model_dump(mode="json"), ensure_ascii=True),
+                ),
+            )
+        return snapshot
+
+    def reliability_metric_snapshots(self, *, project_root: Path, limit: int = 20) -> list[ProductizationSnapshot]:
+        aliases = self._project_root_aliases(project_root)
+        placeholders = ",".join("?" for _ in aliases)
+        with self._session() as conn:
+            rows = conn.execute(
+                f"""
+                select payload_json
+                from reliability_metric_snapshots
+                where workspace_root in ({placeholders})
+                order by created_at desc
+                limit ?
+                """,
+                (*aliases, max(1, min(100, limit))),
+            ).fetchall()
+        snapshots: list[ProductizationSnapshot] = []
+        for row in rows:
+            try:
+                payload = json.loads(str(row["payload_json"] or "{}"))
+                payload["workspace_root"] = str(project_root.resolve())
+                snapshots.append(ProductizationSnapshot.model_validate(payload))
+            except Exception:
+                continue
+        return snapshots
+
+    def upsert_ecosystem_package(self, manifest: EcosystemPackageManifest) -> EcosystemPackageManifest:
+        now = utc_now()
+        saved = manifest.model_copy(
+            update={
+                "installed": True,
+                "installed_at": manifest.installed_at or now,
+                "updated_at": now,
+            }
+        )
+        with self._session() as conn:
+            existing = conn.execute("select installed_at from ecosystem_packages where id = ?", (saved.id,)).fetchone()
+            if existing:
+                saved = saved.model_copy(update={"installed_at": str(existing["installed_at"] or saved.installed_at)})
+            conn.execute(
+                """
+                insert into ecosystem_packages (
+                    id, kind, name, version, api_version, enabled, trust_level,
+                    installed_at, updated_at, update_channel, manifest_json
+                ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                on conflict(id) do update set
+                    kind = excluded.kind,
+                    name = excluded.name,
+                    version = excluded.version,
+                    api_version = excluded.api_version,
+                    enabled = excluded.enabled,
+                    trust_level = excluded.trust_level,
+                    updated_at = excluded.updated_at,
+                    update_channel = excluded.update_channel,
+                    manifest_json = excluded.manifest_json
+                """,
+                (
+                    saved.id,
+                    saved.kind,
+                    saved.name,
+                    saved.version,
+                    saved.api_version,
+                    1 if saved.enabled else 0,
+                    saved.trust_level,
+                    saved.installed_at,
+                    saved.updated_at,
+                    saved.update_channel,
+                    json.dumps(saved.model_dump(mode="json"), ensure_ascii=True),
+                ),
+            )
+        return self.ecosystem_package(saved.id)
+
+    def ecosystem_packages(self, *, include_disabled: bool = True) -> list[EcosystemPackageManifest]:
+        where = "" if include_disabled else "where enabled = 1"
+        with self._session() as conn:
+            rows = conn.execute(
+                f"""
+                select manifest_json
+                from ecosystem_packages
+                {where}
+                order by enabled desc, trust_level desc, name asc
+                """
+            ).fetchall()
+        packages: list[EcosystemPackageManifest] = []
+        for row in rows:
+            try:
+                packages.append(EcosystemPackageManifest.model_validate(json.loads(str(row["manifest_json"] or "{}"))))
+            except Exception:
+                continue
+        return packages
+
+    def ecosystem_package(self, package_id: str) -> EcosystemPackageManifest:
+        with self._session() as conn:
+            row = conn.execute("select manifest_json from ecosystem_packages where id = ?", (package_id,)).fetchone()
+        if row is None:
+            raise KeyError(package_id)
+        return EcosystemPackageManifest.model_validate(json.loads(str(row["manifest_json"] or "{}")))
+
+    def update_ecosystem_package_state(
+        self,
+        package_id: str,
+        *,
+        enabled: bool | None = None,
+        trust_level: str | None = None,
+        reason: str = "",
+    ) -> EcosystemPackageManifest:
+        current = self.ecosystem_package(package_id)
+        metadata = dict(current.metadata or {})
+        if reason:
+            metadata["latest_state_change_reason"] = reason
+        saved = current.model_copy(
+            update={
+                "enabled": current.enabled if enabled is None else enabled,
+                "trust_level": current.trust_level if trust_level is None else trust_level,
+                "updated_at": utc_now(),
+                "metadata": metadata,
+            }
+        )
+        return self.upsert_ecosystem_package(saved)
+
+    def upsert_ecosystem_workflow(self, workflow: EcosystemWorkflowDefinition) -> EcosystemWorkflowDefinition:
+        now = utc_now()
+        saved = workflow.model_copy(update={"created_at": workflow.created_at or now, "updated_at": now})
+        with self._session() as conn:
+            existing = conn.execute("select created_at from ecosystem_workflows where id = ?", (saved.id,)).fetchone()
+            if existing:
+                saved = saved.model_copy(update={"created_at": str(existing["created_at"] or saved.created_at)})
+            conn.execute(
+                """
+                insert into ecosystem_workflows (
+                    id, name, version, api_version, category, enabled, created_at, updated_at, definition_json
+                ) values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                on conflict(id) do update set
+                    name = excluded.name,
+                    version = excluded.version,
+                    api_version = excluded.api_version,
+                    category = excluded.category,
+                    enabled = excluded.enabled,
+                    updated_at = excluded.updated_at,
+                    definition_json = excluded.definition_json
+                """,
+                (
+                    saved.id,
+                    saved.name,
+                    saved.version,
+                    saved.api_version,
+                    saved.category,
+                    1 if saved.enabled else 0,
+                    saved.created_at,
+                    saved.updated_at,
+                    json.dumps(saved.model_dump(mode="json"), ensure_ascii=True),
+                ),
+            )
+        return self.ecosystem_workflow(saved.id)
+
+    def ecosystem_workflows(self, *, include_disabled: bool = True) -> list[EcosystemWorkflowDefinition]:
+        where = "" if include_disabled else "where enabled = 1"
+        with self._session() as conn:
+            rows = conn.execute(
+                f"""
+                select definition_json
+                from ecosystem_workflows
+                {where}
+                order by category asc, name asc
+                """
+            ).fetchall()
+        workflows: list[EcosystemWorkflowDefinition] = []
+        for row in rows:
+            try:
+                workflows.append(EcosystemWorkflowDefinition.model_validate(json.loads(str(row["definition_json"] or "{}"))))
+            except Exception:
+                continue
+        return workflows
+
+    def ecosystem_workflow(self, workflow_id: str) -> EcosystemWorkflowDefinition:
+        with self._session() as conn:
+            row = conn.execute("select definition_json from ecosystem_workflows where id = ?", (workflow_id,)).fetchone()
+        if row is None:
+            raise KeyError(workflow_id)
+        return EcosystemWorkflowDefinition.model_validate(json.loads(str(row["definition_json"] or "{}")))
+
+    def upsert_shared_intelligence_profile(self, profile: SharedIntelligenceProfile) -> SharedIntelligenceProfile:
+        now = utc_now()
+        saved = profile.model_copy(update={"imported_at": profile.imported_at or now, "exported_at": profile.exported_at or now})
+        with self._session() as conn:
+            conn.execute(
+                """
+                insert into shared_intelligence_profiles (
+                    id, kind, name, version, imported_at, updated_at, payload_json
+                ) values (?, ?, ?, ?, ?, ?, ?)
+                on conflict(id) do update set
+                    kind = excluded.kind,
+                    name = excluded.name,
+                    version = excluded.version,
+                    updated_at = excluded.updated_at,
+                    payload_json = excluded.payload_json
+                """,
+                (
+                    saved.id,
+                    saved.kind,
+                    saved.name,
+                    saved.version,
+                    saved.imported_at,
+                    now,
+                    json.dumps(saved.model_dump(mode="json"), ensure_ascii=True),
+                ),
+            )
+        return self.shared_intelligence_profile(saved.id)
+
+    def shared_intelligence_profiles(self, *, kind: str | None = None, limit: int = 50) -> list[SharedIntelligenceProfile]:
+        params: list[Any] = []
+        where = ""
+        if kind:
+            where = "where kind = ?"
+            params.append(kind)
+        params.append(max(1, min(200, limit)))
+        with self._session() as conn:
+            rows = conn.execute(
+                f"""
+                select payload_json
+                from shared_intelligence_profiles
+                {where}
+                order by updated_at desc
+                limit ?
+                """,
+                tuple(params),
+            ).fetchall()
+        profiles: list[SharedIntelligenceProfile] = []
+        for row in rows:
+            try:
+                profiles.append(SharedIntelligenceProfile.model_validate(json.loads(str(row["payload_json"] or "{}"))))
+            except Exception:
+                continue
+        return profiles
+
+    def shared_intelligence_profile(self, profile_id: str) -> SharedIntelligenceProfile:
+        with self._session() as conn:
+            row = conn.execute("select payload_json from shared_intelligence_profiles where id = ?", (profile_id,)).fetchone()
+        if row is None:
+            raise KeyError(profile_id)
+        return SharedIntelligenceProfile.model_validate(json.loads(str(row["payload_json"] or "{}")))
+
+    def active_organization_policy(self) -> OrganizationPolicyProfile | None:
+        with self._session() as conn:
+            row = conn.execute(
+                """
+                select payload_json
+                from organization_policy_profiles
+                where active = 1
+                order by updated_at desc
+                limit 1
+                """
+            ).fetchone()
+        if row is None:
+            return None
+        try:
+            return OrganizationPolicyProfile.model_validate(json.loads(str(row["payload_json"] or "{}")))
+        except Exception:
+            return None
+
+    def save_organization_policy(self, profile: OrganizationPolicyProfile) -> OrganizationPolicyProfile:
+        now = utc_now()
+        saved = profile.model_copy(update={"active": True, "created_at": profile.created_at or now, "updated_at": now})
+        with self._session() as conn:
+            conn.execute("update organization_policy_profiles set active = 0")
+            existing = conn.execute("select created_at from organization_policy_profiles where id = ?", (saved.id,)).fetchone()
+            if existing:
+                saved = saved.model_copy(update={"created_at": str(existing["created_at"] or saved.created_at)})
+            conn.execute(
+                """
+                insert into organization_policy_profiles (id, name, active, created_at, updated_at, payload_json)
+                values (?, ?, ?, ?, ?, ?)
+                on conflict(id) do update set
+                    name = excluded.name,
+                    active = excluded.active,
+                    updated_at = excluded.updated_at,
+                    payload_json = excluded.payload_json
+                """,
+                (
+                    saved.id,
+                    saved.name,
+                    1,
+                    saved.created_at,
+                    saved.updated_at,
+                    json.dumps(saved.model_dump(mode="json"), ensure_ascii=True),
+                ),
+            )
+        return saved
+
+    def save_knowledge_graph_snapshot(self, snapshot: KnowledgeGraphSnapshot) -> KnowledgeGraphSnapshot:
+        with self._session() as conn:
+            conn.execute(
+                """
+                insert into knowledge_graph_snapshots (
+                    id, workspace_root, generated_at, node_count, edge_count, payload_json
+                ) values (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    str(uuid4()),
+                    snapshot.workspace_root,
+                    snapshot.generated_at,
+                    len(snapshot.nodes),
+                    len(snapshot.edges),
+                    json.dumps(snapshot.model_dump(mode="json"), ensure_ascii=True),
+                ),
+            )
+        return snapshot
+
+    def knowledge_graph_snapshot(self, *, project_root: Path) -> KnowledgeGraphSnapshot | None:
+        aliases = self._project_root_aliases(project_root)
+        placeholders = ",".join("?" for _ in aliases)
+        with self._session() as conn:
+            row = conn.execute(
+                f"""
+                select payload_json
+                from knowledge_graph_snapshots
+                where workspace_root in ({placeholders})
+                order by generated_at desc
+                limit 1
+                """,
+                tuple(aliases),
+            ).fetchone()
+        if row is None:
+            return None
+        try:
+            payload = json.loads(str(row["payload_json"] or "{}"))
+            payload["workspace_root"] = str(project_root.resolve())
+            return KnowledgeGraphSnapshot.model_validate(payload)
+        except Exception:
+            return None
+
+    def project_intelligence_snapshots(self, *, limit: int = 50) -> list[ProjectIntelligenceSnapshot]:
+        with self._session() as conn:
+            rows = conn.execute(
+                """
+                select snapshot_json
+                from project_intelligence
+                order by indexed_at desc, updated_at desc
+                limit ?
+                """,
+                (max(1, min(200, limit)),),
+            ).fetchall()
+        snapshots: list[ProjectIntelligenceSnapshot] = []
+        for row in rows:
+            try:
+                snapshots.append(ProjectIntelligenceSnapshot.model_validate(json.loads(str(row["snapshot_json"] or "{}"))))
+            except Exception:
+                continue
+        return snapshots
+
+    def save_reproducibility_record(self, record: ReproducibilityRecord) -> ReproducibilityRecord:
+        with self._session() as conn:
+            conn.execute(
+                """
+                insert into reproducibility_records (
+                    id, workspace_root, task_id, created_at, deterministic_hash, payload_json
+                ) values (?, ?, ?, ?, ?, ?)
+                on conflict(id) do update set
+                    workspace_root = excluded.workspace_root,
+                    task_id = excluded.task_id,
+                    deterministic_hash = excluded.deterministic_hash,
+                    payload_json = excluded.payload_json
+                """,
+                (
+                    record.id,
+                    record.workspace_root,
+                    record.task_id,
+                    record.created_at,
+                    record.deterministic_hash,
+                    json.dumps(record.model_dump(mode="json"), ensure_ascii=True),
+                ),
+            )
+        return record
+
+    def reproducibility_records(self, *, project_root: Path, limit: int = 20) -> list[ReproducibilityRecord]:
+        aliases = self._project_root_aliases(project_root)
+        placeholders = ",".join("?" for _ in aliases)
+        with self._session() as conn:
+            rows = conn.execute(
+                f"""
+                select payload_json
+                from reproducibility_records
+                where workspace_root in ({placeholders})
+                order by created_at desc
+                limit ?
+                """,
+                (*aliases, max(1, min(100, limit))),
+            ).fetchall()
+        records: list[ReproducibilityRecord] = []
+        for row in rows:
+            try:
+                payload = json.loads(str(row["payload_json"] or "{}"))
+                payload["workspace_root"] = str(project_root.resolve())
+                records.append(ReproducibilityRecord.model_validate(payload))
+            except Exception:
+                continue
+        return records
+
+    def record_ecosystem_audit_event(self, event: EcosystemAuditEvent) -> EcosystemAuditEvent:
+        with self._session() as conn:
+            conn.execute(
+                """
+                insert into ecosystem_audit_events (
+                    id, created_at, actor, action, subject_id, status, detail, metadata_json
+                ) values (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    event.id,
+                    event.created_at,
+                    event.actor,
+                    event.action,
+                    event.subject_id,
+                    event.status,
+                    event.detail,
+                    json.dumps(event.metadata, ensure_ascii=True),
+                ),
+            )
+        return event
+
+    def ecosystem_audit_events(self, *, limit: int = 50) -> list[EcosystemAuditEvent]:
+        with self._session() as conn:
+            rows = conn.execute(
+                """
+                select *
+                from ecosystem_audit_events
+                order by created_at desc
+                limit ?
+                """,
+                (max(1, min(200, limit)),),
+            ).fetchall()
+        events: list[EcosystemAuditEvent] = []
+        for row in rows:
+            events.append(
+                EcosystemAuditEvent(
+                    id=str(row["id"]),
+                    created_at=str(row["created_at"]),
+                    actor=str(row["actor"] or "local-user"),
+                    action=str(row["action"]),
+                    subject_id=str(row["subject_id"] or ""),
+                    status=str(row["status"] or "ok"),
+                    detail=str(row["detail"] or ""),
+                    metadata=self._json_payload(str(row["metadata_json"] or "{}")),
+                )
+            )
+        return events
+
+    def upsert_autonomous_objective(self, objective: AutonomousObjective) -> AutonomousObjective:
+        with self._session() as conn:
+            conn.execute(
+                """
+                insert into autonomous_objectives (
+                    id, workspace_root, title, status, priority, created_at, updated_at, completed_at, payload_json
+                ) values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                on conflict(id) do update set
+                    workspace_root = excluded.workspace_root,
+                    title = excluded.title,
+                    status = excluded.status,
+                    priority = excluded.priority,
+                    updated_at = excluded.updated_at,
+                    completed_at = excluded.completed_at,
+                    payload_json = excluded.payload_json
+                """,
+                (
+                    objective.id,
+                    objective.workspace_root,
+                    objective.title,
+                    objective.status,
+                    objective.priority,
+                    objective.created_at,
+                    objective.updated_at,
+                    objective.completed_at,
+                    json.dumps(objective.model_dump(mode="json"), ensure_ascii=True),
+                ),
+            )
+        return objective
+
+    def autonomous_objective(self, objective_id: str) -> AutonomousObjective:
+        with self._session() as conn:
+            row = conn.execute("select payload_json from autonomous_objectives where id = ?", (objective_id,)).fetchone()
+        if row is None:
+            raise KeyError(objective_id)
+        return AutonomousObjective.model_validate(json.loads(str(row["payload_json"] or "{}")))
+
+    def autonomous_objectives(self, *, project_root: Path, limit: int = 50, include_completed: bool = True) -> list[AutonomousObjective]:
+        aliases = self._project_root_aliases(project_root)
+        placeholders = ",".join("?" for _ in aliases)
+        params: list[Any] = [*aliases]
+        where = [f"workspace_root in ({placeholders})"]
+        if not include_completed:
+            where.append("status not in ('completed', 'failed', 'canceled')")
+        params.append(max(1, min(200, limit)))
+        with self._session() as conn:
+            rows = conn.execute(
+                f"""
+                select payload_json
+                from autonomous_objectives
+                where {' and '.join(where)}
+                order by priority desc, updated_at desc
+                limit ?
+                """,
+                tuple(params),
+            ).fetchall()
+        objectives: list[AutonomousObjective] = []
+        for row in rows:
+            try:
+                payload = json.loads(str(row["payload_json"] or "{}"))
+                payload["workspace_root"] = str(project_root.resolve())
+                objectives.append(AutonomousObjective.model_validate(payload))
+            except Exception:
+                continue
+        return objectives
+
+    def upsert_autonomous_phase(self, phase: AutonomousPhase) -> AutonomousPhase:
+        with self._session() as conn:
+            conn.execute(
+                """
+                insert into autonomous_phases (
+                    id, objective_id, workspace_root, kind, status, created_at, updated_at, payload_json
+                ) values (?, ?, ?, ?, ?, ?, ?, ?)
+                on conflict(id) do update set
+                    objective_id = excluded.objective_id,
+                    workspace_root = excluded.workspace_root,
+                    kind = excluded.kind,
+                    status = excluded.status,
+                    updated_at = excluded.updated_at,
+                    payload_json = excluded.payload_json
+                """,
+                (
+                    phase.id,
+                    phase.objective_id,
+                    phase.workspace_root,
+                    phase.kind,
+                    phase.status,
+                    phase.started_at or utc_now(),
+                    phase.completed_at or phase.started_at or utc_now(),
+                    json.dumps(phase.model_dump(mode="json"), ensure_ascii=True),
+                ),
+            )
+        return phase
+
+    def autonomous_phases(self, *, objective_id: str) -> list[AutonomousPhase]:
+        with self._session() as conn:
+            rows = conn.execute(
+                """
+                select payload_json
+                from autonomous_phases
+                where objective_id = ?
+                order by rowid asc
+                """,
+                (objective_id,),
+            ).fetchall()
+        phases: list[AutonomousPhase] = []
+        for row in rows:
+            try:
+                phases.append(AutonomousPhase.model_validate(json.loads(str(row["payload_json"] or "{}"))))
+            except Exception:
+                continue
+        return phases
+
+    def upsert_autonomous_approval_gate(self, gate: AutonomousApprovalGate) -> AutonomousApprovalGate:
+        with self._session() as conn:
+            conn.execute(
+                """
+                insert into autonomous_approval_gates (
+                    id, objective_id, workspace_root, kind, status, created_at, resolved_at, payload_json
+                ) values (?, ?, ?, ?, ?, ?, ?, ?)
+                on conflict(id) do update set
+                    objective_id = excluded.objective_id,
+                    workspace_root = excluded.workspace_root,
+                    kind = excluded.kind,
+                    status = excluded.status,
+                    resolved_at = excluded.resolved_at,
+                    payload_json = excluded.payload_json
+                """,
+                (
+                    gate.id,
+                    gate.objective_id,
+                    self._objective_workspace_root(gate.objective_id),
+                    gate.kind,
+                    gate.status,
+                    gate.created_at,
+                    gate.resolved_at,
+                    json.dumps(gate.model_dump(mode="json"), ensure_ascii=True),
+                ),
+            )
+        return gate
+
+    def autonomous_approval_gate(self, gate_id: str) -> AutonomousApprovalGate:
+        with self._session() as conn:
+            row = conn.execute("select payload_json from autonomous_approval_gates where id = ?", (gate_id,)).fetchone()
+        if row is None:
+            raise KeyError(gate_id)
+        return AutonomousApprovalGate.model_validate(json.loads(str(row["payload_json"] or "{}")))
+
+    def autonomous_approval_gates(
+        self,
+        *,
+        objective_id: str | None = None,
+        project_root: Path | None = None,
+        limit: int = 100,
+    ) -> list[AutonomousApprovalGate]:
+        params: list[Any] = []
+        where: list[str] = []
+        if objective_id:
+            where.append("objective_id = ?")
+            params.append(objective_id)
+        if project_root is not None:
+            aliases = self._project_root_aliases(project_root)
+            placeholders = ",".join("?" for _ in aliases)
+            where.append(f"workspace_root in ({placeholders})")
+            params.extend(aliases)
+        params.append(max(1, min(300, limit)))
+        clause = "where " + " and ".join(where) if where else ""
+        with self._session() as conn:
+            rows = conn.execute(
+                f"""
+                select payload_json
+                from autonomous_approval_gates
+                {clause}
+                order by created_at desc
+                limit ?
+                """,
+                tuple(params),
+            ).fetchall()
+        gates: list[AutonomousApprovalGate] = []
+        for row in rows:
+            try:
+                gates.append(AutonomousApprovalGate.model_validate(json.loads(str(row["payload_json"] or "{}"))))
+            except Exception:
+                continue
+        return gates
+
+    def upsert_autonomous_agent(self, agent: AutonomousAgentAssignment) -> AutonomousAgentAssignment:
+        with self._session() as conn:
+            conn.execute(
+                """
+                insert into autonomous_agents (id, objective_id, phase_id, role, status, updated_at, payload_json)
+                values (?, ?, ?, ?, ?, ?, ?)
+                on conflict(id) do update set
+                    objective_id = excluded.objective_id,
+                    phase_id = excluded.phase_id,
+                    role = excluded.role,
+                    status = excluded.status,
+                    updated_at = excluded.updated_at,
+                    payload_json = excluded.payload_json
+                """,
+                (
+                    agent.id,
+                    agent.objective_id,
+                    agent.phase_id,
+                    agent.role,
+                    agent.status,
+                    agent.completed_at or agent.started_at or utc_now(),
+                    json.dumps(agent.model_dump(mode="json"), ensure_ascii=True),
+                ),
+            )
+        return agent
+
+    def autonomous_agents(self, *, objective_id: str) -> list[AutonomousAgentAssignment]:
+        return self._autonomous_payloads("autonomous_agents", AutonomousAgentAssignment, objective_id)
+
+    def record_autonomous_verification(self, signal: AutonomousVerificationSignal) -> AutonomousVerificationSignal:
+        with self._session() as conn:
+            conn.execute(
+                """
+                insert into autonomous_verification (id, objective_id, phase_id, kind, status, created_at, payload_json)
+                values (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    signal.id,
+                    signal.objective_id,
+                    signal.phase_id,
+                    signal.kind,
+                    signal.status,
+                    signal.created_at,
+                    json.dumps(signal.model_dump(mode="json"), ensure_ascii=True),
+                ),
+            )
+        return signal
+
+    def autonomous_verification(self, *, objective_id: str) -> list[AutonomousVerificationSignal]:
+        return self._autonomous_payloads("autonomous_verification", AutonomousVerificationSignal, objective_id)
+
+    def save_autonomous_simulation(self, simulation: AutonomousSimulationEstimate) -> AutonomousSimulationEstimate:
+        with self._session() as conn:
+            conn.execute(
+                """
+                insert into autonomous_simulations (
+                    id, objective_id, workspace_root, created_at, risk, impact, payload_json
+                ) values (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    simulation.id,
+                    simulation.objective_id,
+                    simulation.workspace_root,
+                    simulation.created_at,
+                    simulation.predicted_validation_risk,
+                    simulation.estimated_impact,
+                    json.dumps(simulation.model_dump(mode="json"), ensure_ascii=True),
+                ),
+            )
+        return simulation
+
+    def autonomous_simulations(self, *, objective_id: str) -> list[AutonomousSimulationEstimate]:
+        return self._autonomous_payloads("autonomous_simulations", AutonomousSimulationEstimate, objective_id)
+
+    def upsert_autonomous_refactor_plan(self, plan: AutonomousRefactorPlan) -> AutonomousRefactorPlan:
+        with self._session() as conn:
+            conn.execute(
+                """
+                insert into autonomous_refactor_plans (id, objective_id, kind, status, updated_at, payload_json)
+                values (?, ?, ?, ?, ?, ?)
+                on conflict(id) do update set
+                    objective_id = excluded.objective_id,
+                    kind = excluded.kind,
+                    status = excluded.status,
+                    updated_at = excluded.updated_at,
+                    payload_json = excluded.payload_json
+                """,
+                (
+                    plan.id,
+                    plan.objective_id,
+                    plan.kind,
+                    plan.status,
+                    utc_now(),
+                    json.dumps(plan.model_dump(mode="json"), ensure_ascii=True),
+                ),
+            )
+        return plan
+
+    def autonomous_refactor_plans(self, *, objective_id: str) -> list[AutonomousRefactorPlan]:
+        return self._autonomous_payloads("autonomous_refactor_plans", AutonomousRefactorPlan, objective_id)
+
+    def record_autonomous_explanation(self, explanation: AutonomousExplainabilityEntry) -> AutonomousExplainabilityEntry:
+        with self._session() as conn:
+            conn.execute(
+                """
+                insert into autonomous_explanations (id, objective_id, created_at, category, payload_json)
+                values (?, ?, ?, ?, ?)
+                """,
+                (
+                    explanation.id,
+                    explanation.objective_id,
+                    explanation.created_at,
+                    explanation.category,
+                    json.dumps(explanation.model_dump(mode="json"), ensure_ascii=True),
+                ),
+            )
+        return explanation
+
+    def autonomous_explanations(self, *, objective_id: str, limit: int = 50) -> list[AutonomousExplainabilityEntry]:
+        with self._session() as conn:
+            rows = conn.execute(
+                """
+                select payload_json
+                from autonomous_explanations
+                where objective_id = ?
+                order by created_at desc
+                limit ?
+                """,
+                (objective_id, max(1, min(200, limit))),
+            ).fetchall()
+        items: list[AutonomousExplainabilityEntry] = []
+        for row in rows:
+            try:
+                items.append(AutonomousExplainabilityEntry.model_validate(json.loads(str(row["payload_json"] or "{}"))))
+            except Exception:
+                continue
+        return items
+
+    def autonomous_objective_detail(self, objective_id: str) -> AutonomousObjectiveDetail:
+        objective = self.autonomous_objective(objective_id)
+        events: list[ToolEvent] = []
+        for task_id in objective.task_ids[:5]:
+            events.extend(self.task_events(task_id))
+        return AutonomousObjectiveDetail(
+            objective=objective,
+            phases=self.autonomous_phases(objective_id=objective_id),
+            approval_gates=self.autonomous_approval_gates(objective_id=objective_id),
+            simulations=self.autonomous_simulations(objective_id=objective_id),
+            agents=self.autonomous_agents(objective_id=objective_id),
+            verification=self.autonomous_verification(objective_id=objective_id),
+            refactor_plans=self.autonomous_refactor_plans(objective_id=objective_id),
+            explanations=self.autonomous_explanations(objective_id=objective_id, limit=80),
+            task_events=events,
+        )
+
+    def _objective_workspace_root(self, objective_id: str) -> str:
+        try:
+            return self.autonomous_objective(objective_id).workspace_root
+        except KeyError:
+            return str(self.project_root.resolve())
+
+    def _autonomous_payloads(self, table: str, model: Any, objective_id: str) -> list[Any]:
+        allowed = {
+            "autonomous_agents",
+            "autonomous_verification",
+            "autonomous_simulations",
+            "autonomous_refactor_plans",
+        }
+        if table not in allowed:
+            raise ValueError("unsupported autonomous table")
+        with self._session() as conn:
+            rows = conn.execute(
+                f"""
+                select payload_json
+                from {table}
+                where objective_id = ?
+                order by rowid asc
+                """,
+                (objective_id,),
+            ).fetchall()
+        items: list[Any] = []
+        for row in rows:
+            try:
+                items.append(model.model_validate(json.loads(str(row["payload_json"] or "{}"))))
+            except Exception:
+                continue
+        return items
 
     def record_repair_attempt(self, task_id: str, attempt: RepairAttempt) -> None:
         with self._session() as conn:
@@ -904,6 +2928,429 @@ class EventStore:
             feedback=feedback,
         )
 
+    def upsert_task_outcome(self, outcome: TaskOutcomeRecord) -> TaskOutcomeRecord:
+        now = utc_now()
+        record = outcome.model_copy(
+            update={
+                "id": outcome.id or f"outcome-{outcome.task_id}",
+                "workspace_root": str(Path(outcome.workspace_root or self.project_root).resolve()),
+                "updated_at": outcome.updated_at or now,
+            }
+        )
+        with self._session() as conn:
+            conn.execute(
+                """
+                insert into adaptive_task_outcomes (
+                    id, task_id, workspace_root, created_at, updated_at, completed_at,
+                    status, success, outcome_json
+                ) values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                on conflict(task_id) do update set
+                    workspace_root = excluded.workspace_root,
+                    updated_at = excluded.updated_at,
+                    completed_at = excluded.completed_at,
+                    status = excluded.status,
+                    success = excluded.success,
+                    outcome_json = excluded.outcome_json
+                """,
+                (
+                    record.id,
+                    record.task_id,
+                    record.workspace_root,
+                    record.created_at or now,
+                    record.updated_at or now,
+                    record.completed_at or "",
+                    record.status,
+                    1 if record.success else 0,
+                    json.dumps(record.model_dump(mode="json"), ensure_ascii=True),
+                ),
+            )
+        return record
+
+    def adaptive_task_outcomes(self, *, project_root: Path, limit: int = 100) -> list[TaskOutcomeRecord]:
+        aliases = self._project_root_aliases(project_root)
+        placeholders = ",".join("?" for _ in aliases)
+        bounded_limit = max(1, min(1000, limit))
+        with self._session() as conn:
+            rows = conn.execute(
+                f"""
+                select outcome_json
+                from adaptive_task_outcomes
+                where workspace_root in ({placeholders})
+                order by updated_at desc
+                limit ?
+                """,
+                (*aliases, bounded_limit),
+            ).fetchall()
+        outcomes: list[TaskOutcomeRecord] = []
+        for row in rows:
+            try:
+                payload = json.loads(str(row["outcome_json"] or "{}"))
+                payload["workspace_root"] = str(project_root.resolve())
+                outcomes.append(TaskOutcomeRecord.model_validate(payload))
+            except Exception:
+                continue
+        return outcomes
+
+    def ensure_adaptive_policy_profiles(
+        self,
+        profiles: list[IntelligencePolicyProfile],
+    ) -> list[IntelligencePolicyProfile]:
+        existing = self.adaptive_policy_profiles()
+        if existing:
+            return existing
+        now = utc_now()
+        with self._session() as conn:
+            for index, profile in enumerate(profiles):
+                saved = profile.model_copy(
+                    update={
+                        "active": bool(profile.active or index == 0),
+                        "created_at": profile.created_at or now,
+                        "updated_at": profile.updated_at or now,
+                    }
+                )
+                conn.execute(
+                    """
+                    insert or ignore into adaptive_policy_profiles (
+                        id, name, active, created_at, updated_at, payload_json
+                    ) values (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        saved.id,
+                        saved.name,
+                        1 if saved.active else 0,
+                        saved.created_at,
+                        saved.updated_at,
+                        json.dumps(saved.model_dump(mode="json"), ensure_ascii=True),
+                    ),
+                )
+        return self.adaptive_policy_profiles()
+
+    def adaptive_policy_profiles(self) -> list[IntelligencePolicyProfile]:
+        with self._session() as conn:
+            rows = conn.execute(
+                """
+                select payload_json, active
+                from adaptive_policy_profiles
+                order by active desc, name asc
+                """
+            ).fetchall()
+        profiles: list[IntelligencePolicyProfile] = []
+        for row in rows:
+            try:
+                payload = json.loads(str(row["payload_json"] or "{}"))
+                payload["active"] = bool(row["active"])
+                profiles.append(IntelligencePolicyProfile.model_validate(payload))
+            except Exception:
+                continue
+        return profiles
+
+    def active_adaptive_policy_profile(self) -> IntelligencePolicyProfile | None:
+        profiles = self.adaptive_policy_profiles()
+        for profile in profiles:
+            if profile.active:
+                return profile
+        return profiles[0] if profiles else None
+
+    def upsert_adaptive_policy_profile(self, profile: IntelligencePolicyProfile) -> IntelligencePolicyProfile:
+        now = utc_now()
+        current = None
+        with self._session() as conn:
+            row = conn.execute(
+                "select created_at, active from adaptive_policy_profiles where id = ?",
+                (profile.id,),
+            ).fetchone()
+            if row:
+                current = row
+            saved = profile.model_copy(
+                update={
+                    "created_at": profile.created_at or (str(current["created_at"]) if current else now),
+                    "updated_at": profile.updated_at or now,
+                    "active": bool(profile.active if profile.active else (current["active"] if current else False)),
+                }
+            )
+            conn.execute(
+                """
+                insert into adaptive_policy_profiles (
+                    id, name, active, created_at, updated_at, payload_json
+                ) values (?, ?, ?, ?, ?, ?)
+                on conflict(id) do update set
+                    name = excluded.name,
+                    active = excluded.active,
+                    updated_at = excluded.updated_at,
+                    payload_json = excluded.payload_json
+                """,
+                (
+                    saved.id,
+                    saved.name,
+                    1 if saved.active else 0,
+                    saved.created_at,
+                    saved.updated_at,
+                    json.dumps(saved.model_dump(mode="json"), ensure_ascii=True),
+                ),
+            )
+        return saved
+
+    def set_active_adaptive_policy_profile(self, profile_id: str) -> IntelligencePolicyProfile:
+        now = utc_now()
+        profiles = self.adaptive_policy_profiles()
+        if not any(profile.id == profile_id for profile in profiles):
+            raise KeyError(profile_id)
+        with self._session() as conn:
+            conn.execute("update adaptive_policy_profiles set active = 0")
+            rows = conn.execute("select id, payload_json from adaptive_policy_profiles").fetchall()
+            for row in rows:
+                payload = self._json_payload(str(row["payload_json"] or "{}"))
+                payload["active"] = str(row["id"]) == profile_id
+                payload["updated_at"] = now if payload["active"] else payload.get("updated_at", now)
+                conn.execute(
+                    """
+                    update adaptive_policy_profiles
+                    set active = ?, updated_at = ?, payload_json = ?
+                    where id = ?
+                    """,
+                    (
+                        1 if payload["active"] else 0,
+                        payload["updated_at"],
+                        json.dumps(payload, ensure_ascii=True),
+                        str(row["id"]),
+                    ),
+                )
+        active = self.active_adaptive_policy_profile()
+        if active is None:
+            raise KeyError(profile_id)
+        return active
+
+    def create_adaptive_policy_checkpoint(self, reason: str = "") -> AdaptivePolicyCheckpoint:
+        profiles = self.adaptive_policy_profiles()
+        active_profile = next((profile for profile in profiles if profile.active), None)
+        checkpoint = AdaptivePolicyCheckpoint(
+            id=f"adaptive-policy-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')}",
+            created_at=utc_now(),
+            reason=reason,
+            active_profile_id=active_profile.id if active_profile else "",
+            profiles=profiles,
+        )
+        with self._session() as conn:
+            conn.execute(
+                """
+                insert into adaptive_policy_checkpoints (
+                    id, created_at, reason, active_profile_id, profiles_json
+                ) values (?, ?, ?, ?, ?)
+                """,
+                (
+                    checkpoint.id,
+                    checkpoint.created_at,
+                    checkpoint.reason,
+                    checkpoint.active_profile_id,
+                    json.dumps([profile.model_dump(mode="json") for profile in profiles], ensure_ascii=True),
+                ),
+            )
+        return checkpoint
+
+    def adaptive_policy_checkpoints(self, *, limit: int = 20) -> list[AdaptivePolicyCheckpoint]:
+        with self._session() as conn:
+            rows = conn.execute(
+                """
+                select *
+                from adaptive_policy_checkpoints
+                order by created_at desc
+                limit ?
+                """,
+                (max(1, min(100, limit)),),
+            ).fetchall()
+        checkpoints: list[AdaptivePolicyCheckpoint] = []
+        for row in rows:
+            try:
+                profiles_payload = json.loads(str(row["profiles_json"] or "[]"))
+                profiles = [
+                    IntelligencePolicyProfile.model_validate(item)
+                    for item in profiles_payload
+                    if isinstance(item, dict)
+                ]
+                checkpoints.append(
+                    AdaptivePolicyCheckpoint(
+                        id=str(row["id"]),
+                        created_at=str(row["created_at"]),
+                        reason=str(row["reason"] or ""),
+                        active_profile_id=str(row["active_profile_id"] or ""),
+                        profiles=profiles,
+                    )
+                )
+            except Exception:
+                continue
+        return checkpoints
+
+    def rollback_adaptive_policy_checkpoint(
+        self,
+        checkpoint_id: str,
+        *,
+        reason: str = "",
+    ) -> list[IntelligencePolicyProfile]:
+        with self._session() as conn:
+            row = conn.execute(
+                "select profiles_json from adaptive_policy_checkpoints where id = ?",
+                (checkpoint_id,),
+            ).fetchone()
+            if row is None:
+                raise KeyError(checkpoint_id)
+            profiles_payload = json.loads(str(row["profiles_json"] or "[]"))
+            profiles = [
+                IntelligencePolicyProfile.model_validate(item)
+                for item in profiles_payload
+                if isinstance(item, dict)
+            ]
+        self.create_adaptive_policy_checkpoint(reason or f"Before rollback to {checkpoint_id}.")
+        with self._session() as conn:
+            conn.execute("delete from adaptive_policy_profiles")
+            for profile in profiles:
+                conn.execute(
+                    """
+                    insert into adaptive_policy_profiles (
+                        id, name, active, created_at, updated_at, payload_json
+                    ) values (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        profile.id,
+                        profile.name,
+                        1 if profile.active else 0,
+                        profile.created_at,
+                        utc_now(),
+                        json.dumps(profile.model_dump(mode="json"), ensure_ascii=True),
+                    ),
+                )
+        return self.adaptive_policy_profiles()
+
+    def save_adaptive_benchmark_report(self, report: AdaptiveBenchmarkReport) -> AdaptiveBenchmarkReport:
+        saved = report.model_copy(
+            update={
+                "id": report.id or str(uuid4()),
+                "workspace_root": str(Path(report.workspace_root or self.project_root).resolve()),
+                "created_at": report.created_at or utc_now(),
+            }
+        )
+        with self._session() as conn:
+            conn.execute(
+                """
+                insert into adaptive_benchmark_reports (
+                    id, workspace_root, created_at, suite_id, status,
+                    baseline_score, candidate_score, regression_detected, payload_json
+                ) values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                on conflict(id) do update set
+                    status = excluded.status,
+                    baseline_score = excluded.baseline_score,
+                    candidate_score = excluded.candidate_score,
+                    regression_detected = excluded.regression_detected,
+                    payload_json = excluded.payload_json
+                """,
+                (
+                    saved.id,
+                    saved.workspace_root,
+                    saved.created_at,
+                    saved.suite_id,
+                    saved.status,
+                    saved.baseline_score,
+                    saved.candidate_score,
+                    1 if saved.regression_detected else 0,
+                    json.dumps(saved.model_dump(mode="json"), ensure_ascii=True),
+                ),
+            )
+        return saved
+
+    def adaptive_benchmark_reports(
+        self,
+        *,
+        project_root: Path,
+        limit: int = 20,
+    ) -> list[AdaptiveBenchmarkReport]:
+        aliases = self._project_root_aliases(project_root)
+        placeholders = ",".join("?" for _ in aliases)
+        with self._session() as conn:
+            rows = conn.execute(
+                f"""
+                select payload_json
+                from adaptive_benchmark_reports
+                where workspace_root in ({placeholders})
+                order by created_at desc
+                limit ?
+                """,
+                (*aliases, max(1, min(100, limit))),
+            ).fetchall()
+        reports: list[AdaptiveBenchmarkReport] = []
+        for row in rows:
+            try:
+                payload = json.loads(str(row["payload_json"] or "{}"))
+                payload["workspace_root"] = str(project_root.resolve())
+                reports.append(AdaptiveBenchmarkReport.model_validate(payload))
+            except Exception:
+                continue
+        return reports
+
+    def save_adaptive_replay_result(self, result: EvaluationReplayResult) -> EvaluationReplayResult:
+        saved = result.model_copy(
+            update={
+                "id": result.id or str(uuid4()),
+                "workspace_root": str(Path(result.workspace_root or self.project_root).resolve()),
+                "created_at": result.created_at or utc_now(),
+            }
+        )
+        with self._session() as conn:
+            conn.execute(
+                """
+                insert into adaptive_replay_results (
+                    id, workspace_root, created_at, source_task_id, status,
+                    previous_score, replay_score, regression_detected, payload_json
+                ) values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                on conflict(id) do update set
+                    created_at = excluded.created_at,
+                    status = excluded.status,
+                    previous_score = excluded.previous_score,
+                    replay_score = excluded.replay_score,
+                    regression_detected = excluded.regression_detected,
+                    payload_json = excluded.payload_json
+                """,
+                (
+                    saved.id,
+                    saved.workspace_root,
+                    saved.created_at,
+                    saved.source_task_id,
+                    saved.status,
+                    saved.previous_score,
+                    saved.replay_score,
+                    1 if saved.regression_detected else 0,
+                    json.dumps(saved.model_dump(mode="json"), ensure_ascii=True),
+                ),
+            )
+        return saved
+
+    def adaptive_replay_results(
+        self,
+        *,
+        project_root: Path,
+        limit: int = 20,
+    ) -> list[EvaluationReplayResult]:
+        aliases = self._project_root_aliases(project_root)
+        placeholders = ",".join("?" for _ in aliases)
+        with self._session() as conn:
+            rows = conn.execute(
+                f"""
+                select payload_json
+                from adaptive_replay_results
+                where workspace_root in ({placeholders})
+                order by created_at desc
+                limit ?
+                """,
+                (*aliases, max(1, min(100, limit))),
+            ).fetchall()
+        results: list[EvaluationReplayResult] = []
+        for row in rows:
+            try:
+                payload = json.loads(str(row["payload_json"] or "{}"))
+                payload["workspace_root"] = str(project_root.resolve())
+                results.append(EvaluationReplayResult.model_validate(payload))
+            except Exception:
+                continue
+        return results
+
     def prune_telemetry_snapshots(
         self,
         *,
@@ -1486,6 +3933,208 @@ class EventStore:
             aliases.add(str((current_workspace / resolved.relative_to(legacy_workspace)).resolve()))
 
         return list(aliases)
+
+    def _task_summary_from_row(self, row: sqlite3.Row, *, workspace_root: Path | None = None) -> TaskSummary:
+        payload = dict(row)
+        payload["task_id"] = payload.get("id", "")
+        if workspace_root is not None:
+            payload["workspace_root"] = str(workspace_root.resolve())
+        payload["updated_at"] = payload.get("updated_at") or payload.get("created_at") or ""
+        payload["completed_at"] = payload.get("completed_at") or payload.get("finished_at")
+        payload["project_id"] = payload.get("project_id") or payload.get("workspace_root") or ""
+        payload["title"] = payload.get("title") or self._task_title_from_message(
+            str(payload.get("message") or ""),
+            str(payload.get("mode") or "task"),
+        )
+        payload["user_goal"] = payload.get("user_goal") or payload.get("message") or ""
+        payload["priority"] = int(payload.get("priority") or 0)
+        payload["assigned_agent_role"] = payload.get("assigned_agent_role") or ""
+        payload["related_files"] = self._json_list(payload.pop("related_files_json", "[]"))
+        payload["validation_commands"] = self._json_list(payload.pop("validation_commands_json", "[]"))
+        payload["checkpoints"] = self._json_list(payload.pop("checkpoints_json", "[]"))
+        payload["error_summary"] = payload.get("error_summary") or ""
+        payload["final_summary"] = payload.get("final_summary") or ""
+        payload["status"] = normalize_task_status(str(payload.get("status") or "queued"))
+        return TaskSummary.model_validate(payload)
+
+    def _workspace_recommendation_from_row(
+        self,
+        row: sqlite3.Row,
+        project_root: Path | None = None,
+    ) -> WorkspaceRecommendation:
+        workspace_root = str(project_root.resolve()) if project_root else str(row["workspace_root"])
+        return WorkspaceRecommendation(
+            id=str(row["id"]),
+            workspace_root=workspace_root,
+            created_at=str(row["created_at"]),
+            updated_at=str(row["updated_at"]),
+            dismissed_at=str(row["dismissed_at"] or ""),
+            severity=str(row["severity"]),
+            category=str(row["category"]),
+            title=str(row["title"]),
+            detail=str(row["detail"]),
+            rationale=str(row["rationale"]),
+            status=str(row["status"]),
+            related_files=self._json_list(str(row["related_files_json"] or "[]")),
+            related_tasks=self._json_list(str(row["related_tasks_json"] or "[]")),
+            evidence=self._json_payload(str(row["evidence_json"] or "{}")),
+            fix_prompt=str(row["fix_prompt"]),
+            fix_task_id=str(row["fix_task_id"] or ""),
+        )
+
+    def _runtime_worker_from_row(self, row: sqlite3.Row) -> WorkerRuntimeInfo:
+        return WorkerRuntimeInfo(
+            worker_id=str(row["worker_id"]),
+            name=str(row["name"]),
+            kind=str(row["kind"]),
+            endpoint=str(row["endpoint"] or ""),
+            status=str(row["status"]),
+            trust_state=str(row["trust_state"]),
+            trust_scope=str(row["trust_scope"] or "local"),
+            registered_at=str(row["registered_at"] or ""),
+            last_heartbeat_at=str(row["last_heartbeat_at"] or ""),
+            capabilities=self._worker_capabilities_from_json(str(row["capabilities_json"] or "{}")),
+            current_jobs=int(row["current_jobs"] or 0),
+            total_jobs=int(row["total_jobs"] or 0),
+            failed_jobs=int(row["failed_jobs"] or 0),
+            average_latency_ms=float(row["average_latency_ms"] or 0.0),
+            public_key_fingerprint=str(row["public_key_fingerprint"] or ""),
+            permission_scopes=self._json_list(str(row["permission_scopes_json"] or "[]")),
+            isolation_level=str(row["isolation_level"] or "process"),
+            metadata=self._json_payload(str(row["metadata_json"] or "{}")),
+        )
+
+    def _worker_capabilities_from_json(self, value: str) -> "WorkerCapabilitySet":
+        from .schemas import WorkerCapabilitySet
+
+        return WorkerCapabilitySet.model_validate(self._json_payload(value))
+
+    def _execution_job_values(self, item: ExecutionQueueItem) -> tuple[Any, ...]:
+        return (
+            item.id,
+            item.task_id,
+            item.workspace_root,
+            item.kind,
+            item.title,
+            item.user_goal,
+            item.status,
+            item.priority,
+            item.created_at,
+            item.updated_at,
+            item.assigned_worker_id,
+            item.attempts,
+            item.max_attempts,
+            json.dumps(item.depends_on, ensure_ascii=True),
+            json.dumps(item.required_capabilities, ensure_ascii=True),
+            item.permission_scope,
+            item.sandbox_profile,
+            json.dumps(item.payload, ensure_ascii=True),
+            item.error_summary,
+            item.result_summary,
+            item.lease_expires_at,
+        )
+
+    def _execution_job_from_row(
+        self,
+        row: sqlite3.Row,
+        *,
+        project_root: Path | None = None,
+    ) -> ExecutionQueueItem:
+        workspace_root = str(project_root.resolve()) if project_root else str(row["workspace_root"])
+        return ExecutionQueueItem(
+            id=str(row["id"]),
+            task_id=str(row["task_id"] or ""),
+            workspace_root=workspace_root,
+            kind=str(row["kind"] or "task"),
+            title=str(row["title"] or ""),
+            user_goal=str(row["user_goal"] or ""),
+            status=str(row["status"] or "queued"),
+            priority=int(row["priority"] or 0),
+            created_at=str(row["created_at"] or ""),
+            updated_at=str(row["updated_at"] or ""),
+            assigned_worker_id=str(row["assigned_worker_id"] or ""),
+            attempts=int(row["attempts"] or 0),
+            max_attempts=int(row["max_attempts"] or 1),
+            depends_on=self._json_list(str(row["depends_on_json"] or "[]")),
+            required_capabilities=self._json_list(str(row["required_capabilities_json"] or "[]")),
+            permission_scope=str(row["permission_scope"] or "read"),
+            sandbox_profile=str(row["sandbox_profile"] or "safe"),
+            payload=self._json_payload(str(row["payload_json"] or "{}")),
+            error_summary=str(row["error_summary"] or ""),
+            result_summary=str(row["result_summary"] or ""),
+            lease_expires_at=str(row["lease_expires_at"] or ""),
+        )
+
+    def _worker_audit_event_from_row(self, row: sqlite3.Row) -> WorkerAuditEvent:
+        return WorkerAuditEvent(
+            id=str(row["id"]),
+            created_at=str(row["created_at"]),
+            worker_id=str(row["worker_id"] or ""),
+            job_id=str(row["job_id"] or ""),
+            event_type=str(row["event_type"]),
+            status=str(row["status"]),
+            detail=str(row["detail"] or ""),
+            metadata=self._json_payload(str(row["metadata_json"] or "{}")),
+        )
+
+    def _workspace_sync_manifest_from_row(
+        self,
+        row: sqlite3.Row,
+        *,
+        project_root: Path | None = None,
+    ) -> RemoteWorkspaceSyncManifest:
+        workspace_root = str(project_root.resolve()) if project_root else str(row["workspace_root"])
+        return RemoteWorkspaceSyncManifest(
+            id=str(row["id"]),
+            workspace_root=workspace_root,
+            created_at=str(row["created_at"]),
+            encrypted=bool(row["encrypted"]),
+            encryption_label=str(row["encryption_label"] or ""),
+            included_sections=self._json_list(str(row["included_sections_json"] or "[]")),
+            manifest_hash=str(row["manifest_hash"] or ""),
+            payload=self._json_payload(str(row["payload_json"] or "{}")),
+        )
+
+    def _plugin_manifest_from_row(self, row: sqlite3.Row) -> PluginManifest:
+        payload = self._json_payload(str(row["manifest_json"] or "{}"))
+        payload.update(
+            {
+                "id": str(row["id"]),
+                "name": str(row["name"] or payload.get("name") or row["id"]),
+                "version": str(row["version"] or payload.get("version") or ""),
+                "api_version": str(row["api_version"] or payload.get("api_version") or ""),
+                "enabled": bool(row["enabled"]),
+                "trusted": bool(row["trusted"]),
+                "created_at": str(row["created_at"] or payload.get("created_at") or ""),
+                "updated_at": str(row["updated_at"] or payload.get("updated_at") or ""),
+                "capabilities": self._json_list(str(row["capabilities_json"] or "[]")),
+                "permissions": self._json_list(str(row["permission_scopes_json"] or "[]")),
+            }
+        )
+        return PluginManifest.model_validate(payload)
+
+    def _json_list(self, raw: Any) -> list[str]:
+        try:
+            parsed = json.loads(raw or "[]")
+        except (TypeError, json.JSONDecodeError):
+            parsed = []
+        if not isinstance(parsed, list):
+            return []
+        return [str(item) for item in parsed if str(item).strip()]
+
+    def _merge_json_list(self, raw: Any, additions: list[str]) -> list[str]:
+        merged: list[str] = []
+        for item in [*self._json_list(raw), *additions]:
+            cleaned = str(item).strip()
+            if cleaned and cleaned not in merged:
+                merged.append(cleaned)
+        return merged
+
+    def _task_title_from_message(self, message: str, mode: str) -> str:
+        cleaned = " ".join((message or "").split())
+        if cleaned:
+            return cleaned[:80]
+        return f"{mode.title()} task"
 
     def _recent_task_dicts(self, *, project_root: Path, limit: int) -> list[dict[str, Any]]:
         aliases = self._project_root_aliases(project_root)
@@ -3470,6 +6119,32 @@ class EventStore:
             path = self.project_root / path
         return path.resolve()
 
+    def _ensure_task_columns(self, conn: sqlite3.Connection) -> None:
+        existing = {row["name"] for row in conn.execute("pragma table_info(tasks)").fetchall()}
+        columns: dict[str, str] = {
+            "updated_at": "text",
+            "completed_at": "text",
+            "project_id": "text not null default ''",
+            "parent_task_id": "text",
+            "title": "text not null default ''",
+            "user_goal": "text not null default ''",
+            "priority": "integer not null default 0",
+            "assigned_agent_role": "text not null default ''",
+            "related_files_json": "text not null default '[]'",
+            "validation_commands_json": "text not null default '[]'",
+            "checkpoints_json": "text not null default '[]'",
+            "error_summary": "text not null default ''",
+            "final_summary": "text not null default ''",
+        }
+        for name, ddl in columns.items():
+            if name not in existing:
+                conn.execute(f"alter table tasks add column {name} {ddl}")
+        conn.execute("update tasks set updated_at = coalesce(updated_at, created_at) where updated_at is null or updated_at = ''")
+        conn.execute("update tasks set completed_at = coalesce(completed_at, finished_at) where completed_at is null and finished_at is not null")
+        conn.execute("update tasks set project_id = workspace_root where project_id = ''")
+        conn.execute("update tasks set user_goal = message where user_goal = ''")
+        conn.execute("update tasks set title = substr(message, 1, 80) where title = ''")
+
     def _init_db(self) -> None:
         with self._session() as conn:
             conn.execute(
@@ -3485,6 +6160,7 @@ class EventStore:
                 )
                 """
             )
+            self._ensure_task_columns(conn)
             conn.execute(
                 """
                 create table if not exists events (
@@ -3545,6 +6221,176 @@ class EventStore:
                     confidence real not null,
                     fingerprint text not null,
                     unique(project_root, fingerprint)
+                )
+                """
+            )
+            conn.execute(
+                """
+                create table if not exists project_intelligence (
+                    project_root text primary key,
+                    updated_at text not null,
+                    indexed_at text not null,
+                    status text not null,
+                    profile_json text not null,
+                    architecture_json text not null,
+                    file_importance_json text not null,
+                    snapshot_json text not null
+                )
+                """
+            )
+            conn.execute(
+                """
+                create table if not exists workspace_watch_snapshots (
+                    workspace_root text primary key,
+                    scanned_at text not null,
+                    fingerprint text not null,
+                    dependency_fingerprint text not null,
+                    snapshot_json text not null
+                )
+                """
+            )
+            conn.execute(
+                """
+                create table if not exists workspace_operations_snapshots (
+                    workspace_root text primary key,
+                    generated_at text not null,
+                    health_score integer not null,
+                    status text not null,
+                    snapshot_json text not null
+                )
+                """
+            )
+            conn.execute(
+                """
+                create table if not exists workspace_events (
+                    id text primary key,
+                    workspace_root text not null,
+                    created_at text not null,
+                    kind text not null,
+                    severity text not null,
+                    title text not null,
+                    detail text not null,
+                    path text not null,
+                    related_files_json text not null,
+                    metadata_json text not null
+                )
+                """
+            )
+            conn.execute(
+                """
+                create table if not exists workspace_recommendations (
+                    id text primary key,
+                    workspace_root text not null,
+                    created_at text not null,
+                    updated_at text not null,
+                    dismissed_at text not null,
+                    severity text not null,
+                    category text not null,
+                    title text not null,
+                    detail text not null,
+                    rationale text not null,
+                    status text not null,
+                    related_files_json text not null,
+                    related_tasks_json text not null,
+                    evidence_json text not null,
+                    fix_prompt text not null,
+                    fix_task_id text not null
+                )
+                """
+            )
+            conn.execute(
+                """
+                create table if not exists workspace_intelligence_job_runs (
+                    id text primary key,
+                    workspace_root text not null,
+                    job_id text not null,
+                    name text not null,
+                    kind text not null,
+                    schedule_label text not null,
+                    enabled integer not null,
+                    safe_by_default integer not null,
+                    last_run_at text not null,
+                    status text not null,
+                    summary text not null
+                )
+                """
+            )
+            conn.execute(
+                """
+                create table if not exists runtime_workers (
+                    worker_id text primary key,
+                    name text not null,
+                    kind text not null,
+                    endpoint text not null,
+                    status text not null,
+                    trust_state text not null,
+                    trust_scope text not null,
+                    registered_at text not null,
+                    last_heartbeat_at text not null,
+                    capabilities_json text not null,
+                    current_jobs integer not null,
+                    total_jobs integer not null,
+                    failed_jobs integer not null,
+                    average_latency_ms real not null,
+                    public_key_fingerprint text not null,
+                    permission_scopes_json text not null,
+                    isolation_level text not null,
+                    metadata_json text not null
+                )
+                """
+            )
+            conn.execute(
+                """
+                create table if not exists execution_queue (
+                    id text primary key,
+                    task_id text not null,
+                    workspace_root text not null,
+                    kind text not null,
+                    title text not null,
+                    user_goal text not null,
+                    status text not null,
+                    priority integer not null,
+                    created_at text not null,
+                    updated_at text not null,
+                    assigned_worker_id text not null,
+                    attempts integer not null,
+                    max_attempts integer not null,
+                    depends_on_json text not null,
+                    required_capabilities_json text not null,
+                    permission_scope text not null,
+                    sandbox_profile text not null,
+                    payload_json text not null,
+                    error_summary text not null,
+                    result_summary text not null,
+                    lease_expires_at text not null
+                )
+                """
+            )
+            conn.execute(
+                """
+                create table if not exists worker_audit_events (
+                    id text primary key,
+                    created_at text not null,
+                    worker_id text not null,
+                    job_id text not null,
+                    event_type text not null,
+                    status text not null,
+                    detail text not null,
+                    metadata_json text not null
+                )
+                """
+            )
+            conn.execute(
+                """
+                create table if not exists workspace_sync_manifests (
+                    id text primary key,
+                    workspace_root text not null,
+                    created_at text not null,
+                    encrypted integer not null,
+                    encryption_label text not null,
+                    included_sections_json text not null,
+                    manifest_hash text not null,
+                    payload_json text not null
                 )
                 """
             )
@@ -3642,6 +6488,315 @@ class EventStore:
                 """
             )
             conn.execute(
+                """
+                create table if not exists adaptive_task_outcomes (
+                    id text primary key,
+                    task_id text not null unique,
+                    workspace_root text not null,
+                    created_at text not null,
+                    updated_at text not null,
+                    completed_at text not null,
+                    status text not null,
+                    success integer not null,
+                    outcome_json text not null
+                )
+                """
+            )
+            conn.execute(
+                """
+                create table if not exists adaptive_policy_profiles (
+                    id text primary key,
+                    name text not null,
+                    active integer not null,
+                    created_at text not null,
+                    updated_at text not null,
+                    payload_json text not null
+                )
+                """
+            )
+            conn.execute(
+                """
+                create table if not exists adaptive_policy_checkpoints (
+                    id text primary key,
+                    created_at text not null,
+                    reason text not null,
+                    active_profile_id text not null,
+                    profiles_json text not null
+                )
+                """
+            )
+            conn.execute(
+                """
+                create table if not exists adaptive_benchmark_reports (
+                    id text primary key,
+                    workspace_root text not null,
+                    created_at text not null,
+                    suite_id text not null,
+                    status text not null,
+                    baseline_score real not null,
+                    candidate_score real not null,
+                    regression_detected integer not null,
+                    payload_json text not null
+                )
+                """
+            )
+            conn.execute(
+                """
+                create table if not exists adaptive_replay_results (
+                    id text primary key,
+                    workspace_root text not null,
+                    created_at text not null,
+                    source_task_id text not null,
+                    status text not null,
+                    previous_score real not null,
+                    replay_score real not null,
+                    regression_detected integer not null,
+                    payload_json text not null
+                )
+                """
+            )
+            conn.execute(
+                """
+                create table if not exists plugin_manifests (
+                    id text primary key,
+                    name text not null,
+                    version text not null,
+                    api_version text not null,
+                    enabled integer not null,
+                    trusted integer not null,
+                    created_at text not null,
+                    updated_at text not null,
+                    capabilities_json text not null,
+                    permission_scopes_json text not null,
+                    manifest_json text not null
+                )
+                """
+            )
+            conn.execute(
+                """
+                create table if not exists enterprise_policy_profiles (
+                    id text primary key,
+                    name text not null,
+                    active integer not null,
+                    created_at text not null,
+                    updated_at text not null,
+                    payload_json text not null
+                )
+                """
+            )
+            conn.execute(
+                """
+                create table if not exists reliability_metric_snapshots (
+                    id text primary key,
+                    workspace_root text not null,
+                    created_at text not null,
+                    metric_count integer not null,
+                    degraded_count integer not null,
+                    payload_json text not null
+                )
+                """
+            )
+            conn.execute(
+                """
+                create table if not exists ecosystem_packages (
+                    id text primary key,
+                    kind text not null,
+                    name text not null,
+                    version text not null,
+                    api_version text not null,
+                    enabled integer not null,
+                    trust_level text not null,
+                    installed_at text not null,
+                    updated_at text not null,
+                    update_channel text not null,
+                    manifest_json text not null
+                )
+                """
+            )
+            conn.execute(
+                """
+                create table if not exists ecosystem_workflows (
+                    id text primary key,
+                    name text not null,
+                    version text not null,
+                    api_version text not null,
+                    category text not null,
+                    enabled integer not null,
+                    created_at text not null,
+                    updated_at text not null,
+                    definition_json text not null
+                )
+                """
+            )
+            conn.execute(
+                """
+                create table if not exists shared_intelligence_profiles (
+                    id text primary key,
+                    kind text not null,
+                    name text not null,
+                    version text not null,
+                    imported_at text not null,
+                    updated_at text not null,
+                    payload_json text not null
+                )
+                """
+            )
+            conn.execute(
+                """
+                create table if not exists organization_policy_profiles (
+                    id text primary key,
+                    name text not null,
+                    active integer not null,
+                    created_at text not null,
+                    updated_at text not null,
+                    payload_json text not null
+                )
+                """
+            )
+            conn.execute(
+                """
+                create table if not exists knowledge_graph_snapshots (
+                    id text primary key,
+                    workspace_root text not null,
+                    generated_at text not null,
+                    node_count integer not null,
+                    edge_count integer not null,
+                    payload_json text not null
+                )
+                """
+            )
+            conn.execute(
+                """
+                create table if not exists reproducibility_records (
+                    id text primary key,
+                    workspace_root text not null,
+                    task_id text not null,
+                    created_at text not null,
+                    deterministic_hash text not null,
+                    payload_json text not null
+                )
+                """
+            )
+            conn.execute(
+                """
+                create table if not exists ecosystem_audit_events (
+                    id text primary key,
+                    created_at text not null,
+                    actor text not null,
+                    action text not null,
+                    subject_id text not null,
+                    status text not null,
+                    detail text not null,
+                    metadata_json text not null
+                )
+                """
+            )
+            conn.execute(
+                """
+                create table if not exists autonomous_objectives (
+                    id text primary key,
+                    workspace_root text not null,
+                    title text not null,
+                    status text not null,
+                    priority integer not null,
+                    created_at text not null,
+                    updated_at text not null,
+                    completed_at text not null,
+                    payload_json text not null
+                )
+                """
+            )
+            conn.execute(
+                """
+                create table if not exists autonomous_phases (
+                    id text primary key,
+                    objective_id text not null,
+                    workspace_root text not null,
+                    kind text not null,
+                    status text not null,
+                    created_at text not null,
+                    updated_at text not null,
+                    payload_json text not null
+                )
+                """
+            )
+            conn.execute(
+                """
+                create table if not exists autonomous_approval_gates (
+                    id text primary key,
+                    objective_id text not null,
+                    workspace_root text not null,
+                    kind text not null,
+                    status text not null,
+                    created_at text not null,
+                    resolved_at text not null,
+                    payload_json text not null
+                )
+                """
+            )
+            conn.execute(
+                """
+                create table if not exists autonomous_agents (
+                    id text primary key,
+                    objective_id text not null,
+                    phase_id text not null,
+                    role text not null,
+                    status text not null,
+                    updated_at text not null,
+                    payload_json text not null
+                )
+                """
+            )
+            conn.execute(
+                """
+                create table if not exists autonomous_verification (
+                    id text primary key,
+                    objective_id text not null,
+                    phase_id text not null,
+                    kind text not null,
+                    status text not null,
+                    created_at text not null,
+                    payload_json text not null
+                )
+                """
+            )
+            conn.execute(
+                """
+                create table if not exists autonomous_simulations (
+                    id text primary key,
+                    objective_id text not null,
+                    workspace_root text not null,
+                    created_at text not null,
+                    risk real not null,
+                    impact text not null,
+                    payload_json text not null
+                )
+                """
+            )
+            conn.execute(
+                """
+                create table if not exists autonomous_refactor_plans (
+                    id text primary key,
+                    objective_id text not null,
+                    kind text not null,
+                    status text not null,
+                    updated_at text not null,
+                    payload_json text not null
+                )
+                """
+            )
+            conn.execute(
+                """
+                create table if not exists autonomous_explanations (
+                    id text primary key,
+                    objective_id text not null,
+                    created_at text not null,
+                    category text not null,
+                    payload_json text not null
+                )
+                """
+            )
+            conn.execute(
                 "create index if not exists idx_context_budget_workspace_created on context_budget_telemetry(workspace_root, created_at)"
             )
             conn.execute(
@@ -3655,6 +6810,102 @@ class EventStore:
             )
             conn.execute(
                 "create index if not exists idx_telemetry_snapshots_workspace_updated on telemetry_snapshots(workspace_root, updated_at)"
+            )
+            conn.execute(
+                "create index if not exists idx_adaptive_outcomes_workspace_updated on adaptive_task_outcomes(workspace_root, updated_at)"
+            )
+            conn.execute(
+                "create index if not exists idx_adaptive_profiles_active on adaptive_policy_profiles(active, updated_at)"
+            )
+            conn.execute(
+                "create index if not exists idx_adaptive_checkpoints_created on adaptive_policy_checkpoints(created_at)"
+            )
+            conn.execute(
+                "create index if not exists idx_adaptive_benchmarks_workspace_suite on adaptive_benchmark_reports(workspace_root, suite_id, created_at)"
+            )
+            conn.execute(
+                "create index if not exists idx_adaptive_replay_workspace_task on adaptive_replay_results(workspace_root, source_task_id, created_at)"
+            )
+            conn.execute(
+                "create index if not exists idx_workspace_events_root_created on workspace_events(workspace_root, created_at)"
+            )
+            conn.execute(
+                "create index if not exists idx_workspace_recommendations_root_status on workspace_recommendations(workspace_root, status, updated_at)"
+            )
+            conn.execute(
+                "create index if not exists idx_workspace_job_runs_root_job on workspace_intelligence_job_runs(workspace_root, job_id, last_run_at)"
+            )
+            conn.execute(
+                "create index if not exists idx_runtime_workers_status on runtime_workers(status, trust_state, kind)"
+            )
+            conn.execute(
+                "create index if not exists idx_execution_queue_root_status_priority on execution_queue(workspace_root, status, priority, created_at)"
+            )
+            conn.execute(
+                "create index if not exists idx_execution_queue_worker_status on execution_queue(assigned_worker_id, status, updated_at)"
+            )
+            conn.execute(
+                "create index if not exists idx_worker_audit_worker_created on worker_audit_events(worker_id, created_at)"
+            )
+            conn.execute(
+                "create index if not exists idx_worker_audit_job_created on worker_audit_events(job_id, created_at)"
+            )
+            conn.execute(
+                "create index if not exists idx_workspace_sync_root_created on workspace_sync_manifests(workspace_root, created_at)"
+            )
+            conn.execute(
+                "create index if not exists idx_plugin_manifests_enabled on plugin_manifests(enabled, trusted, name)"
+            )
+            conn.execute(
+                "create index if not exists idx_enterprise_policy_active on enterprise_policy_profiles(active, updated_at)"
+            )
+            conn.execute(
+                "create index if not exists idx_reliability_snapshots_root_created on reliability_metric_snapshots(workspace_root, created_at)"
+            )
+            conn.execute(
+                "create index if not exists idx_ecosystem_packages_kind_enabled on ecosystem_packages(kind, enabled, trust_level)"
+            )
+            conn.execute(
+                "create index if not exists idx_ecosystem_workflows_enabled_category on ecosystem_workflows(enabled, category, name)"
+            )
+            conn.execute(
+                "create index if not exists idx_shared_profiles_kind_updated on shared_intelligence_profiles(kind, updated_at)"
+            )
+            conn.execute(
+                "create index if not exists idx_org_policy_active_updated on organization_policy_profiles(active, updated_at)"
+            )
+            conn.execute(
+                "create index if not exists idx_knowledge_graph_root_generated on knowledge_graph_snapshots(workspace_root, generated_at)"
+            )
+            conn.execute(
+                "create index if not exists idx_reproducibility_root_task_created on reproducibility_records(workspace_root, task_id, created_at)"
+            )
+            conn.execute(
+                "create index if not exists idx_ecosystem_audit_created on ecosystem_audit_events(created_at)"
+            )
+            conn.execute(
+                "create index if not exists idx_autonomous_objectives_root_status on autonomous_objectives(workspace_root, status, updated_at)"
+            )
+            conn.execute(
+                "create index if not exists idx_autonomous_phases_objective on autonomous_phases(objective_id, kind, status)"
+            )
+            conn.execute(
+                "create index if not exists idx_autonomous_gates_root_status on autonomous_approval_gates(workspace_root, status, created_at)"
+            )
+            conn.execute(
+                "create index if not exists idx_autonomous_agents_objective on autonomous_agents(objective_id, role, status)"
+            )
+            conn.execute(
+                "create index if not exists idx_autonomous_verification_objective on autonomous_verification(objective_id, kind, status)"
+            )
+            conn.execute(
+                "create index if not exists idx_autonomous_simulations_objective on autonomous_simulations(objective_id, created_at)"
+            )
+            conn.execute(
+                "create index if not exists idx_autonomous_refactor_objective on autonomous_refactor_plans(objective_id, kind, status)"
+            )
+            conn.execute(
+                "create index if not exists idx_autonomous_explanations_objective on autonomous_explanations(objective_id, created_at)"
             )
             self._ensure_fix_memory_category_column(conn)
 

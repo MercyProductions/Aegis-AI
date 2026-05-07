@@ -1,8 +1,8 @@
-# Aegis Coding AI
+# Auralith OS
 
-Aegis Coding AI is now an Aegis-only local coding workspace. It runs a FastAPI backend and a React UI, with one built-in engine: `Aegis Core`.
+Auralith OS is a local-first AI operating environment for coding, automation, research, orchestration, creative workflows, and intelligent task execution. It runs a FastAPI backend and a React UI, with one built-in engine: `Aegis Core`.
 
-There are no OpenAI, ChatGPT, or other provider selectors in the app anymore. The product is centered around your own Aegis assistant identity, local workspace actions, and preview-first file generation.
+The public product identity is `Auralith OS`, the assistant identity is `Auralith Prime`, and the runtime/engine layer remains `Aegis Core`.
 
 The current Phase 1 agent spine adds:
 
@@ -45,7 +45,7 @@ runtime doctor, backend smoke flow, and real browser e2e flow in sequence.
 Or double-click:
 
 ```text
-Launch Aegis Coding AI.cmd
+Launch Auralith OS.cmd
 ```
 
 The launcher now:
@@ -60,7 +60,7 @@ The launcher now:
 
 The built-in engine is `Aegis Core`. It is a self-contained local workflow engine for:
 
-- chat and direction setting
+- session continuity and direction setting
 - workspace review
 - starter generation
 - preview-first file changes

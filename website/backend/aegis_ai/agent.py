@@ -1,7 +1,6 @@
 # backend/agent.py
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from pathlib import Path
 import json
 import re
@@ -11,6 +10,7 @@ from typing import Any, AsyncIterator, Callable, Literal
 from pydantic import ValidationError
 
 from .approval_sandbox import ApprovalManager
+from .agent_runtime import AgentDraft, MissionAnchor, sanitize_model_change_paths
 from .commands import CommandResult, CommandRunner
 from .context_budget import ContextBudgetManager, ContextBudgetResult
 from .fallback import FallbackEngine
@@ -20,6 +20,7 @@ from .model_attempt_executor import ModelAttemptExecutor
 from .model_costing import ModelCostEstimator
 from .model_execution import ModelExecutionPlan, ModelExecutionPlanner
 from .model_registry import ModelRegistryManager
+from .multi_agent import MultiAgentCoordinator
 from .project_indexer import ProjectIndexer
 from .prompt_intent import prompt_requests_execution_validation
 from .providers import ProviderError, build_provider_adapter, provider_config_from_attempt
@@ -36,6 +37,7 @@ from .schemas import (
     ModeName,
     ModelAttemptInfo,
     ModelRegistryProvider,
+    ProjectIntelligenceSnapshot,
     ProjectMemoryEntry,
     RepairAttempt,
     RoutePreviewRequest,
@@ -73,22 +75,6 @@ MODE_OPTIONS: list[tuple[ModeName, str, str]] = [
 EmitEvent = Callable[[str, str], None]
 StreamDeltaCallback = Callable[[dict[str, Any]], None]
 MISSION_ANCHOR_PREFIX = "Aegis mission anchor:"
-
-
-@dataclass
-class AgentDraft:
-    reply: str
-    plan: list[str] = field(default_factory=list)
-    changes: list[FileChange] = field(default_factory=list)
-    warnings: list[str] = field(default_factory=list)
-    proposed_commands: list[dict[str, str]] = field(default_factory=list)
-
-
-@dataclass(frozen=True)
-class MissionAnchor:
-    original_user_mission: str = ""
-    active_workspace_root: str = ""
-    continuity_rule: str = ""
 
 
 class AgentEngine:
@@ -649,6 +635,7 @@ class AgentEngine:
                     " ".join(item.summary for item in instruction_files[:4]),
                     self._project_manifest_context(project_manifest),
                     self._dependency_profile_context(dependency_profile),
+                    self._project_intelligence_context(workspace_root),
                 ],
             )
         )
@@ -849,6 +836,7 @@ class AgentEngine:
                     " ".join(item.summary for item in instruction_files[:4]),
                     self._project_manifest_context(project_manifest),
                     self._dependency_profile_context(dependency_profile),
+                    self._project_intelligence_context(workspace_root),
                 ],
             )
         )
@@ -1231,6 +1219,12 @@ class AgentEngine:
         project_manifest = self.workspace.load_project_manifest(workspace_root)
         dependency_profile = self.workspace.inspect_dependency_profile(workspace_root)
         task_id = self.store.create_task(mode=mode, workspace_root=workspace_root, message=original_message)
+        tracks_project_work = (
+            self._request_expects_file_changes(request.message, mode)
+            or request.apply_changes
+            or request.run_validation
+            or self.settings.aegis_auto_run_validation
+        )
         context_files: list[WorkspaceFile] = []
 
         events: list[ToolEvent] = []
@@ -1240,6 +1234,24 @@ class AgentEngine:
         validation: CommandRun | None = None
         validation_profile = self.validation.profile_snapshot(workspace_root).profile
         repair_attempts: list[RepairAttempt] = []
+        approval_pending = False
+        multi_agent = MultiAgentCoordinator(self.store)
+
+        state_event = self.store.transition_task(
+            task_id,
+            "planning",
+            title="Task planning started",
+            detail="Aegis created a structured task graph for this request.",
+        )
+        if state_event is not None:
+            events.append(state_event)
+        if tracks_project_work:
+            self.store.create_default_subtasks(
+                parent_task_id=task_id,
+                workspace_root=workspace_root,
+                mode=mode,
+                user_goal=original_message,
+            )
 
         def emit(
             kind: str,
@@ -1260,12 +1272,77 @@ class AgentEngine:
                 )
             )
 
+        def agent_output(
+            role,
+            title: str,
+            *,
+            summary: str = "",
+            status: str = "ok",
+            outputs: dict[str, Any] | None = None,
+            iteration: int = 1,
+        ) -> None:
+            if not tracks_project_work:
+                return
+            events.append(
+                multi_agent.agent_output(
+                    task_id,
+                    role,
+                    title,
+                    summary=summary,
+                    status=status,
+                    outputs=outputs,
+                    iteration=iteration,
+                )
+            )
+
+        def agent_handoff(from_role, to_role, *, reason: str = "", artifacts: dict[str, Any] | None = None) -> None:
+            if not tracks_project_work:
+                return
+            events.append(
+                multi_agent.handoff(
+                    task_id,
+                    from_role,
+                    to_role,
+                    reason=reason,
+                    artifacts=artifacts,
+                )
+            )
+
+        def agent_approval(role, *, reason: str, blocked_paths: list[str]) -> None:
+            if not tracks_project_work:
+                return
+            events.append(
+                multi_agent.approval_requested(
+                    task_id,
+                    role,
+                    reason=reason,
+                    blocked_paths=blocked_paths,
+                )
+            )
+
+        if tracks_project_work:
+            events.append(
+                multi_agent.start_chain(
+                    task_id,
+                    workspace_root=workspace_root,
+                    user_goal=original_message,
+                )
+            )
+            agent_output(
+                "planner",
+                "Planner Agent accepted goal",
+                summary="Planner Agent is shaping the user request into a task plan and context requirements.",
+                outputs={"mode": mode, "workspace_root": str(workspace_root)},
+            )
+
         emit(
             "workspace",
             "Workspace scanned",
             detail=f"{len(workspace_files)} file(s) found.",
             payload={"workspace_root": str(workspace_root), "file_count": len(workspace_files)},
         )
+        if tracks_project_work:
+            self.store.transition_subtask(task_id, "Inspect project", "completed", detail=f"{len(workspace_files)} file(s) inspected.")
         if used_prompt_workspace:
             emit(
                 "workspace",
@@ -1412,6 +1489,54 @@ class AgentEngine:
             detail=task_plan.summary,
             payload=task_plan.to_event_payload(),
         )
+        agent_output(
+            "planner",
+            "Planner Agent created task plan",
+            summary=task_plan.summary,
+            outputs={
+                "intent": task_plan.intent,
+                "objective": task_plan.objective,
+                "steps": task_plan.steps,
+                "risks": task_plan.risks,
+                "context_requirements": task_plan.context_requirements,
+                "selected_context_files": [item.path for item in context_files],
+            },
+        )
+        agent_handoff(
+            "planner",
+            "architect",
+            reason="Plan is ready for architecture consistency review.",
+            artifacts={"step_count": len(task_plan.steps), "risk_count": len(task_plan.risks)},
+        )
+        agent_output(
+            "architect",
+            "Architect Agent reviewed project structure",
+            summary="Architecture review checked detected stack, config files, module boundaries, and selected context before code generation.",
+            outputs={
+                "frameworks": dependency_profile.frameworks,
+                "languages": dependency_profile.languages,
+                "config_files": dependency_profile.config_files,
+                "entry_points": dependency_profile.entry_points,
+                "important_context_files": [item.path for item in context_files[:8]],
+            },
+        )
+        agent_handoff(
+            "architect",
+            "code",
+            reason="Architecture constraints and relevant files are ready for implementation.",
+            artifacts={"context_files": [item.path for item in context_files]},
+        )
+        if tracks_project_work:
+            self.store.transition_subtask(task_id, "Plan changes", "completed", detail=task_plan.summary)
+        state_event = self.store.transition_task(
+            task_id,
+            "running",
+            title="Task execution started",
+            detail=task_plan.summary,
+            payload={"assigned_agent_role": task_plan.route_profile.get("role", "") if isinstance(task_plan.route_profile, dict) else ""},
+        )
+        if state_event is not None:
+            events.append(state_event)
         model_registry_snapshot = self.model_registry.snapshot()
         model_benchmark_snapshot = self.model_benchmarks.snapshot()
         route_health = self.store.route_health_signals(project_root=workspace_root, limit=200)
@@ -1470,6 +1595,16 @@ class AgentEngine:
                 "benchmark_latest_at": model_benchmark_snapshot.latest_at,
             },
         )
+        agent_output(
+            "code",
+            "Code Agent started implementation draft",
+            summary="Code Agent is using the selected context and model route to produce the smallest useful change set.",
+            outputs={
+                "context_files": [item.path for item in context_files],
+                "planned_model_attempts": len(model_execution_plan.attempts),
+                "apply_changes": request.apply_changes,
+            },
+        )
 
         try:
             draft, live_model_attempts = await self._draft_response(
@@ -1498,6 +1633,48 @@ class AgentEngine:
                 )
             warnings.extend(draft.warnings)
             self._record_command_proposals(draft, emit)
+            agent_output(
+                "code",
+                "Code Agent produced draft",
+                summary=f"Draft contains {len(draft.changes)} file change(s), {len(draft.plan)} plan step(s), and {len(draft.proposed_commands)} proposed command(s).",
+                outputs={
+                    "changed_paths": [change.path for change in draft.changes],
+                    "change_actions": [change.action for change in draft.changes],
+                    "proposed_commands": [
+                        str(command.get("command") or command.get("label") or command)
+                        if isinstance(command, dict)
+                        else str(command)
+                        for command in draft.proposed_commands
+                    ],
+                    "warning_count": len(draft.warnings),
+                },
+            )
+            agent_handoff(
+                "code",
+                "review",
+                reason="Implementation draft is ready for deterministic review before apply or validation.",
+                artifacts={"changed_paths": [change.path for change in draft.changes]},
+            )
+            review_findings = self._review_agent_findings(draft, request=request, mode=mode)
+            agent_output(
+                "review",
+                "Review Agent checked implementation draft",
+                status="warning" if review_findings else "ok",
+                summary="; ".join(review_findings[:3]) if review_findings else "No obvious draft-level issues were found.",
+                outputs={
+                    "findings": review_findings,
+                    "changed_paths": [change.path for change in draft.changes],
+                    "change_count": len(draft.changes),
+                    "matches_requested_file_work": bool(draft.changes) or not self._turn_expects_file_work(request, mode, task_plan),
+                },
+            )
+            if tracks_project_work:
+                self.store.transition_subtask(
+                    task_id,
+                    "Review changes",
+                    "completed" if not review_findings else "blocked" if request.apply_changes and not draft.changes else "completed",
+                    detail="; ".join(review_findings[:2]) if review_findings else "Review Agent found no obvious draft-level issues.",
+                )
             validation_override_recipe = None
             if request.run_validation or self.settings.aegis_auto_run_validation:
                 validation_override_recipe = self._turn_validation_override_recipe(request, draft, workspace_root)
@@ -1508,11 +1685,54 @@ class AgentEngine:
                     detail=validation_override_recipe.command,
                     payload={"recipe": validation_override_recipe.model_dump()},
                 )
+            if request.run_validation or self.settings.aegis_auto_run_validation:
+                selected_validation_command = (
+                    validation_override_recipe.command
+                    if validation_override_recipe
+                    else validation_profile.command
+                    if validation_profile
+                    else ""
+                )
+                selected_validation_source = (
+                    validation_override_recipe.source
+                    if validation_override_recipe
+                    else validation_profile.source
+                    if validation_profile
+                    else ""
+                )
+                selected_validation_label = (
+                    validation_override_recipe.label
+                    if validation_override_recipe
+                    else validation_profile.label
+                    if validation_profile
+                    else ""
+                )
+                agent_handoff(
+                    "review",
+                    "validation",
+                    reason="Draft review is complete and validation was requested for this turn.",
+                    artifacts={
+                        "selected_command": selected_validation_command,
+                        "source": selected_validation_source,
+                    },
+                )
+                agent_output(
+                    "validation",
+                    "Validation Agent selected command",
+                    summary=selected_validation_command or "No validation command selected yet.",
+                    status="ok" if selected_validation_command else "warning",
+                    outputs={
+                        "command": selected_validation_command,
+                        "source": selected_validation_source,
+                        "label": selected_validation_label,
+                    },
+                )
 
             if request.apply_changes and draft.changes:
                 auto_applied_changes, blocked_changes = self.approvals.partition_auto_apply_changes(draft.changes)
 
                 if blocked_changes:
+                    approval_pending = True
                     warnings.append(
                         "Some generated changes require manual approval under the current approval tier, so they were kept as preview-only."
                     )
@@ -1534,13 +1754,49 @@ class AgentEngine:
                             ],
                         },
                     )
+                    agent_approval(
+                        "code",
+                        reason=f"{len(blocked_changes)} generated change(s) require manual approval before automatic apply.",
+                        blocked_paths=[change.path for change, _ in blocked_changes],
+                    )
+                    try:
+                        state_event = self.store.transition_task(
+                            task_id,
+                            "needs_approval",
+                            title="Task waiting for approval",
+                            detail=f"{len(blocked_changes)} generated change(s) require manual approval.",
+                            payload={"blocked_paths": [change.path for change, _ in blocked_changes]},
+                        )
+                        if state_event is not None:
+                            events.append(state_event)
+                    except ValueError:
+                        pass
 
                 if auto_applied_changes:
+                    if approval_pending:
+                        try:
+                            state_event = self.store.transition_task(
+                                task_id,
+                                "running",
+                                title="Task continued with approved subset",
+                                detail="Aegis continued with changes allowed by the current approval tier.",
+                            )
+                            if state_event is not None:
+                                events.append(state_event)
+                        except ValueError:
+                            pass
                     apply_result = self.workspace.apply_changes(workspace_root, auto_applied_changes)
                     applied = apply_result.applied
                     checkpoint = apply_result.checkpoint
                     warnings.extend(apply_result.warnings)
                     workspace_files = self.workspace.scan(workspace_root, request.max_files)
+                    self.store.add_task_artifacts(
+                        task_id,
+                        related_files=[change.path for change in auto_applied_changes],
+                        checkpoints=[apply_result.checkpoint] if apply_result.checkpoint else [],
+                    )
+                    if tracks_project_work:
+                        self.store.transition_subtask(task_id, "Edit files", "completed", detail=f"{len(applied)} change(s) applied.")
                     emit(
                         "write",
                         "Preview changes applied",
@@ -1562,9 +1818,13 @@ class AgentEngine:
                             applied=applied,
                             emit=emit,
                             validation_override=validation_override_recipe,
+                            multi_agent=multi_agent if tracks_project_work else None,
+                            agent_events=events,
                         )
                         validation_profile = self.validation.profile_snapshot(workspace_root).profile
                 elif blocked_changes:
+                    if tracks_project_work:
+                        self.store.transition_subtask(task_id, "Edit files", "blocked", detail="Generated changes require approval.")
                     emit(
                         "write",
                         "Automatic apply paused",
@@ -1590,6 +1850,8 @@ class AgentEngine:
                         applied=applied,
                         emit=emit,
                         validation_override=validation_override_recipe,
+                        multi_agent=multi_agent if tracks_project_work else None,
+                        agent_events=events,
                     )
                 else:
                     emit(
@@ -1597,11 +1859,48 @@ class AgentEngine:
                         "Validation requested for current workspace",
                         detail="No file changes were applied in this turn, so Aegis is validating the existing workspace state.",
                     )
+                    state_event = self.store.transition_task(
+                        task_id,
+                        "validating",
+                        title="Task validation started",
+                        detail="Running validation against the current workspace.",
+                    )
+                    if state_event is not None:
+                        events.append(state_event)
                     validation = self._run_validation(
                         workspace_root,
                         emit,
                         override_recipe=validation_override_recipe,
                     )
+                    if validation is not None:
+                        agent_output(
+                            "validation",
+                            "Validation Agent interpreted result",
+                            status="ok" if self._validation_ok(validation) else "error",
+                            summary=validation.summary or validation.reason or validation.command,
+                            outputs={
+                                "command": validation.command,
+                                "exit_code": validation.exit_code,
+                                "allowed": validation.allowed,
+                                "timed_out": validation.timed_out,
+                                "category": self._categorize_validation_failure(validation)
+                                if not self._validation_ok(validation)
+                                else "passed",
+                            },
+                        )
+                    if validation is not None:
+                        self.store.add_task_artifacts(
+                            task_id,
+                            validation_commands=[validation.command] if validation.command else [],
+                            error_summary=self._error_signature(validation) if not self._validation_ok(validation) else "",
+                        )
+                        if tracks_project_work:
+                            self.store.transition_subtask(
+                                task_id,
+                                "Run validation",
+                                "completed" if self._validation_ok(validation) else "failed",
+                                detail=validation.summary or validation.reason,
+                            )
                 validation_profile = self.validation.profile_snapshot(workspace_root).profile
             elif validation_requested and validation is None and preview_only_changes:
                 warnings.append(
@@ -1662,20 +1961,73 @@ class AgentEngine:
                         "recommendation": instruction_status.get("recommendation", ""),
                     },
                 )
+            agent_handoff(
+                "validation" if validation_requested else "review",
+                "memory",
+                reason="Execution results are ready to persist into project memory and task artifacts.",
+                artifacts={
+                    "validation_status": "passed"
+                    if validation and self._validation_ok(validation)
+                    else "failed"
+                    if validation
+                    else "not_run",
+                    "applied": applied,
+                    "repair_attempt_count": len(repair_attempts),
+                },
+            )
+            agent_output(
+                "memory",
+                "Memory Agent recorded outcome context",
+                summary="Memory Agent updated task artifacts, instruction status, repair memory, and project continuity where applicable.",
+                outputs={
+                    "stored_project_note_count": stored_note_count,
+                    "project_memory_hits": [item.id for item in project_memory_hits],
+                    "repair_attempt_count": len(repair_attempts),
+                    "instruction_status_saved": instruction_status is not None,
+                },
+            )
+            if tracks_project_work:
+                self.store.transition_subtask(
+                    task_id,
+                    "Update memory",
+                    "completed",
+                    detail="Memory Agent recorded durable task and project context.",
+                )
 
-            status = "completed"
-            if validation and not self._validation_ok(validation):
-                status = "completed_with_validation_failure"
-            self.store.finish_task(task_id, status)
+            final_summary = self._final_reply(
+                draft.reply,
+                applied=applied,
+                validation=validation,
+                completion_quality=completion_quality,
+            )
+            self.store.add_task_artifacts(
+                task_id,
+                related_files=[change.path for change in draft.changes],
+                checkpoints=[checkpoint] if checkpoint else [],
+                validation_commands=[validation.command] if validation and validation.command else [],
+                error_summary=self._error_signature(validation) if validation and not self._validation_ok(validation) else "",
+                final_summary=final_summary,
+            )
+            if tracks_project_work:
+                self.store.transition_subtask(task_id, "Summarize outcome", "completed", detail=completion_quality.status)
+
+            if approval_pending and not applied:
+                state_event = None
+            else:
+                state_event = self.store.transition_task(
+                    task_id,
+                    "failed" if validation and not self._validation_ok(validation) else "completed",
+                    title="Task failed" if validation and not self._validation_ok(validation) else "Task completed",
+                    detail=final_summary[:500],
+                    error_summary=self._error_signature(validation) if validation and not self._validation_ok(validation) else "",
+                    final_summary=final_summary,
+                )
+            if state_event is not None:
+                events.append(state_event)
 
             return AgentResponse(
                 task_id=task_id,
-                reply=self._final_reply(
-                    draft.reply,
-                    applied=applied,
-                    validation=validation,
-                    completion_quality=completion_quality,
-                ),
+                reply=final_summary,
                 plan=draft.plan,
                 changes=draft.changes,
                 applied=applied,
@@ -1699,9 +2051,41 @@ class AgentEngine:
                 repair_attempts=repair_attempts,
                 completion_quality=completion_quality,
             )
-        except Exception:
+        except Exception as exc:
+            if tracks_project_work:
+                try:
+                    events.append(
+                        multi_agent.failure(
+                            task_id,
+                            "code",
+                            summary=f"Multi-agent execution stopped: {type(exc).__name__}: {exc}",
+                            outputs={"exception_type": type(exc).__name__},
+                        )
+                    )
+                except Exception:
+                    pass
             self.store.finish_task(task_id, "error")
             raise
+
+    def _review_agent_findings(self, draft: AgentDraft, *, request: AgentRequest, mode: ModeName) -> list[str]:
+        findings: list[str] = []
+        expects_file_work = self._request_expects_file_changes(request.message, mode) or request.apply_changes
+        if expects_file_work and not draft.changes:
+            findings.append("The draft did not include file changes for a project-work request.")
+        if any(change.action == "delete" for change in draft.changes):
+            findings.append("The draft includes delete operations and should stay visible in review.")
+        if any(not change.summary.strip() for change in draft.changes):
+            findings.append("Some generated file changes do not include summaries.")
+        duplicate_paths = {
+            change.path
+            for change in draft.changes
+            if sum(1 for candidate in draft.changes if candidate.path == change.path) > 1
+        }
+        if duplicate_paths:
+            findings.append(f"Multiple generated changes target the same path: {', '.join(sorted(duplicate_paths)[:5])}.")
+        if draft.warnings:
+            findings.append(f"The draft carried {len(draft.warnings)} warning(s).")
+        return findings
 
     def _final_reply(
         self,
@@ -1810,42 +2194,7 @@ class AgentEngine:
         )
 
     def _sanitize_model_change_paths(self, draft: AgentDraft, workspace_root: Path) -> AgentDraft:
-        workspace = workspace_root.resolve()
-        workspace_posix = workspace.as_posix().rstrip("/")
-        workspace_lower = workspace_posix.lower()
-        workspace_name = workspace.name.lower()
-        sanitized: list[FileChange] = []
-
-        for change in draft.changes:
-            original = change.path.replace("\\", "/").strip().lstrip("/")
-            candidate = original
-            lowered = candidate.lower()
-
-            if lowered.startswith(workspace_lower + "/"):
-                candidate = candidate[len(workspace_posix) + 1 :]
-            else:
-                parts = [part for part in candidate.split("/") if part]
-                if parts and parts[0].lower() == workspace_name:
-                    candidate = "/".join(parts[1:])
-
-            if not candidate.strip() or ":" in candidate:
-                draft.warnings.append(f"Skipped model change outside the workspace: {change.path}")
-                continue
-
-            if candidate != original:
-                draft.warnings.append(f"Normalized model change path `{change.path}` to `{candidate}`.")
-
-            sanitized.append(
-                FileChange(
-                    action=change.action,
-                    path=candidate,
-                    content=change.content,
-                    summary=change.summary,
-                )
-            )
-
-        draft.changes = sanitized
-        return draft
+        return sanitize_model_change_paths(draft, workspace_root)
 
     def _fallback_mode_for_request(self, message: str, mode: ModeName) -> ModeName:
         return mode if self._request_expects_file_changes(message, mode) else "chat"
@@ -4425,14 +4774,61 @@ if __name__ == "__main__":
         applied: list[str],
         emit,
         validation_override: ValidationRecipe | None = None,
+        multi_agent: MultiAgentCoordinator | None = None,
+        agent_events: list[ToolEvent] | None = None,
     ) -> tuple[CommandRun | None, list[RepairAttempt], list[FixMemoryEntry]]:
+        def record_agent(event: ToolEvent) -> None:
+            if agent_events is not None:
+                agent_events.append(event)
+
         validation_override = self._validation_override_recipe(request) or validation_override
         install_run = self._maybe_install_dependencies(workspace_root, emit)
         if install_run is not None and not self._validation_ok(install_run):
             warnings.append(install_run.summary or install_run.reason or "Dependency installation failed before validation.")
+            if multi_agent is not None:
+                record_agent(
+                    multi_agent.agent_output(
+                        task_id,
+                        "validation",
+                        "Validation Agent stopped before validation",
+                        status="error",
+                        summary=install_run.summary or install_run.reason,
+                        outputs={"command": install_run.command, "exit_code": install_run.exit_code},
+                    )
+                )
             return install_run, [], memory_hits
 
+        try:
+            self.store.transition_task(task_id, "validating", title="Task validation started", detail="Running validation after file changes.")
+            self.store.transition_subtask(task_id, "Run validation", "running", detail="Validation started.")
+        except ValueError:
+            pass
         validation = self._run_validation(workspace_root, emit, override_recipe=validation_override)
+        if validation is not None and multi_agent is not None:
+            record_agent(
+                multi_agent.agent_output(
+                    task_id,
+                    "validation",
+                    "Validation Agent interpreted result",
+                    status="ok" if self._validation_ok(validation) else "error",
+                    summary=validation.summary or validation.reason or validation.command,
+                    outputs={
+                        "command": validation.command,
+                        "exit_code": validation.exit_code,
+                        "allowed": validation.allowed,
+                        "timed_out": validation.timed_out,
+                        "category": self._categorize_validation_failure(validation)
+                        if not self._validation_ok(validation)
+                        else "passed",
+                    },
+                )
+            )
+        if validation is not None:
+            self.store.add_task_artifacts(
+                task_id,
+                validation_commands=[validation.command] if validation.command else [],
+                error_summary=self._error_signature(validation) if not self._validation_ok(validation) else "",
+            )
         original_failure_signature: str | None = None
         repair_attempts: list[RepairAttempt] = []
 
@@ -4444,16 +4840,69 @@ if __name__ == "__main__":
                 status="warning",
                 detail="Aegis skipped automatic repair because validation could not run under the current control settings.",
             )
+            if multi_agent is not None:
+                record_agent(
+                    multi_agent.agent_output(
+                        task_id,
+                        "repair",
+                        "Repair Agent skipped",
+                        status="warning",
+                        summary="Validation could not run under the current approval or sandbox settings.",
+                        outputs={"reason": validation.reason, "allowed": validation.allowed},
+                    )
+                )
             return validation, repair_attempts, memory_hits
 
         original_failure_category = "unknown"
         if validation and not self._validation_ok(validation):
             original_failure_signature = self._error_signature(validation)
             original_failure_category = self._categorize_validation_failure(validation)
+            try:
+                self.store.transition_subtask(task_id, "Run validation", "failed", detail=validation.summary or validation.reason)
+            except ValueError:
+                pass
 
         attempt = 0
         while validation and not self._validation_ok(validation) and attempt < request.max_repair_attempts:
             attempt += 1
+            if multi_agent is not None:
+                record_agent(
+                    multi_agent.handoff(
+                        task_id,
+                        "validation",
+                        "repair",
+                        reason=f"Validation failed; repair attempt {attempt} is allowed by the current iteration budget.",
+                        artifacts={
+                            "failure_category": self._categorize_validation_failure(validation),
+                            "failure_signature": self._error_signature(validation),
+                            "max_repair_attempts": request.max_repair_attempts,
+                        },
+                    )
+                )
+                record_agent(
+                    multi_agent.agent_output(
+                        task_id,
+                        "repair",
+                        "Repair Agent started attempt",
+                        summary=f"Repair attempt {attempt} started after validation failure.",
+                        outputs={
+                            "attempt": attempt,
+                            "max_attempts": request.max_repair_attempts,
+                            "failure_category": self._categorize_validation_failure(validation),
+                        },
+                        iteration=attempt,
+                    )
+                )
+            try:
+                self.store.transition_task(
+                    task_id,
+                    "repairing",
+                    title="Task repair started",
+                    detail=f"Repair attempt {attempt} started after validation failure.",
+                )
+                self.store.transition_subtask(task_id, "Repair failures", "running", detail=f"Repair attempt {attempt} started.")
+            except ValueError:
+                pass
             failure_category = self._categorize_validation_failure(validation)
             relevant_repairs = self.store.relevant_fix_history(
                 project_root=workspace_root,
@@ -4491,6 +4940,16 @@ if __name__ == "__main__":
                     status="warning",
                     detail="The local model did not propose a concrete repair patch.",
                 )
+                if multi_agent is not None:
+                    record_agent(
+                        multi_agent.failure(
+                            task_id,
+                            "repair",
+                            summary="Repair Agent stopped because the model did not propose a concrete repair patch.",
+                            outputs={"attempt": attempt, "failure_category": failure_category},
+                            iteration=attempt,
+                        )
+                    )
                 break
 
             before_validation = validation
@@ -4506,6 +4965,15 @@ if __name__ == "__main__":
                     detail=f"{len(blocked_repairs)} repair change(s) were kept in preview because they require manual approval.",
                     payload={"blocked_paths": [change.path for change, _ in blocked_repairs]},
                 )
+                if multi_agent is not None:
+                    record_agent(
+                        multi_agent.approval_requested(
+                            task_id,
+                            "repair",
+                            reason=f"{len(blocked_repairs)} repair change(s) require manual approval.",
+                            blocked_paths=[change.path for change, _ in blocked_repairs],
+                        )
+                    )
             if blocked_repairs and not approved_repairs:
                 attempt_record = RepairAttempt(
                     attempt=attempt,
@@ -4524,19 +4992,91 @@ if __name__ == "__main__":
                     detail="The proposed repair patch was kept in preview because it requires manual approval.",
                     payload={"blocked_paths": [change.path for change, _ in blocked_repairs]},
                 )
+                if multi_agent is not None:
+                    record_agent(
+                        multi_agent.agent_output(
+                            task_id,
+                            "repair",
+                            "Repair Agent paused for approval",
+                            status="warning",
+                            summary="Repair patch required manual approval under the current control settings.",
+                            outputs={"blocked_paths": [change.path for change, _ in blocked_repairs]},
+                            iteration=attempt,
+                        )
+                    )
                 break
 
             repair_result = self.workspace.apply_changes(workspace_root, approved_repairs)
             warnings.extend(repair_result.warnings)
             workspace_files[:] = self.workspace.scan(workspace_root, request.max_files)
+            self.store.add_task_artifacts(
+                task_id,
+                related_files=[change.path for change in approved_repairs],
+                checkpoints=[repair_result.checkpoint] if repair_result.checkpoint else [],
+            )
             emit(
                 "repair",
                 "Repair patch applied",
                 detail=f"{len(repair_result.applied)} repair change(s) applied.",
                 payload={"applied": repair_result.applied, "checkpoint": repair_result.checkpoint},
             )
+            if multi_agent is not None:
+                record_agent(
+                    multi_agent.agent_output(
+                        task_id,
+                        "repair",
+                        "Repair Agent applied patch",
+                        summary=f"{len(repair_result.applied)} repair change(s) applied.",
+                        outputs={"applied": repair_result.applied, "checkpoint": repair_result.checkpoint},
+                        iteration=attempt,
+                    )
+                )
 
+            try:
+                self.store.transition_task(
+                    task_id,
+                    "validating",
+                    title="Task validation restarted",
+                    detail=f"Running validation after repair attempt {attempt}.",
+                )
+            except ValueError:
+                pass
+            if multi_agent is not None:
+                record_agent(
+                    multi_agent.handoff(
+                        task_id,
+                        "repair",
+                        "validation",
+                        reason=f"Repair attempt {attempt} was applied; validation will rerun.",
+                        artifacts={"checkpoint": repair_result.checkpoint},
+                    )
+                )
             next_validation = self._run_validation(workspace_root, emit, override_recipe=validation_override)
+            if next_validation is not None and multi_agent is not None:
+                record_agent(
+                    multi_agent.agent_output(
+                        task_id,
+                        "validation",
+                        "Validation Agent interpreted repair result",
+                        status="ok" if self._validation_ok(next_validation) else "error",
+                        summary=next_validation.summary or next_validation.reason or next_validation.command,
+                        outputs={
+                            "command": next_validation.command,
+                            "exit_code": next_validation.exit_code,
+                            "attempt": attempt,
+                            "category": self._categorize_validation_failure(next_validation)
+                            if not self._validation_ok(next_validation)
+                            else "passed",
+                        },
+                        iteration=min(attempt + 1, multi_agent.limits.max_iterations("validation")),
+                    )
+                )
+            if next_validation is not None:
+                self.store.add_task_artifacts(
+                    task_id,
+                    validation_commands=[next_validation.command] if next_validation.command else [],
+                    error_summary=self._error_signature(next_validation) if not self._validation_ok(next_validation) else "",
+                )
             attempt_record = RepairAttempt(
                 attempt=attempt,
                 category=failure_category,
@@ -4557,6 +5097,18 @@ if __name__ == "__main__":
                     detail=f"Rolled back {len(restored)} file(s) after a non-improving repair attempt.",
                     payload={"restored": restored, "checkpoint": repair_result.checkpoint},
                 )
+                if multi_agent is not None:
+                    record_agent(
+                        multi_agent.agent_output(
+                            task_id,
+                            "repair",
+                            "Repair Agent rolled back attempt",
+                            status="warning",
+                            summary="Repair attempt did not improve validation, so Aegis restored the prior checkpoint.",
+                            outputs={"restored": restored, "checkpoint": repair_result.checkpoint},
+                            iteration=attempt,
+                        )
+                    )
                 validation = self._run_validation(workspace_root, emit, override_recipe=validation_override)
                 attempt_record.after_signature = self._error_signature(validation) if validation else ""
                 attempt_record.outcome = "rolled_back"
@@ -4570,7 +5122,38 @@ if __name__ == "__main__":
             self.store.record_repair_attempt(task_id, attempt_record)
             repair_attempts.append(attempt_record)
 
+        if validation and not self._validation_ok(validation) and attempt >= request.max_repair_attempts and multi_agent is not None:
+            record_agent(
+                multi_agent.failure(
+                    task_id,
+                    "repair",
+                    summary=f"Repair Agent stopped after {attempt} attempt(s); validation is still failing.",
+                    outputs={
+                        "attempts": attempt,
+                        "max_repair_attempts": request.max_repair_attempts,
+                        "failure_signature": self._error_signature(validation),
+                    },
+                    iteration=max(1, attempt),
+                )
+            )
+
         if validation and self._validation_ok(validation) and attempt > 0 and original_failure_signature:
+            try:
+                self.store.transition_subtask(task_id, "Repair failures", "completed", detail="Repair loop produced a passing validation run.")
+                self.store.transition_subtask(task_id, "Run validation", "completed", detail=validation.summary or validation.reason)
+            except ValueError:
+                pass
+            if multi_agent is not None:
+                record_agent(
+                    multi_agent.agent_output(
+                        task_id,
+                        "repair",
+                        "Repair Agent completed failure recovery",
+                        summary="Repair loop produced a passing validation run.",
+                        outputs={"attempts": attempt, "command": validation.command},
+                        iteration=max(1, attempt),
+                    )
+                )
             self.store.remember_fix(
                 project_root=workspace_root,
                 error_signature=original_failure_signature,
@@ -4579,6 +5162,16 @@ if __name__ == "__main__":
                 confidence=0.82,
                 category=original_failure_category,
             )
+        elif validation and self._validation_ok(validation):
+            try:
+                self.store.transition_subtask(task_id, "Run validation", "completed", detail=validation.summary or validation.reason)
+            except ValueError:
+                pass
+        elif validation and not self._validation_ok(validation):
+            try:
+                self.store.transition_subtask(task_id, "Repair failures", "failed", detail=validation.summary or validation.reason)
+            except ValueError:
+                pass
 
         return validation, repair_attempts, memory_hits
 
@@ -4683,6 +5276,7 @@ if __name__ == "__main__":
                         self._categorize_validation_failure(validation),
                         self._project_manifest_context(project_manifest),
                         self._dependency_profile_context(dependency_profile),
+                        self._project_intelligence_context(workspace_root),
                     ],
                 )
             ),
@@ -5303,6 +5897,13 @@ User request:
             if len(selected) >= limit:
                 return selected
 
+        intelligence = self.store.project_intelligence(project_root=workspace_root)
+        if intelligence is not None:
+            for path in self._project_intelligence_context_paths(intelligence, query):
+                add(path)
+                if len(selected) >= limit:
+                    return selected
+
         indexer = ProjectIndexer()
         indexer.build_from_workspace(workspace_root, files)
         ranked = indexer.find_relevant_files(query, max_results=max(limit * 2, 12))
@@ -5334,6 +5935,34 @@ User request:
             if len(selected) >= limit:
                 break
 
+        return selected
+
+    def _project_intelligence_context_paths(self, intelligence: ProjectIntelligenceSnapshot, query: str) -> list[str]:
+        query_terms = {
+            token.lower()
+            for token in re.findall(r"[A-Za-z_][A-Za-z0-9_\-]{2,}", query or "")
+            if token.strip()
+        }
+
+        def score(item) -> float:
+            text = " ".join([item.path, " ".join(item.reasons)]).lower()
+            overlap = sum(1 for term in query_terms if term in text)
+            return float(item.score or 0.0) + overlap * 8.0
+
+        selected: list[str] = []
+        seen: set[str] = set()
+        for path in [
+            *intelligence.profile.main_entry_files,
+            *[item.path for item in sorted(intelligence.file_importance, key=lambda entry: (-score(entry), entry.path))],
+            *intelligence.profile.risk_sensitive_files,
+        ]:
+            normalized = str(path or "").strip().replace("\\", "/")
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            selected.append(normalized)
+            if len(selected) >= 40:
+                break
         return selected
 
     def _workspace_file_line(self, item: WorkspaceFile) -> str:
@@ -5397,7 +6026,7 @@ User request:
 
     def _direct_chat_system_prompt(self) -> str:
         return """
-You are Aegis Core, a private self-hosted AI assistant.
+You are Auralith Prime, the assistant identity inside Auralith OS. You run on Aegis Core, the private self-hosted runtime.
 Answer the user's normal question directly in natural language.
 Do not return JSON. Do not claim that files were edited, created, applied, validated, or inspected unless the context explicitly shows that happened.
 If code is useful, provide a concise snippet in Markdown and explain where it would fit, but keep this turn read-only.
@@ -5406,7 +6035,7 @@ If the user asks for a risky action, explain safe boundaries and ask for the mis
 
     def _system_prompt(self) -> str:
         return """
-You are Aegis Core, a private self-hosted coding agent.
+You are Auralith Prime, the assistant identity inside Auralith OS. You run on Aegis Core, the private self-hosted runtime.
 You MUST return ONLY valid JSON in this exact format, with no other text:
 
 {
@@ -6601,6 +7230,31 @@ Large-file behavior:
             lines.append(f"- [{item.category}] {item.title}: {detail}")
         return "\n".join(lines)
 
+    def _project_intelligence_context(self, workspace_root: Path) -> str:
+        intelligence = self.store.project_intelligence(project_root=workspace_root)
+        if intelligence is None:
+            return ""
+        lines = [
+            f"Project intelligence: {intelligence.profile.project_name or workspace_root.name}",
+        ]
+        if intelligence.profile.stack:
+            lines.append(f"- Stack: {', '.join(intelligence.profile.stack[:10])}")
+        if intelligence.profile.main_entry_files:
+            lines.append(f"- Main entries: {', '.join(intelligence.profile.main_entry_files[:8])}")
+        if intelligence.profile.coding_conventions:
+            lines.append(f"- Conventions: {' / '.join(intelligence.profile.coding_conventions[:5])}")
+        if intelligence.validation_commands:
+            lines.append(f"- Validation: {' / '.join(intelligence.validation_commands[:5])}")
+        if intelligence.file_importance:
+            important = ", ".join(item.path for item in intelligence.file_importance[:10])
+            lines.append(f"- Important files: {important}")
+        if intelligence.architecture.api_routes:
+            routes = ", ".join(f"{route.method} {route.path}" for route in intelligence.architecture.api_routes[:8])
+            lines.append(f"- API routes: {routes}")
+        for note in intelligence.recommendations[:4]:
+            lines.append(f"- Intelligence note: {note}")
+        return "\n".join(lines)
+
     def _instruction_file_context(self, instruction_files: list[WorkspaceInstructionFile]) -> str:
         lines: list[str] = []
         for item in instruction_files[:6]:
@@ -6671,6 +7325,11 @@ Large-file behavior:
                     lines.append(f"- Readiness signal: {signal_text}")
             has_instruction_state = readiness.status == "needs_work"
             has_build_state = readiness.status in {"needs_repair", "needs_validation", "ready"}
+
+        intelligence_context = self._project_intelligence_context(workspace_root)
+        if intelligence_context:
+            lines.append(intelligence_context)
+            has_build_state = True
 
         if instruction_files:
             has_instruction_state = True

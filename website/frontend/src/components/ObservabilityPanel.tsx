@@ -945,19 +945,21 @@ function toneColor(palette: PaletteLike, tone: 'good' | 'bad' | 'warning' | 'neu
 
 const styles = {
   panel: (palette: PaletteLike): CSSProperties => ({
-    borderRadius: 24,
-    background: palette.card,
+    borderRadius: 18,
+    background: palette.shell,
     border: `1px solid ${palette.shellBorder}`,
-    boxShadow: '0 24px 70px rgba(15, 23, 42, 0.12)',
-    overflow: 'hidden'
+    boxShadow: '0 22px 64px rgba(2, 6, 23, 0.24), inset 0 1px 0 rgba(255,255,255,0.04)',
+    overflow: 'hidden',
+    backdropFilter: 'blur(22px)'
   }),
   header: (palette: PaletteLike): CSSProperties => ({
-    padding: '16px 18px',
+    padding: '15px 16px',
     borderBottom: `1px solid ${palette.shellBorder}`,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 12
+    gap: 12,
+    background: palette.cardAlt
   }),
   titleWrap: {
     display: 'inline-flex',
@@ -979,12 +981,14 @@ const styles = {
     border: `1px solid ${palette.inputBorder}`,
     background: disabled ? palette.cardAlt : palette.input,
     color: disabled ? palette.muted : palette.text,
-    cursor: disabled ? 'not-allowed' : 'pointer'
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
+    transition: 'transform 180ms ease, border-color 180ms ease, background 180ms ease'
   }),
   body: {
     padding: 16,
     display: 'grid',
-    gap: 14
+    gap: 16
   } as CSSProperties,
   summaryStrip: {
     display: 'grid',
@@ -1004,7 +1008,7 @@ const styles = {
     borderRadius: 14,
     border: `1px solid ${palette.inputBorder}`,
     background: palette.cardAlt,
-    boxShadow: `inset 3px 0 0 ${toneColor(palette, tone)}`
+    boxShadow: `inset 2px 0 0 ${toneColor(palette, tone)}, inset 0 1px 0 rgba(255,255,255,0.04)`
   }),
   metricLabel: (palette: PaletteLike): CSSProperties => ({
     color: palette.muted,
@@ -1026,17 +1030,19 @@ const styles = {
     gap: 4,
     borderRadius: 14,
     background: palette.cardAlt,
-    border: `1px solid ${palette.inputBorder}`
+    border: `1px solid ${palette.inputBorder}`,
+    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)'
   }),
   tab: (palette: PaletteLike, active: boolean): CSSProperties => ({
     minHeight: 30,
     border: 'none',
     borderRadius: 10,
-    background: active ? palette.accent : 'transparent',
+    background: active ? `linear-gradient(135deg, ${palette.accent}, ${palette.accentAlt})` : 'transparent',
     color: active ? '#fff' : palette.textSoft,
     fontWeight: 700,
     fontSize: 12,
-    cursor: 'pointer'
+    cursor: 'pointer',
+    transition: 'background 160ms ease, color 160ms ease'
   }),
   statusText: (palette: PaletteLike): CSSProperties => ({
     color: palette.muted,
@@ -1068,7 +1074,8 @@ const styles = {
     padding: 10,
     borderRadius: 14,
     background: palette.cardAlt,
-    border: `1px solid ${palette.inputBorder}`
+    border: `1px solid ${palette.inputBorder}`,
+    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.03)'
   }),
   rowHeader: {
     display: 'grid',
@@ -1134,7 +1141,8 @@ const styles = {
     padding: 10,
     borderRadius: 14,
     background: palette.cardAlt,
-    border: `1px solid ${palette.inputBorder}`
+    border: `1px solid ${palette.inputBorder}`,
+    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.03)'
   }),
   snippet: (palette: PaletteLike): CSSProperties => ({
     color: palette.textSoft,
@@ -1168,7 +1176,8 @@ const styles = {
     padding: 10,
     borderRadius: 14,
     background: palette.accentSoft,
-    border: `1px solid ${palette.inputBorder}`
+    border: `1px solid ${palette.inputBorder}`,
+    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.03)'
   }),
   recommendationItem: (palette: PaletteLike): CSSProperties => ({
     color: palette.text,

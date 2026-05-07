@@ -233,7 +233,7 @@ function Stop-MismatchedAegisBackend {
         return
     }
 
-    if ($health.app -ne "Aegis Coding AI") {
+    if ($health.app -ne "Auralith OS") {
         Write-Warning "Port $Port is already in use by another service. Stop it or change the Aegis backend port."
         return
     }
@@ -384,7 +384,7 @@ function Resolve-OllamaExe {
 }
 
 Write-Host ""
-Write-Host "Aegis Coding AI launcher" -ForegroundColor Cyan
+Write-Host "Auralith OS launcher" -ForegroundColor Cyan
 Write-Host "Project: $Root"
 Write-Host ""
 
@@ -450,7 +450,7 @@ if (-not (Test-BackendReadyForRoot -Url $BackendHealthUrl -ExpectedRoot $Root -R
 
 if (-not (Test-BackendReadyForRoot -Url $BackendHealthUrl -ExpectedRoot $Root -RequiredRoutes $RequiredBackendRoutes -RequirePartialConfigUpdate $RequirePartialConfigUpdate)) {
     $health = Get-HttpJson -Url $BackendHealthUrl
-    if ($health -and $health.app -eq "Aegis Coding AI") {
+    if ($health -and $health.app -eq "Auralith OS") {
         Write-Warning "Aegis backend on port 8787 is from this project but does not expose the expected API contract. Restarting it."
         Stop-AegisBackendOnPort -Port 8787
     }
@@ -493,6 +493,6 @@ if (-not $frontendReady) {
 }
 
 if ($backendReady -and $frontendReady) {
-    Write-Host "Aegis Coding AI is ready at $FrontendUrl" -ForegroundColor Green
+    Write-Host "Auralith OS is ready at $FrontendUrl" -ForegroundColor Green
     Start-Process $FrontendUrl
 }

@@ -605,11 +605,11 @@ async function exerciseCustomAgentEditor(page) {
   assert(updatedConfig.assistant_name === 'E2E Security Reviewer Updated', 'Edited custom agent was not saved as active backend config.');
   assert(updatedConfig.default_mode === 'review', 'Edited custom agent did not keep review mode active.');
 
-  await clickUnique(page.getByRole('button', { name: 'Use default Aegis', exact: true }), 'restore default agent button');
-  await waitForLocatorCount(page.getByText('Default Aegis agent is active.', { exact: true }), 1, 'default agent restored status');
-  await waitForLocatorCount(page.getByText('Aegis AI', { exact: true }), 1, 'default agent visible after restore');
+  await clickUnique(page.getByRole('button', { name: 'Use Auralith Prime', exact: true }), 'restore default agent button');
+  await waitForLocatorCount(page.getByText('Auralith Prime is active.', { exact: true }), 1, 'default agent restored status');
+  await waitForLocatorCount(page.getByText('Auralith Prime', { exact: true }), 1, 'default agent visible after restore');
   const restoredConfig = await apiJson('GET', '/api/config');
-  assert(restoredConfig.assistant_name === 'Aegis AI', 'Default agent restore did not update backend config.');
+  assert(restoredConfig.assistant_name === 'Auralith Prime', 'Default agent restore did not update backend config.');
   assert(restoredConfig.default_mode === 'build', 'Default agent restore did not return to build mode.');
 }
 
@@ -681,8 +681,8 @@ async function exerciseHeaderModelSwitcher(page) {
 
   function activeConfig() {
     return {
-      assistant_name: 'Aegis AI',
-      assistant_mission: 'Your personal coding AI for planning, building, reviewing, and shipping work inside this workspace.',
+      assistant_name: 'Auralith Prime',
+      assistant_mission: 'A local-first AI operating environment for coding, automation, research, orchestration, creative workflows, and intelligent task execution.',
       default_mode: 'build',
       modes: [
         { id: 'build', label: 'Build', description: 'Build and repair from chat prompts.' },
@@ -998,7 +998,7 @@ async function exercisePinnedContextFiles(page) {
   await waitForLocatorCount(page.getByLabel('Pinned context files'), 1, 'pinned context files bar');
   await waitForLocatorCount(page.getByText('tracked.txt', { exact: true }), 1, 'tracked.txt pinned context chip');
 
-  const composer = page.getByPlaceholder('Message Aegis...', { exact: true });
+  const composer = page.getByPlaceholder('Message Auralith Prime...', { exact: true });
   await composer.waitFor({ state: 'visible', timeout: 30_000 });
   await composer.fill('summarize the pinned context file');
   await clickUnique(page.getByRole('button', { name: 'Send prompt', exact: true }), 'send pinned context prompt button');
@@ -1017,7 +1017,7 @@ async function exercisePinnedContextFiles(page) {
   await page.unroute(`${backendUrl}/api/chat/stream`);
 
   await clickUnique(page.getByRole('button', { name: 'New chat', exact: true }), 'new chat after pinned context test');
-  await waitForLocatorCount(page.getByText('Welcome to Aegis AI', { exact: true }), 1, 'empty chat after pinned context test');
+  await waitForLocatorCount(page.getByText('Welcome to Auralith OS', { exact: true }), 1, 'empty session after pinned context test');
 }
 
 async function exerciseGeneratedChangeApplyScopes(page) {
@@ -1181,7 +1181,7 @@ async function exerciseGeneratedChangeApplyScopes(page) {
     });
   });
 
-  const composer = page.getByPlaceholder('Message Aegis...', { exact: true });
+  const composer = page.getByPlaceholder('Message Auralith Prime...', { exact: true });
   await composer.waitFor({ state: 'visible', timeout: 30_000 });
   await page.getByLabel('Apply changes automatically', { exact: true }).uncheck();
   const runValidationToggle = page.getByLabel('Run validation', { exact: true });
@@ -1679,7 +1679,7 @@ async function exerciseGeneratedChangeApplyScopes(page) {
   await runValidationToggle.uncheck();
 
   await clickUnique(page.getByRole('button', { name: 'New chat', exact: true }), 'new chat after apply scope test');
-  await waitForLocatorCount(page.getByText('Welcome to Aegis AI', { exact: true }), 1, 'empty chat after apply scope test');
+  await waitForLocatorCount(page.getByText('Welcome to Auralith OS', { exact: true }), 1, 'empty session after apply scope test');
 }
 
 async function exerciseManualApplyWarningStatus(page) {
@@ -1718,7 +1718,7 @@ async function exerciseManualApplyWarningStatus(page) {
     });
   });
 
-  const composer = page.getByPlaceholder('Message Aegis...', { exact: true });
+  const composer = page.getByPlaceholder('Message Auralith Prime...', { exact: true });
   await composer.waitFor({ state: 'visible', timeout: 30_000 });
   await page.getByLabel('Apply changes automatically', { exact: true }).uncheck();
   await composer.fill('generate unsafe create over an existing retry target');
@@ -1816,7 +1816,7 @@ async function exerciseManualApplyWarningStatus(page) {
   await page.unroute(`${backendUrl}/api/chat/stream`);
 
   await clickUnique(page.getByRole('button', { name: 'New chat', exact: true }), 'new chat after warning status test');
-  await waitForLocatorCount(page.getByText('Welcome to Aegis AI', { exact: true }), 1, 'empty chat after warning status test');
+  await waitForLocatorCount(page.getByText('Welcome to Auralith OS', { exact: true }), 1, 'empty session after warning status test');
 }
 
 async function exerciseSamePathWarningPrecision(page) {
@@ -1864,7 +1864,7 @@ async function exerciseSamePathWarningPrecision(page) {
     });
   });
 
-  const composer = page.getByPlaceholder('Message Aegis...', { exact: true });
+  const composer = page.getByPlaceholder('Message Auralith Prime...', { exact: true });
   await composer.waitFor({ state: 'visible', timeout: 30_000 });
   await composer.fill('show a same-path generated change warning');
   await clickUnique(page.getByRole('button', { name: 'Send prompt', exact: true }), 'send same-path warning prompt button');
@@ -1915,7 +1915,7 @@ async function exerciseSamePathWarningPrecision(page) {
   await page.unroute(`${backendUrl}/api/chat/stream`);
 
   await clickUnique(page.getByRole('button', { name: 'New chat', exact: true }), 'new chat after same-path warning test');
-  await waitForLocatorCount(page.getByText('Welcome to Aegis AI', { exact: true }), 1, 'empty chat after same-path warning test');
+  await waitForLocatorCount(page.getByText('Welcome to Auralith OS', { exact: true }), 1, 'empty session after same-path warning test');
 }
 
 async function exerciseGeneratedChangeReviewRestore(page) {
@@ -1970,7 +1970,7 @@ async function exerciseGeneratedChangeReviewRestore(page) {
     });
   });
 
-  const composer = page.getByPlaceholder('Message Aegis...', { exact: true });
+  const composer = page.getByPlaceholder('Message Auralith Prime...', { exact: true });
   await composer.waitFor({ state: 'visible', timeout: 30_000 });
   await page.getByLabel('Apply changes automatically', { exact: true }).uncheck();
   await composer.fill('generate a saved review fixture');
@@ -2007,7 +2007,7 @@ async function exerciseGeneratedChangeReviewRestore(page) {
   await waitForLocatorExactCount(page.getByTestId('inline-change-list'), 0, 'live inline review file list collapsed after hiding');
 
   await clickUnique(page.getByRole('button', { name: 'New chat', exact: true }), 'new chat after saved review response');
-  await waitForLocatorCount(page.getByText('Welcome to Aegis AI', { exact: true }), 1, 'empty chat after saving review thread');
+  await waitForLocatorCount(page.getByText('Welcome to Auralith OS', { exact: true }), 1, 'empty session after saving review thread');
 
   const savedThread = await page.evaluate(
     ({ storageKey, taskId }) => {
@@ -2070,17 +2070,17 @@ async function exerciseGeneratedChangeReviewRestore(page) {
   await page.unroute(`${backendUrl}/api/chat/stream`);
 
   await clickUnique(page.getByRole('button', { name: 'New chat', exact: true }), 'new chat after restore review test');
-  await waitForLocatorCount(page.getByText('Welcome to Aegis AI', { exact: true }), 1, 'empty chat after restore review test');
+  await waitForLocatorCount(page.getByText('Welcome to Auralith OS', { exact: true }), 1, 'empty session after restore review test');
 }
 
 async function exerciseComposerDraftRestore(page) {
   const draftText = 'restore this composer draft after reload';
-  const composer = page.getByPlaceholder('Message Aegis...', { exact: true });
+  const composer = page.getByPlaceholder('Message Auralith Prime...', { exact: true });
   await composer.waitFor({ state: 'visible', timeout: 30_000 });
   await composer.fill(draftText);
 
   await page.reload({ waitUntil: 'domcontentloaded' });
-  const restoredComposer = page.getByPlaceholder('Message Aegis...', { exact: true });
+  const restoredComposer = page.getByPlaceholder('Message Auralith Prime...', { exact: true });
   await restoredComposer.waitFor({ state: 'visible', timeout: 30_000 });
   assert((await restoredComposer.inputValue()) === draftText, 'Composer draft was not restored after page reload.');
 
@@ -2147,7 +2147,7 @@ async function exerciseCurrentChatExport(page, userMessage, assistantMessage) {
 
 async function exerciseChatAutoScroll(page) {
   await clickUnique(page.getByRole('button', { name: 'New chat', exact: true }), 'new chat before auto-scroll test');
-  await waitForLocatorCount(page.getByText('Welcome to Aegis AI', { exact: true }), 1, 'empty chat before auto-scroll test');
+  await waitForLocatorCount(page.getByText('Welcome to Auralith OS', { exact: true }), 1, 'empty session before auto-scroll test');
   await waitForLocatorCount(page.getByTestId('details-panel'), 1, 'details panel visible before auto-scroll test');
 
   const longReply = [
@@ -2174,7 +2174,7 @@ async function exerciseChatAutoScroll(page) {
     });
   });
 
-  const composer = page.getByPlaceholder('Message Aegis...', { exact: true });
+  const composer = page.getByPlaceholder('Message Auralith Prime...', { exact: true });
   await composer.waitFor({ state: 'visible', timeout: 30_000 });
   await composer.fill('make a long response for auto scroll');
   await clickUnique(page.getByRole('button', { name: 'Send prompt', exact: true }), 'send auto-scroll prompt button');
@@ -2185,7 +2185,7 @@ async function exerciseChatAutoScroll(page) {
   await page.unroute(`${backendUrl}/api/chat/stream`);
 
   await clickUnique(page.getByRole('button', { name: 'New chat', exact: true }), 'new chat after auto-scroll test');
-  await waitForLocatorCount(page.getByText('Welcome to Aegis AI', { exact: true }), 1, 'empty chat after auto-scroll test');
+  await waitForLocatorCount(page.getByText('Welcome to Auralith OS', { exact: true }), 1, 'empty session after auto-scroll test');
 }
 
 async function exerciseQueuedPromptTray(page) {
@@ -2225,12 +2225,12 @@ async function exerciseQueuedPromptTray(page) {
     });
   });
 
-  const composer = page.getByPlaceholder('Message Aegis...', { exact: true });
+  const composer = page.getByPlaceholder('Message Auralith Prime...', { exact: true });
   await composer.waitFor({ state: 'visible', timeout: 30_000 });
   await composer.fill('start a slow queue tray test');
   await clickUnique(page.getByRole('button', { name: 'Send prompt', exact: true }), 'send prompt button');
 
-  const queueComposer = page.getByPlaceholder('Message Aegis... next prompt will be queued', { exact: true });
+  const queueComposer = page.getByPlaceholder('Message Auralith Prime... next prompt will be queued', { exact: true });
   await queueComposer.waitFor({ state: 'visible', timeout: 5_000 });
   await queueComposer.fill('first queued prompt should wait');
   await clickUnique(page.getByRole('button', { name: 'Queue prompt', exact: true }), 'queue prompt button');
@@ -2334,7 +2334,7 @@ async function exerciseStopActiveResponse(page) {
       .catch(() => {});
   });
 
-  const composer = page.getByPlaceholder('Message Aegis...', { exact: true });
+  const composer = page.getByPlaceholder('Message Auralith Prime...', { exact: true });
   await composer.waitFor({ state: 'visible', timeout: 30_000 });
   await composer.fill('start a response that I will stop');
   await clickUnique(page.getByRole('button', { name: 'Send prompt', exact: true }), 'send prompt button for stop test');
@@ -2371,7 +2371,7 @@ function queueTestResponse(overrides = {}) {
     task_plan: null,
     context_budget: null,
     model_attempts: [],
-    assistant_name: 'Aegis AI',
+    assistant_name: 'Auralith Prime',
     mode: 'chat',
     engine: 'Aegis Core',
     workspace_root: workspaceRoot,

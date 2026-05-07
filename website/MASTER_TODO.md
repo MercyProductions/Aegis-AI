@@ -1,6 +1,6 @@
-# Aegis Coding AI Master TODO
+# Auralith OS Master TODO
 
-This is the production roadmap for Aegis Coding AI: a private, extensible coding chatbot with multi-model routing, safe tool execution, memory, project understanding, and a premium desktop/web experience.
+This is the production roadmap for Auralith OS: a private, extensible local-first AI operating environment with multi-model routing, safe tool execution, memory, project understanding, creative workflows, orchestration, and a premium desktop/web experience.
 
 ## Execution Rules
 

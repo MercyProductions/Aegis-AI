@@ -13,8 +13,8 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 ENV_FILE = PROJECT_ROOT / ".env"
 LEGACY_ENV_FILE = BACKEND_ROOT / ".env"
-ENV_TEMPLATE = """AEGIS_ASSISTANT_NAME=Aegis AI
-AEGIS_ASSISTANT_MISSION=Your personal coding AI for planning, building, reviewing, and shipping work inside this workspace.
+ENV_TEMPLATE = """AEGIS_ASSISTANT_NAME=Auralith Prime
+AEGIS_ASSISTANT_MISSION=A local-first AI operating environment for coding, automation, research, orchestration, creative workflows, and intelligent task execution.
 DEFAULT_MODE=build
 DEFAULT_WORKSPACE=workspace
 AEGIS_MODEL_API=ollama
@@ -63,9 +63,9 @@ class Settings(BaseSettings):
         populate_by_name=True,
     )
 
-    aegis_assistant_name: str = Field(default="Aegis AI", alias="AEGIS_ASSISTANT_NAME")
+    aegis_assistant_name: str = Field(default="Auralith Prime", alias="AEGIS_ASSISTANT_NAME")
     aegis_assistant_mission: str = Field(
-        default="Your personal coding AI for planning, building, reviewing, and shipping work inside this workspace.",
+        default="A local-first AI operating environment for coding, automation, research, orchestration, creative workflows, and intelligent task execution.",
         alias="AEGIS_ASSISTANT_MISSION",
     )
     default_mode: str = Field(default="build", alias="DEFAULT_MODE")

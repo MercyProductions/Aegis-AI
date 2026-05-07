@@ -6,7 +6,9 @@ import math
 import re
 import shutil
 import struct
+import time
 import wave
+import zipfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -20,17 +22,54 @@ except Exception:  # pragma: no cover - exercised only when Pillow is unavailabl
     ImageDraw = None  # type: ignore[assignment]
     ImageFont = None  # type: ignore[assignment]
 
-from .schemas import MediaAsset, MediaCapabilitiesResponse, MediaCreativeRequest, MediaJobResponse
+from .schemas import (
+    MediaAsset,
+    MediaAssetLibraryResponse,
+    MediaCapabilitiesResponse,
+    MediaCreativeRequest,
+    MediaExportRequest,
+    MediaExportResponse,
+    MediaJobResponse,
+    MediaPromptPreset,
+    MediaProviderInfo,
+    ToolEvent,
+)
 from .settings import Settings
 
 
 SUPPORTED_KINDS = [
     "image",
+    "image_to_image",
+    "logo",
+    "ui_mockup",
+    "icon",
+    "product_mockup",
+    "style_transfer",
+    "background_removal",
+    "upscale",
+    "variation",
     "video",
+    "text_to_video",
+    "image_to_video",
+    "promo_video",
+    "logo_intro",
+    "app_showcase",
+    "social_clip",
+    "storyboard_video",
     "animation",
     "gif",
     "video_edit",
     "music_beat",
+    "music",
+    "drum_loop",
+    "melody",
+    "loop",
+    "arrangement",
+    "voice",
+    "voiceover",
+    "narration",
+    "sound_effect",
+    "audio_cleanup",
     "psd_template",
     "brand_kit",
     "thumbnail",
@@ -150,7 +189,7 @@ def best_output_formats(kind: str, requested: list[str]) -> list[str]:
 def safe_title(prompt: str) -> str:
     title = re.sub(r"\s+", " ", prompt.strip()).strip()
     if not title:
-        return "Aegis Creative"
+        return "Auralith Creative"
     return title[:72]
 
 
@@ -196,8 +235,10 @@ class CreativeMediaEngine:
         ffmpeg_ready = shutil.which("ffmpeg") is not None
         return MediaCapabilitiesResponse(
             supported_kinds=SUPPORTED_KINDS,  # type: ignore[arg-type]
-            local_formats=["png", "svg", "gif", "html", "jsx", "psd", "json", "wav"] if pillow_ready else ["svg", "html", "jsx", "json", "wav"],
-            provider_formats=["png", "jpg", "webp", "gif", "mp4", "webm", "svg", "psd-package", "wav", "mp3", "midi", "stems"],
+            local_formats=["png", "jpg", "svg", "gif", "html", "jsx", "psd", "json", "wav", "mid", "zip"] if pillow_ready else ["svg", "html", "jsx", "json", "wav", "mid", "zip"],
+            provider_formats=["png", "jpg", "webp", "gif", "mp4", "webm", "svg", "psd-package", "wav", "mp3", "midi", "stems", "zip"],
+            providers=self.providers(),
+            prompt_presets=self.prompt_presets(),
             can_iterate_from_previous=True,
             theme_inference=True,
             psd_template_strategy=(
@@ -211,15 +252,131 @@ class CreativeMediaEngine:
                 "photoshop_jsx": True,
                 "wav_preview": True,
                 "video_edit_manifest": True,
+                "midi_preview": True,
+                "voice_wav_preview": True,
+                "zip_exports": True,
             },
             recommendations=[
-                "Use a persistent media job id for feedback-driven revisions.",
+                "Use local generation for drafts, prompt packs, mockups, beats, and voice scratch tracks.",
+                "Approve paid, long-running, copyright-sensitive, or voice-cloning provider jobs before dispatch.",
                 "Keep source prompts, layer specs, palettes, frames, and provider metadata with every asset.",
-                "Add cloud provider adapters later for photoreal image, video, and music generation while preserving the local editable package.",
             ],
         )
 
+    def providers(self) -> list[MediaProviderInfo]:
+        return [
+            MediaProviderInfo(
+                id="local_creative_renderer",
+                name="Local Creative Renderer",
+                category="image",
+                location="local",
+                supports=["image", "logo", "ui_mockup", "icon", "product_mockup", "style_transfer", "background_removal", "upscale", "variation", "brand_kit", "thumbnail", "icon_set", "sticker_pack"],  # type: ignore[list-item]
+                output_formats=["png", "jpg", "svg", "gif", "json", "zip"],
+                notes="Deterministic local previews, editable SVG, prompt packs, and mockup/source metadata.",
+            ),
+            MediaProviderInfo(
+                id="local_motion_storyboard",
+                name="Local Motion Storyboard",
+                category="video",
+                location="local",
+                supports=["video", "text_to_video", "image_to_video", "promo_video", "logo_intro", "app_showcase", "social_clip", "storyboard_video", "animation", "gif", "video_edit"],  # type: ignore[list-item]
+                output_formats=["html", "gif", "json", "zip"],
+                gpu_intensive=True,
+                requires_approval=True,
+                notes="Creates storyboard, edit decision list, motion HTML, and GIF previews locally.",
+            ),
+            MediaProviderInfo(
+                id="local_audio_synth",
+                name="Local Audio Synth",
+                category="audio",
+                location="local",
+                supports=["music_beat", "music", "drum_loop", "melody", "loop", "arrangement", "voice", "voiceover", "narration", "sound_effect", "audio_cleanup"],  # type: ignore[list-item]
+                output_formats=["wav", "mid", "json", "zip"],
+                notes="Creates beat previews, MIDI sketches, stems manifests, narration scripts, and scratch voice WAV locally.",
+            ),
+            MediaProviderInfo(
+                id="cloud_image_api",
+                name="Cloud Image API Adapter",
+                category="image",
+                location="cloud",
+                supports=["image", "image_to_image", "logo", "ui_mockup", "product_mockup", "style_transfer", "variation"],  # type: ignore[list-item]
+                output_formats=["png", "jpg", "webp"],
+                paid=True,
+                requires_approval=True,
+                available=False,
+                notes="Adapter slot for future paid image generation providers.",
+            ),
+            MediaProviderInfo(
+                id="cloud_video_api",
+                name="Cloud Video API Adapter",
+                category="video",
+                location="cloud",
+                supports=["text_to_video", "image_to_video", "promo_video", "logo_intro", "app_showcase", "social_clip", "storyboard_video"],  # type: ignore[list-item]
+                output_formats=["mp4", "webm"],
+                paid=True,
+                gpu_intensive=True,
+                requires_approval=True,
+                available=False,
+                notes="Adapter slot for future paid video generation providers.",
+            ),
+            MediaProviderInfo(
+                id="tts_provider",
+                name="TTS Provider Adapter",
+                category="voice",
+                location="adapter",
+                supports=["voice", "voiceover", "narration"],  # type: ignore[list-item]
+                output_formats=["wav", "mp3"],
+                paid=True,
+                requires_approval=True,
+                available=False,
+                notes="Adapter slot for paid TTS and voiceover providers. Voice cloning requires separate approval.",
+            ),
+        ]
+
+    def prompt_presets(self) -> list[MediaPromptPreset]:
+        return [
+            MediaPromptPreset(
+                id="premium-product-mockup",
+                name="Premium Product Mockup",
+                studio="image",
+                kind="product_mockup",
+                prompt_template="Create a premium product mockup for {product} with realistic lighting, clear material detail, and a calm high-end composition.",
+                default_settings={"aspect_ratio": "16:9", "style": "premium studio"},
+                tags=["image", "product", "mockup"],
+            ),
+            MediaPromptPreset(
+                id="app-showcase-video",
+                name="App Showcase Video",
+                studio="video",
+                kind="app_showcase",
+                prompt_template="Create a short app showcase video for {app} that opens with the core workflow, shows the best UI moments, and closes with a polished brand frame.",
+                default_settings={"duration_seconds": 12, "fps": 12, "aspect_ratio": "16:9"},
+                tags=["video", "app", "promo"],
+            ),
+            MediaPromptPreset(
+                id="clean-tech-beat",
+                name="Clean Tech Beat",
+                studio="beat",
+                kind="music_beat",
+                prompt_template="Generate a clean modern beat for a premium software product: warm low end, crisp percussion, simple melody, loopable arrangement.",
+                default_settings={"bpm": 96, "key": "A minor", "genre": "modern electronic"},
+                tags=["music", "beat", "software"],
+            ),
+            MediaPromptPreset(
+                id="calm-narration",
+                name="Calm Narration",
+                studio="voice",
+                kind="voiceover",
+                prompt_template="Create a calm, trustworthy voiceover script for {topic}. Keep it concise, warm, and premium.",
+                default_settings={"voice": "calm narrator", "duration_seconds": 8},
+                tags=["voice", "tts", "narration"],
+            ),
+        ]
+
     def create_job(self, request: MediaCreativeRequest) -> MediaJobResponse:
+        start = time.perf_counter()
+        provider = self._provider_for(request)
+        self._require_generation_approval(request, provider)
         theme = Theme(
             primary=infer_theme_color(f"{request.prompt} {request.style}", request.theme_color),
             palette=[],
@@ -232,18 +389,27 @@ class CreativeMediaEngine:
         previous_manifest = self._load_previous_manifest(request.previous_job_id)
         effective_prompt = self._compose_effective_prompt(request, previous_manifest)
         formats = best_output_formats(request.kind, request.output_formats)
+        seed = request.seed if request.seed is not None else int(uuid4().hex[:8], 16)
+        created_at = utc_now()
 
         assets: list[MediaAsset] = []
         warnings: list[str] = []
+        timeline = [
+            self._event("media.job.queued", "Job queued", "ok", "Creative Studio accepted the generation request."),
+            self._event("media.job.generating", "Generation started", "ok", f"Using {provider.name}."),
+        ]
 
         assets.extend(self._write_brief_assets(job_dir, request, effective_prompt, theme, formats, previous_manifest))
         svg_path = self._write_svg_template(job_dir, request, effective_prompt, theme)
         assets.append(self._asset(svg_path, request.kind, "svg", "editable vector template", "image/svg+xml", True))
 
-        if request.kind == "music_beat":
+        if self._is_music_kind(request.kind):
             assets.extend(self._write_music_assets(job_dir, request, effective_prompt, theme))
 
-        if request.kind == "video_edit":
+        if self._is_voice_kind(request.kind):
+            assets.extend(self._write_voice_assets(job_dir, request, effective_prompt, theme))
+
+        if self._is_video_kind(request.kind):
             assets.extend(self._write_video_edit_assets(job_dir, request, effective_prompt, theme))
 
         if Image is None:
@@ -251,8 +417,11 @@ class CreativeMediaEngine:
         else:
             preview_path = self._write_png_preview(job_dir, request, effective_prompt, theme)
             assets.append(self._asset(preview_path, request.kind, "png", "raster preview", "image/png", True))
+            if request.kind == "background_removal":
+                transparent_path = self._write_transparent_preview(job_dir, request, effective_prompt, theme)
+                assets.append(self._asset(transparent_path, request.kind, "png", "transparent background preview", "image/png", True, preview_path.name))
 
-            if request.kind in {"gif", "animation", "video", "video_edit", "sticker_pack"} or "gif" in formats:
+            if self._is_motion_kind(request.kind) or "gif" in formats:
                 gif_path = self._write_gif_preview(job_dir, request, effective_prompt, theme)
                 assets.append(self._asset(gif_path, request.kind, "gif", "motion preview", "image/gif", True, preview_path.name))
 
@@ -262,11 +431,11 @@ class CreativeMediaEngine:
                 write_flat_psd(psd_path, image)
                 assets.append(self._asset(psd_path, request.kind, "psd", "flat Photoshop preview", "image/vnd.adobe.photoshop", True, "layer_manifest.json"))
 
-        if request.kind in {"animation", "video", "video_edit", "gif"} or "html" in formats:
+        if self._is_motion_kind(request.kind) or "html" in formats:
             html_path = self._write_animation_html(job_dir, request, effective_prompt, theme)
             assets.append(self._asset(html_path, request.kind, "html", "editable motion storyboard", "text/html", True))
 
-        if request.kind in {"video", "video_edit"} and shutil.which("ffmpeg") is None:
+        if self._is_video_kind(request.kind) and shutil.which("ffmpeg") is None:
             warnings.append("ffmpeg is not installed, so this slice creates storyboard frames/HTML instead of MP4/WebM video.")
 
         jsx_path = self._write_photoshop_jsx(job_dir, request, effective_prompt, theme)
@@ -275,16 +444,34 @@ class CreativeMediaEngine:
 
         response = MediaJobResponse(
             id=job_id,
-            created_at=utc_now(),
+            created_at=created_at,
+            updated_at=utc_now(),
+            completed_at=utc_now(),
             kind=request.kind,
-            status="ready",
+            studio=request.studio or self._studio_for_kind(request.kind),
+            operation=request.operation,
+            status="completed",
+            provider_id=provider.id,
+            provider_name=provider.name,
             prompt=request.prompt,
+            effective_prompt=effective_prompt,
+            negative_prompt=request.negative_prompt,
             feedback=request.feedback,
             previous_job_id=request.previous_job_id,
+            source_asset_id=request.source_asset_id,
             theme_color=theme.primary,
             palette=theme.palette,
             aspect_ratio=request.aspect_ratio,
             style=request.style,
+            seed=seed,
+            settings=self._job_settings(request, formats),
+            output_path=str(job_dir),
+            cost_estimate_usd=0.0 if not provider.paid else self._estimate_paid_cost(request),
+            time_taken_seconds=round(time.perf_counter() - start, 4),
+            timeline=[
+                *timeline,
+                self._event("media.job.completed", "Generation completed", "ok", f"Saved {len(assets)} asset(s) to the local library."),
+            ],
             plan=self._plan_for(request.kind),
             assets=assets,
             warnings=warnings,
@@ -296,6 +483,83 @@ class CreativeMediaEngine:
             job_dir=str(job_dir),
         )
         write_json(job_dir / "manifest.json", response.model_dump())
+        return response
+
+    def cancel_job(self, job_id: str) -> MediaJobResponse:
+        job = self.get_job(job_id)
+        if job.status == "completed":
+            job.warnings.append("Completed media jobs cannot be canceled; the asset remains in the library.")
+            return job
+        job.status = "canceled"
+        job.updated_at = utc_now()
+        job.timeline.append(self._event("media.job.canceled", "Job canceled", "warning", "User canceled the media job."))
+        write_json(Path(job.job_dir) / "manifest.json", job.model_dump())
+        return job
+
+    def asset_library(self, limit: int = 100, kind: str = "", fmt: str = "") -> MediaAssetLibraryResponse:
+        jobs = self.list_jobs(limit=limit, kind=kind)
+        requested_format = fmt.strip().lower().lstrip(".")
+        assets: list[MediaAsset] = []
+        for job in jobs:
+            for asset in job.assets:
+                if requested_format and asset.format != requested_format:
+                    continue
+                assets.append(asset)
+        return MediaAssetLibraryResponse(
+            generated_at=utc_now(),
+            base_dir=str(self.base_dir),
+            jobs=jobs,
+            assets=assets,
+            total_assets=len(assets),
+            formats=sorted({asset.format for asset in assets}),
+            kinds=sorted({asset.kind for asset in assets}),
+        )
+
+    def export_job(self, job_id: str, request: MediaExportRequest) -> MediaExportResponse:
+        job = self.get_job(job_id)
+        export_id = f"export-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}-{uuid4().hex[:6]}"
+        export_dir = Path(job.job_dir) / "exports"
+        export_dir.mkdir(parents=True, exist_ok=True)
+        selected = self._selected_assets(job, request.asset_ids)
+        warnings: list[str] = []
+        fmt = request.format.lower().lstrip(".")
+
+        if fmt == "zip":
+            path = export_dir / f"{export_id}.zip"
+            with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+                for asset in selected:
+                    asset_path = Path(asset.path)
+                    if asset_path.exists():
+                        archive.write(asset_path, asset_path.name)
+                if request.include_metadata:
+                    archive.write(Path(job.job_dir) / "manifest.json", "manifest.json")
+            export_assets = [self._asset(path, job.kind, "zip", "exported asset pack", "application/zip", False)]
+        else:
+            candidate = next((asset for asset in selected if asset.format == fmt), None)
+            if candidate is None and fmt in {"jpg", "jpeg"}:
+                candidate = next((asset for asset in selected if asset.format == "png"), None)
+            if candidate is None:
+                warnings.append(f"No {fmt} asset is available; exported a ZIP package instead.")
+                return self.export_job(job_id, MediaExportRequest(format="zip", asset_ids=request.asset_ids, include_metadata=request.include_metadata))
+
+            source = Path(candidate.path)
+            path = export_dir / f"{export_id}.{ 'jpg' if fmt == 'jpeg' else fmt }"
+            if fmt in {"jpg", "jpeg"} and candidate.format == "png" and Image is not None:
+                Image.open(source).convert("RGB").save(path, quality=92)
+            else:
+                shutil.copyfile(source, path)
+            export_assets = [self._asset(path, job.kind, fmt, f"exported {fmt}", candidate.mime_type, False, source.name)]
+
+        response = MediaExportResponse(
+            id=export_id,
+            created_at=utc_now(),
+            job_id=job.id,
+            format=fmt,
+            path=str(path),
+            assets=export_assets,
+            warnings=warnings,
+        )
+        write_json(export_dir / f"{export_id}.json", response.model_dump())
         return response
 
     def list_jobs(self, limit: int = 50, kind: str = "") -> list[MediaJobResponse]:
@@ -358,6 +622,79 @@ class CreativeMediaEngine:
             ]
         )
 
+    def _provider_for(self, request: MediaCreativeRequest) -> MediaProviderInfo:
+        providers = {provider.id: provider for provider in self.providers()}
+        if request.provider_id in providers:
+            return providers[request.provider_id]
+        if self._is_music_kind(request.kind) or self._is_voice_kind(request.kind):
+            return providers["local_audio_synth"]
+        if self._is_video_kind(request.kind) or self._is_motion_kind(request.kind):
+            return providers["local_motion_storyboard"]
+        return providers["local_creative_renderer"]
+
+    def _require_generation_approval(self, request: MediaCreativeRequest, provider: MediaProviderInfo) -> None:
+        if provider.paid and not request.paid_approved:
+            raise ValueError(f"{provider.name} is a paid provider and requires approval before generation.")
+        is_large_gpu_job = provider.gpu_intensive and (request.duration_seconds > 20 or request.width * request.height > 2_500_000)
+        if is_large_gpu_job and not request.gpu_approved:
+            raise ValueError("Large GPU or long video jobs require approval before generation.")
+        sensitive_terms = ("in the style of", "style of", "as painted by", "like disney", "like pixar", "like marvel")
+        if any(term in f"{request.prompt} {request.style}".lower() for term in sensitive_terms) and not request.copyright_style_approved:
+            raise ValueError("Copyright-sensitive style prompts require explicit approval.")
+        if ("clone" in f"{request.operation} {request.voice}".lower() or request.settings.get("voice_clone")) and not request.voice_clone_approved:
+            raise ValueError("Voice cloning requires explicit approval.")
+
+    def _event(self, kind: str, title: str, status: str, detail: str) -> ToolEvent:
+        return ToolEvent(kind=kind, title=title, status=status, detail=detail, payload={}, created_at=utc_now())  # type: ignore[arg-type]
+
+    def _job_settings(self, request: MediaCreativeRequest, formats: list[str]) -> dict[str, Any]:
+        return {
+            **request.settings,
+            "width": request.width,
+            "height": request.height,
+            "duration_seconds": request.duration_seconds,
+            "fps": request.fps,
+            "bpm": request.bpm,
+            "key": request.key,
+            "genre": request.genre,
+            "voice": request.voice,
+            "output_formats": formats,
+        }
+
+    def _estimate_paid_cost(self, request: MediaCreativeRequest) -> float:
+        if self._is_video_kind(request.kind):
+            return round(max(0.25, request.duration_seconds * 0.12), 2)
+        if self._is_voice_kind(request.kind):
+            return round(max(0.03, len(request.prompt) * 0.0002), 2)
+        return 0.08
+
+    def _studio_for_kind(self, kind: str) -> str:
+        if self._is_video_kind(kind) or self._is_motion_kind(kind):
+            return "video"
+        if self._is_music_kind(kind):
+            return "beat"
+        if self._is_voice_kind(kind):
+            return "voice"
+        return "image"
+
+    def _is_video_kind(self, kind: str) -> bool:
+        return kind in {"video", "text_to_video", "image_to_video", "promo_video", "logo_intro", "app_showcase", "social_clip", "storyboard_video", "video_edit"}
+
+    def _is_motion_kind(self, kind: str) -> bool:
+        return self._is_video_kind(kind) or kind in {"animation", "gif", "sticker_pack"}
+
+    def _is_music_kind(self, kind: str) -> bool:
+        return kind in {"music_beat", "music", "drum_loop", "melody", "loop", "arrangement"}
+
+    def _is_voice_kind(self, kind: str) -> bool:
+        return kind in {"voice", "voiceover", "narration", "sound_effect", "audio_cleanup"}
+
+    def _selected_assets(self, job: MediaJobResponse, asset_ids: list[str]) -> list[MediaAsset]:
+        if not asset_ids:
+            return job.assets
+        requested = set(asset_ids)
+        return [asset for asset in job.assets if asset.id in requested or Path(asset.path).name in requested]
+
     def _write_brief_assets(
         self,
         job_dir: Path,
@@ -391,7 +728,7 @@ class CreativeMediaEngine:
             "previous_summary": previous,
         }
         brief = [
-            "# Aegis Creative Media Brief",
+            "# Auralith Creative Media Brief",
             "",
             f"- Kind: {request.kind}",
             f"- Prompt: {request.prompt}",
@@ -472,7 +809,7 @@ class CreativeMediaEngine:
     <circle cx="{width * 0.76:.0f}" cy="{height * 0.43:.0f}" r="{min(width, height) * 0.08:.0f}" fill="{p3}" opacity="0.18"/>
   </g>
   <text x="{width * 0.17:.0f}" y="{height * 0.39:.0f}" fill="{light}" font-family="Segoe UI, Arial, sans-serif" font-size="{max(34, width // 25)}" font-weight="700">{title}</text>
-  <text x="{width * 0.17:.0f}" y="{height * 0.48:.0f}" fill="{p1}" font-family="Segoe UI, Arial, sans-serif" font-size="{max(18, width // 55)}">Generated by Aegis Creative Studio</text>
+  <text x="{width * 0.17:.0f}" y="{height * 0.48:.0f}" fill="{p1}" font-family="Segoe UI, Arial, sans-serif" font-size="{max(18, width // 55)}">Generated by Auralith Creative Studio</text>
   <rect x="{width * 0.17:.0f}" y="{height * 0.57:.0f}" width="{width * 0.22:.0f}" height="{height * 0.07:.0f}" rx="18" fill="{p0}"/>
   <text x="{width * 0.20:.0f}" y="{height * 0.615:.0f}" fill="#04100a" font-family="Segoe UI, Arial, sans-serif" font-size="{max(16, width // 70)}" font-weight="700">EDITABLE TEMPLATE</text>
 </svg>
@@ -508,7 +845,7 @@ class CreativeMediaEngine:
         title = safe_title(prompt)
         font = ImageFont.load_default() if ImageFont is not None else None
         draw.text((int(width * 0.17), int(height * 0.36)), title, fill=(248, 250, 252, 255), font=font)
-        draw.text((int(width * 0.17), int(height * 0.45)), "Aegis Creative Studio", fill=(*p0, 255), font=font)
+        draw.text((int(width * 0.17), int(height * 0.45)), "Auralith Creative Studio", fill=(*p0, 255), font=font)
         draw.rounded_rectangle((int(width * 0.17), int(height * 0.58), int(width * 0.40), int(height * 0.66)), radius=18, fill=(*p0, 255))
         draw.text((int(width * 0.20), int(height * 0.61)), "EDITABLE", fill=(3, 16, 10, 255), font=font)
         return image
@@ -516,6 +853,19 @@ class CreativeMediaEngine:
     def _write_png_preview(self, job_dir: Path, request: MediaCreativeRequest, prompt: str, theme: Theme) -> Path:
         path = job_dir / "preview.png"
         self._make_preview_image(request, prompt, theme).save(path)
+        return path
+
+    def _write_transparent_preview(self, job_dir: Path, request: MediaCreativeRequest, prompt: str, theme: Theme) -> Path:
+        if Image is None or ImageDraw is None:
+            raise RuntimeError("Pillow is not available")
+        base = self._make_preview_image(request, prompt, theme).convert("RGBA")
+        mask = Image.new("L", base.size, 0)
+        draw = ImageDraw.Draw(mask)
+        w, h = base.size
+        draw.rounded_rectangle((int(w * 0.10), int(h * 0.14), int(w * 0.90), int(h * 0.82)), radius=42, fill=255)
+        base.putalpha(mask)
+        path = job_dir / "transparent_preview.png"
+        base.save(path)
         return path
 
     def _write_gif_preview(self, job_dir: Path, request: MediaCreativeRequest, prompt: str, theme: Theme) -> Path:
@@ -574,7 +924,7 @@ p{{position:absolute;left:17%;top:49%;margin:0;color:{p1};font-size:clamp(15px,2
 @keyframes float{{from{{transform:translateY(-3%) scale(.96);}}to{{transform:translateY(7%) scale(1.05);}}}}
 </style>
 </head>
-<body><main class="stage"><section class="glow"></section><div class="beam"></div><div class="orb"></div><h1>{title}</h1><p>Aegis Creative Studio</p><div class="cta">Editable Motion Template</div></main></body>
+<body><main class="stage"><section class="glow"></section><div class="beam"></div><div class="orb"></div><h1>{title}</h1><p>Auralith Creative Studio</p><div class="cta">Editable Motion Template</div></main></body>
 </html>
 """
         path = job_dir / "animation_storyboard.html"
@@ -585,7 +935,7 @@ p{{position:absolute;left:17%;top:49%;margin:0;color:{p1};font-size:clamp(15px,2
         title = safe_title(prompt).replace("\\", "\\\\").replace('"', '\\"')
         p0 = theme.primary
         jsx = f"""#target photoshop
-app.documents.add({request.width}, {request.height}, 72, "Aegis Creative Template", NewDocumentMode.RGB, DocumentFill.TRANSPARENT);
+app.documents.add({request.width}, {request.height}, 72, "Auralith Creative Template", NewDocumentMode.RGB, DocumentFill.TRANSPARENT);
 var doc = app.activeDocument;
 function solidLayer(name, hex) {{
   var layer = doc.artLayers.add();
@@ -610,7 +960,7 @@ textLayer.textItem.size = Math.max(36, doc.width.value / 24);
 var subLayer = doc.artLayers.add();
 subLayer.kind = LayerKind.TEXT;
 subLayer.name = "Subhead / editable";
-subLayer.textItem.contents = "Aegis Creative Studio";
+subLayer.textItem.contents = "Auralith Creative Studio";
 subLayer.textItem.position = [doc.width.value * 0.16, doc.height.value * 0.50];
 subLayer.textItem.size = Math.max(18, doc.width.value / 55);
 """
@@ -620,8 +970,8 @@ subLayer.textItem.size = Math.max(18, doc.width.value / 55);
 
     def _write_music_assets(self, job_dir: Path, request: MediaCreativeRequest, prompt: str, theme: Theme) -> list[MediaAsset]:
         text = f"{prompt} {request.style}".lower()
-        genre = "modern cinematic"
-        bpm = 96
+        genre = request.genre.strip() or "modern cinematic"
+        bpm = request.bpm or 96
         if any(term in text for term in ("lofi", "lo-fi", "chill", "study")):
             genre = "lofi hip hop"
             bpm = 82
@@ -641,7 +991,7 @@ subLayer.textItem.size = Math.max(18, doc.width.value / 55);
             genre = "cinematic hybrid"
             bpm = 88
 
-        key = "A minor"
+        key = request.key.strip() or "A minor"
         if any(term in text for term in ("bright", "happy", "uplift", "major")):
             key = "C major"
         elif any(term in text for term in ("dark", "moody", "minor", "cyber")):
@@ -690,7 +1040,7 @@ subLayer.textItem.size = Math.max(18, doc.width.value / 55);
         }
 
         sheet = [
-            "# Aegis Beat Sheet",
+            "# Auralith Beat Sheet",
             "",
             f"- Genre: {genre}",
             f"- BPM: {bpm}",
@@ -713,15 +1063,119 @@ subLayer.textItem.size = Math.max(18, doc.width.value / 55);
         arrangement_path = job_dir / "beat_arrangement.json"
         sheet_path = job_dir / "beat_sheet.md"
         wav_path = job_dir / "beat_preview.wav"
+        midi_path = job_dir / "beat_sketch.mid"
+        stems_path = job_dir / "stems_manifest.json"
         write_json(arrangement_path, arrangement)
         sheet_path.write_text("\n".join(sheet), encoding="utf-8")
         self._write_wav_preview(wav_path, bpm, key, float(arrangement["music_profile"]["preview_seconds"]))
+        self._write_midi_preview(midi_path, bpm, key)
+        write_json(
+            stems_path,
+            {
+                "format": "aegis.stems+json",
+                "bpm": bpm,
+                "key": key,
+                "stems": [
+                    {"name": "drums", "source": "beat_preview.wav", "status": "preview_mix"},
+                    {"name": "bass", "source": "beat_arrangement.json", "status": "arrangement_layer"},
+                    {"name": "music", "source": "beat_arrangement.json", "status": "arrangement_layer"},
+                    {"name": "fx", "source": "beat_arrangement.json", "status": "arrangement_layer"},
+                ],
+            },
+        )
 
         return [
             self._asset(sheet_path, request.kind, "md", "beat sheet and revision notes", "text/markdown", True),
             self._asset(arrangement_path, request.kind, "json", "editable beat arrangement", "application/json", True),
             self._asset(wav_path, request.kind, "wav", "local beat preview", "audio/wav", True, arrangement_path.name),
+            self._asset(midi_path, request.kind, "midi", "MIDI sketch export", "audio/midi", True, arrangement_path.name),
+            self._asset(stems_path, request.kind, "json", "stems export manifest", "application/json", True, arrangement_path.name),
         ]
+
+    def _write_midi_preview(self, path: Path, bpm: int, key: str) -> None:
+        root_notes = {"C": 60, "D": 62, "E": 64, "F": 65, "G": 67, "A": 69, "B": 71}
+        root = root_notes.get(key[:1].upper(), 69)
+        scale = [0, 3, 7, 10] if "minor" in key.lower() else [0, 4, 7, 12]
+        tempo = int(60_000_000 / max(40, min(240, bpm)))
+
+        def vlq(value: int) -> bytes:
+            buffer = value & 0x7F
+            value >>= 7
+            out = bytearray()
+            while value:
+                out.insert(0, (buffer | 0x80) & 0xFF)
+                buffer = value & 0x7F
+                value >>= 7
+            out.append(buffer)
+            return bytes(out)
+
+        track = bytearray()
+        track.extend(b"\x00\xff\x51\x03" + tempo.to_bytes(3, "big"))
+        track.extend(b"\x00\xc0\x50")
+        for index in range(16):
+            note = root + scale[index % len(scale)]
+            track.extend(vlq(0) + bytes([0x90, note, 82]))
+            track.extend(vlq(120) + bytes([0x80, note, 0]))
+        track.extend(b"\x00\xff\x2f\x00")
+        with path.open("wb") as handle:
+            handle.write(b"MThd" + (6).to_bytes(4, "big") + (0).to_bytes(2, "big") + (1).to_bytes(2, "big") + (480).to_bytes(2, "big"))
+            handle.write(b"MTrk" + len(track).to_bytes(4, "big") + bytes(track))
+
+    def _write_voice_assets(self, job_dir: Path, request: MediaCreativeRequest, prompt: str, theme: Theme) -> list[MediaAsset]:
+        script = [
+            "# Auralith Voice Script",
+            "",
+            f"- Voice: {request.voice or 'calm narrator'}",
+            f"- Duration target: {request.duration_seconds:.1f}s",
+            f"- Prompt: {request.prompt}",
+            "",
+            "## Narration",
+            "",
+            safe_title(prompt),
+            "",
+            "Auralith Creative Studio generated this local scratch voice package. Replace it with a provider TTS render when a production voice is approved.",
+        ]
+        script_path = job_dir / "voice_script.md"
+        wav_path = job_dir / "voice_scratch.wav"
+        profile_path = job_dir / "voice_profile.json"
+        script_path.write_text("\n".join(script), encoding="utf-8")
+        write_json(
+            profile_path,
+            {
+                "voice": request.voice or "calm narrator",
+                "operation": request.operation,
+                "cleanup": request.kind == "audio_cleanup",
+                "mastering_preset": request.settings.get("mastering_preset", "speech polish"),
+                "noise_reduction": request.settings.get("noise_reduction", request.kind == "audio_cleanup"),
+            },
+        )
+        self._write_voice_wav_preview(wav_path, prompt, float(request.duration_seconds))
+        return [
+            self._asset(script_path, request.kind, "md", "voiceover script", "text/markdown", True),
+            self._asset(profile_path, request.kind, "json", "voice/audio processing profile", "application/json", True),
+            self._asset(wav_path, request.kind, "wav", "local scratch voice preview", "audio/wav", True, script_path.name),
+        ]
+
+    def _write_voice_wav_preview(self, path: Path, prompt: str, duration_seconds: float) -> None:
+        sample_rate = 44100
+        duration = max(1.0, min(duration_seconds, 20.0))
+        total_samples = int(sample_rate * duration)
+        words = max(1, len(prompt.split()))
+        frames = bytearray()
+        for i in range(total_samples):
+            t = i / sample_rate
+            phrase = (t * max(1.0, words / duration)) % 1.0
+            gate = 0.35 + 0.65 * math.sin(math.pi * phrase)
+            pitch = 165.0 + 35.0 * math.sin(2.0 * math.pi * t * 1.7)
+            tone = math.sin(2.0 * math.pi * pitch * t) * 0.18 * gate
+            breath = math.sin(2.0 * math.pi * 310.0 * t) * 0.025 * (1.0 - gate)
+            sample = max(-1.0, min(1.0, tone + breath))
+            frames.extend(struct.pack("<h", int(sample * 32767)))
+        with wave.open(str(path), "wb") as wav_file:
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(sample_rate)
+            wav_file.writeframes(bytes(frames))
 
     def _write_wav_preview(self, path: Path, bpm: int, key: str, duration_seconds: float) -> None:
         sample_rate = 44100
@@ -805,7 +1259,7 @@ subLayer.textItem.size = Math.max(18, doc.width.value / 55);
             ],
             "captions": [
                 {"time": 0.0, "text": safe_title(prompt), "style": "large readable hook"},
-                {"time": round(duration * 0.45, 2), "text": "Refined by Aegis", "style": "compact support line"},
+                {"time": round(duration * 0.45, 2), "text": "Refined by Auralith", "style": "compact support line"},
             ],
             "sound_design": [
                 "Short impact on the opening cut.",
@@ -853,11 +1307,24 @@ subLayer.textItem.size = Math.max(18, doc.width.value / 55);
     def _plan_for(self, kind: str) -> list[str]:
         plans = {
             "image": ["Infer theme color", "Create editable vector source", "Render PNG preview", "Save provider prompt pack"],
+            "logo": ["Infer brand direction", "Create editable vector source", "Render PNG preview", "Save logo prompt pack"],
+            "ui_mockup": ["Infer product workflow", "Create UI composition source", "Render PNG mockup", "Save editable layer manifest"],
+            "product_mockup": ["Infer product cues", "Create product presentation source", "Render PNG mockup", "Save export package"],
+            "background_removal": ["Load source intent", "Create transparent PNG preview", "Save original prompt metadata", "Prepare export"],
+            "upscale": ["Preserve prompt identity", "Render larger preview", "Save source metadata", "Prepare export"],
+            "variation": ["Preserve source direction", "Create visual variation", "Render preview", "Save revision metadata"],
             "video": ["Build storyboard", "Create motion prompt pack", "Render GIF/HTML preview", "Prepare future MP4 adapter slot"],
+            "promo_video": ["Build promo storyboard", "Plan captions and CTA", "Render GIF/HTML preview", "Prepare future MP4 adapter slot"],
+            "app_showcase": ["Map app workflow beats", "Create showcase storyboard", "Render motion preview", "Save edit decision list"],
             "animation": ["Create loopable HTML animation", "Save SVG/vector source", "Render motion preview"],
             "gif": ["Create motion frames", "Render loop preview", "Save editable source package"],
             "video_edit": ["Analyze source intent", "Create edit decision list", "Plan captions, transitions, and sound", "Prepare export notes"],
             "music_beat": ["Infer genre, BPM, and key", "Create drum and melody arrangement", "Render WAV beat preview", "Save stem and revision notes"],
+            "music": ["Infer genre, BPM, and key", "Create arrangement", "Render WAV preview", "Save MIDI and stems manifest"],
+            "voiceover": ["Build narration script", "Create voice profile", "Render scratch WAV preview", "Save provider-ready prompt"],
+            "narration": ["Build narration script", "Create voice profile", "Render scratch WAV preview", "Save provider-ready prompt"],
+            "sound_effect": ["Infer sound design target", "Create audio profile", "Render scratch WAV preview", "Save revision notes"],
+            "audio_cleanup": ["Create cleanup profile", "Document noise-reduction intent", "Render scratch reference", "Save mastering notes"],
             "psd_template": ["Create layer manifest", "Create Photoshop JSX builder", "Write flattened PSD preview"],
         }
         return plans.get(kind, ["Infer theme", "Create editable source package", "Render preview", "Save revision metadata"])
@@ -873,6 +1340,7 @@ subLayer.textItem.size = Math.max(18, doc.width.value / 55);
         derived_from: str = "",
     ) -> MediaAsset:
         return MediaAsset(
+            id=f"{path.parent.name}:{path.name}",
             path=str(path),
             kind=kind,
             format=fmt,
@@ -880,4 +1348,6 @@ subLayer.textItem.size = Math.max(18, doc.width.value / 55);
             mime_type=mime_type,
             editable=editable,
             derived_from=derived_from,
+            thumbnail_path=str(path) if fmt in {"png", "jpg", "gif", "svg"} else "",
+            metadata={"size_bytes": path.stat().st_size if path.exists() else 0},
         )

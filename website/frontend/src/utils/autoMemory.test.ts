@@ -74,7 +74,7 @@ function responseFixture(overrides: Partial<AgentResponse> = {}): AgentResponse 
     task_plan: null,
     context_budget: null,
     model_attempts: [],
-    assistant_name: 'Aegis AI',
+    assistant_name: 'Auralith Prime',
     mode: 'build',
     engine: 'Aegis Core',
     workspace_root: 'C:\\Projects\\Aegis',

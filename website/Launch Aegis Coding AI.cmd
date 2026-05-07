@@ -1,8 +1,8 @@
 @echo off
 REM ============================================================================
-REM Aegis Coding AI Launcher
+REM Auralith OS Launcher
 REM ============================================================================
-REM This script launches the Aegis Coding AI application.
+REM This script launches Auralith OS, powered by Aegis Core.
 REM
 REM Requirements:
 REM   - Python 3.10+ with venv module
@@ -17,8 +17,8 @@ REM   - Runs both servers simultaneously
 REM
 REM The application will be available at: http://127.0.0.1:5173
 REM
-REM To use the Coding AI:
-REM   1. Wait for the launcher to display "Aegis Coding AI is ready at..."
+REM To use Auralith OS:
+REM   1. Wait for the launcher to display "Auralith OS is ready at..."
 REM   2. Open http://127.0.0.1:5173 in your browser
 REM   3. Select a workspace directory
 REM   4. Choose a mode (develop, build, review, or chat)

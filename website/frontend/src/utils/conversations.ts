@@ -70,7 +70,7 @@ export function summarizeConversationTitle(messages: ChatMessage[], workspaceRoo
   const leaf = workspaceLeaf(workspaceRoot);
   if (leaf) return leaf;
 
-  return assistantSummary || cleanedMessages.at(-1)?.content || 'Aegis chat';
+  return assistantSummary || cleanedMessages.at(-1)?.content || 'Auralith OS session';
 }
 
 export function summarizeConversationPreview(messages: ChatMessage[]): string {
@@ -134,7 +134,7 @@ export function buildConversationMarkdown(
   workspaceRoot: string,
   exportedAt = new Date().toISOString()
 ): string {
-  const safeTitle = compactText(title || 'Aegis chat', 120) || 'Aegis chat';
+  const safeTitle = compactText(title || 'Auralith OS session', 120) || 'Auralith OS session';
   const lines = [
     `# ${safeTitle}`,
     '',

@@ -22,6 +22,7 @@ import {
   Search,
   Send,
   Settings,
+  Sparkles,
   Square,
   Sun,
   Trash2,
@@ -32,32 +33,101 @@ import {
   Brain
 } from 'lucide-react';
 import {
+  activateAdaptivePolicyProfile,
+  approveAutonomousGate,
   applyFileChanges,
+  cancelAutonomousObjective,
+  cancelCreativeJob,
   compareDiff,
+  createAutonomousObjective,
+  createCreativeJob,
+  getCurrentAccount,
   getConfig,
   getCheckpoints,
+  getAdaptiveIntelligence,
+  getAutonomousEngineering,
+  getAutonomousObjective,
+  getContinuity,
+  getCreativeAssetLibrary,
+  getCreativeJob,
+  getCreativeStudio,
+  getDistributedRuntime,
+  getOperatingEnvironment,
+  getPlatformDiscipline,
+  getUnifiedContext,
+  getUnifiedRuntime,
   getHealth,
   getModelManager,
   getModelRegistry,
   getModels,
   getValidationProfile,
   getWorkspaceHistory,
+  getWorkspaceIntelligence,
   getWorkspaceProfile,
+  approveTaskAction,
+  cancelTask,
   createMemoryNote,
+  getProjectIntelligence,
+  getTaskArtifacts,
+  getTaskTimeline,
+  listCreativeJobs,
+  listTasks,
   listFiles,
+  loginAccount,
+  logoutAccount,
   deleteModel,
   pullModel,
   readFile,
+  reindexProjectIntelligence,
+  dismissWorkspaceRecommendation,
+  fixWorkspaceRecommendation,
+  retryTask,
+  replayAdaptiveTasks,
+  rollbackAdaptivePolicy,
   restoreCheckpoint,
+  dispatchExecutionQueue,
+  createRemoteSyncManifest,
+  disableEcosystemPackage,
+  disablePlugin,
+  enableEcosystemPackage,
+  enablePlugin,
+  exportCurrentProjectIntelligence,
+  exportCreativeJob,
+  runAdaptiveBenchmarks,
+  runEcosystemWorkflow,
   runWorkspaceValidation,
+  runWorkspaceIntelligenceJobs,
+  registerAccount,
   saveConfig,
+  scanWorkspaceIntelligence,
+  searchEcosystem,
   setupWorkspace,
   streamAgentMessage,
+  requestPasswordReset,
+  refreshAdaptiveIntelligence,
+  refreshEcosystem,
+  refreshProductization,
+  getEcosystem,
+  getProductization,
+  trustEcosystemPackage,
+  trustPlugin,
+  iterateAutonomousObjective,
+  pauseAutonomousObjective,
+  previewGlobalCommand,
+  rejectAutonomousGate,
+  simulateAutonomousObjective,
+  startAutonomousObjective,
+  validateEcosystemPackage,
+  validatePlugin,
   updateValidationProfile
 } from './api';
+import { brandAssets } from './brandAssets';
 import { MemoryEditor } from './components/MemoryEditor';
+import { ModelSelector } from './components/ModelSelector';
 import { ApprovalSettings } from './components/ApprovalSettings';
 import { ObservabilityPanel } from './components/ObservabilityPanel';
+import { PublicSite } from './components/PublicSite';
+import { TaskStatusSummary } from './components/TaskStatusSummary';
 import {
   connectionStateDetail,
   connectionStateLabel,
@@ -65,9 +135,49 @@ import {
 } from './utils/connection';
 import {
   buildRuntimeDiagnostics,
-  type RuntimeDiagnosticActionKind,
   type RuntimeDiagnosticCheck
 } from './utils/runtimeDiagnostics';
+import {
+  buildAssistantSummary,
+  delay,
+  diagnosticStatusToEventStatus,
+  findManagedModelByName,
+  formatBytes,
+  formatDateTime,
+  formatEventTime,
+  formatStatusLabel,
+  isAbortError,
+  managedModelFromConfig,
+  mergeById,
+  modelInventoryToManagedModels,
+  modelOptionKey,
+  readinessStatusToEventStatus,
+  routeProfileLabel,
+  runtimeDiagnosticActionIcon,
+  shouldOfferReadinessValidation,
+  shouldOfferWorkspaceSetup,
+  taskStatusToEventStatus
+} from './utils/appUi';
+import {
+  defaultAgentId,
+  defaultAgentPerspective,
+  detailPanelSectionOptions,
+  loadAutoMemoryFingerprints,
+  loadCollapsedDetailSections,
+  loadCustomAgents,
+  loadDetailsPanelVisible,
+  loadQueueAutoSendPaused,
+  loadSelectedWorkspaceFile,
+  normalizeProjectRootKey,
+  saveAutoMemoryFingerprints,
+  saveCollapsedDetailSections,
+  saveCustomAgents,
+  saveDetailsPanelVisible,
+  saveQueueAutoSendPaused,
+  saveSelectedWorkspaceFile,
+  type CustomAgent,
+  type DetailPanelSection
+} from './utils/appStorage';
 import {
   buildConversationPreview,
   buildConversationMarkdown,
@@ -126,27 +236,55 @@ import type { ConnectionState } from './utils/connection';
 import type { ChatThreadPreview, SavedConversation } from './utils/conversations';
 import type { QueuedMessage } from './utils/messageQueue';
 import type {
+  AdaptiveInsight,
+  AdaptiveIntelligenceSnapshot,
+  AdaptiveQualityScore,
+  AdaptiveRouteRecommendation,
+  AegisContinuitySnapshot,
   AgentResponse,
   AppConfig,
+  AuthLoginRequest,
+  AuthRegisterRequest,
+  AuthSessionResponse,
   CheckpointSummary,
   ChatMessage,
   CommandRun,
   DiffCompareResponse,
+  DistributedRuntimeSnapshot,
+  AutonomousEngineeringSnapshot,
+  AutonomousObjectiveDetail,
+  EcosystemPackageManifest,
+  EcosystemSearchResponse,
+  EcosystemSnapshot,
   FileChange,
   FixMemoryEntry,
   HealthResponse,
   HistoryResponse,
+  MediaAssetLibraryResponse,
+  MediaCapabilitiesResponse,
+  MediaJobResponse,
+  MediaKind,
   ManagedModelInfo,
-  ModelInfo,
   ModelInventoryResponse,
   ModelManagerResponse,
   ModelRegistryResponse,
   Mode,
   ModeOption,
+  OperatingEnvironmentSnapshot,
+  PlatformDisciplineSnapshot,
+  PluginManifest,
+  ProductizationSnapshot,
+  ProjectIntelligenceSnapshot,
   ProjectMemoryEntry,
   RepairAttempt,
+  WorkspaceOperationsSnapshot,
+  WorkspaceRecommendation,
+  TaskArtifactsResponse,
   TaskSummary,
   ToolEvent,
+  GlobalCommandResponse,
+  UnifiedContextSnapshot,
+  UnifiedRuntimeSnapshot,
   ValidationRecipe,
   ValidateResponse,
   ValidationSuggestion,
@@ -176,6 +314,11 @@ const fallbackModeOptions: ModeOption[] = [
   { id: 'review', label: 'Review', description: 'Inspect code, risks, and tests.' },
   { id: 'chat', label: 'Chat', description: 'Answer questions without a build bias.' }
 ];
+const productName = 'Auralith OS';
+const assistantIdentity = 'Auralith Prime';
+const runtimeIdentity = 'Aegis Core';
+const defaultAssistantMission =
+  'A local-first AI operating environment for coding, automation, research, orchestration, creative workflows, and intelligent task execution.';
 
 type Palette = ReturnType<typeof getPalette>;
 type SubmitOptions = Partial<QueuedMessage> & {
@@ -185,6 +328,7 @@ type ValidationRepairTrailStatus = 'sent' | 'passed' | 'failed';
 type ValidationRepairTrailStatusFilter = 'all' | ValidationRepairTrailStatus;
 type ActivityFilter = 'all' | 'issues' | 'commands';
 type ValidationRepairTrailChange = Pick<FileChange, 'action' | 'path'>;
+type TaskBoardFilter = 'active' | 'completed' | 'failed' | 'all';
 type ValidationRepairTrailItem = {
   id: string;
   createdAt: string;
@@ -212,18 +356,152 @@ const activityFilterOptions: Array<{ value: ActivityFilter; label: string; ariaL
   { value: 'issues', label: 'Issues', ariaLabel: 'Show issue activity events' },
   { value: 'commands', label: 'Commands', ariaLabel: 'Show command activity events' }
 ];
-type SidebarSection = 'chat' | 'projects' | 'agents' | 'models';
+const taskFilterOptions: Array<{ value: TaskBoardFilter; label: string }> = [
+  { value: 'active', label: 'Active' },
+  { value: 'completed', label: 'Completed' },
+  { value: 'failed', label: 'Failed' },
+  { value: 'all', label: 'All' }
+];
+const terminalTaskStatuses = new Set(['completed', 'failed', 'canceled']);
+function severityToEventStatus(severity: string): ToolEvent['status'] {
+  if (severity === 'critical' || severity === 'high') return 'error';
+  if (severity === 'medium' || severity === 'low') return 'warning';
+  return 'ok';
+}
+function healthStatusToEventStatus(status: string): ToolEvent['status'] {
+  if (status === 'critical' || status === 'failed' || status === 'error') return 'error';
+  if (
+    status === 'attention' ||
+    status === 'watch' ||
+    status === 'warning' ||
+    status === 'unknown' ||
+    status === 'skipped'
+  ) {
+    return 'warning';
+  }
+  return 'ok';
+}
+function reliabilityStatusToEventStatus(status: string): ToolEvent['status'] {
+  if (status === 'degraded' || status === 'critical' || status === 'failed') return 'error';
+  if (status === 'watch' || status === 'unknown' || status === 'warning') return 'warning';
+  return 'ok';
+}
+type SidebarSection =
+  | 'chat'
+  | 'projects'
+  | 'intelligence'
+  | 'workspace-intelligence'
+  | 'runtime'
+  | 'adaptive'
+  | 'hardening'
+  | 'ecosystem'
+  | 'autonomous'
+  | 'creative'
+  | 'tasks'
+  | 'agents'
+  | 'models';
 type SettingsTab = 'general' | 'models' | 'agents' | 'workspace' | 'advanced';
-type DetailPanelSection = 'generated' | 'workspace' | 'memory';
-type CustomAgent = {
-  id: string;
-  name: string;
-  perspective: string;
-  mission: string;
-  mode: Mode;
-  modelName: string;
-  createdAt: string;
+
+const authSessionStorageKey = 'aegis.auth.session.v1';
+const legacyProtectedRoutes: Record<string, string> = {
+  '/chat': '/app/chat',
+  '/workspace': '/app/workspace',
+  '/projects': '/app/projects',
+  '/tasks': '/app/tasks',
+  '/agents': '/app/agents',
+  '/models': '/app/models',
+  '/automation': '/app/automation',
+  '/research': '/app/research',
+  '/creative-studio': '/app/creative-studio',
+  '/memory': '/app/memory',
+  '/settings': '/app/settings'
 };
+const protectedSectionRoutes: Record<SidebarSection, string> = {
+  chat: '/app/chat',
+  projects: '/app/projects',
+  intelligence: '/app/research',
+  'workspace-intelligence': '/app/workspace',
+  runtime: '/app/runtime',
+  adaptive: '/app/adaptive',
+  hardening: '/app/hardening',
+  ecosystem: '/app/ecosystem',
+  autonomous: '/app/automation',
+  creative: '/app/creative-studio',
+  tasks: '/app/tasks',
+  agents: '/app/agents',
+  models: '/app/models'
+};
+const protectedRouteSections: Record<string, SidebarSection> = {
+  '/app': 'chat',
+  '/app/chat': 'chat',
+  '/app/workspace': 'workspace-intelligence',
+  '/app/projects': 'projects',
+  '/app/tasks': 'tasks',
+  '/app/agents': 'agents',
+  '/app/models': 'models',
+  '/app/automation': 'autonomous',
+  '/app/research': 'intelligence',
+  '/app/creative-studio': 'creative',
+  '/app/memory': 'chat',
+  '/app/settings': 'chat',
+  '/app/runtime': 'runtime',
+  '/app/intelligence': 'intelligence',
+  '/app/adaptive': 'adaptive',
+  '/app/hardening': 'hardening',
+  '/app/ecosystem': 'ecosystem',
+  '/app/autonomous': 'autonomous'
+};
+
+function normalizeRoutePath(path: string) {
+  const cleanPath = (path || '/').split(/[?#]/)[0].replace(/\/+$/, '') || '/';
+  return legacyProtectedRoutes[cleanPath] ?? cleanPath;
+}
+
+function currentBrowserRoute() {
+  if (typeof window === 'undefined') return '/';
+  return normalizeRoutePath(window.location.pathname);
+}
+
+function isProtectedAppRoute(path: string) {
+  const route = normalizeRoutePath(path);
+  return route === '/app' || route.startsWith('/app/');
+}
+
+function routeToSidebarSection(path: string): SidebarSection {
+  return protectedRouteSections[normalizeRoutePath(path)] ?? 'chat';
+}
+
+function sidebarSectionToRoute(section: SidebarSection) {
+  return protectedSectionRoutes[section] ?? '/app/chat';
+}
+
+function isStoredAuthSession(value: unknown): value is AuthSessionResponse {
+  if (!value || typeof value !== 'object') return false;
+  const session = value as Partial<AuthSessionResponse>;
+  return Boolean(session.token && session.user && typeof session.user.email === 'string');
+}
+
+function loadStoredAuthSession(): AuthSessionResponse | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(authSessionStorageKey);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as unknown;
+    return isStoredAuthSession(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveStoredAuthSession(session: AuthSessionResponse) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(authSessionStorageKey, JSON.stringify(session));
+}
+
+function clearStoredAuthSession() {
+  if (typeof window === 'undefined') return;
+  window.localStorage.removeItem(authSessionStorageKey);
+}
 type ProjectRootSummary = {
   root: string;
   title: string;
@@ -242,20 +520,14 @@ type GeneratedReviewSource = {
   taskId?: string;
   restored: boolean;
 };
-const defaultAgentId = 'aegis-default';
-const customAgentsStorageKey = 'aegis.customAgents.v1';
-const autoMemoryFingerprintStorageKey = 'aegis.autoMemoryFingerprints.v1';
-const detailsPanelVisibleStorageKey = 'aegis.detailsPanelVisible.v1';
-const detailPanelSectionsStorageKey = 'aegis.detailPanelSections.v1';
-const selectedWorkspaceFileStorageKey = 'aegis.selectedWorkspaceFile.v1';
-const queueAutoSendPausedStorageKey = 'aegis.queueAutoSendPaused.v1';
-const detailPanelSectionOptions: DetailPanelSection[] = ['generated', 'workspace', 'memory'];
-const defaultAgentPerspective =
-  'Direct, practical coding agent focused on planning, building, reviewing, and repairing this workspace.';
 
 function App() {
+  const [routePath, setRoutePath] = useState(() => currentBrowserRoute());
+  const [authSession, setAuthSession] = useState<AuthSessionResponse | null>(() => loadStoredAuthSession());
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authStatus, setAuthStatus] = useState('');
   const [config, setConfig] = useState<AppConfig | null>(null);
-  const [assistantName, setAssistantName] = useState('Aegis AI');
+  const [assistantName, setAssistantName] = useState(assistantIdentity);
   const [assistantMission, setAssistantMission] = useState('');
   const [mode, setMode] = useState<Mode>('build');
   const [workspaceRoot, setWorkspaceRoot] = useState('');
@@ -269,7 +541,7 @@ function App() {
   const [status, setStatus] = useState('');
   const [saveStatus, setSaveStatus] = useState('');
   const [engineReady, setEngineReady] = useState(false);
-  const [engineLabel, setEngineLabel] = useState('Aegis Core');
+  const [engineLabel, setEngineLabel] = useState(runtimeIdentity);
   const [lastHealth, setLastHealth] = useState<HealthResponse | null>(null);
   const [modelReady, setModelReady] = useState(false);
   const [modelMessage, setModelMessage] = useState('');
@@ -320,6 +592,56 @@ function App() {
   const [workspaceHistory, setWorkspaceHistory] = useState<HistoryResponse | null>(null);
   const [workspaceProfile, setWorkspaceProfile] = useState<WorkspaceProfileResponse | null>(null);
   const [workspaceProfileStatus, setWorkspaceProfileStatus] = useState('');
+  const [projectIntelligence, setProjectIntelligence] = useState<ProjectIntelligenceSnapshot | null>(null);
+  const [projectIntelligenceStatus, setProjectIntelligenceStatus] = useState('');
+  const [projectIntelligenceLoading, setProjectIntelligenceLoading] = useState(false);
+  const [workspaceOperations, setWorkspaceOperations] = useState<WorkspaceOperationsSnapshot | null>(null);
+  const [workspaceOperationsStatus, setWorkspaceOperationsStatus] = useState('');
+  const [workspaceOperationsLoading, setWorkspaceOperationsLoading] = useState(false);
+  const [workspaceOperationsActionId, setWorkspaceOperationsActionId] = useState('');
+  const [unifiedRuntime, setUnifiedRuntime] = useState<UnifiedRuntimeSnapshot | null>(null);
+  const [unifiedContext, setUnifiedContext] = useState<UnifiedContextSnapshot | null>(null);
+  const [continuity, setContinuity] = useState<AegisContinuitySnapshot | null>(null);
+  const [platformDiscipline, setPlatformDiscipline] = useState<PlatformDisciplineSnapshot | null>(null);
+  const [globalCommandDraft, setGlobalCommandDraft] = useState('Refactor the UI using the latest mockup assets');
+  const [globalCommandPreview, setGlobalCommandPreview] = useState<GlobalCommandResponse | null>(null);
+  const [operatingEnvironment, setOperatingEnvironment] = useState<OperatingEnvironmentSnapshot | null>(null);
+  const [distributedRuntime, setDistributedRuntime] = useState<DistributedRuntimeSnapshot | null>(null);
+  const [distributedRuntimeStatus, setDistributedRuntimeStatus] = useState('');
+  const [distributedRuntimeLoading, setDistributedRuntimeLoading] = useState(false);
+  const [distributedRuntimeAction, setDistributedRuntimeAction] = useState('');
+  const [adaptiveIntelligence, setAdaptiveIntelligence] = useState<AdaptiveIntelligenceSnapshot | null>(null);
+  const [adaptiveIntelligenceStatus, setAdaptiveIntelligenceStatus] = useState('');
+  const [adaptiveIntelligenceLoading, setAdaptiveIntelligenceLoading] = useState(false);
+  const [adaptiveIntelligenceAction, setAdaptiveIntelligenceAction] = useState('');
+  const [productization, setProductization] = useState<ProductizationSnapshot | null>(null);
+  const [productizationStatus, setProductizationStatus] = useState('');
+  const [productizationLoading, setProductizationLoading] = useState(false);
+  const [productizationAction, setProductizationAction] = useState('');
+  const [ecosystemSnapshot, setEcosystemSnapshot] = useState<EcosystemSnapshot | null>(null);
+  const [ecosystemSearch, setEcosystemSearch] = useState<EcosystemSearchResponse | null>(null);
+  const [ecosystemSearchQuery, setEcosystemSearchQuery] = useState('api route');
+  const [ecosystemStatus, setEcosystemStatus] = useState('');
+  const [ecosystemLoading, setEcosystemLoading] = useState(false);
+  const [ecosystemAction, setEcosystemAction] = useState('');
+  const [autonomousSnapshot, setAutonomousSnapshot] = useState<AutonomousEngineeringSnapshot | null>(null);
+  const [selectedAutonomousObjective, setSelectedAutonomousObjective] = useState<AutonomousObjectiveDetail | null>(null);
+  const [autonomousObjectiveTitle, setAutonomousObjectiveTitle] = useState('Improve test coverage');
+  const [autonomousObjectiveGoal, setAutonomousObjectiveGoal] = useState('Improve test coverage for the most important project modules.');
+  const [autonomousStatus, setAutonomousStatus] = useState('');
+  const [autonomousLoading, setAutonomousLoading] = useState(false);
+  const [autonomousAction, setAutonomousAction] = useState('');
+  const [creativeCapabilities, setCreativeCapabilities] = useState<MediaCapabilitiesResponse | null>(null);
+  const [creativeLibrary, setCreativeLibrary] = useState<MediaAssetLibraryResponse | null>(null);
+  const [creativeJobs, setCreativeJobs] = useState<MediaJobResponse[]>([]);
+  const [selectedCreativeJob, setSelectedCreativeJob] = useState<MediaJobResponse | null>(null);
+  const [creativeStudioTab, setCreativeStudioTab] = useState<'image' | 'video' | 'beat' | 'voice' | 'library'>('image');
+  const [creativePrompt, setCreativePrompt] = useState('Create a premium product mockup for Auralith Creative Studio');
+  const [creativeStyle, setCreativeStyle] = useState('premium, calm, polished');
+  const [creativeProviderId, setCreativeProviderId] = useState('local_creative_renderer');
+  const [creativeStatus, setCreativeStatus] = useState('');
+  const [creativeLoading, setCreativeLoading] = useState(false);
+  const [creativeAction, setCreativeAction] = useState('');
   const [workspaceSetupLoading, setWorkspaceSetupLoading] = useState(false);
   const [checkpoints, setCheckpoints] = useState<CheckpointSummary[]>([]);
   const [checkpointStatus, setCheckpointStatus] = useState('');
@@ -331,6 +653,13 @@ function App() {
   const [validationNotesDraft, setValidationNotesDraft] = useState('');
   const [validationRecipeStatus, setValidationRecipeStatus] = useState('');
   const [activeSection, setActiveSection] = useState<SidebarSection>('chat');
+  const [tasks, setTasks] = useState<TaskSummary[]>([]);
+  const [selectedTaskId, setSelectedTaskId] = useState('');
+  const [taskTimeline, setTaskTimeline] = useState<ToolEvent[]>([]);
+  const [taskArtifacts, setTaskArtifacts] = useState<TaskArtifactsResponse | null>(null);
+  const [taskStatusFilter, setTaskStatusFilter] = useState<TaskBoardFilter>('active');
+  const [taskStatusMessage, setTaskStatusMessage] = useState('');
+  const [taskActionId, setTaskActionId] = useState('');
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('general');
   const [expandedActivityEventIds, setExpandedActivityEventIds] = useState<string[]>([]);
   const [showAllActivityEvents, setShowAllActivityEvents] = useState(false);
@@ -364,7 +693,160 @@ function App() {
   const workspaceRootRef = useRef(workspaceRoot);
   const autoMemoryFingerprints = useRef<Set<string>>(new Set(loadAutoMemoryFingerprints()));
 
+  function navigateTo(path: string, replace = false) {
+    const nextRoute = normalizeRoutePath(path);
+    if (typeof window !== 'undefined' && window.location.pathname !== nextRoute) {
+      if (replace) {
+        window.history.replaceState({}, '', nextRoute);
+      } else {
+        window.history.pushState({}, '', nextRoute);
+      }
+    }
+    setRoutePath(nextRoute);
+  }
+
+  function openAppSection(section: SidebarSection) {
+    navigateTo(sidebarSectionToRoute(section));
+  }
+
+  function updateAuthSession(session: AuthSessionResponse) {
+    saveStoredAuthSession(session);
+    setAuthSession(session);
+  }
+
+  async function handleLogin(request: AuthLoginRequest) {
+    setAuthLoading(true);
+    setAuthStatus('');
+    try {
+      const session = await loginAccount(request);
+      updateAuthSession(session);
+      navigateTo('/app', true);
+    } catch (error) {
+      setAuthStatus(error instanceof Error ? error.message : 'Could not sign in.');
+    } finally {
+      setAuthLoading(false);
+    }
+  }
+
+  async function handleRegister(request: AuthRegisterRequest) {
+    setAuthLoading(true);
+    setAuthStatus('');
+    try {
+      const session = await registerAccount(request);
+      updateAuthSession(session);
+      navigateTo('/app', true);
+    } catch (error) {
+      setAuthStatus(error instanceof Error ? error.message : 'Could not create account.');
+    } finally {
+      setAuthLoading(false);
+    }
+  }
+
+  async function handleForgotPassword(email: string) {
+    setAuthLoading(true);
+    setAuthStatus('');
+    try {
+      const response = await requestPasswordReset({ email });
+      setAuthStatus(response.message);
+    } catch (error) {
+      setAuthStatus(error instanceof Error ? error.message : 'Could not start password recovery.');
+    } finally {
+      setAuthLoading(false);
+    }
+  }
+
+  function handleLogout() {
+    const token = authSession?.token;
+    clearStoredAuthSession();
+    setAuthSession(null);
+    setAuthStatus('Signed out.');
+    navigateTo('/login', true);
+    if (token) {
+      void logoutAccount(token).catch(() => undefined);
+    }
+  }
+
   useEffect(() => {
+    function handleRouteChange() {
+      setRoutePath(currentBrowserRoute());
+    }
+    window.addEventListener('popstate', handleRouteChange);
+    return () => window.removeEventListener('popstate', handleRouteChange);
+  }, []);
+
+  useEffect(() => {
+    if (!authSession?.token) return;
+    let isCurrent = true;
+    void getCurrentAccount(authSession.token)
+      .then((session) => {
+        if (!isCurrent) return;
+        const verifiedSession = { ...session, token: authSession.token };
+        saveStoredAuthSession(verifiedSession);
+        setAuthSession(verifiedSession);
+      })
+      .catch(() => {
+        if (!isCurrent) return;
+        clearStoredAuthSession();
+        setAuthSession(null);
+        if (isProtectedAppRoute(routePath)) {
+          setAuthStatus(`Please log in to open the ${productName} workspace.`);
+          navigateTo('/login', true);
+        }
+      });
+    return () => {
+      isCurrent = false;
+    };
+  }, [authSession?.token]);
+
+  useEffect(() => {
+    if (isProtectedAppRoute(routePath) && !authSession) {
+      setAuthStatus(`Please log in to open the ${productName} workspace.`);
+      navigateTo('/login', true);
+      return;
+    }
+    if (authSession && (routePath === '/login' || routePath === '/register')) {
+      navigateTo('/app', true);
+    }
+  }, [routePath, authSession]);
+
+  useEffect(() => {
+    if (!authSession || !isProtectedAppRoute(routePath)) return;
+    const nextSection = routeToSidebarSection(routePath);
+    setActiveSection(nextSection);
+
+    if (routePath === '/app/settings') {
+      setSettingsTab('general');
+      setShowSettings(true);
+    }
+    if (routePath === '/app/memory') {
+      setShowMemoryEditor(true);
+    }
+
+    if (nextSection === 'intelligence') {
+      void refreshProjectIntelligence();
+    } else if (nextSection === 'workspace-intelligence') {
+      void refreshWorkspaceOperations();
+    } else if (nextSection === 'tasks') {
+      void refreshTasks();
+    } else if (nextSection === 'runtime') {
+      void refreshDistributedRuntime();
+    } else if (nextSection === 'adaptive') {
+      void refreshAdaptiveSignals();
+    } else if (nextSection === 'hardening') {
+      void refreshProductizationSignals();
+    } else if (nextSection === 'ecosystem') {
+      void refreshEcosystemSignals();
+    } else if (nextSection === 'autonomous') {
+      void refreshAutonomousSignals();
+    } else if (nextSection === 'creative') {
+      void refreshCreativeStudio();
+    } else if (nextSection === 'models') {
+      void refreshModelCatalog();
+    }
+  }, [routePath, authSession?.token]);
+
+  useEffect(() => {
+    if (!authSession) return;
     async function bootstrap() {
       try {
         const [health, nextConfig] = await Promise.all([getHealth(), getConfig()]);
@@ -379,8 +861,17 @@ function App() {
           await Promise.all([
             refreshWorkspaceHistory(result.workspace_root),
             refreshWorkspaceProfile(result.workspace_root),
+            refreshProjectIntelligence(result.workspace_root),
+            refreshWorkspaceOperations(result.workspace_root),
+            refreshDistributedRuntime(result.workspace_root),
+            refreshAdaptiveSignals(result.workspace_root),
+            refreshProductizationSignals(result.workspace_root),
+            refreshEcosystemSignals(result.workspace_root),
+            refreshAutonomousSignals(result.workspace_root),
+            refreshCreativeStudio(),
             refreshValidationRecipe(result.workspace_root),
-            refreshCheckpoints(result.workspace_root)
+            refreshCheckpoints(result.workspace_root),
+            refreshTasks(result.workspace_root)
           ]);
         }
         await refreshModelCatalog();
@@ -388,18 +879,19 @@ function App() {
         setEngineReady(false);
         setLastHealth(null);
         setConnectionState('offline');
-        setStatus(error instanceof Error ? error.message : 'Failed to load Aegis');
+        setStatus(error instanceof Error ? error.message : `Failed to load ${productName}`);
       }
     }
 
     void bootstrap();
-  }, []);
+  }, [authSession?.token]);
 
   useEffect(() => {
     workspaceRootRef.current = workspaceRoot;
   }, [workspaceRoot]);
 
   useEffect(() => {
+    if (!authSession) return;
     const timer = window.setInterval(() => {
       void getHealth()
         .then((health) => {
@@ -414,7 +906,7 @@ function App() {
     }, 10000);
 
     return () => window.clearInterval(timer);
-  }, []);
+  }, [authSession?.token]);
 
   useEffect(() => {
     if (!loading) {
@@ -616,6 +1108,21 @@ function App() {
     lastResponse?.recent_tasks,
     workspaceHistory?.recent_tasks
   ]);
+  const taskBoardTasks = useMemo(() => mergeById<TaskSummary>(tasks, visibleTasks), [tasks, visibleTasks]);
+  const selectedTask = useMemo(
+    () => taskBoardTasks.find((item) => item.id === selectedTaskId || item.task_id === selectedTaskId) ?? null,
+    [selectedTaskId, taskBoardTasks]
+  );
+  const filteredTaskBoardTasks = useMemo(
+    () =>
+      taskBoardTasks.filter((item) => {
+        if (taskStatusFilter === 'all') return true;
+        if (taskStatusFilter === 'active') return !terminalTaskStatuses.has(item.status);
+        if (taskStatusFilter === 'completed') return item.status === 'completed';
+        return item.status === 'failed' || item.status === 'canceled';
+      }),
+    [taskBoardTasks, taskStatusFilter]
+  );
   const visibleFiles = useMemo(() => filterWorkspaceFiles(files, fileSearch), [fileSearch, files]);
   const visibleValidationRepairTrail = useMemo(
     () => filterValidationRepairTrail(validationRepairTrail, validationRepairSearch, validationRepairStatusFilter),
@@ -644,6 +1151,50 @@ function App() {
       manualValidation ||
       validationRepairTrail.length
   );
+  useEffect(() => {
+    if (!taskBoardTasks.length) {
+      if (selectedTaskId) setSelectedTaskId('');
+      return;
+    }
+
+    if (!selectedTaskId || !taskBoardTasks.some((item) => item.id === selectedTaskId || item.task_id === selectedTaskId)) {
+      setSelectedTaskId(taskBoardTasks[0].id);
+    }
+  }, [selectedTaskId, taskBoardTasks]);
+
+  useEffect(() => {
+    const taskId = selectedTaskId.trim();
+    if (!taskId) {
+      setTaskTimeline([]);
+      setTaskArtifacts(null);
+      return;
+    }
+
+    let cancelled = false;
+    setTaskStatusMessage('Loading task timeline...');
+
+    async function loadSelectedTask() {
+      try {
+        const [timeline, artifacts] = await Promise.all([getTaskTimeline(taskId), getTaskArtifacts(taskId)]);
+        if (cancelled) return;
+        setTaskTimeline(timeline.events);
+        setTaskArtifacts(artifacts);
+        setTaskStatusMessage('');
+      } catch (error) {
+        if (cancelled) return;
+        setTaskTimeline([]);
+        setTaskArtifacts(null);
+        setTaskStatusMessage(error instanceof Error ? error.message : 'Could not load task details');
+      }
+    }
+
+    void loadSelectedTask();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedTaskId]);
+
   const detailsPanelVisible = showDetailsPanel;
   const composerWillQueue = loading || connectionState !== 'connected';
   const runtimeDiagnostics = useMemo(
@@ -900,7 +1451,7 @@ function App() {
     setEngineLabel(nextConfig.engine);
   }
 
-  function applyHealthSnapshot(health: HealthResponse, fallbackEngine = 'Aegis Core') {
+  function applyHealthSnapshot(health: HealthResponse, fallbackEngine = runtimeIdentity) {
     setLastHealth(health);
     setEngineReady(Boolean(health.ok && health.engine_ready));
     setModelReady(Boolean(health.model_ready));
@@ -913,7 +1464,7 @@ function App() {
     setSaveStatus('Refreshing runtime diagnostics...');
     try {
       const health = await getHealth();
-      applyHealthSnapshot(health, config?.engine || 'Aegis Core');
+      applyHealthSnapshot(health, config?.engine || runtimeIdentity);
       await refreshWorkspaceProfile(workspaceRoot || health.workspace_root);
       setSaveStatus('Runtime diagnostics refreshed.');
     } catch (error) {
@@ -952,6 +1503,9 @@ function App() {
   function openSettings(tab: SettingsTab = 'general') {
     setSettingsTab(tab);
     setShowSettings(true);
+    if (isProtectedAppRoute(routePath) && routePath !== '/app/settings') {
+      navigateTo('/app/settings');
+    }
     if (tab === 'models') {
       void refreshModelCatalog();
     }
@@ -971,10 +1525,10 @@ function App() {
 
     try {
       const nextConfig = await saveConfig({
-        assistant_name: assistantName.trim() || 'Aegis AI',
+        assistant_name: assistantName.trim() || assistantIdentity,
         assistant_mission:
           assistantMission.trim() ||
-          'Your personal coding AI for planning, building, reviewing, and shipping work inside this workspace.',
+          defaultAssistantMission,
         default_mode: mode,
         default_workspace: workspaceRoot.trim() || 'workspace',
         model_api: nextApi,
@@ -1241,7 +1795,15 @@ function App() {
       setFiles(result.files);
       void refreshWorkspaceHistory(result.workspace_root);
       void refreshWorkspaceProfile(result.workspace_root);
+      void refreshProjectIntelligence(result.workspace_root);
+      void refreshWorkspaceOperations(result.workspace_root);
+      void refreshDistributedRuntime(result.workspace_root);
+      void refreshAdaptiveSignals(result.workspace_root);
+      void refreshProductizationSignals(result.workspace_root);
+      void refreshEcosystemSignals(result.workspace_root);
+      void refreshAutonomousSignals(result.workspace_root);
       void refreshValidationRecipe(result.workspace_root);
+      void refreshTasks(result.workspace_root);
 
       if (selectedFilePath && !result.files.some((file) => file.path === selectedFilePath)) {
         setSelectedFilePath('');
@@ -1271,6 +1833,66 @@ function App() {
     }
   }
 
+  async function refreshTasks(rootOverride?: string) {
+    const targetRoot = (rootOverride ?? workspaceRoot).trim();
+    if (!targetRoot) return;
+
+    try {
+      const result = await listTasks(targetRoot, { includeSubtasks: false, limit: 80 });
+      if (!workspaceRequestIsCurrent(result.workspace_root)) return;
+      setTasks(result.tasks);
+      setTaskStatusMessage('');
+    } catch (error) {
+      setTaskStatusMessage(error instanceof Error ? error.message : 'Could not refresh tasks');
+    }
+  }
+
+  async function runTaskAction(action: 'cancel' | 'retry' | 'approve', task: TaskSummary | null = selectedTask) {
+    if (!task || taskActionId) return;
+
+    setTaskActionId(`${action}:${task.id}`);
+    setTaskStatusMessage(
+      action === 'cancel'
+        ? 'Canceling task...'
+        : action === 'retry'
+          ? 'Queueing task retry...'
+          : 'Approving task action...'
+    );
+
+    try {
+      const result =
+        action === 'cancel'
+          ? await cancelTask(task.id, { reason: 'Canceled from workspace Tasks panel.' })
+          : action === 'retry'
+            ? await retryTask(task.id, { reason: 'Retried from workspace Tasks panel.' })
+            : await approveTaskAction(task.id, {
+                reason: 'Approved from workspace Tasks panel.',
+                approved: true
+              });
+
+      setTasks((current) => mergeById<TaskSummary>([result.task], current));
+      setSelectedTaskId(result.task.id);
+      const [timeline, artifacts] = await Promise.all([
+        getTaskTimeline(result.task.id),
+        getTaskArtifacts(result.task.id)
+      ]);
+      setTaskTimeline(timeline.events);
+      setTaskArtifacts(artifacts);
+      setTaskStatusMessage(
+        action === 'cancel'
+          ? 'Task canceled.'
+          : action === 'retry'
+            ? 'Task retry queued.'
+            : 'Task approved.'
+      );
+      await refreshTasks(result.task.workspace_root);
+    } catch (error) {
+      setTaskStatusMessage(error instanceof Error ? error.message : `Could not ${action} task`);
+    } finally {
+      setTaskActionId('');
+    }
+  }
+
   async function refreshValidationRecipe(rootOverride?: string) {
     const targetRoot = (rootOverride ?? workspaceRoot).trim();
     if (!targetRoot) return;
@@ -1297,6 +1919,885 @@ function App() {
       setWorkspaceProfileStatus('');
     } catch (error) {
       setWorkspaceProfileStatus(error instanceof Error ? error.message : 'Could not load workspace readiness');
+    }
+  }
+
+  async function refreshProjectIntelligence(rootOverride?: string) {
+    const targetRoot = (rootOverride ?? workspaceRoot).trim();
+    if (!targetRoot) return;
+
+    try {
+      const result = await getProjectIntelligence(targetRoot);
+      if (!workspaceRequestIsCurrent(result.workspace_root)) return;
+      setProjectIntelligence(result);
+      setProjectIntelligenceStatus('');
+    } catch (error) {
+      setProjectIntelligenceStatus(error instanceof Error ? error.message : 'Could not load project intelligence');
+    }
+  }
+
+  async function rebuildProjectIntelligence(options: { clearMemory?: boolean; rebuildMemory?: boolean } = {}) {
+    const targetRoot = workspaceRoot.trim();
+    if (!targetRoot || projectIntelligenceLoading) return;
+
+    setProjectIntelligenceLoading(true);
+    setProjectIntelligenceStatus(
+      options.clearMemory
+        ? 'Clearing and rebuilding project intelligence...'
+        : options.rebuildMemory
+          ? 'Rebuilding project memory from intelligence...'
+          : 'Scanning project intelligence...'
+    );
+
+    try {
+      const result = await reindexProjectIntelligence({
+        workspace_root: targetRoot,
+        rebuild_architecture: true,
+        rebuild_memory: Boolean(options.rebuildMemory),
+        clear_memory: Boolean(options.clearMemory)
+      });
+      setProjectIntelligence(result);
+      setProjectIntelligenceStatus(result.indexing.message || 'Project intelligence refreshed.');
+      await refreshWorkspaceHistory(result.workspace_root);
+    } catch (error) {
+      setProjectIntelligenceStatus(error instanceof Error ? error.message : 'Could not rebuild project intelligence');
+    } finally {
+      setProjectIntelligenceLoading(false);
+    }
+  }
+
+  async function refreshWorkspaceOperations(rootOverride?: string) {
+    const targetRoot = (rootOverride ?? workspaceRoot).trim();
+    if (!targetRoot) return;
+
+    try {
+      const result = await getWorkspaceIntelligence(targetRoot);
+      if (!workspaceRequestIsCurrent(result.workspace_root)) return;
+      setWorkspaceOperations(result);
+      setWorkspaceOperationsStatus('');
+    } catch (error) {
+      setWorkspaceOperationsStatus(error instanceof Error ? error.message : 'Could not load workspace intelligence');
+    }
+  }
+
+  async function refreshDistributedRuntime(rootOverride?: string) {
+    const targetRoot = (rootOverride ?? workspaceRoot).trim();
+    if (!targetRoot) return;
+
+    setDistributedRuntimeLoading(true);
+    try {
+      const [runtimeResult, unifiedResult, contextResult, continuityResult, disciplineResult, operatingResult] = await Promise.all([
+        getDistributedRuntime(targetRoot),
+        getUnifiedRuntime(targetRoot),
+        getUnifiedContext(targetRoot),
+        getContinuity(targetRoot),
+        getPlatformDiscipline(targetRoot),
+        getOperatingEnvironment(targetRoot)
+      ]);
+      setDistributedRuntime(runtimeResult);
+      setUnifiedRuntime(unifiedResult);
+      setUnifiedContext(contextResult);
+      setContinuity(continuityResult);
+      setPlatformDiscipline(disciplineResult);
+      setOperatingEnvironment(operatingResult);
+      setDistributedRuntimeStatus('');
+    } catch (error) {
+      setDistributedRuntimeStatus(error instanceof Error ? error.message : 'Could not load distributed runtime');
+    } finally {
+      setDistributedRuntimeLoading(false);
+    }
+  }
+
+  async function previewRuntimeCommand() {
+    const targetRoot = workspaceRoot.trim();
+    const command = globalCommandDraft.trim();
+    if (!targetRoot || !command || distributedRuntimeAction) return;
+
+    setDistributedRuntimeAction('command-preview');
+    setDistributedRuntimeStatus('Routing command through unified context...');
+    try {
+      const result = await previewGlobalCommand({
+        workspace_root: targetRoot,
+        command,
+        entrypoint: 'command_palette',
+        dry_run: true
+      });
+      setGlobalCommandPreview(result);
+      setDistributedRuntimeStatus(
+        `${formatStatusLabel(result.route.intent)} -> ${formatStatusLabel(result.route.target_system)}${
+          result.route.approval_required ? ' / approval needed' : ''
+        }`
+      );
+    } catch (error) {
+      setDistributedRuntimeStatus(error instanceof Error ? error.message : 'Could not preview global command');
+    } finally {
+      setDistributedRuntimeAction('');
+    }
+  }
+
+  async function refreshAdaptiveSignals(rootOverride?: string, forceRefresh = false) {
+    const targetRoot = (rootOverride ?? workspaceRoot).trim();
+    if (!targetRoot) return;
+
+    setAdaptiveIntelligenceLoading(true);
+    try {
+      const result = forceRefresh
+        ? await refreshAdaptiveIntelligence({ workspace_root: targetRoot, limit: 240, refresh_outcomes: true })
+        : await getAdaptiveIntelligence(targetRoot, { limit: 240, refresh: false });
+      if (!workspaceRequestIsCurrent(result.workspace_root)) return;
+      setAdaptiveIntelligence(result);
+      setAdaptiveIntelligenceStatus('');
+    } catch (error) {
+      setAdaptiveIntelligenceStatus(error instanceof Error ? error.message : 'Could not load adaptive intelligence');
+    } finally {
+      setAdaptiveIntelligenceLoading(false);
+    }
+  }
+
+  async function activateAdaptiveProfile(profileId: string) {
+    const targetRoot = workspaceRoot.trim();
+    if (!targetRoot || adaptiveIntelligenceAction) return;
+
+    setAdaptiveIntelligenceAction(`profile:${profileId}`);
+    setAdaptiveIntelligenceStatus('Activating adaptive policy profile...');
+    try {
+      const result = await activateAdaptivePolicyProfile(
+        profileId,
+        { reason: 'Activated from Adaptive Intelligence.' },
+        targetRoot
+      );
+      setAdaptiveIntelligence(result);
+      setAdaptiveIntelligenceStatus(`Active profile: ${result.active_profile.name}.`);
+    } catch (error) {
+      setAdaptiveIntelligenceStatus(error instanceof Error ? error.message : 'Could not activate adaptive profile');
+    } finally {
+      setAdaptiveIntelligenceAction('');
+    }
+  }
+
+  async function runAdaptiveBenchmarkSweep() {
+    const targetRoot = workspaceRoot.trim();
+    if (!targetRoot || adaptiveIntelligenceAction) return;
+
+    setAdaptiveIntelligenceAction('benchmark');
+    setAdaptiveIntelligenceStatus('Running adaptive benchmark report...');
+    try {
+      const reports = await runAdaptiveBenchmarks({ workspace_root: targetRoot });
+      setAdaptiveIntelligenceStatus(`${reports.length} adaptive benchmark report(s) recorded.`);
+      await refreshAdaptiveSignals(targetRoot, false);
+    } catch (error) {
+      setAdaptiveIntelligenceStatus(error instanceof Error ? error.message : 'Could not run adaptive benchmarks');
+    } finally {
+      setAdaptiveIntelligenceAction('');
+    }
+  }
+
+  async function replayAdaptiveOutcomeWindow() {
+    const targetRoot = workspaceRoot.trim();
+    if (!targetRoot || adaptiveIntelligenceAction) return;
+
+    setAdaptiveIntelligenceAction('replay');
+    setAdaptiveIntelligenceStatus('Replaying recent adaptive task outcomes...');
+    try {
+      const results = await replayAdaptiveTasks({ workspace_root: targetRoot, limit: 8 });
+      setAdaptiveIntelligenceStatus(`${results.length} replay result(s) recorded.`);
+      await refreshAdaptiveSignals(targetRoot, false);
+    } catch (error) {
+      setAdaptiveIntelligenceStatus(error instanceof Error ? error.message : 'Could not replay adaptive outcomes');
+    } finally {
+      setAdaptiveIntelligenceAction('');
+    }
+  }
+
+  async function rollbackLatestAdaptivePolicy() {
+    const latestCheckpoint = adaptiveIntelligence?.policy_checkpoints[0];
+    if (!latestCheckpoint || adaptiveIntelligenceAction) return;
+
+    setAdaptiveIntelligenceAction(`rollback:${latestCheckpoint.id}`);
+    setAdaptiveIntelligenceStatus('Rolling back adaptive policy profile selection...');
+    try {
+      const result = await rollbackAdaptivePolicy({
+        checkpoint_id: latestCheckpoint.id,
+        reason: 'Rollback requested from Adaptive Intelligence.'
+      });
+      setAdaptiveIntelligence(result);
+      setAdaptiveIntelligenceStatus(`Policy profile restored from ${latestCheckpoint.id}.`);
+    } catch (error) {
+      setAdaptiveIntelligenceStatus(error instanceof Error ? error.message : 'Could not roll back adaptive policy');
+    } finally {
+      setAdaptiveIntelligenceAction('');
+    }
+  }
+
+  async function refreshProductizationSignals(rootOverride?: string, forceMetrics = false) {
+    const targetRoot = (rootOverride ?? workspaceRoot).trim();
+    if (!targetRoot) return;
+
+    setProductizationLoading(true);
+    try {
+      const result = forceMetrics
+        ? await refreshProductization({ workspace_root: targetRoot, refresh_metrics: true })
+        : await getProductization(targetRoot, { refreshMetrics: false });
+      if (!workspaceRequestIsCurrent(result.workspace_root)) return;
+      setProductization(result);
+      setProductizationStatus('');
+    } catch (error) {
+      setProductizationStatus(error instanceof Error ? error.message : 'Could not load productization hardening');
+    } finally {
+      setProductizationLoading(false);
+    }
+  }
+
+  async function validateSamplePluginManifest() {
+    if (productizationAction) return;
+    const apiVersion = productization?.api_version || '2026.05.07';
+    const sample: PluginManifest = {
+      id: 'sample-observability-panel',
+      name: 'Sample Observability Panel',
+      version: '0.1.0',
+      api_version: apiVersion,
+      description: 'Read-only sample manifest used to verify SDK validation.',
+      author: 'Aegis',
+      capabilities: ['ui_panel', 'telemetry_processor'],
+      permissions: ['ui_panel', 'telemetry'],
+      sandbox_profile: 'isolated',
+      signature: '',
+      signing_key_fingerprint: '',
+      lifecycle_hooks: [],
+      entrypoint: '',
+      ui_panel_route: '/plugins/sample-observability-panel',
+      enabled: false,
+      trusted: false,
+      created_at: '',
+      updated_at: '',
+      metadata: { sample: true }
+    };
+
+    setProductizationAction('validate-sample');
+    setProductizationStatus('Validating sample plugin manifest...');
+    try {
+      const result = await validatePlugin({ manifest: sample });
+      setProductization((current) =>
+        current
+          ? {
+              ...current,
+              plugin_validation: [result, ...current.plugin_validation.filter((item) => item.normalized_manifest?.id !== sample.id)]
+            }
+          : current
+      );
+      setProductizationStatus(
+        result.valid
+          ? `Sample plugin manifest is valid with ${result.warnings.length} warning(s).`
+          : result.errors.join('; ')
+      );
+    } catch (error) {
+      setProductizationStatus(error instanceof Error ? error.message : 'Could not validate sample plugin');
+    } finally {
+      setProductizationAction('');
+    }
+  }
+
+  async function updatePluginState(plugin: PluginManifest, action: 'enable' | 'disable' | 'trust') {
+    if (productizationAction) return;
+    setProductizationAction(`${action}:${plugin.id}`);
+    setProductizationStatus(`${formatStatusLabel(action)} plugin ${plugin.name}...`);
+    try {
+      const request = { reason: `Plugin ${action} requested from Hardening.` };
+      const saved =
+        action === 'enable'
+          ? await enablePlugin(plugin.id, request)
+          : action === 'disable'
+            ? await disablePlugin(plugin.id, request)
+            : await trustPlugin(plugin.id, request);
+      setProductization((current) =>
+        current
+          ? {
+              ...current,
+              plugins: mergeById<PluginManifest>(
+                current.plugins.filter((item) => item.id !== saved.id),
+                [saved]
+              )
+            }
+          : current
+      );
+      setProductizationStatus(`${saved.name} is ${saved.enabled ? 'enabled' : 'disabled'}${saved.trusted ? ' and trusted' : ''}.`);
+      await refreshProductizationSignals(workspaceRoot, false);
+    } catch (error) {
+      setProductizationStatus(error instanceof Error ? error.message : `Could not ${action} plugin`);
+    } finally {
+      setProductizationAction('');
+    }
+  }
+
+  async function refreshEcosystemSignals(rootOverride?: string, rebuildGraph = false) {
+    const targetRoot = (rootOverride ?? workspaceRoot).trim();
+    if (!targetRoot) return;
+
+    setEcosystemLoading(true);
+    try {
+      const result = rebuildGraph
+        ? await refreshEcosystem({ workspace_root: targetRoot, rebuild_graph: true, include_search_query: ecosystemSearchQuery })
+        : await getEcosystem(targetRoot, { rebuildGraph: false });
+      if (!workspaceRequestIsCurrent(result.workspace_root)) return;
+      setEcosystemSnapshot(result);
+      if (result.search) setEcosystemSearch(result.search);
+      setEcosystemStatus('');
+    } catch (error) {
+      setEcosystemStatus(error instanceof Error ? error.message : 'Could not load ecosystem intelligence');
+    } finally {
+      setEcosystemLoading(false);
+    }
+  }
+
+  async function validateSampleEcosystemPackage() {
+    if (ecosystemAction) return;
+    const apiVersion = ecosystemSnapshot?.api_version || '2026.05.07';
+    const sample: EcosystemPackageManifest = {
+      id: 'sample-debug-workflow-pack',
+      name: 'Sample Debug Workflow Pack',
+      kind: 'workflow',
+      version: '0.1.0',
+      api_version: apiVersion,
+      description: 'A reusable debugging workflow pack for task-graph execution.',
+      author: 'Aegis',
+      compatibility: { api_version: apiVersion },
+      trust_level: 'reviewed',
+      sandbox_permissions: ['isolated'],
+      permission_scopes: ['task_graph', 'approval', 'run_validation'],
+      update_channel: 'stable',
+      signature: 'signed',
+      signing_key_fingerprint: 'sample-key',
+      checksum: '',
+      entrypoint: '',
+      homepage: '',
+      enabled: false,
+      installed: false,
+      installed_at: '',
+      updated_at: '',
+      metadata: {}
+    };
+
+    setEcosystemAction('validate-sample');
+    setEcosystemStatus('Validating sample ecosystem package...');
+    try {
+      const result = await validateEcosystemPackage({ manifest: sample });
+      setEcosystemSnapshot((current) =>
+        current
+          ? {
+              ...current,
+              package_validation: [
+                result,
+                ...current.package_validation.filter((item) => item.normalized_manifest?.id !== sample.id)
+              ]
+            }
+          : current
+      );
+      setEcosystemStatus(
+        result.valid
+          ? `Sample package validates with trust score ${Math.round(result.trust_score * 100)}.`
+          : result.errors.join('; ')
+      );
+    } catch (error) {
+      setEcosystemStatus(error instanceof Error ? error.message : 'Could not validate sample ecosystem package');
+    } finally {
+      setEcosystemAction('');
+    }
+  }
+
+  async function updateEcosystemPackageState(
+    item: EcosystemPackageManifest,
+    action: 'enable' | 'disable' | 'trust'
+  ) {
+    if (ecosystemAction) return;
+    setEcosystemAction(`${action}:${item.id}`);
+    setEcosystemStatus(`${formatStatusLabel(action)} package ${item.name}...`);
+    try {
+      const request = { reason: `Package ${action} requested from Ecosystem.` };
+      const saved =
+        action === 'enable'
+          ? await enableEcosystemPackage(item.id, request)
+          : action === 'disable'
+            ? await disableEcosystemPackage(item.id, request)
+            : await trustEcosystemPackage(item.id, { ...request, trust_level: 'trusted' });
+      setEcosystemSnapshot((current) =>
+        current
+          ? {
+              ...current,
+              packages: mergeById<EcosystemPackageManifest>(
+                current.packages.filter((packageItem) => packageItem.id !== saved.id),
+                [saved]
+              )
+            }
+          : current
+      );
+      setEcosystemStatus(`${saved.name} is ${saved.enabled ? 'enabled' : 'disabled'} with ${saved.trust_level} trust.`);
+      await refreshEcosystemSignals(workspaceRoot, false);
+    } catch (error) {
+      setEcosystemStatus(error instanceof Error ? error.message : `Could not ${action} ecosystem package`);
+    } finally {
+      setEcosystemAction('');
+    }
+  }
+
+  async function runReusableWorkflow(workflowId: string) {
+    if (ecosystemAction) return;
+    setEcosystemAction(`workflow:${workflowId}`);
+    setEcosystemStatus(`Creating task graph for ${formatStatusLabel(workflowId)}...`);
+    try {
+      const result = await runEcosystemWorkflow(workflowId, {
+        workspace_root: workspaceRoot,
+        user_goal: `Run ${resultTitleFromWorkflow(workflowId)} from the Ecosystem workflow manager.`,
+        start_immediately: false
+      });
+      setTasks((current) => mergeById<TaskSummary>(current, [result.task, ...result.subtasks]));
+      setSelectedTaskId(result.task.id);
+      setActiveSection('tasks');
+      setEcosystemStatus(result.message);
+    } catch (error) {
+      setEcosystemStatus(error instanceof Error ? error.message : 'Could not run workflow');
+    } finally {
+      setEcosystemAction('');
+    }
+  }
+
+  async function runEcosystemSearch() {
+    const targetRoot = workspaceRoot.trim();
+    const query = ecosystemSearchQuery.trim();
+    if (!targetRoot || !query || ecosystemAction) return;
+    setEcosystemAction('search');
+    setEcosystemStatus(`Searching ecosystem intelligence for "${query}"...`);
+    try {
+      const result = await searchEcosystem({ workspace_root: targetRoot, query, limit: 20 });
+      setEcosystemSearch(result);
+      setEcosystemStatus(`${result.results.length} ecosystem result(s) found.`);
+    } catch (error) {
+      setEcosystemStatus(error instanceof Error ? error.message : 'Could not search ecosystem intelligence');
+    } finally {
+      setEcosystemAction('');
+    }
+  }
+
+  async function exportProjectIntelligenceProfile() {
+    if (ecosystemAction) return;
+    setEcosystemAction('export-profile');
+    setEcosystemStatus('Exporting current project intelligence profile...');
+    try {
+      const result = await exportCurrentProjectIntelligence(workspaceRoot);
+      setEcosystemSnapshot((current) =>
+        current
+          ? {
+              ...current,
+              shared_profiles: mergeById(current.shared_profiles, [result.profile])
+            }
+          : current
+      );
+      setEcosystemStatus(`Exported ${result.profile.name}.`);
+      await refreshEcosystemSignals(workspaceRoot, false);
+    } catch (error) {
+      setEcosystemStatus(error instanceof Error ? error.message : 'Could not export project intelligence');
+    } finally {
+      setEcosystemAction('');
+    }
+  }
+
+  function resultTitleFromWorkflow(workflowId: string) {
+    return ecosystemSnapshot?.workflows.find((workflow) => workflow.id === workflowId)?.name ?? formatStatusLabel(workflowId);
+  }
+
+  async function refreshAutonomousSignals(rootOverride?: string) {
+    const targetRoot = (rootOverride ?? workspaceRoot).trim();
+    if (!targetRoot) return;
+
+    setAutonomousLoading(true);
+    try {
+      const result = await getAutonomousEngineering(targetRoot);
+      if (!workspaceRequestIsCurrent(result.workspace_root)) return;
+      setAutonomousSnapshot(result);
+      if (selectedAutonomousObjective?.objective.id) {
+        try {
+          setSelectedAutonomousObjective(await getAutonomousObjective(selectedAutonomousObjective.objective.id));
+        } catch {
+          setSelectedAutonomousObjective(null);
+        }
+      }
+      setAutonomousStatus('');
+    } catch (error) {
+      setAutonomousStatus(error instanceof Error ? error.message : 'Could not load autonomous engineering');
+    } finally {
+      setAutonomousLoading(false);
+    }
+  }
+
+  async function createDryRunAutonomousObjective() {
+    const title = autonomousObjectiveTitle.trim();
+    const goal = autonomousObjectiveGoal.trim();
+    if (!title || !goal || autonomousAction) return;
+    setAutonomousAction('create');
+    setAutonomousStatus('Creating supervised dry-run objective...');
+    try {
+      const detail = await createAutonomousObjective({
+        workspace_root: workspaceRoot,
+        title,
+        user_goal: goal,
+        dry_run: true,
+        max_iterations: 6,
+        token_budget: 160000,
+        max_parallel_agents: 4
+      });
+      setSelectedAutonomousObjective(detail);
+      setAutonomousStatus(`${detail.objective.title} created with ${detail.approval_gates.length} approval gate(s).`);
+      await refreshAutonomousSignals(workspaceRoot);
+    } catch (error) {
+      setAutonomousStatus(error instanceof Error ? error.message : 'Could not create autonomous objective');
+    } finally {
+      setAutonomousAction('');
+    }
+  }
+
+  async function updateAutonomousObjective(action: 'start' | 'pause' | 'cancel' | 'iterate' | 'simulate') {
+    const objectiveId = selectedAutonomousObjective?.objective.id;
+    if (!objectiveId || autonomousAction) return;
+    setAutonomousAction(action);
+    setAutonomousStatus(`${formatStatusLabel(action)} objective...`);
+    try {
+      if (action === 'start') {
+        setSelectedAutonomousObjective(await startAutonomousObjective(objectiveId, { reason: 'Started from Autonomous workspace.' }));
+      } else if (action === 'pause') {
+        setSelectedAutonomousObjective(await pauseAutonomousObjective(objectiveId, { reason: 'Paused from Autonomous workspace.' }));
+      } else if (action === 'cancel') {
+        setSelectedAutonomousObjective(await cancelAutonomousObjective(objectiveId, { reason: 'Canceled from Autonomous workspace.' }));
+      } else if (action === 'iterate') {
+        setSelectedAutonomousObjective(
+          await iterateAutonomousObjective(objectiveId, {
+            reason: 'Advanced from Autonomous workspace.',
+            max_steps: 1,
+            allow_repairs: true
+          })
+        );
+      } else {
+        const simulation = await simulateAutonomousObjective(objectiveId);
+        setSelectedAutonomousObjective((current) =>
+          current
+            ? {
+                ...current,
+                simulations: [simulation, ...current.simulations.filter((item) => item.id !== simulation.id)]
+              }
+            : current
+        );
+      }
+      setAutonomousStatus(`${formatStatusLabel(action)} completed.`);
+      await refreshAutonomousSignals(workspaceRoot);
+    } catch (error) {
+      setAutonomousStatus(error instanceof Error ? error.message : `Could not ${action} objective`);
+    } finally {
+      setAutonomousAction('');
+    }
+  }
+
+  async function resolveAutonomousGate(gateId: string, action: 'approve' | 'reject') {
+    if (autonomousAction) return;
+    setAutonomousAction(`${action}:${gateId}`);
+    setAutonomousStatus(`${formatStatusLabel(action)} approval gate...`);
+    try {
+      const detail =
+        action === 'approve'
+          ? await approveAutonomousGate(gateId, { reason: 'Resolved from Autonomous workspace.' })
+          : await rejectAutonomousGate(gateId, { reason: 'Rejected from Autonomous workspace.' });
+      setSelectedAutonomousObjective(detail);
+      setAutonomousStatus(`Approval gate ${action}d.`);
+      await refreshAutonomousSignals(workspaceRoot);
+    } catch (error) {
+      setAutonomousStatus(error instanceof Error ? error.message : `Could not ${action} gate`);
+    } finally {
+      setAutonomousAction('');
+    }
+  }
+
+  async function refreshCreativeStudio() {
+    if (creativeLoading) return;
+    setCreativeLoading(true);
+    try {
+      const [capabilities, jobs, library] = await Promise.all([
+        getCreativeStudio(),
+        listCreativeJobs({ limit: 40 }),
+        getCreativeAssetLibrary({ limit: 120 })
+      ]);
+      setCreativeCapabilities(capabilities);
+      setCreativeJobs(jobs);
+      setCreativeLibrary(library);
+      if (selectedCreativeJob?.id) {
+        try {
+          setSelectedCreativeJob(await getCreativeJob(selectedCreativeJob.id));
+        } catch {
+          setSelectedCreativeJob(null);
+        }
+      }
+      setCreativeStatus('');
+    } catch (error) {
+      setCreativeStatus(error instanceof Error ? error.message : 'Could not load Creative Studio');
+    } finally {
+      setCreativeLoading(false);
+    }
+  }
+
+  function creativeKindForTab(tab = creativeStudioTab): MediaKind {
+    if (tab === 'video') return 'app_showcase';
+    if (tab === 'beat') return 'music_beat';
+    if (tab === 'voice') return 'voiceover';
+    return 'product_mockup';
+  }
+
+  function creativeProviderForTab(tab = creativeStudioTab) {
+    const kind = creativeKindForTab(tab);
+    const selected = creativeCapabilities?.providers.find((item) => item.id === creativeProviderId);
+    if (selected?.supports.includes(kind)) return selected.id;
+    if (tab === 'video') return 'local_motion_storyboard';
+    if (tab === 'beat' || tab === 'voice') return 'local_audio_synth';
+    return 'local_creative_renderer';
+  }
+
+  async function generateCreativeAsset() {
+    const prompt = creativePrompt.trim();
+    if (!prompt || creativeAction) return;
+    const actionId = `generate:${creativeStudioTab}`;
+    const providerId = creativeProviderForTab();
+    const provider = creativeCapabilities?.providers.find((item) => item.id === providerId);
+    setCreativeAction(actionId);
+    setCreativeStatus('Generating local creative asset package...');
+    try {
+      const job = await createCreativeJob({
+        prompt,
+        kind: creativeKindForTab(),
+        studio: creativeStudioTab,
+        provider_id: providerId,
+        style: creativeStyle,
+        output_formats:
+          creativeStudioTab === 'beat' || creativeStudioTab === 'voice'
+            ? ['wav', 'midi', 'json', 'zip']
+            : creativeStudioTab === 'video'
+              ? ['html', 'gif', 'json', 'zip']
+              : ['png', 'svg', 'jpg', 'zip'],
+        duration_seconds: creativeStudioTab === 'video' ? 8 : creativeStudioTab === 'voice' ? 4 : 3,
+        bpm: creativeStudioTab === 'beat' ? 96 : undefined,
+        key: creativeStudioTab === 'beat' ? 'A minor' : undefined,
+        voice: creativeStudioTab === 'voice' ? 'calm narrator' : undefined,
+        paid_approved: Boolean(provider?.paid === false),
+        gpu_approved: Boolean(provider?.gpu_intensive === false),
+        settings: { source: 'creative_studio_ui' }
+      });
+      setSelectedCreativeJob(job);
+      setCreativeJobs((current) => mergeById<MediaJobResponse>([job], current));
+      setCreativeStatus(`Generated ${job.assets.length} asset(s) in ${job.time_taken_seconds.toFixed(2)}s.`);
+      await refreshCreativeStudio();
+    } catch (error) {
+      setCreativeStatus(error instanceof Error ? error.message : 'Could not generate creative asset');
+    } finally {
+      setCreativeAction('');
+    }
+  }
+
+  async function exportSelectedCreativeJob(format: string) {
+    const jobId = selectedCreativeJob?.id;
+    if (!jobId || creativeAction) return;
+    setCreativeAction(`export:${format}`);
+    setCreativeStatus(`Exporting ${format.toUpperCase()}...`);
+    try {
+      const result = await exportCreativeJob(jobId, { format, include_metadata: true });
+      setCreativeStatus(`Exported ${result.format.toUpperCase()} to ${result.path}.`);
+      await refreshCreativeStudio();
+    } catch (error) {
+      setCreativeStatus(error instanceof Error ? error.message : 'Could not export creative asset');
+    } finally {
+      setCreativeAction('');
+    }
+  }
+
+  async function cancelSelectedCreativeJob() {
+    const jobId = selectedCreativeJob?.id;
+    if (!jobId || creativeAction) return;
+    setCreativeAction('cancel');
+    setCreativeStatus('Canceling media job...');
+    try {
+      const job = await cancelCreativeJob(jobId);
+      setSelectedCreativeJob(job);
+      setCreativeStatus(job.status === 'canceled' ? 'Media job canceled.' : job.warnings.at(-1) || 'Media job is already complete.');
+      await refreshCreativeStudio();
+    } catch (error) {
+      setCreativeStatus(error instanceof Error ? error.message : 'Could not cancel media job');
+    } finally {
+      setCreativeAction('');
+    }
+  }
+
+  async function dispatchNextRuntimeJob() {
+    const targetRoot = workspaceRoot.trim();
+    if (!targetRoot || distributedRuntimeAction) return;
+
+    setDistributedRuntimeAction('dispatch');
+    setDistributedRuntimeStatus('Dispatching the next local-safe queue job...');
+    try {
+      const result = await dispatchExecutionQueue({
+        workspace_root: targetRoot,
+        limit: 1,
+        allow_commands: false,
+        allow_remote: false
+      });
+      const warning = result.warnings[0];
+      const job = result.jobs[0];
+      setDistributedRuntimeStatus(
+        warning || (job ? `${job.title || job.id} is ${formatStatusLabel(job.status)}.` : 'No runnable jobs were dispatched.')
+      );
+      await Promise.all([refreshDistributedRuntime(targetRoot), refreshTasks(targetRoot)]);
+    } catch (error) {
+      setDistributedRuntimeStatus(error instanceof Error ? error.message : 'Could not dispatch runtime job');
+    } finally {
+      setDistributedRuntimeAction('');
+    }
+  }
+
+  async function exportRuntimeSyncManifest() {
+    const targetRoot = workspaceRoot.trim();
+    if (!targetRoot || distributedRuntimeAction) return;
+
+    setDistributedRuntimeAction('sync');
+    setDistributedRuntimeStatus('Creating workspace sync manifest...');
+    try {
+      const manifest = await createRemoteSyncManifest({
+        workspace_root: targetRoot,
+        sections: ['task_history', 'checkpoints', 'project_memory', 'architecture_maps', 'validation_profiles', 'settings'],
+        encrypted: true
+      });
+      setDistributedRuntimeStatus(`Sync manifest ${manifest.id} recorded.`);
+      await refreshDistributedRuntime(targetRoot);
+    } catch (error) {
+      setDistributedRuntimeStatus(error instanceof Error ? error.message : 'Could not create sync manifest');
+    } finally {
+      setDistributedRuntimeAction('');
+    }
+  }
+
+  async function scanWorkspaceOperations() {
+    const targetRoot = workspaceRoot.trim();
+    if (!targetRoot || workspaceOperationsLoading) return;
+
+    setWorkspaceOperationsLoading(true);
+    setWorkspaceOperationsStatus('Scanning workspace operations...');
+
+    try {
+      const result = await scanWorkspaceIntelligence({
+        workspace_root: targetRoot,
+        refresh_project_intelligence: true,
+        generate_recommendations: true,
+        include_git: true
+      });
+      if (!workspaceRequestIsCurrent(result.workspace_root)) return;
+      setWorkspaceOperations(result);
+      setWorkspaceOperationsStatus('Workspace intelligence refreshed.');
+      await Promise.all([
+        refreshWorkspaceHistory(result.workspace_root),
+        refreshProjectIntelligence(result.workspace_root),
+        refreshTasks(result.workspace_root)
+      ]);
+    } catch (error) {
+      setWorkspaceOperationsStatus(error instanceof Error ? error.message : 'Could not scan workspace intelligence');
+    } finally {
+      setWorkspaceOperationsLoading(false);
+    }
+  }
+
+  async function runWorkspaceOperationsJobs(jobId?: string) {
+    const targetRoot = workspaceRoot.trim();
+    if (!targetRoot || workspaceOperationsActionId) return;
+
+    const actionId = `job:${jobId ?? 'all'}`;
+    setWorkspaceOperationsActionId(actionId);
+    setWorkspaceOperationsStatus(jobId ? 'Running scheduled intelligence job...' : 'Running safe scheduled intelligence jobs...');
+
+    try {
+      const result = await runWorkspaceIntelligenceJobs({
+        workspace_root: targetRoot,
+        job_ids: jobId ? [jobId] : [],
+        allow_commands: false
+      });
+      if (result.snapshot && workspaceRequestIsCurrent(result.snapshot.workspace_root)) {
+        setWorkspaceOperations(result.snapshot);
+      }
+      const summaries = result.jobs.map((job) => `${job.name}: ${formatStatusLabel(job.status)}`);
+      setWorkspaceOperationsStatus(
+        [summaries.join(' / ') || 'Scheduled intelligence jobs recorded.', ...result.warnings].filter(Boolean).join(' ')
+      );
+      await Promise.all([
+        refreshWorkspaceHistory(result.workspace_root),
+        refreshProjectIntelligence(result.workspace_root),
+        refreshTasks(result.workspace_root)
+      ]);
+    } catch (error) {
+      setWorkspaceOperationsStatus(error instanceof Error ? error.message : 'Could not run scheduled intelligence jobs');
+    } finally {
+      setWorkspaceOperationsActionId('');
+    }
+  }
+
+  async function dismissWorkspaceOperationRecommendation(recommendation: WorkspaceRecommendation) {
+    if (workspaceOperationsActionId) return;
+
+    setWorkspaceOperationsActionId(`dismiss:${recommendation.id}`);
+    setWorkspaceOperationsStatus('Dismissing recommendation...');
+
+    try {
+      const result = await dismissWorkspaceRecommendation(recommendation.id, {
+        reason: 'Dismissed from Workspace Intelligence.'
+      });
+      setWorkspaceOperations((current) =>
+        current
+          ? {
+              ...current,
+              recommendations: current.recommendations.filter((item) => item.id !== recommendation.id)
+            }
+          : current
+      );
+      setWorkspaceOperationsStatus(result.message || 'Recommendation dismissed.');
+      await refreshWorkspaceOperations(result.recommendation.workspace_root);
+    } catch (error) {
+      setWorkspaceOperationsStatus(error instanceof Error ? error.message : 'Could not dismiss recommendation');
+    } finally {
+      setWorkspaceOperationsActionId('');
+    }
+  }
+
+  async function fixWorkspaceOperationRecommendation(recommendation: WorkspaceRecommendation) {
+    if (workspaceOperationsActionId) return;
+
+    setWorkspaceOperationsActionId(`fix:${recommendation.id}`);
+    setWorkspaceOperationsStatus('Creating a tracked task for this recommendation...');
+
+    try {
+      const result = await fixWorkspaceRecommendation(recommendation.id, {
+        reason: 'Fix requested from Workspace Intelligence.',
+        create_task: true
+      });
+      const task = result.task;
+      if (task) {
+        setTasks((current) => mergeById<TaskSummary>([task], current));
+        setSelectedTaskId(task.id);
+        await refreshTasks(task.workspace_root);
+      }
+      setWorkspaceOperations((current) =>
+        current
+          ? {
+              ...current,
+              recommendations: current.recommendations.map((item) =>
+                item.id === recommendation.id ? result.recommendation : item
+              )
+            }
+          : current
+      );
+      setWorkspaceOperationsStatus(result.message || 'Recommendation task created.');
+      await refreshWorkspaceOperations(result.recommendation.workspace_root);
+    } catch (error) {
+      setWorkspaceOperationsStatus(error instanceof Error ? error.message : 'Could not create recommendation task');
+    } finally {
+      setWorkspaceOperationsActionId('');
     }
   }
 
@@ -1375,7 +2876,15 @@ function App() {
       await Promise.all([
         refreshWorkspaceHistory(result.workspace_root),
         refreshWorkspaceProfile(result.workspace_root),
+        refreshProjectIntelligence(result.workspace_root),
+        refreshWorkspaceOperations(result.workspace_root),
+        refreshDistributedRuntime(result.workspace_root),
+        refreshAdaptiveSignals(result.workspace_root),
+        refreshProductizationSignals(result.workspace_root),
+        refreshEcosystemSignals(result.workspace_root),
+        refreshAutonomousSignals(result.workspace_root),
         refreshValidationRecipe(result.workspace_root),
+        refreshTasks(result.workspace_root),
         refreshCheckpoints(result.workspace_root)
       ]);
       setActiveSection('chat');
@@ -1486,15 +2995,15 @@ function App() {
 
   async function activateDefaultAgent() {
     setActiveAgentId(defaultAgentId);
-    setAssistantName('Aegis AI');
-    setAssistantMission('Your personal coding AI for planning, building, reviewing, and shipping work inside this workspace.');
+    setAssistantName(assistantIdentity);
+    setAssistantMission(defaultAssistantMission);
     setMode('build');
-    setSaveStatus('Activating default Aegis agent...');
+    setSaveStatus(`Activating ${assistantIdentity}...`);
 
     try {
       const nextConfig = await saveConfig({
-        assistant_name: 'Aegis AI',
-        assistant_mission: 'Your personal coding AI for planning, building, reviewing, and shipping work inside this workspace.',
+        assistant_name: assistantIdentity,
+        assistant_mission: defaultAssistantMission,
         default_mode: 'build',
         default_workspace: workspaceRoot.trim() || 'workspace',
         model_api: modelApi.trim() || 'ollama',
@@ -1507,9 +3016,9 @@ function App() {
         auto_run_validation: autoRunValidation
       });
       hydrateConfig(nextConfig);
-      setSaveStatus('Default Aegis agent is active.');
+      setSaveStatus(`${assistantIdentity} is active.`);
     } catch (error) {
-      setSaveStatus(error instanceof Error ? error.message : 'Could not activate default agent');
+      setSaveStatus(error instanceof Error ? error.message : `Could not activate ${assistantIdentity}`);
     }
   }
 
@@ -1580,7 +3089,10 @@ function App() {
           setFiles(result.files);
           void refreshWorkspaceHistory(result.workspace_root);
           void refreshWorkspaceProfile(result.workspace_root);
+          void refreshProjectIntelligence(result.workspace_root);
+          void refreshWorkspaceOperations(result.workspace_root);
           void refreshValidationRecipe(result.workspace_root);
+          void refreshTasks(result.workspace_root);
           void refreshCheckpoints(result.workspace_root);
         })
         .catch(() => {
@@ -1592,14 +3104,14 @@ function App() {
   function openProjectConversation(thread: SavedConversation) {
     openConversation(thread);
     setActiveSection('chat');
-    setStatus(`Opened saved chat "${thread.title}".`);
+    setStatus(`Opened saved session "${thread.title}".`);
   }
 
   function deleteSavedThread(thread: SavedConversation) {
     if (loading) return;
 
     const confirmed = window.confirm(
-      `Delete saved chat "${thread.title}"? This removes it from this browser only.`
+      `Delete saved session "${thread.title}"? This removes it from this browser only.`
     );
     if (!confirmed) return;
 
@@ -1608,7 +3120,7 @@ function App() {
       saveSavedConversations(next);
       return next;
     });
-    setStatus('Saved chat deleted.');
+    setStatus('Saved session deleted.');
   }
 
   async function saveAegisSettings() {
@@ -1616,10 +3128,10 @@ function App() {
 
     try {
       const nextConfig = await saveConfig({
-        assistant_name: assistantName.trim() || 'Aegis AI',
+        assistant_name: assistantName.trim() || assistantIdentity,
         assistant_mission:
           assistantMission.trim() ||
-          'Your personal coding AI for planning, building, reviewing, and shipping work inside this workspace.',
+          defaultAssistantMission,
         default_mode: mode,
         default_workspace: workspaceRoot.trim() || 'workspace',
         model_api: modelApi.trim() || 'ollama',
@@ -1633,7 +3145,7 @@ function App() {
       });
 
       hydrateConfig(nextConfig);
-      setSaveStatus('Aegis settings saved.');
+      setSaveStatus(`${productName} settings saved.`);
 
       const result = await listFiles(nextConfig.default_workspace);
       if (!workspaceRequestIsCurrent(nextConfig.default_workspace)) return;
@@ -1641,10 +3153,13 @@ function App() {
       setFiles(result.files);
       await refreshWorkspaceHistory(result.workspace_root);
       await refreshWorkspaceProfile(result.workspace_root);
+      await refreshProjectIntelligence(result.workspace_root);
+      await refreshWorkspaceOperations(result.workspace_root);
       await refreshValidationRecipe(result.workspace_root);
+      await refreshTasks(result.workspace_root);
       await refreshCheckpoints(result.workspace_root);
     } catch (error) {
-      setSaveStatus(error instanceof Error ? error.message : 'Could not save Aegis settings');
+      setSaveStatus(error instanceof Error ? error.message : `Could not save ${productName} settings`);
     }
   }
 
@@ -1693,7 +3208,7 @@ function App() {
     setQueuedMessages((current) => appendQueuedMessage(current, queuedMessage));
     setStatus(
       connectionState === 'connected'
-        ? 'Aegis is busy. Your message is queued for the next available turn.'
+        ? `${assistantIdentity} is focused. Your message is queued for the next available turn.`
         : `Backend ${connectionStateLabel(connectionState).toLowerCase()}. Your message is queued and will send automatically.`
     );
   }
@@ -1854,7 +3369,7 @@ function App() {
             setStatus(`Streaming response started${streamMode}.`);
           },
           onStatus: (payload) => {
-            setStatus(payload.message || payload.stage || 'Aegis is working...');
+            setStatus(payload.message || payload.stage || `${assistantIdentity} is working...`);
           },
           onDelta: (payload) => {
             const isPreview = payload.source === 'structured_reply_preview';
@@ -1923,7 +3438,10 @@ function App() {
         setFiles(response.workspace_files);
         setActiveWorkspaceRoot(response.workspace_root);
         await refreshWorkspaceHistory(response.workspace_root);
+        await refreshTasks(response.workspace_root);
         await refreshWorkspaceProfile(response.workspace_root);
+        await refreshProjectIntelligence(response.workspace_root);
+        await refreshWorkspaceOperations(response.workspace_root);
         await refreshValidationRecipe(response.workspace_root);
         await refreshCheckpoints(response.workspace_root);
         const finalHistory: ChatMessage[] = [
@@ -1948,7 +3466,7 @@ function App() {
         void captureConversationMemory(content, response, finalHistory);
         setRetryCount(0);
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Aegis could not answer the request';
+        const errorMessage = error instanceof Error ? error.message : `${assistantIdentity} could not complete the request`;
 
         if (isAbortError(error) || abortController.signal.aborted) {
           const stoppedHistory: ChatMessage[] = streamedAssistant.trim()
@@ -1962,7 +3480,7 @@ function App() {
             : nextHistory;
           setHistory(stoppedHistory);
           persistConversation(threadIdForSubmit, stoppedHistory, requestWorkspaceRoot);
-          setStatus('Chat request stopped.');
+          setStatus('Session request stopped.');
           setRetryCount(0);
           return;
         }
@@ -2047,6 +3565,8 @@ function App() {
 
       await refreshFiles();
       await refreshCheckpoints(result.workspace_root);
+      await refreshTasks(result.workspace_root);
+      await refreshWorkspaceOperations(result.workspace_root);
 
       const previewPath = previewPathForApplyResult(changesToApply, result.applied);
       if (previewPath) {
@@ -2383,7 +3903,7 @@ function App() {
   function exportCurrentChatTranscript() {
     if (!history.length) return;
 
-    const title = currentThreadPreview.title || 'Aegis chat';
+    const title = currentThreadPreview.title || `${productName} session`;
     const content = buildConversationMarkdown(title, history, workspaceRoot);
     const filename = conversationMarkdownFilename(title);
     const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
@@ -2737,6 +4257,15 @@ function App() {
 
   function renderWorkspaceSurface() {
     if (activeSection === 'projects') return renderProjectsSurface();
+    if (activeSection === 'intelligence') return renderProjectIntelligenceSurface();
+    if (activeSection === 'workspace-intelligence') return renderWorkspaceIntelligenceSurface();
+    if (activeSection === 'runtime') return renderDistributedRuntimeSurface();
+    if (activeSection === 'adaptive') return renderAdaptiveIntelligenceSurface();
+    if (activeSection === 'hardening') return renderProductizationSurface();
+    if (activeSection === 'ecosystem') return renderEcosystemSurface();
+    if (activeSection === 'autonomous') return renderAutonomousEngineeringSurface();
+    if (activeSection === 'creative') return renderCreativeStudioSurface();
+    if (activeSection === 'tasks') return renderTasksSurface();
     if (activeSection === 'agents') return renderAgentsSurface();
     return renderModelsSurface();
   }
@@ -2795,7 +4324,7 @@ function App() {
         {renderSurfaceHeader(
           <FolderOpen size={22} />,
           'Projects',
-          'Workspaces are the roots Aegis can inspect, edit, validate, and remember between chats.',
+          `${productName} workspaces are persistent roots ${assistantIdentity} can inspect, edit, validate, and remember between sessions.`,
           <button type="button" style={styles.primaryButton(palette)} onClick={() => openSettings('workspace')}>
             <Settings size={16} />
             Workspace settings
@@ -2945,6 +4474,3111 @@ function App() {
     );
   }
 
+  function renderProjectIntelligenceSurface() {
+    const snapshot = projectIntelligence;
+    const profile = snapshot?.profile;
+    const architecture = snapshot?.architecture;
+
+    return (
+      <div style={styles.surfacePage}>
+        {renderSurfaceHeader(
+          <Brain size={22} />,
+          'Project Intelligence',
+          'Persistent project profile, architecture map, file importance, validation memory, and known project signals.',
+          <div style={styles.tagWrap}>
+            <button
+              type="button"
+              style={styles.primaryButton(palette)}
+              onClick={() => void rebuildProjectIntelligence()}
+              disabled={projectIntelligenceLoading || !workspaceRoot}
+            >
+              {projectIntelligenceLoading ? <Loader2 size={16} className="spin" /> : <Search size={16} />}
+              Scan project
+            </button>
+            <button
+              type="button"
+              style={styles.secondaryButton(palette)}
+              onClick={() => void rebuildProjectIntelligence({ rebuildMemory: true })}
+              disabled={projectIntelligenceLoading || !workspaceRoot}
+            >
+              <Brain size={16} />
+              Rebuild memory
+            </button>
+            <button
+              type="button"
+              style={styles.secondaryButton(palette)}
+              onClick={() => void rebuildProjectIntelligence({ clearMemory: true, rebuildMemory: true })}
+              disabled={projectIntelligenceLoading || !workspaceRoot}
+            >
+              <Trash2 size={16} />
+              Clear/rebuild
+            </button>
+          </div>
+        )}
+
+        <div style={styles.metricGrid}>
+          <div style={styles.metricCard(palette)}>
+            <span style={styles.metricLabel(palette)}>Indexed files</span>
+            <strong style={styles.metricValue(palette)}>{snapshot?.indexing.file_count ?? files.length}</strong>
+          </div>
+          <div style={styles.metricCard(palette)}>
+            <span style={styles.metricLabel(palette)}>Important files</span>
+            <strong style={styles.metricValue(palette)}>{snapshot?.file_importance.length ?? 0}</strong>
+          </div>
+          <div style={styles.metricCard(palette)}>
+            <span style={styles.metricLabel(palette)}>API routes</span>
+            <strong style={styles.metricValue(palette)}>{architecture?.api_routes.length ?? 0}</strong>
+          </div>
+        </div>
+
+        {projectIntelligenceStatus ? <div style={styles.inlineStatus(palette)}>{projectIntelligenceStatus}</div> : null}
+
+        <div style={styles.surfaceColumns}>
+          <section style={styles.settingsSection(palette)}>
+            <h3 style={styles.settingsHeading(palette)}>Profile</h3>
+            {snapshot ? (
+              <>
+                <div style={styles.workspaceMeta(palette)}>
+                  <strong>Name</strong>
+                  <span>{profile?.project_name || workspaceRoot}</span>
+                  <strong>Root</strong>
+                  <span>{profile?.root_path || snapshot.workspace_root}</span>
+                  <strong>Last indexed</strong>
+                  <span>{formatDateTime(profile?.last_indexed_at || snapshot.indexing.last_indexed_at)}</span>
+                  <strong>Status</strong>
+                  <span>{formatStatusLabel(snapshot.indexing.status)}</span>
+                </div>
+                <div style={styles.tagWrap}>
+                  {(profile?.stack ?? []).slice(0, 12).map((item) => (
+                    <span key={`pi-stack-${item}`} style={styles.contextTag(palette)}>
+                      {item}
+                    </span>
+                  ))}
+                  {(profile?.package_managers ?? []).slice(0, 4).map((item) => (
+                    <span key={`pi-pm-${item}`} style={styles.contextTag(palette)}>
+                      {item}
+                    </span>
+                  ))}
+                </div>
+                <div style={styles.sectionBlock}>
+                  <div style={styles.sectionLabel(palette)}>Coding Conventions</div>
+                  <div style={styles.eventList}>
+                    {(profile?.coding_conventions ?? []).slice(0, 8).map((item) => (
+                      <div key={item} style={styles.eventRow(palette, 'ok')}>
+                        <div>
+                          <strong style={styles.eventTitle(palette)}>Convention</strong>
+                          <div style={styles.eventDetail(palette)}>{item}</div>
+                        </div>
+                      </div>
+                    ))}
+                    {!profile?.coding_conventions.length ? (
+                      <div style={styles.emptyPanel(palette)}>No coding conventions inferred yet.</div>
+                    ) : null}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div style={styles.emptyPanel(palette)}>
+                {projectIntelligenceStatus || 'Scan the project to build its persistent intelligence profile.'}
+              </div>
+            )}
+          </section>
+
+          <section style={styles.settingsSection(palette)}>
+            <h3 style={styles.settingsHeading(palette)}>Architecture Map</h3>
+            {architecture ? (
+              <div style={styles.eventList}>
+                {architecture.frontend_backend_split.slice(0, 4).map((item) => (
+                  <div key={`split-${item}`} style={styles.eventRow(palette, 'ok')}>
+                    <div>
+                      <strong style={styles.eventTitle(palette)}>Split</strong>
+                      <div style={styles.eventDetail(palette)}>{item}</div>
+                    </div>
+                  </div>
+                ))}
+                {architecture.major_modules.slice(0, 10).map((item) => (
+                  <div key={`module-${item.path}-${item.kind}`} style={styles.eventRow(palette, 'ok')}>
+                    <div>
+                      <strong style={styles.eventTitle(palette)}>
+                        {item.name} / {item.kind || 'module'}
+                      </strong>
+                      <div style={styles.eventDetail(palette)}>{item.summary || item.path}</div>
+                    </div>
+                    <span style={styles.eventTime(palette)}>{item.path}</span>
+                  </div>
+                ))}
+                {architecture.api_routes.slice(0, 8).map((route) => (
+                  <div key={`route-${route.method}-${route.path}-${route.file}`} style={styles.eventRow(palette, 'warning')}>
+                    <div>
+                      <strong style={styles.eventTitle(palette)}>
+                        {route.method} {route.path}
+                      </strong>
+                      <div style={styles.eventDetail(palette)}>{route.file}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={styles.emptyPanel(palette)}>No architecture map has been generated yet.</div>
+            )}
+          </section>
+        </div>
+
+        <div style={styles.surfaceColumns}>
+          <section style={styles.settingsSection(palette)}>
+            <h3 style={styles.settingsHeading(palette)}>Important Files</h3>
+            <div style={styles.eventList}>
+              {(snapshot?.file_importance ?? []).slice(0, 12).map((item) => (
+                <div key={`importance-${item.path}`} style={styles.eventRow(palette, 'ok')}>
+                  <div>
+                    <strong style={styles.eventTitle(palette)}>{item.path}</strong>
+                    <div style={styles.eventDetail(palette)}>{item.reasons.join(' / ') || 'Important project file'}</div>
+                  </div>
+                  <span style={styles.eventTime(palette)}>{item.score.toFixed(1)}</span>
+                </div>
+              ))}
+              {!snapshot?.file_importance.length ? (
+                <div style={styles.emptyPanel(palette)}>No file importance scores have been recorded yet.</div>
+              ) : null}
+            </div>
+          </section>
+
+          <section style={styles.settingsSection(palette)}>
+            <h3 style={styles.settingsHeading(palette)}>Memory And Validation</h3>
+            <div style={styles.sectionBlock}>
+              <div style={styles.sectionLabel(palette)}>Validation Commands</div>
+              <div style={styles.tagWrap}>
+                {(snapshot?.validation_commands ?? []).slice(0, 10).map((item) => (
+                  <span key={`pi-validation-${item}`} style={styles.contextTag(palette)}>
+                    {item}
+                  </span>
+                ))}
+                {!snapshot?.validation_commands.length ? (
+                  <span style={styles.previewMeta(palette)}>No validation commands detected yet.</span>
+                ) : null}
+              </div>
+            </div>
+            <div style={styles.sectionBlock}>
+              <div style={styles.sectionLabel(palette)}>Recent Failures</div>
+              <div style={styles.eventList}>
+                {(snapshot?.recent_failures ?? []).slice(0, 5).map((item) => (
+                  <div key={`pi-failure-${item.id}`} style={styles.eventRow(palette, 'error')}>
+                    <div>
+                      <strong style={styles.eventTitle(palette)}>{item.title || item.message}</strong>
+                      <div style={styles.eventDetail(palette)}>{item.error_summary || item.final_summary || item.message}</div>
+                    </div>
+                    <span style={styles.eventTime(palette)}>{formatDateTime(item.updated_at || item.created_at)}</span>
+                  </div>
+                ))}
+                {!snapshot?.recent_failures.length ? (
+                  <div style={styles.emptyPanel(palette)}>No recent project failures are tracked.</div>
+                ) : null}
+              </div>
+            </div>
+            <div style={styles.sectionBlock}>
+              <div style={styles.sectionLabel(palette)}>Known TODOs</div>
+              <div style={styles.eventList}>
+                {(snapshot?.known_todos ?? []).slice(0, 6).map((item) => (
+                  <div key={`pi-todo-${item}`} style={styles.eventRow(palette, 'warning')}>
+                    <div>
+                      <strong style={styles.eventTitle(palette)}>TODO</strong>
+                      <div style={styles.eventDetail(palette)}>{item}</div>
+                    </div>
+                  </div>
+                ))}
+                {!snapshot?.known_todos.length ? <div style={styles.emptyPanel(palette)}>No TODOs found in the indexed files.</div> : null}
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+    );
+  }
+
+  function renderWorkspaceIntelligenceSurface() {
+    const snapshot = workspaceOperations;
+    const health = snapshot?.health;
+    const watcher = snapshot?.watcher;
+    const git = snapshot?.git;
+    const activeRecommendations = (snapshot?.recommendations ?? []).filter((item) => item.status === 'active');
+    const architectureMetric = health?.metrics.find((item) => item.name === 'Architecture drift');
+    const validationMetric = health?.metrics.find((item) => item.name === 'Validation instability');
+    const dependencyMetric = health?.metrics.find((item) => item.name === 'Dependency freshness');
+    const activeTaskCount = taskBoardTasks.filter((item) => !terminalTaskStatuses.has(item.status)).length;
+    const completedTaskCount = taskBoardTasks.filter((item) => item.status === 'completed').length;
+    const failedTaskCount = taskBoardTasks.filter((item) => item.status === 'failed' || item.status === 'canceled').length;
+
+    return (
+      <div style={styles.surfacePage}>
+        {renderSurfaceHeader(
+          <Zap size={22} />,
+          'Workspace Intelligence',
+          'Permission-aware watcher, health analysis, recommendations, scheduled intelligence, git signals, and long-term project memory.',
+          <div style={styles.tagWrap}>
+            <button
+              type="button"
+              style={styles.primaryButton(palette)}
+              onClick={() => void scanWorkspaceOperations()}
+              disabled={workspaceOperationsLoading || !workspaceRoot}
+            >
+              {workspaceOperationsLoading ? <Loader2 size={16} className="spin" /> : <Search size={16} />}
+              Scan workspace
+            </button>
+            <button
+              type="button"
+              style={styles.secondaryButton(palette)}
+              onClick={() => void runWorkspaceOperationsJobs()}
+              disabled={Boolean(workspaceOperationsActionId) || !workspaceRoot}
+            >
+              {workspaceOperationsActionId === 'job:all' ? <Loader2 size={16} className="spin" /> : <Play size={16} />}
+              Run safe jobs
+            </button>
+          </div>
+        )}
+
+        <div style={styles.metricGrid}>
+          <div style={styles.metricCard(palette)}>
+            <span style={styles.metricLabel(palette)}>Health score</span>
+            <strong style={styles.metricValue(palette)}>
+              {health ? `${health.score}/100` : 'No scan'}
+            </strong>
+          </div>
+          <div style={styles.metricCard(palette)}>
+            <span style={styles.metricLabel(palette)}>Recommendations</span>
+            <strong style={styles.metricValue(palette)}>{activeRecommendations.length}</strong>
+          </div>
+          <div style={styles.metricCard(palette)}>
+            <span style={styles.metricLabel(palette)}>Workspace events</span>
+            <strong style={styles.metricValue(palette)}>{snapshot?.recent_events.length ?? 0}</strong>
+          </div>
+          <div style={styles.metricCard(palette)}>
+            <span style={styles.metricLabel(palette)}>Git changes</span>
+            <strong style={styles.metricValue(palette)}>{git?.changed_files.length ?? 0}</strong>
+          </div>
+        </div>
+
+        {workspaceOperationsStatus ? <div style={styles.inlineStatus(palette)}>{workspaceOperationsStatus}</div> : null}
+
+        <div style={styles.surfaceColumns}>
+          <section style={styles.settingsSection(palette)}>
+            <div style={styles.sectionHeaderInline}>
+              <h3 style={styles.settingsHeading(palette)}>Project Health</h3>
+              <span style={styles.diagnosticChip(palette, healthStatusToEventStatus(health?.status ?? 'unknown'))}>
+                {formatStatusLabel(health?.status ?? 'unknown')}
+              </span>
+            </div>
+
+            <div style={styles.eventList}>
+              {(health?.metrics ?? []).map((metric) => (
+                <div key={`workspace-health-${metric.name}`} style={styles.eventRow(palette, healthStatusToEventStatus(metric.status))}>
+                  <div>
+                    <strong style={styles.eventTitle(palette)}>{metric.name}</strong>
+                    <div style={styles.eventDetail(palette)}>{metric.summary}</div>
+                    {metric.evidence.length || metric.related_files.length ? (
+                      <div style={{ ...styles.tagWrap, marginTop: 10 }}>
+                        {metric.evidence.slice(0, 3).map((item) => (
+                          <span key={`${metric.name}-evidence-${item}`} style={styles.contextTag(palette)}>
+                            {item}
+                          </span>
+                        ))}
+                        {metric.related_files.slice(0, 4).map((item) => (
+                          <span key={`${metric.name}-file-${item}`} style={styles.contextTag(palette)}>
+                            {item}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                  <span style={styles.eventTime(palette)}>{metric.score}/100</span>
+                </div>
+              ))}
+              {!health?.metrics.length ? (
+                <div style={styles.emptyPanel(palette)}>No workspace health scan has been recorded yet.</div>
+              ) : null}
+            </div>
+          </section>
+
+          <section style={styles.settingsSection(palette)}>
+            <div style={styles.sectionHeaderInline}>
+              <h3 style={styles.settingsHeading(palette)}>Active Recommendations</h3>
+              <span style={styles.contextTag(palette)}>{activeRecommendations.length} active</span>
+            </div>
+
+            <div style={styles.eventList}>
+              {activeRecommendations.slice(0, 10).map((recommendation) => {
+                const fixing = workspaceOperationsActionId === `fix:${recommendation.id}`;
+                const dismissing = workspaceOperationsActionId === `dismiss:${recommendation.id}`;
+
+                return (
+                  <div
+                    key={`workspace-rec-${recommendation.id}`}
+                    style={styles.eventRow(palette, severityToEventStatus(recommendation.severity))}
+                  >
+                    <div>
+                      <strong style={styles.eventTitle(palette)}>{recommendation.title}</strong>
+                      <div style={styles.eventDetail(palette)}>{recommendation.detail || recommendation.rationale}</div>
+                      <div style={{ ...styles.tagWrap, marginTop: 10 }}>
+                        <span style={styles.contextTag(palette)}>{formatStatusLabel(recommendation.severity)}</span>
+                        {recommendation.category ? (
+                          <span style={styles.contextTag(palette)}>{recommendation.category}</span>
+                        ) : null}
+                        {recommendation.related_files.slice(0, 4).map((item) => (
+                          <span key={`${recommendation.id}-file-${item}`} style={styles.contextTag(palette)}>
+                            {item}
+                          </span>
+                        ))}
+                        {recommendation.fix_task_id ? (
+                          <span style={styles.goodTag(palette)}>Task {recommendation.fix_task_id}</span>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div style={styles.eventActions}>
+                      <button
+                        type="button"
+                        style={styles.secondaryButton(palette)}
+                        onClick={() => void fixWorkspaceOperationRecommendation(recommendation)}
+                        disabled={Boolean(workspaceOperationsActionId)}
+                      >
+                        {fixing ? <Loader2 size={16} className="spin" /> : <Play size={16} />}
+                        Fix now
+                      </button>
+                      <button
+                        type="button"
+                        style={styles.secondaryButton(palette)}
+                        onClick={() => void dismissWorkspaceOperationRecommendation(recommendation)}
+                        disabled={Boolean(workspaceOperationsActionId)}
+                      >
+                        {dismissing ? <Loader2 size={16} className="spin" /> : <X size={16} />}
+                        Dismiss
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+              {!activeRecommendations.length ? (
+                <div style={styles.emptyPanel(palette)}>No active recommendations are waiting on this workspace.</div>
+              ) : null}
+            </div>
+          </section>
+        </div>
+
+        <div style={styles.surfaceColumns}>
+          <section style={styles.settingsSection(palette)}>
+            <h3 style={styles.settingsHeading(palette)}>Workspace Watcher</h3>
+            <div style={styles.workspaceMeta(palette)}>
+              <strong>Last scan</strong>
+              <span>{watcher?.scanned_at ? formatDateTime(watcher.scanned_at) : 'Not scanned'}</span>
+              <strong>Files tracked</strong>
+              <span>{watcher?.file_count ?? 0}</span>
+              <strong>Dependency fingerprint</strong>
+              <span>{watcher?.dependency_fingerprint ? watcher.dependency_fingerprint.slice(0, 12) : 'none'}</span>
+              <strong>Validation drift</strong>
+              <span>{watcher?.validation_drift.length ?? 0}</span>
+            </div>
+            <div style={styles.sectionBlock}>
+              <div style={styles.sectionLabel(palette)}>Recent Workspace Events</div>
+              <div style={styles.eventList}>
+                {(snapshot?.recent_events ?? []).slice(0, 8).map((event) => (
+                  <div key={`workspace-event-${event.id}`} style={styles.eventRow(palette, severityToEventStatus(event.severity))}>
+                    <div>
+                      <strong style={styles.eventTitle(palette)}>{event.title}</strong>
+                      <div style={styles.eventDetail(palette)}>{event.detail || event.path || event.kind}</div>
+                    </div>
+                    <span style={styles.eventTime(palette)}>{formatEventTime(event.created_at)}</span>
+                  </div>
+                ))}
+                {!snapshot?.recent_events.length ? (
+                  <div style={styles.emptyPanel(palette)}>No watcher events have been recorded since the last baseline.</div>
+                ) : null}
+              </div>
+            </div>
+          </section>
+
+          <section style={styles.settingsSection(palette)}>
+            <h3 style={styles.settingsHeading(palette)}>Git Intelligence</h3>
+            <div style={styles.workspaceMeta(palette)}>
+              <strong>Repository</strong>
+              <span>{git?.is_repository ? 'Detected' : 'Not detected'}</span>
+              <strong>Branch</strong>
+              <span>{git?.branch || 'none'}</span>
+              <strong>Upstream</strong>
+              <span>{git?.upstream || 'none'}</span>
+              <strong>Branches</strong>
+              <span>{git?.branch_count ?? 0}</span>
+            </div>
+            <div style={styles.sectionBlock}>
+              <div style={styles.sectionLabel(palette)}>Risky Diffs And Heatmap</div>
+              <div style={styles.eventList}>
+                {(git?.risky_diffs.length ? git.risky_diffs : git?.change_heatmap ?? []).slice(0, 8).map((item) => (
+                  <div key={`git-diff-${item.path}-${item.status}`} style={styles.eventRow(palette, 'warning')}>
+                    <div>
+                      <strong style={styles.eventTitle(palette)}>{item.path}</strong>
+                      <div style={styles.eventDetail(palette)}>
+                        {item.status || 'changed'} / +{item.additions} / -{item.deletions}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {!git?.risky_diffs.length && !git?.change_heatmap.length ? (
+                  <div style={styles.emptyPanel(palette)}>{git?.summary || 'No git changes are currently tracked.'}</div>
+                ) : null}
+              </div>
+            </div>
+            <div style={styles.sectionBlock}>
+              <div style={styles.sectionLabel(palette)}>Recent Commits</div>
+              <div style={styles.eventList}>
+                {(git?.recent_commits ?? []).slice(0, 5).map((commit) => (
+                  <div key={`git-commit-${commit.sha}`} style={styles.eventRow(palette, 'ok')}>
+                    <div>
+                      <strong style={styles.eventTitle(palette)}>{commit.subject}</strong>
+                      <div style={styles.eventDetail(palette)}>
+                        {commit.sha} / {commit.author}
+                      </div>
+                    </div>
+                    <span style={styles.eventTime(palette)}>{formatDateTime(commit.created_at)}</span>
+                  </div>
+                ))}
+                {!git?.recent_commits.length ? (
+                  <div style={styles.emptyPanel(palette)}>No recent commits are available for this workspace.</div>
+                ) : null}
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <div style={styles.surfaceColumns}>
+          <section style={styles.settingsSection(palette)}>
+            <div style={styles.sectionHeaderInline}>
+              <h3 style={styles.settingsHeading(palette)}>Scheduled Intelligence Jobs</h3>
+              <span style={styles.contextTag(palette)}>{snapshot?.scheduled_jobs.length ?? 0} jobs</span>
+            </div>
+            <div style={styles.eventList}>
+              {(snapshot?.scheduled_jobs ?? []).map((job) => {
+                const running = workspaceOperationsActionId === `job:${job.id}`;
+                return (
+                  <div key={`workspace-job-${job.id}`} style={styles.eventRow(palette, healthStatusToEventStatus(job.status))}>
+                    <div>
+                      <strong style={styles.eventTitle(palette)}>{job.name}</strong>
+                      <div style={styles.eventDetail(palette)}>{job.summary || job.next_run_hint || job.schedule_label}</div>
+                      <div style={{ ...styles.tagWrap, marginTop: 10 }}>
+                        <span style={styles.contextTag(palette)}>{job.kind}</span>
+                        <span style={styles.contextTag(palette)}>{job.schedule_label}</span>
+                        <span style={styles.contextTag(palette)}>{formatStatusLabel(job.status)}</span>
+                        {job.safe_by_default ? <span style={styles.goodTag(palette)}>Safe</span> : null}
+                      </div>
+                    </div>
+                    <div style={styles.eventActions}>
+                      <span style={styles.eventTime(palette)}>
+                        {job.last_run_at ? formatDateTime(job.last_run_at) : 'Not run'}
+                      </span>
+                      <button
+                        type="button"
+                        style={styles.secondaryButton(palette)}
+                        onClick={() => void runWorkspaceOperationsJobs(job.id)}
+                        disabled={Boolean(workspaceOperationsActionId) || !workspaceRoot}
+                      >
+                        {running ? <Loader2 size={16} className="spin" /> : <Play size={16} />}
+                        Run
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+              {!snapshot?.scheduled_jobs.length ? (
+                <div style={styles.emptyPanel(palette)}>No scheduled intelligence jobs have been loaded yet.</div>
+              ) : null}
+            </div>
+          </section>
+
+          <section style={styles.settingsSection(palette)}>
+            <h3 style={styles.settingsHeading(palette)}>Trends And Memory</h3>
+            <div style={styles.metricGrid}>
+              <div style={styles.metricCard(palette)}>
+                <span style={styles.metricLabel(palette)}>Active tasks</span>
+                <strong style={styles.metricValue(palette)}>{activeTaskCount}</strong>
+              </div>
+              <div style={styles.metricCard(palette)}>
+                <span style={styles.metricLabel(palette)}>Completed</span>
+                <strong style={styles.metricValue(palette)}>{completedTaskCount}</strong>
+              </div>
+              <div style={styles.metricCard(palette)}>
+                <span style={styles.metricLabel(palette)}>Failed</span>
+                <strong style={styles.metricValue(palette)}>{failedTaskCount}</strong>
+              </div>
+            </div>
+            <div style={styles.sectionBlock}>
+              <div style={styles.sectionLabel(palette)}>Focused Signals</div>
+              <div style={styles.eventList}>
+                {[architectureMetric, validationMetric, dependencyMetric]
+                  .filter(Boolean)
+                  .map((metric) => (
+                    <div key={`workspace-focus-${metric!.name}`} style={styles.eventRow(palette, healthStatusToEventStatus(metric!.status))}>
+                      <div>
+                        <strong style={styles.eventTitle(palette)}>{metric!.name}</strong>
+                        <div style={styles.eventDetail(palette)}>{metric!.summary}</div>
+                      </div>
+                      <span style={styles.eventTime(palette)}>{metric!.score}/100</span>
+                    </div>
+                  ))}
+                {!architectureMetric && !validationMetric && !dependencyMetric ? (
+                  <div style={styles.emptyPanel(palette)}>No focused health signals have been generated yet.</div>
+                ) : null}
+              </div>
+            </div>
+            <div style={styles.sectionBlock}>
+              <div style={styles.sectionLabel(palette)}>Long-Term Project Memory</div>
+              <div style={styles.eventList}>
+                {(snapshot?.long_term_memory ?? []).slice(0, 8).map((item) => (
+                  <div key={`workspace-memory-${item}`} style={styles.eventRow(palette, 'ok')}>
+                    <div>
+                      <strong style={styles.eventTitle(palette)}>Memory</strong>
+                      <div style={styles.eventDetail(palette)}>{item}</div>
+                    </div>
+                  </div>
+                ))}
+                {!snapshot?.long_term_memory.length ? (
+                  <div style={styles.emptyPanel(palette)}>No long-term workspace memory signals have been summarized yet.</div>
+                ) : null}
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+    );
+  }
+
+  function renderTasksSurface() {
+    const relatedFiles = Array.from(
+      new Set([...(selectedTask?.related_files ?? []), ...(taskArtifacts?.related_files ?? [])])
+    );
+    const validationCommands = Array.from(
+      new Set([...(selectedTask?.validation_commands ?? []), ...(taskArtifacts?.validation_commands ?? [])])
+    );
+    const checkpointIds = Array.from(
+      new Set([...(selectedTask?.checkpoints ?? []), ...(taskArtifacts?.checkpoints ?? [])])
+    );
+    const selectedTaskTerminal = selectedTask ? terminalTaskStatuses.has(selectedTask.status) : true;
+
+    return (
+      <div style={styles.surfacePage}>
+        {renderSurfaceHeader(
+          <CheckCircle2 size={22} />,
+          'Tasks',
+          'Tracked coding work with state, subtasks, validation, approvals, checkpoints, and repair history.',
+          <button type="button" style={styles.primaryButton(palette)} onClick={() => void refreshTasks()}>
+            <Zap size={16} />
+            Refresh tasks
+          </button>
+        )}
+
+        <TaskStatusSummary
+          tasks={taskBoardTasks}
+          style={styles.metricGrid}
+          renderMetric={(metric) => (
+            <div style={styles.metricCard(palette)}>
+              <span style={styles.metricLabel(palette)}>{metric.label}</span>
+              <strong style={styles.metricValue(palette)}>{metric.value}</strong>
+            </div>
+          )}
+        />
+
+        <div style={styles.surfaceColumns}>
+          <section style={styles.settingsSection(palette)}>
+            <div style={styles.sectionHeaderInline}>
+              <h3 style={styles.settingsHeading(palette)}>Task Graph</h3>
+              <div style={styles.segmentedControl(palette)} role="group" aria-label="Filter task list">
+                {taskFilterOptions.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    style={styles.segmentedButton(palette, taskStatusFilter === option.value)}
+                    onClick={() => setTaskStatusFilter(option.value)}
+                    aria-pressed={taskStatusFilter === option.value}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={styles.modelList}>
+              {filteredTaskBoardTasks.map((item) => {
+                const active = selectedTask?.id === item.id;
+                const title = item.title || item.message || item.id;
+                const isSubtask = Boolean(item.parent_task_id);
+
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    style={styles.taskListItem(palette, active)}
+                    onClick={() => setSelectedTaskId(item.id)}
+                    aria-pressed={active}
+                  >
+                    <div style={styles.modelRowMain}>
+                      <div style={styles.modelRowTop}>
+                        <div style={styles.cardTitle(palette)}>{title}</div>
+                        <span style={styles.contextTag(palette)}>{formatStatusLabel(item.status)}</span>
+                      </div>
+                      <div style={styles.eventDetail(palette)}>{item.user_goal || item.message}</div>
+                      <div style={styles.tagWrap}>
+                        {isSubtask ? <span style={styles.contextTag(palette)}>Subtask</span> : null}
+                        {item.assigned_agent_role ? (
+                          <span style={styles.contextTag(palette)}>{item.assigned_agent_role}</span>
+                        ) : null}
+                        {item.related_files.length ? (
+                          <span style={styles.contextTag(palette)}>{item.related_files.length} file(s)</span>
+                        ) : null}
+                        {item.checkpoints.length ? (
+                          <span style={styles.contextTag(palette)}>{item.checkpoints.length} checkpoint(s)</span>
+                        ) : null}
+                      </div>
+                    </div>
+                    <span style={styles.eventTime(palette)}>{formatDateTime(item.updated_at || item.created_at)}</span>
+                  </button>
+                );
+              })}
+              {!filteredTaskBoardTasks.length ? (
+                <div style={styles.emptyPanel(palette)}>
+                  {taskStatusMessage || 'No tasks match this filter yet.'}
+                </div>
+              ) : null}
+            </div>
+          </section>
+
+          <section style={styles.settingsSection(palette)}>
+            <div style={styles.sectionHeaderInline}>
+              <h3 style={styles.settingsHeading(palette)}>Selected Task</h3>
+              <div style={styles.tagWrap}>
+                <button
+                  type="button"
+                  style={styles.secondaryButton(palette)}
+                  onClick={() => void runTaskAction('approve')}
+                  disabled={!selectedTask || selectedTask.status !== 'needs_approval' || Boolean(taskActionId)}
+                >
+                  {taskActionId === `approve:${selectedTask?.id}` ? (
+                    <Loader2 size={16} className="spin" />
+                  ) : (
+                    <CheckCircle2 size={16} />
+                  )}
+                  Approve
+                </button>
+                <button
+                  type="button"
+                  style={styles.secondaryButton(palette)}
+                  onClick={() => void runTaskAction('retry')}
+                  disabled={!selectedTask || !['failed', 'canceled'].includes(selectedTask.status) || Boolean(taskActionId)}
+                >
+                  {taskActionId === `retry:${selectedTask?.id}` ? <Loader2 size={16} className="spin" /> : <Play size={16} />}
+                  Retry
+                </button>
+                <button
+                  type="button"
+                  style={styles.secondaryButton(palette)}
+                  onClick={() => void runTaskAction('cancel')}
+                  disabled={!selectedTask || selectedTaskTerminal || Boolean(taskActionId)}
+                >
+                  {taskActionId === `cancel:${selectedTask?.id}` ? (
+                    <Loader2 size={16} className="spin" />
+                  ) : (
+                    <Square size={16} />
+                  )}
+                  Cancel
+                </button>
+              </div>
+            </div>
+
+            {selectedTask ? (
+              <div style={styles.sectionBlock}>
+                <div style={styles.modelRowTop}>
+                  <div>
+                    <div style={styles.cardTitle(palette)}>{selectedTask.title || selectedTask.message}</div>
+                    <div style={styles.eventDetail(palette)}>{selectedTask.user_goal || selectedTask.message}</div>
+                  </div>
+                  <span style={styles.diagnosticChip(palette, taskStatusToEventStatus(selectedTask.status))}>
+                    {formatStatusLabel(selectedTask.status)}
+                  </span>
+                </div>
+
+                <div style={styles.workspaceMeta(palette)}>
+                  <strong>Task ID</strong>
+                  <span>{selectedTask.id}</span>
+                  <strong>Project</strong>
+                  <span>{selectedTask.project_id || selectedTask.workspace_root}</span>
+                  <strong>Priority</strong>
+                  <span>{selectedTask.priority}</span>
+                  <strong>Created</strong>
+                  <span>{formatDateTime(selectedTask.created_at)}</span>
+                  <strong>Updated</strong>
+                  <span>{formatDateTime(selectedTask.updated_at || selectedTask.created_at)}</span>
+                  <strong>Completed</strong>
+                  <span>{selectedTask.completed_at ? formatDateTime(selectedTask.completed_at) : 'Not completed'}</span>
+                </div>
+
+                {selectedTask.error_summary ? (
+                  <div style={styles.eventRow(palette, 'error')}>
+                    <div>
+                      <strong style={styles.eventTitle(palette)}>Error Summary</strong>
+                      <div style={styles.eventDetail(palette)}>{selectedTask.error_summary}</div>
+                    </div>
+                  </div>
+                ) : null}
+
+                {selectedTask.final_summary ? (
+                  <div style={styles.eventRow(palette, 'ok')}>
+                    <div>
+                      <strong style={styles.eventTitle(palette)}>Final Summary</strong>
+                      <div style={styles.eventDetail(palette)}>{selectedTask.final_summary}</div>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <div style={styles.emptyPanel(palette)}>Select a task to inspect its timeline and artifacts.</div>
+            )}
+
+            {selectedTask ? (
+              <div style={styles.sectionBlock}>
+                <div style={styles.sectionLabel(palette)}>Artifacts</div>
+                <div style={styles.tagWrap}>
+                  {relatedFiles.map((item) => (
+                    <span key={`task-file-${item}`} style={styles.contextTag(palette)}>
+                      {item}
+                    </span>
+                  ))}
+                  {validationCommands.map((item) => (
+                    <span key={`task-command-${item}`} style={styles.contextTag(palette)}>
+                      {item}
+                    </span>
+                  ))}
+                  {checkpointIds.map((item) => (
+                    <span key={`task-checkpoint-${item}`} style={styles.goodTag(palette)}>
+                      {item}
+                    </span>
+                  ))}
+                  {!relatedFiles.length && !validationCommands.length && !checkpointIds.length ? (
+                    <span style={styles.previewMeta(palette)}>No task artifacts recorded yet.</span>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+
+            {selectedTask ? (
+              <div style={styles.sectionBlock}>
+                <div style={styles.sectionLabel(palette)}>Timeline</div>
+                <div style={styles.eventList}>
+                  {taskTimeline.map((item, index) => (
+                    <div key={`${item.kind}-${item.created_at}-${index}`} style={styles.eventRow(palette, item.status)}>
+                      <div>
+                        <strong style={styles.eventTitle(palette)}>{item.title}</strong>
+                        <div style={styles.eventDetail(palette)}>{item.detail}</div>
+                      </div>
+                      <span style={styles.eventTime(palette)}>{formatEventTime(item.created_at)}</span>
+                    </div>
+                  ))}
+                  {!taskTimeline.length ? (
+                    <div style={styles.emptyPanel(palette)}>
+                      {taskStatusMessage || 'No timeline events recorded for this task yet.'}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+
+            {selectedTask && taskArtifacts?.repair_attempts.length ? (
+              <div style={styles.sectionBlock}>
+                <div style={styles.sectionLabel(palette)}>Repair Attempts</div>
+                <div style={styles.eventList}>
+                  {taskArtifacts.repair_attempts.map((item) => (
+                    <div
+                      key={`${item.attempt}-${item.created_at}`}
+                      style={styles.eventRow(
+                        palette,
+                        item.outcome === 'fixed' || item.outcome === 'improved' ? 'ok' : 'warning'
+                      )}
+                    >
+                      <div>
+                        <strong style={styles.eventTitle(palette)}>
+                          Attempt {item.attempt} / {item.outcome}
+                        </strong>
+                        <div style={styles.eventDetail(palette)}>{item.summary || item.before_signature}</div>
+                      </div>
+                      <span style={styles.eventTime(palette)}>{formatDateTime(item.created_at)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </section>
+        </div>
+      </div>
+    );
+  }
+
+  function adaptiveScoreLabel(value: number) {
+    if (!Number.isFinite(value)) return '0%';
+    return `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`;
+  }
+
+  function adaptiveScoreStatus(value: number): ToolEvent['status'] {
+    if (value < 0.45) return 'error';
+    if (value < 0.68) return 'warning';
+    return 'ok';
+  }
+
+  function renderAdaptiveInsightList(title: string, insights: AdaptiveInsight[]) {
+    return (
+      <section style={styles.settingsSection(palette)}>
+        <div style={styles.sectionHeaderInline}>
+          <h3 style={styles.settingsHeading(palette)}>{title}</h3>
+          <span style={styles.contextTag(palette)}>{insights.length} signal(s)</span>
+        </div>
+        <div style={styles.eventList}>
+          {insights.slice(0, 6).map((insight) => (
+            <div
+              key={insight.id || `${insight.category}-${insight.key}`}
+              style={styles.eventRow(
+                palette,
+                insight.severity === 'high' ? 'error' : insight.severity === 'medium' ? 'warning' : 'ok'
+              )}
+            >
+              <div>
+                <strong style={styles.eventTitle(palette)}>{insight.title}</strong>
+                <div style={styles.eventDetail(palette)}>{insight.detail}</div>
+                {insight.recommendations[0] ? (
+                  <div style={styles.previewMeta(palette)}>{insight.recommendations[0]}</div>
+                ) : null}
+              </div>
+              <span style={styles.eventTime(palette)}>{adaptiveScoreLabel(insight.score)}</span>
+            </div>
+          ))}
+          {!insights.length ? <div style={styles.emptyPanel(palette)}>No adaptive insight has been recorded yet.</div> : null}
+        </div>
+      </section>
+    );
+  }
+
+  function renderAdaptiveQualityScore(score: AdaptiveQualityScore) {
+    return (
+      <div key={score.dimension} style={styles.eventRow(palette, adaptiveScoreStatus(score.score))}>
+        <div>
+          <strong style={styles.eventTitle(palette)}>{score.label}</strong>
+          <div style={styles.eventDetail(palette)}>{score.reasons[0] || `${score.sample_size} sample(s).`}</div>
+          {score.recommendations[0] ? <div style={styles.previewMeta(palette)}>{score.recommendations[0]}</div> : null}
+        </div>
+        <div style={styles.rowActions}>
+          <span style={styles.contextTag(palette)}>{formatStatusLabel(score.trend)}</span>
+          <strong style={styles.eventTime(palette)}>{adaptiveScoreLabel(score.score)}</strong>
+        </div>
+      </div>
+    );
+  }
+
+  function renderAdaptiveRoute(route: AdaptiveRouteRecommendation) {
+    return (
+      <div key={`${route.provider_id}-${route.model}-${route.role}`} style={styles.modelRow(palette, route.action === 'prefer')}>
+        <div style={styles.modelRowMain}>
+          <div style={styles.modelRowTop}>
+            <div style={styles.cardTitle(palette)}>{route.provider_label || route.provider_id || route.model}</div>
+            <span style={styles.diagnosticChip(palette, adaptiveScoreStatus(route.score))}>{formatStatusLabel(route.action)}</span>
+          </div>
+          <div style={styles.eventDetail(palette)}>{route.reasons[0] || 'No route reasoning recorded.'}</div>
+          <div style={styles.tagWrap}>
+            {route.model ? <span style={styles.contextTag(palette)}>{route.model}</span> : null}
+            <span style={styles.contextTag(palette)}>{adaptiveScoreLabel(route.score)} score</span>
+            <span style={styles.contextTag(palette)}>{adaptiveScoreLabel(route.confidence)} confidence</span>
+            {route.risks[0] ? <span style={styles.contextTag(palette)}>{route.risks[0]}</span> : null}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  function renderAdaptiveIntelligenceSurface() {
+    const snapshot = adaptiveIntelligence;
+    const activeProfile = snapshot?.active_profile;
+    const outcomes = snapshot?.outcomes ?? [];
+    const qualityScores = snapshot?.quality_scores ?? [];
+    const routes = snapshot?.route_recommendations ?? [];
+    const terminalOutcomes = outcomes.filter((item) => ['success', 'failed', 'rolled_back', 'canceled'].includes(item.outcome));
+    const successCount = terminalOutcomes.filter((item) => item.success).length;
+    const regressionReports = snapshot?.benchmark_reports.filter((item) => item.regression_detected).length ?? 0;
+    const replayRegressions = snapshot?.replay_results.filter((item) => item.regression_detected).length ?? 0;
+    const metrics = [
+      { label: 'Task Success', value: adaptiveScoreLabel(successCount / Math.max(1, terminalOutcomes.length)) },
+      { label: 'Outcomes', value: outcomes.length },
+      { label: 'Routes', value: routes.length },
+      { label: 'Regressions', value: regressionReports + replayRegressions }
+    ];
+
+    return (
+      <div style={styles.surfacePage}>
+        {renderSurfaceHeader(
+          <Brain size={22} />,
+          'Adaptive',
+          'Outcome tracking, routing quality, repair learning, context efficiency, feedback, replay, and benchmark reports.',
+          <div style={styles.surfaceActions}>
+            <button
+              type="button"
+              style={styles.secondaryButton(palette)}
+              onClick={() => void refreshAdaptiveSignals(undefined, true)}
+              disabled={adaptiveIntelligenceLoading}
+            >
+              {adaptiveIntelligenceLoading ? <Loader2 size={16} className="spin" /> : <Zap size={16} />}
+              Refresh
+            </button>
+            <button
+              type="button"
+              style={styles.secondaryButton(palette)}
+              onClick={() => void replayAdaptiveOutcomeWindow()}
+              disabled={!workspaceRoot.trim() || Boolean(adaptiveIntelligenceAction)}
+            >
+              {adaptiveIntelligenceAction === 'replay' ? <Loader2 size={16} className="spin" /> : <Play size={16} />}
+              Replay
+            </button>
+            <button
+              type="button"
+              style={styles.primaryButton(palette)}
+              onClick={() => void runAdaptiveBenchmarkSweep()}
+              disabled={!workspaceRoot.trim() || Boolean(adaptiveIntelligenceAction)}
+            >
+              {adaptiveIntelligenceAction === 'benchmark' ? <Loader2 size={16} className="spin" /> : <CheckCircle2 size={16} />}
+              Benchmark
+            </button>
+          </div>
+        )}
+
+        <div style={styles.metricGrid}>
+          {metrics.map((metric) => (
+            <div key={metric.label} style={styles.metricCard(palette)}>
+              <span style={styles.metricLabel(palette)}>{metric.label}</span>
+              <strong style={styles.metricValue(palette)}>{metric.value}</strong>
+            </div>
+          ))}
+        </div>
+
+        {adaptiveIntelligenceStatus ? (
+          <div style={styles.eventRow(palette, adaptiveIntelligenceStatus.includes('Could not') ? 'error' : 'ok')}>
+            <div>
+              <strong style={styles.eventTitle(palette)}>Adaptive Status</strong>
+              <div style={styles.eventDetail(palette)}>{adaptiveIntelligenceStatus}</div>
+            </div>
+          </div>
+        ) : null}
+
+        <div style={styles.surfaceColumns}>
+          <section style={styles.settingsSection(palette)}>
+            <div style={styles.sectionHeaderInline}>
+              <h3 style={styles.settingsHeading(palette)}>Policy Profiles</h3>
+              {activeProfile ? <span style={styles.goodTag(palette)}>{activeProfile.name}</span> : null}
+            </div>
+            <div style={styles.modelList}>
+              {(snapshot?.profiles ?? []).map((profile) => (
+                <div key={profile.id} style={styles.modelRow(palette, profile.active)}>
+                  <div style={styles.modelRowMain}>
+                    <div style={styles.modelRowTop}>
+                      <div style={styles.cardTitle(palette)}>{profile.name}</div>
+                      {profile.active ? <span style={styles.goodTag(palette)}>Active</span> : null}
+                    </div>
+                    <div style={styles.eventDetail(palette)}>{profile.description}</div>
+                    <div style={styles.tagWrap}>
+                      <span style={styles.contextTag(palette)}>{profile.routing_strategy}</span>
+                      <span style={styles.contextTag(palette)}>{profile.privacy_mode}</span>
+                      <span style={styles.contextTag(palette)}>{profile.allow_cloud ? 'cloud allowed' : 'local first'}</span>
+                      {profile.review_required ? <span style={styles.contextTag(palette)}>review required</span> : null}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    style={styles.iconTextButton(palette)}
+                    onClick={() => void activateAdaptiveProfile(profile.id)}
+                    disabled={profile.active || Boolean(adaptiveIntelligenceAction)}
+                  >
+                    <CheckCircle2 size={14} />
+                    Activate
+                  </button>
+                </div>
+              ))}
+              {!snapshot?.profiles.length ? <div style={styles.emptyPanel(palette)}>Adaptive policy profiles will appear after refresh.</div> : null}
+            </div>
+            <button
+              type="button"
+              style={styles.secondaryButton(palette)}
+              onClick={() => void rollbackLatestAdaptivePolicy()}
+              disabled={!snapshot?.policy_checkpoints.length || Boolean(adaptiveIntelligenceAction)}
+            >
+              <ArrowDown size={16} />
+              Roll back profile
+            </button>
+          </section>
+
+          <section style={styles.settingsSection(palette)}>
+            <div style={styles.sectionHeaderInline}>
+              <h3 style={styles.settingsHeading(palette)}>Quality Scores</h3>
+              <span style={styles.contextTag(palette)}>{qualityScores.length} score(s)</span>
+            </div>
+            <div style={styles.eventList}>
+              {qualityScores.map(renderAdaptiveQualityScore)}
+              {!qualityScores.length ? <div style={styles.emptyPanel(palette)}>No adaptive quality scores recorded yet.</div> : null}
+            </div>
+          </section>
+        </div>
+
+        <div style={styles.surfaceColumns}>
+          <section style={styles.settingsSection(palette)}>
+            <div style={styles.sectionHeaderInline}>
+              <h3 style={styles.settingsHeading(palette)}>Routing Analytics</h3>
+              <span style={styles.contextTag(palette)}>{routes.length} route(s)</span>
+            </div>
+            <div style={styles.modelList}>
+              {routes.slice(0, 8).map(renderAdaptiveRoute)}
+              {!routes.length ? <div style={styles.emptyPanel(palette)}>No route recommendation has enough signal yet.</div> : null}
+            </div>
+          </section>
+
+          <section style={styles.settingsSection(palette)}>
+            <div style={styles.sectionHeaderInline}>
+              <h3 style={styles.settingsHeading(palette)}>Recent Outcomes</h3>
+              <span style={styles.contextTag(palette)}>{outcomes.length} tracked</span>
+            </div>
+            <div style={styles.eventList}>
+              {outcomes.slice(0, 8).map((outcome) => (
+                <div key={outcome.task_id} style={styles.eventRow(palette, outcome.success ? 'ok' : outcome.outcome === 'unknown' ? 'warning' : 'error')}>
+                  <div>
+                    <strong style={styles.eventTitle(palette)}>{outcome.title || outcome.task_id}</strong>
+                    <div style={styles.eventDetail(palette)}>
+                      {formatStatusLabel(outcome.outcome)} / {outcome.validation_passes}/{outcome.validation_runs} validation pass(es)
+                    </div>
+                  </div>
+                  <span style={styles.eventTime(palette)}>{formatDateTime(outcome.updated_at || outcome.created_at)}</span>
+                </div>
+              ))}
+              {!outcomes.length ? <div style={styles.emptyPanel(palette)}>Task outcomes will appear after tracked work completes.</div> : null}
+            </div>
+          </section>
+        </div>
+
+        <div style={styles.surfaceColumns}>
+          {renderAdaptiveInsightList('Repair Analytics', snapshot?.repair_insights ?? [])}
+          {renderAdaptiveInsightList('Context Efficiency', snapshot?.context_insights ?? [])}
+        </div>
+        <div style={styles.surfaceColumns}>
+          {renderAdaptiveInsightList('Feedback Learning', snapshot?.feedback_insights ?? [])}
+          <section style={styles.settingsSection(palette)}>
+            <div style={styles.sectionHeaderInline}>
+              <h3 style={styles.settingsHeading(palette)}>Benchmark And Replay</h3>
+              <span style={styles.contextTag(palette)}>
+                {(snapshot?.benchmark_reports.length ?? 0) + (snapshot?.replay_results.length ?? 0)} report(s)
+              </span>
+            </div>
+            <div style={styles.eventList}>
+              {(snapshot?.benchmark_reports ?? []).slice(0, 5).map((report) => (
+                <div key={report.id} style={styles.eventRow(palette, report.regression_detected ? 'error' : 'ok')}>
+                  <div>
+                    <strong style={styles.eventTitle(palette)}>{report.suite_label}</strong>
+                    <div style={styles.eventDetail(palette)}>
+                      {adaptiveScoreLabel(report.candidate_score)} candidate / {adaptiveScoreLabel(report.baseline_score)} baseline
+                    </div>
+                  </div>
+                  <span style={styles.eventTime(palette)}>{formatDateTime(report.created_at)}</span>
+                </div>
+              ))}
+              {(snapshot?.replay_results ?? []).slice(0, 5).map((result) => (
+                <div key={result.id} style={styles.eventRow(palette, result.regression_detected ? 'error' : result.status === 'improved' ? 'ok' : 'warning')}>
+                  <div>
+                    <strong style={styles.eventTitle(palette)}>{result.source_task_id}</strong>
+                    <div style={styles.eventDetail(palette)}>
+                      Replay {formatStatusLabel(result.status)} from {adaptiveScoreLabel(result.previous_score)} to {adaptiveScoreLabel(result.replay_score)}
+                    </div>
+                  </div>
+                  <span style={styles.eventTime(palette)}>{formatDateTime(result.created_at)}</span>
+                </div>
+              ))}
+              {!snapshot?.benchmark_reports.length && !snapshot?.replay_results.length ? (
+                <div style={styles.emptyPanel(palette)}>Run a benchmark or replay to create adaptive regression reports.</div>
+              ) : null}
+            </div>
+          </section>
+        </div>
+
+        {snapshot?.warnings.length ? (
+          <section style={styles.settingsSection(palette)}>
+            <div style={styles.sectionLabel(palette)}>Safety Notes</div>
+            <div style={styles.tagWrap}>
+              {snapshot.warnings.map((warning) => (
+                <span key={warning} style={styles.contextTag(palette)}>
+                  {warning}
+                </span>
+              ))}
+            </div>
+          </section>
+        ) : null}
+      </div>
+    );
+  }
+
+  function renderDistributedRuntimeSurface() {
+    const unified = unifiedRuntime;
+    const context = unifiedContext;
+    const continuityState = continuity;
+    const discipline = platformDiscipline;
+    const operating = operatingEnvironment;
+    const runtime = distributedRuntime;
+    const observability = runtime?.observability;
+    const workers = runtime?.workers ?? [];
+    const queue = runtime?.queue ?? [];
+    const auditEvents = runtime?.audit_events ?? [];
+    const syncManifests = runtime?.sync_manifests ?? [];
+    const activeJobs = queue.filter((item) => ['queued', 'retrying', 'assigned', 'running'].includes(item.status));
+    const failedJobs = queue.filter((item) => ['failed', 'blocked'].includes(item.status));
+    const readyPillars = unified?.pillars.filter((pillar) => pillar.status === 'ready').length ?? 0;
+    const readyOperatingCapabilities = operating?.capabilities.filter((capability) => capability.status === 'ready').length ?? 0;
+    const gatedOperatingCapabilities =
+      operating?.capabilities.filter((capability) => capability.approval_required || capability.status === 'blocked').length ?? 0;
+    const metrics = [
+      { label: 'Pillars', value: unified?.pillars.length ?? 0 },
+      { label: 'Primary', value: discipline?.primary_domains.length ?? 0 },
+      { label: 'Beta', value: discipline?.beta_count ?? 0 },
+      { label: 'Deprecated', value: discipline?.deprecated_count ?? 0 },
+      { label: 'Context', value: context?.records.length ?? 0 },
+      { label: 'Links', value: context?.relationships.length ?? 0 },
+      { label: 'Timeline', value: continuityState?.timeline.entries.length ?? 0 },
+      { label: 'Ready', value: readyPillars },
+      { label: 'OS Caps', value: operating?.capabilities.length ?? 0 },
+      { label: 'Gated', value: gatedOperatingCapabilities },
+      { label: 'Workers', value: observability?.workers_total ?? workers.length },
+      { label: 'Available', value: observability?.workers_available ?? workers.filter((item) => item.status === 'available').length },
+      { label: 'Queued', value: observability?.queued_jobs ?? activeJobs.length },
+      { label: 'Failed', value: observability?.failed_jobs ?? failedJobs.length }
+    ];
+
+    return (
+      <div style={styles.surfacePage}>
+        {renderSurfaceHeader(
+          <Code size={22} />,
+          'Runtime',
+          'Local-first distributed execution with workers, queue state, model routing, sync manifests, and audit events.',
+          <div style={styles.surfaceActions}>
+            <button
+              type="button"
+              style={styles.secondaryButton(palette)}
+              onClick={() => void refreshDistributedRuntime()}
+              disabled={distributedRuntimeLoading}
+            >
+              {distributedRuntimeLoading ? <Loader2 size={16} className="spin" /> : <Zap size={16} />}
+              Refresh
+            </button>
+            <button
+              type="button"
+              style={styles.secondaryButton(palette)}
+              onClick={() => void dispatchNextRuntimeJob()}
+              disabled={!workspaceRoot.trim() || Boolean(distributedRuntimeAction)}
+            >
+              {distributedRuntimeAction === 'dispatch' ? <Loader2 size={16} className="spin" /> : <Play size={16} />}
+              Dispatch
+            </button>
+            <button
+              type="button"
+              style={styles.primaryButton(palette)}
+              onClick={() => void exportRuntimeSyncManifest()}
+              disabled={!workspaceRoot.trim() || Boolean(distributedRuntimeAction)}
+            >
+              {distributedRuntimeAction === 'sync' ? <Loader2 size={16} className="spin" /> : <Save size={16} />}
+              Sync manifest
+            </button>
+          </div>
+        )}
+
+        <div style={styles.metricGrid}>
+          {metrics.map((metric) => (
+            <div key={metric.label} style={styles.metricCard(palette)}>
+              <span style={styles.metricLabel(palette)}>{metric.label}</span>
+              <strong style={styles.metricValue(palette)}>{metric.value}</strong>
+            </div>
+          ))}
+        </div>
+
+        {distributedRuntimeStatus ? (
+          <div style={styles.eventRow(palette, distributedRuntimeStatus.includes('Could not') ? 'error' : 'ok')}>
+            <div>
+              <strong style={styles.eventTitle(palette)}>Runtime Status</strong>
+              <div style={styles.eventDetail(palette)}>{distributedRuntimeStatus}</div>
+            </div>
+          </div>
+        ) : null}
+
+        <section style={styles.settingsSection(palette)}>
+          <div style={styles.sectionHeaderInline}>
+            <h3 style={styles.settingsHeading(palette)}>Platform Discipline</h3>
+            <span style={styles.contextTag(palette)}>
+              {discipline?.production_ready_count ?? 0} stable / {discipline?.experimental_count ?? 0} experimental
+            </span>
+          </div>
+          <div style={styles.eventRow(palette, 'ok')}>
+            <div>
+              <strong style={styles.eventTitle(palette)}>Core Identity</strong>
+              <div style={styles.eventDetail(palette)}>
+                {discipline?.core_identity || `${productName} platform focus will appear after refresh.`}
+              </div>
+              <div style={styles.tagWrap}>
+                {(discipline?.primary_domains ?? []).map((domain) => (
+                  <span key={`primary-domain-${domain.id}`} style={styles.contextTag(palette)}>
+                    primary: {domain.name}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div style={styles.eventRow(palette, 'ok')}>
+            <div>
+              <div style={styles.sectionHeaderInline}>
+                <strong style={styles.eventTitle(palette)}>
+                  {discipline?.stewardship.name ?? 'Platform Stewardship'}
+                </strong>
+                <span style={styles.contextTag(palette)}>primary responsibility</span>
+              </div>
+              <div style={styles.eventDetail(palette)}>
+                {discipline?.stewardship.summary || `Stewardship keeps ${productName} calm, reliable, coherent, and trusted.`}
+              </div>
+              <div style={styles.tagWrap}>
+                {(discipline?.stewardship.preserve ?? []).slice(0, 5).map((item) => (
+                  <span key={`steward-preserve-${item}`} style={styles.contextTag(palette)}>
+                    preserve: {item}
+                  </span>
+                ))}
+                {(discipline?.stewardship.reduce ?? []).slice(0, 4).map((item) => (
+                  <span key={`steward-reduce-${item}`} style={styles.contextTag(palette)}>
+                    reduce: {item}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div style={styles.eventRow(palette, 'warning')}>
+            <div>
+              <div style={styles.sectionHeaderInline}>
+                <strong style={styles.eventTitle(palette)}>
+                  {discipline?.feature_admission.name ?? 'Feature Admission Gate'}
+                </strong>
+                <span style={styles.contextTag(palette)}>
+                  {formatStatusLabel(discipline?.feature_admission.default_decision ?? 'reject_when_unclear')}
+                </span>
+              </div>
+              <div style={styles.eventDetail(palette)}>
+                {discipline?.feature_admission.summary || 'Unclear feature value defaults to no.'}
+              </div>
+              <div style={styles.tagWrap}>
+                {(discipline?.feature_admission.hard_no_rules ?? []).slice(0, 4).map((rule) => (
+                  <span key={`feature-hard-no-${rule}`} style={styles.contextTag(palette)}>
+                    {rule}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div style={styles.surfaceColumns}>
+            <div style={styles.eventList}>
+              {(discipline?.feature_admission.criteria ?? []).slice(0, 5).map((criterion) => (
+                <div key={`admission-${criterion.id}`} style={styles.eventRow(palette, 'warning')}>
+                  <div>
+                    <strong style={styles.eventTitle(palette)}>{criterion.question}</strong>
+                    <div style={styles.eventDetail(palette)}>{criterion.reject_when}</div>
+                  </div>
+                  <span style={styles.eventTime(palette)}>gate</span>
+                </div>
+              ))}
+              {(discipline?.secondary_domains ?? []).slice(0, 3).map((domain) => (
+                <div key={`secondary-domain-${domain.id}`} style={styles.eventRow(palette, 'warning')}>
+                  <div>
+                    <strong style={styles.eventTitle(palette)}>{domain.name}</strong>
+                    <div style={styles.eventDetail(palette)}>{domain.mastery_goal || domain.rationale}</div>
+                  </div>
+                  <span style={styles.eventTime(palette)}>secondary</span>
+                </div>
+              ))}
+              {(discipline?.experimental_domains ?? []).slice(0, 3).map((domain) => (
+                <div key={`experimental-domain-${domain.id}`} style={styles.eventRow(palette, 'warning')}>
+                  <div>
+                    <strong style={styles.eventTitle(palette)}>{domain.name}</strong>
+                    <div style={styles.eventDetail(palette)}>{domain.boundaries[0] || domain.rationale}</div>
+                  </div>
+                  <span style={styles.eventTime(palette)}>experimental</span>
+                </div>
+              ))}
+              {!discipline?.primary_domains.length ? <div style={styles.emptyPanel(palette)}>Refresh Runtime to load platform focus.</div> : null}
+            </div>
+            <div style={styles.eventList}>
+              {(discipline?.stability_tiers ?? []).slice(0, 4).map((tier) => (
+                <div key={`stability-${tier.id}`} style={styles.eventRow(palette, tier.user_visibility === 'blocked' ? 'error' : tier.user_visibility === 'default' ? 'ok' : 'warning')}>
+                  <div>
+                    <strong style={styles.eventTitle(palette)}>{tier.name}</strong>
+                    <div style={styles.eventDetail(palette)}>{tier.description}</div>
+                  </div>
+                  <span style={styles.eventTime(palette)}>{formatStatusLabel(tier.user_visibility)}</span>
+                </div>
+              ))}
+              {(discipline?.performance_budgets ?? []).slice(0, 4).map((budget) => (
+                <div
+                  key={`budget-${budget.id}`}
+                  style={styles.eventRow(palette, budget.status === 'exceeded' ? 'error' : budget.status === 'healthy' ? 'ok' : 'warning')}
+                >
+                  <div>
+                    <strong style={styles.eventTitle(palette)}>{budget.name}</strong>
+                    <div style={styles.eventDetail(palette)}>{budget.target}</div>
+                  </div>
+                  <span style={styles.eventTime(palette)}>{formatStatusLabel(budget.status)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div style={{ ...styles.tagWrap, marginTop: 12 }}>
+            {(discipline?.behavior_principles ?? []).slice(0, 4).map((principle) => (
+              <span key={`principle-${principle.id}`} style={styles.contextTag(palette)}>
+                {principle.principle}
+              </span>
+            ))}
+            {(discipline?.design_standards ?? []).slice(0, 3).map((standard) => (
+              <span key={`standard-${standard.id}`} style={styles.contextTag(palette)}>
+                {standard.category}: {standard.enforcement}
+              </span>
+            ))}
+          </div>
+        </section>
+
+        <section style={styles.settingsSection(palette)}>
+          <div style={styles.sectionHeaderInline}>
+            <h3 style={styles.settingsHeading(palette)}>Unified Context Engine</h3>
+            <span style={styles.contextTag(palette)}>
+              {context?.source_summaries.length ?? 0} sources / {context?.relationships.length ?? 0} relationship(s)
+            </span>
+          </div>
+          <div style={styles.surfaceColumns}>
+            <div style={styles.eventList}>
+              {(context?.source_summaries ?? []).slice(0, 8).map((source) => (
+                <div key={source.source} style={styles.eventRow(palette, source.ready ? 'ok' : 'warning')}>
+                  <div>
+                    <strong style={styles.eventTitle(palette)}>{formatStatusLabel(source.source)}</strong>
+                    <div style={styles.eventDetail(palette)}>{source.summary}</div>
+                  </div>
+                  <span style={styles.eventTime(palette)}>{source.records}</span>
+                </div>
+              ))}
+              {!context?.source_summaries.length ? <div style={styles.emptyPanel(palette)}>Unified context will appear after refresh.</div> : null}
+            </div>
+            <div style={styles.eventList}>
+              {(context?.cross_module_insights ?? []).slice(0, 5).map((insight) => (
+                <div key={insight} style={styles.eventRow(palette, 'ok')}>
+                  <div>
+                    <strong style={styles.eventTitle(palette)}>Context Insight</strong>
+                    <div style={styles.eventDetail(palette)}>{insight}</div>
+                  </div>
+                </div>
+              ))}
+              {(context?.recommended_focus ?? []).slice(0, 4).map((focus) => (
+                <div key={focus} style={styles.eventRow(palette, 'warning')}>
+                  <div>
+                    <strong style={styles.eventTitle(palette)}>Recommended Focus</strong>
+                    <div style={styles.eventDetail(palette)}>{focus}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ ...styles.surfaceActions, justifyContent: 'stretch', marginTop: 12 }}>
+            <input
+              value={globalCommandDraft}
+              onChange={(event) => setGlobalCommandDraft(event.target.value)}
+              placeholder={`Route any ${productName} request through one command interface`}
+              aria-label="Global command preview"
+              style={{ ...styles.fieldInput(palette), flex: 1 }}
+            />
+            <button
+              type="button"
+              style={styles.secondaryButton(palette)}
+              onClick={() => void previewRuntimeCommand()}
+              disabled={!workspaceRoot.trim() || !globalCommandDraft.trim() || Boolean(distributedRuntimeAction)}
+            >
+              {distributedRuntimeAction === 'command-preview' ? <Loader2 size={16} className="spin" /> : <Search size={16} />}
+              Preview route
+            </button>
+          </div>
+
+          {globalCommandPreview ? (
+            <div style={styles.eventRow(palette, globalCommandPreview.route.approval_required ? 'warning' : 'ok')}>
+              <div>
+                <div style={styles.sectionHeaderInline}>
+                  <strong style={styles.eventTitle(palette)}>
+                    {formatStatusLabel(globalCommandPreview.route.intent)} {'->'} {formatStatusLabel(globalCommandPreview.route.target_system)}
+                  </strong>
+                  <span style={styles.contextTag(palette)}>{Math.round(globalCommandPreview.route.confidence * 100)}% confidence</span>
+                </div>
+                <div style={styles.eventDetail(palette)}>{globalCommandPreview.route.reason}</div>
+                <div style={styles.tagWrap}>
+                  {globalCommandPreview.route.creates_task ? <span style={styles.contextTag(palette)}>task tracked</span> : <span style={styles.contextTag(palette)}>chat-safe</span>}
+                  {globalCommandPreview.route.approval_required ? <span style={styles.contextTag(palette)}>approval</span> : null}
+                  {globalCommandPreview.route.rollback_supported ? <span style={styles.contextTag(palette)}>rollback</span> : null}
+                  {globalCommandPreview.route.validation_required ? <span style={styles.contextTag(palette)}>validation</span> : null}
+                  {globalCommandPreview.context_results.slice(0, 3).map((result) => (
+                    <span key={result.record.id} style={styles.contextTag(palette)}>
+                      {result.record.kind}: {result.record.title}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </section>
+
+        <section style={styles.settingsSection(palette)}>
+          <div style={styles.sectionHeaderInline}>
+            <h3 style={styles.settingsHeading(palette)}>Presence And Continuity</h3>
+            <span style={styles.contextTag(palette)}>
+              {formatStatusLabel(continuityState?.presence.status ?? 'calm')} / risk {Math.round((continuityState?.forecasts.risk_score ?? 0) * 100)}%
+            </span>
+          </div>
+          <div style={styles.surfaceColumns}>
+            <div style={styles.eventList}>
+              <div style={styles.eventRow(palette, continuityState?.presence.status === 'attention' || continuityState?.presence.status === 'degraded' ? 'warning' : 'ok')}>
+                <div>
+                  <strong style={styles.eventTitle(palette)}>{continuityState?.presence.active_focus || 'Workspace continuity'}</strong>
+                  <div style={styles.eventDetail(palette)}>
+                    {continuityState?.presence.continuity_summary || 'Presence signals will appear after refresh.'}
+                  </div>
+                  <div style={styles.tagWrap}>
+                    <span style={styles.contextTag(palette)}>{continuityState?.presence.workload_level ?? 'light'} workload</span>
+                    <span style={styles.contextTag(palette)}>{continuityState?.cognitive.pacing ?? 'normal'} pacing</span>
+                    <span style={styles.contextTag(palette)}>{continuityState?.cognitive.verbosity ?? 'balanced'} replies</span>
+                  </div>
+                </div>
+              </div>
+              {(continuityState?.presence.proactive_suggestions ?? []).slice(0, 4).map((suggestion) => (
+                <div key={suggestion} style={styles.eventRow(palette, 'ok')}>
+                  <div>
+                    <strong style={styles.eventTitle(palette)}>Quiet Suggestion</strong>
+                    <div style={styles.eventDetail(palette)}>{suggestion}</div>
+                  </div>
+                </div>
+              ))}
+              {(continuityState?.forecasts.signals ?? []).slice(0, 3).map((signal) => (
+                <div key={signal.id} style={styles.eventRow(palette, signal.severity === 'high' || signal.severity === 'critical' ? 'error' : signal.severity === 'medium' ? 'warning' : 'ok')}>
+                  <div>
+                    <div style={styles.sectionHeaderInline}>
+                      <strong style={styles.eventTitle(palette)}>{signal.title}</strong>
+                      <span style={styles.contextTag(palette)}>{Math.round(signal.score * 100)}%</span>
+                    </div>
+                    <div style={styles.eventDetail(palette)}>{signal.summary}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={styles.eventList}>
+              <div style={styles.eventRow(palette, continuityState?.workspace_state.restore_readiness === 'ready' ? 'ok' : 'warning')}>
+                <div>
+                  <strong style={styles.eventTitle(palette)}>Persistent Workspace</strong>
+                  <div style={styles.eventDetail(palette)}>
+                    {(continuityState?.workspace_state.persisted_sections ?? []).slice(0, 6).join(', ') || 'Persisted sections will appear after refresh.'}
+                  </div>
+                </div>
+                <span style={styles.eventTime(palette)}>{formatStatusLabel(continuityState?.workspace_state.restore_readiness ?? 'partial')}</span>
+              </div>
+              <div style={styles.eventRow(palette, continuityState?.hardware.gpu_available || continuityState?.hardware.npu_available ? 'ok' : 'warning')}>
+                <div>
+                  <strong style={styles.eventTitle(palette)}>Hardware Routing</strong>
+                  <div style={styles.eventDetail(palette)}>
+                    {(continuityState?.hardware.accelerators ?? ['CPU']).join(', ')} / {continuityState?.hardware.cpu_logical ?? 0} logical CPU(s)
+                  </div>
+                </div>
+                <span style={styles.eventTime(palette)}>{formatStatusLabel(continuityState?.hardware.status ?? 'partial')}</span>
+              </div>
+              {(continuityState?.self_diagnostics ?? []).slice(0, 4).map((diagnostic) => (
+                <div key={diagnostic.id} style={styles.eventRow(palette, diagnostic.status === 'healthy' ? 'ok' : diagnostic.status === 'critical' || diagnostic.status === 'degraded' ? 'error' : 'warning')}>
+                  <div>
+                    <strong style={styles.eventTitle(palette)}>{diagnostic.title}</strong>
+                    <div style={styles.eventDetail(palette)}>{diagnostic.summary}</div>
+                  </div>
+                  <span style={styles.eventTime(palette)}>{formatStatusLabel(diagnostic.status)}</span>
+                </div>
+              ))}
+              <div style={styles.eventRow(palette, 'ok')}>
+                <div>
+                  <strong style={styles.eventTitle(palette)}>Digital Twin</strong>
+                  <div style={styles.eventDetail(palette)}>{continuityState?.digital_twin.workflow_summary || 'Workspace model will appear after refresh.'}</div>
+                  <div style={styles.tagWrap}>
+                    <span style={styles.contextTag(palette)}>{Math.round((continuityState?.digital_twin.confidence ?? 0) * 100)}% modeled</span>
+                    <span style={styles.contextTag(palette)}>{continuityState?.skill_packs.length ?? 0} skill pack(s)</span>
+                    <span style={styles.contextTag(palette)}>{continuityState?.universal_data_sources.length ?? 0} data source(s)</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section style={styles.settingsSection(palette)}>
+          <div style={styles.sectionHeaderInline}>
+            <h3 style={styles.settingsHeading(palette)}>Unified AI Runtime</h3>
+            <span style={styles.contextTag(palette)}>{unified?.mode ?? 'local-first'}</span>
+          </div>
+          <div style={styles.modelList}>
+            {(unified?.pillars ?? []).slice(0, 8).map((pillar) => (
+              <div key={pillar.id} style={styles.eventRow(palette, pillar.status === 'ready' ? 'ok' : pillar.status === 'planned' ? 'warning' : 'ok')}>
+                <div>
+                  <div style={styles.sectionHeaderInline}>
+                    <strong style={styles.eventTitle(palette)}>{pillar.name}</strong>
+                    <span style={styles.diagnosticChip(palette, pillar.status === 'ready' ? 'ok' : 'warning')}>
+                      {formatStatusLabel(pillar.status)}
+                    </span>
+                  </div>
+                  <div style={styles.eventDetail(palette)}>{pillar.summary}</div>
+                  <div style={styles.tagWrap}>
+                    {pillar.primary_surfaces.slice(0, 4).map((surface) => (
+                      <span key={`${pillar.id}-${surface}`} style={styles.contextTag(palette)}>
+                        {surface}
+                      </span>
+                    ))}
+                    {pillar.signals.slice(0, 3).map((signal) => (
+                      <span key={`${pillar.id}-${signal}`} style={styles.contextTag(palette)}>
+                        {signal}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ))}
+            {!unified?.pillars.length ? <div style={styles.emptyPanel(palette)}>Unified runtime map will appear after refresh.</div> : null}
+          </div>
+        </section>
+
+        <section style={styles.settingsSection(palette)}>
+          <div style={styles.sectionHeaderInline}>
+            <h3 style={styles.settingsHeading(palette)}>AI Operating Environment</h3>
+            <span style={styles.contextTag(palette)}>
+              {readyOperatingCapabilities} ready / {gatedOperatingCapabilities} gated
+            </span>
+          </div>
+          <div style={styles.modelList}>
+            {(operating?.capabilities ?? []).map((capability) => (
+              <div
+                key={capability.id}
+                style={styles.eventRow(
+                  palette,
+                  capability.status === 'ready' ? 'ok' : capability.status === 'blocked' || capability.status === 'disabled' ? 'error' : 'warning'
+                )}
+              >
+                <div>
+                  <div style={styles.sectionHeaderInline}>
+                    <strong style={styles.eventTitle(palette)}>{capability.name}</strong>
+                    <span
+                      style={styles.diagnosticChip(
+                        palette,
+                        capability.status === 'ready' ? 'ok' : capability.status === 'blocked' || capability.status === 'disabled' ? 'error' : 'warning'
+                      )}
+                    >
+                      {formatStatusLabel(capability.status)}
+                    </span>
+                  </div>
+                  <div style={styles.eventDetail(palette)}>{capability.summary}</div>
+                  <div style={styles.tagWrap}>
+                    <span style={styles.contextTag(palette)}>{capability.permission_scope || capability.category}</span>
+                    {capability.approval_required ? <span style={styles.contextTag(palette)}>approval</span> : null}
+                    {capability.sandbox_required ? <span style={styles.contextTag(palette)}>sandbox</span> : null}
+                    {capability.rollback_supported ? <span style={styles.contextTag(palette)}>rollback</span> : null}
+                  </div>
+                </div>
+              </div>
+            ))}
+            {!operating?.capabilities.length ? <div style={styles.emptyPanel(palette)}>Operating environment map will appear after refresh.</div> : null}
+          </div>
+        </section>
+
+        <div style={styles.surfaceColumns}>
+          <section style={styles.settingsSection(palette)}>
+            <div style={styles.sectionHeaderInline}>
+              <h3 style={styles.settingsHeading(palette)}>OS Adapters</h3>
+              <span style={styles.contextTag(palette)}>
+                {operating?.adapters.filter((adapter) => adapter.enabled).length ?? 0} enabled
+              </span>
+            </div>
+            <div style={styles.eventList}>
+              {(operating?.adapters ?? []).slice(0, 8).map((adapter) => (
+                <div
+                  key={adapter.id}
+                  style={styles.eventRow(
+                    palette,
+                    adapter.enabled && adapter.status === 'ready' ? 'ok' : adapter.status === 'blocked' || adapter.status === 'disabled' ? 'error' : 'warning'
+                  )}
+                >
+                  <div>
+                    <strong style={styles.eventTitle(palette)}>{adapter.name}</strong>
+                    <div style={styles.eventDetail(palette)}>
+                      {adapter.permission_scope || adapter.category} / {adapter.sandboxed ? 'sandboxed' : 'read-only'} /{' '}
+                      {adapter.enabled ? 'enabled' : 'disabled'}
+                    </div>
+                  </div>
+                  <span style={styles.eventTime(palette)}>{formatStatusLabel(adapter.status)}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section style={styles.settingsSection(palette)}>
+            <div style={styles.sectionHeaderInline}>
+              <h3 style={styles.settingsHeading(palette)}>System Signals</h3>
+              <span style={styles.contextTag(palette)}>{operating?.execution_mode ?? 'control-plane'}</span>
+            </div>
+            <div style={styles.eventList}>
+              {(operating?.system_signals ?? []).map((signal) => (
+                <div key={signal.id} style={styles.eventRow(palette, signal.status === 'ok' ? 'ok' : signal.status === 'error' ? 'error' : 'warning')}>
+                  <div>
+                    <strong style={styles.eventTitle(palette)}>{signal.label}</strong>
+                    <div style={styles.eventDetail(palette)}>{signal.detail}</div>
+                  </div>
+                  <span style={styles.eventTime(palette)}>{signal.value}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
+
+        <div style={styles.surfaceColumns}>
+          <section style={styles.settingsSection(palette)}>
+            <div style={styles.sectionHeaderInline}>
+              <h3 style={styles.settingsHeading(palette)}>Modalities</h3>
+              <span style={styles.contextTag(palette)}>{unified?.modalities.length ?? 0} registered</span>
+            </div>
+            <div style={styles.eventList}>
+              {(unified?.modalities ?? []).map((modality) => (
+                <div key={modality.id} style={styles.eventRow(palette, modality.status === 'ready' ? 'ok' : 'warning')}>
+                  <div>
+                    <strong style={styles.eventTitle(palette)}>{modality.label}</strong>
+                    <div style={styles.eventDetail(palette)}>
+                      {modality.input_supported ? 'Input' : 'Input planned'} / {modality.output_supported ? 'Output' : 'Output planned'}
+                    </div>
+                    <div style={styles.tagWrap}>
+                      {modality.formats.slice(0, 6).map((format) => (
+                        <span key={`${modality.id}-${format}`} style={styles.contextTag(palette)}>
+                          {format}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section style={styles.settingsSection(palette)}>
+            <div style={styles.sectionHeaderInline}>
+              <h3 style={styles.settingsHeading(palette)}>Tool Contracts</h3>
+              <span style={styles.contextTag(palette)}>{unified?.tools.length ?? 0} tool(s)</span>
+            </div>
+            <div style={styles.eventList}>
+              {(unified?.tools ?? []).slice(0, 8).map((tool) => (
+                <div key={tool.id} style={styles.eventRow(palette, tool.approval_required ? 'warning' : 'ok')}>
+                  <div>
+                    <strong style={styles.eventTitle(palette)}>{tool.name}</strong>
+                    <div style={styles.eventDetail(palette)}>
+                      {tool.permission_scope || tool.category} / {tool.sandboxed ? 'sandboxed' : 'direct'} / {tool.rollback_supported ? 'rollback' : 'no rollback'}
+                    </div>
+                  </div>
+                  <span style={styles.eventTime(palette)}>{tool.tracked_by_tasks ? 'tracked' : 'untracked'}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
+
+        {unified?.recommendations.length ? (
+          <section style={styles.settingsSection(palette)}>
+            <div style={styles.sectionLabel(palette)}>Runtime Guidance</div>
+            <div style={styles.tagWrap}>
+              {unified.recommendations.map((item) => (
+                <span key={item} style={styles.contextTag(palette)}>
+                  {item}
+                </span>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
+        <div style={styles.surfaceColumns}>
+          <section style={styles.settingsSection(palette)}>
+            <div style={styles.sectionHeaderInline}>
+              <h3 style={styles.settingsHeading(palette)}>Workers</h3>
+              <span style={styles.contextTag(palette)}>{runtime?.execution_mode ?? 'local'} mode</span>
+            </div>
+            <div style={styles.modelList}>
+              {workers.map((worker) => (
+                <div key={worker.worker_id} style={styles.modelRow(palette, false)}>
+                  <div style={styles.modelRowMain}>
+                    <div style={styles.modelRowTop}>
+                      <div style={styles.cardTitle(palette)}>{worker.name}</div>
+                      <span style={styles.diagnosticChip(palette, healthStatusToEventStatus(worker.status))}>
+                        {formatStatusLabel(worker.status)}
+                      </span>
+                    </div>
+                    <div style={styles.eventDetail(palette)}>{worker.endpoint || worker.worker_id}</div>
+                    <div style={styles.tagWrap}>
+                      <span style={styles.contextTag(palette)}>{worker.kind}</span>
+                      <span style={styles.contextTag(palette)}>{worker.trust_state}</span>
+                      <span style={styles.contextTag(palette)}>{worker.capabilities.supported_languages.length} language(s)</span>
+                      <span style={styles.contextTag(palette)}>{worker.capabilities.available_models.length} model(s)</span>
+                      {worker.capabilities.validation_support ? <span style={styles.goodTag(palette)}>validation</span> : null}
+                    </div>
+                  </div>
+                  <span style={styles.eventTime(palette)}>{formatDateTime(worker.last_heartbeat_at)}</span>
+                </div>
+              ))}
+              {!workers.length ? <div style={styles.emptyPanel(palette)}>No runtime workers reported yet.</div> : null}
+            </div>
+          </section>
+
+          <section style={styles.settingsSection(palette)}>
+            <div style={styles.sectionHeaderInline}>
+              <h3 style={styles.settingsHeading(palette)}>Execution Queue</h3>
+              <span style={styles.contextTag(palette)}>{queue.length} job(s)</span>
+            </div>
+            <div style={styles.modelList}>
+              {queue.slice(0, 12).map((job) => (
+                <div key={job.id} style={styles.modelRow(palette, false)}>
+                  <div style={styles.modelRowMain}>
+                    <div style={styles.modelRowTop}>
+                      <div style={styles.cardTitle(palette)}>{job.title || job.id}</div>
+                      <span style={styles.diagnosticChip(palette, healthStatusToEventStatus(job.status))}>
+                        {formatStatusLabel(job.status)}
+                      </span>
+                    </div>
+                    <div style={styles.eventDetail(palette)}>{job.result_summary || job.error_summary || job.user_goal}</div>
+                    <div style={styles.tagWrap}>
+                      <span style={styles.contextTag(palette)}>{job.kind}</span>
+                      <span style={styles.contextTag(palette)}>{job.permission_scope}</span>
+                      <span style={styles.contextTag(palette)}>
+                        {job.attempts}/{job.max_attempts} attempt(s)
+                      </span>
+                      {job.assigned_worker_id ? <span style={styles.goodTag(palette)}>{job.assigned_worker_id}</span> : null}
+                    </div>
+                  </div>
+                  <span style={styles.eventTime(palette)}>{formatDateTime(job.updated_at || job.created_at)}</span>
+                </div>
+              ))}
+              {!queue.length ? <div style={styles.emptyPanel(palette)}>No execution jobs have been queued.</div> : null}
+            </div>
+          </section>
+        </div>
+
+        <div style={styles.surfaceColumns}>
+          <section style={styles.settingsSection(palette)}>
+            <div style={styles.sectionHeaderInline}>
+              <h3 style={styles.settingsHeading(palette)}>Audit Events</h3>
+              <span style={styles.contextTag(palette)}>{auditEvents.length} event(s)</span>
+            </div>
+            <div style={styles.eventList}>
+              {auditEvents.slice(0, 10).map((event) => (
+                <div key={event.id} style={styles.eventRow(palette, event.status === 'error' ? 'error' : event.status === 'warning' ? 'warning' : 'ok')}>
+                  <div>
+                    <strong style={styles.eventTitle(palette)}>{event.event_type}</strong>
+                    <div style={styles.eventDetail(palette)}>{event.detail || event.job_id || event.worker_id}</div>
+                  </div>
+                  <span style={styles.eventTime(palette)}>{formatEventTime(event.created_at)}</span>
+                </div>
+              ))}
+              {!auditEvents.length ? <div style={styles.emptyPanel(palette)}>No runtime audit events recorded yet.</div> : null}
+            </div>
+          </section>
+
+          <section style={styles.settingsSection(palette)}>
+            <div style={styles.sectionHeaderInline}>
+              <h3 style={styles.settingsHeading(palette)}>Sync And Safety</h3>
+              <span style={styles.contextTag(palette)}>{syncManifests.length} manifest(s)</span>
+            </div>
+            <div style={styles.sectionBlock}>
+              <div style={styles.tagWrap}>
+                {(runtime?.security_summary ?? []).map((item) => (
+                  <span key={item} style={styles.contextTag(palette)}>
+                    {item}
+                  </span>
+                ))}
+                {!runtime?.security_summary.length ? (
+                  <span style={styles.previewMeta(palette)}>Local-first safety summary will appear after refresh.</span>
+                ) : null}
+              </div>
+            </div>
+            <div style={styles.eventList}>
+              {syncManifests.slice(0, 5).map((manifest) => (
+                <div key={manifest.id} style={styles.eventRow(palette, 'ok')}>
+                  <div>
+                    <strong style={styles.eventTitle(palette)}>{manifest.id}</strong>
+                    <div style={styles.eventDetail(palette)}>
+                      {manifest.included_sections.join(', ')} / {manifest.manifest_hash.slice(0, 12)}
+                    </div>
+                  </div>
+                  <span style={styles.eventTime(palette)}>{formatDateTime(manifest.created_at)}</span>
+                </div>
+              ))}
+              {!syncManifests.length ? <div style={styles.emptyPanel(palette)}>No sync manifests recorded yet.</div> : null}
+            </div>
+          </section>
+        </div>
+      </div>
+    );
+  }
+
+  function renderProductizationSurface() {
+    const snapshot = productization;
+    const plugins = snapshot?.plugins ?? [];
+    const stableApis = snapshot?.stable_apis ?? [];
+    const metrics = snapshot?.metrics ?? [];
+    const recovery = snapshot?.recovery;
+    const policy = snapshot?.enterprise_policy;
+    const degradedMetrics = metrics.filter((metric) => metric.status === 'degraded');
+    const invalidPlugins = (snapshot?.plugin_validation ?? []).filter((item) => !item.valid);
+    const sqliteSize = Number(snapshot?.performance?.sqlite_size_bytes ?? 0);
+    const metricLabel = (metric: { value: number; unit: string }) => {
+      if (metric.unit === 'ratio') return `${Math.round(metric.value * 100)}%`;
+      if (metric.unit === 'boolean') return metric.value >= 1 ? 'Ready' : 'No';
+      if (metric.unit === 'ms') return `${Math.round(metric.value)} ms`;
+      return String(metric.value);
+    };
+
+    return (
+      <div style={styles.surfacePage}>
+        {renderSurfaceHeader(
+          <Wrench size={22} />,
+          'Hardening',
+          'Productization controls for stable APIs, plugins, recovery, enterprise policy, packaging, and reliability.',
+          <div style={styles.surfaceActions}>
+            <button
+              type="button"
+              style={styles.secondaryButton(palette)}
+              onClick={() => void refreshProductizationSignals(undefined, false)}
+              disabled={productizationLoading}
+            >
+              {productizationLoading ? <Loader2 size={16} className="spin" /> : <Zap size={16} />}
+              Refresh
+            </button>
+            <button
+              type="button"
+              style={styles.primaryButton(palette)}
+              onClick={() => void refreshProductizationSignals(undefined, true)}
+              disabled={productizationLoading}
+            >
+              {productizationLoading ? <Loader2 size={16} className="spin" /> : <Save size={16} />}
+              Snapshot
+            </button>
+          </div>
+        )}
+
+        <div style={styles.metricGrid}>
+          <div style={styles.metricCard(palette)}>
+            <span style={styles.metricLabel(palette)}>Stable APIs</span>
+            <strong style={styles.metricValue(palette)}>{stableApis.length}</strong>
+          </div>
+          <div style={styles.metricCard(palette)}>
+            <span style={styles.metricLabel(palette)}>Plugins</span>
+            <strong style={styles.metricValue(palette)}>{plugins.length}</strong>
+          </div>
+          <div style={styles.metricCard(palette)}>
+            <span style={styles.metricLabel(palette)}>Recovery</span>
+            <strong style={styles.metricValue(palette)}>{recovery?.safe_shutdown_ready ? 'Ready' : 'Review'}</strong>
+          </div>
+          <div style={styles.metricCard(palette)}>
+            <span style={styles.metricLabel(palette)}>Reliability</span>
+            <strong style={styles.metricValue(palette)}>{degradedMetrics.length ? `${degradedMetrics.length} degraded` : 'Healthy'}</strong>
+          </div>
+        </div>
+
+        {productizationStatus ? (
+          <div style={styles.eventRow(palette, productizationStatus.includes('Could not') || productizationStatus.includes('invalid') ? 'error' : 'ok')}>
+            <div>
+              <strong style={styles.eventTitle(palette)}>Hardening Status</strong>
+              <div style={styles.eventDetail(palette)}>{productizationStatus}</div>
+            </div>
+          </div>
+        ) : null}
+
+        <div style={styles.surfaceColumns}>
+          <section style={styles.settingsSection(palette)}>
+            <div style={styles.sectionHeaderInline}>
+              <h3 style={styles.settingsHeading(palette)}>Runtime Recovery</h3>
+              <span style={styles.diagnosticChip(palette, recovery?.safe_shutdown_ready ? 'ok' : 'warning')}>
+                {recovery?.safe_shutdown_ready ? 'Ready' : 'Needs review'}
+              </span>
+            </div>
+            <div style={styles.workspaceMeta(palette)}>
+              <strong>SQLite</strong>
+              <span>{recovery?.database_ok ? 'quick_check ok' : recovery?.database_message || 'pending'}</span>
+              <strong>Database size</strong>
+              <span>{formatBytes(sqliteSize)}</span>
+              <strong>Open tasks</strong>
+              <span>{recovery?.open_tasks ?? 0}</span>
+              <strong>Checkpoints</strong>
+              <span>{recovery?.checkpoint_count ?? 0}</span>
+            </div>
+            <div style={styles.eventList}>
+              {(recovery?.recommended_actions ?? []).slice(0, 6).map((item) => (
+                <div key={item} style={styles.eventRow(palette, 'warning')}>
+                  <div>
+                    <strong style={styles.eventTitle(palette)}>Recovery action</strong>
+                    <div style={styles.eventDetail(palette)}>{item}</div>
+                  </div>
+                </div>
+              ))}
+              {!recovery?.recommended_actions.length ? (
+                <div style={styles.emptyPanel(palette)}>No recovery actions are pending.</div>
+              ) : null}
+            </div>
+          </section>
+
+          <section style={styles.settingsSection(palette)}>
+            <div style={styles.sectionHeaderInline}>
+              <h3 style={styles.settingsHeading(palette)}>Enterprise Controls</h3>
+              <span style={styles.contextTag(palette)}>{policy?.privacy_mode ?? 'local_first'}</span>
+            </div>
+            <div style={styles.workspaceMeta(palette)}>
+              <strong>Permission profile</strong>
+              <span>{policy?.permission_profile ?? 'guided:standard'}</span>
+              <strong>Audit trails</strong>
+              <span>{policy?.audit_trails ? 'enabled' : 'disabled'}</span>
+              <strong>Plugin signing</strong>
+              <span>{policy?.plugin_signing_required ? 'required' : 'optional'}</span>
+              <strong>Remote workers</strong>
+              <span>{policy?.allow_remote_workers ? 'allowed' : 'disabled'}</span>
+            </div>
+            <div style={styles.tagWrap}>
+              {(policy?.network_allowlist ?? []).map((item) => (
+                <span key={item} style={styles.contextTag(palette)}>
+                  {item}
+                </span>
+              ))}
+              {policy?.enforce_local_models ? <span style={styles.goodTag(palette)}>local models enforced</span> : null}
+              {policy?.encrypted_workspace_storage ? <span style={styles.goodTag(palette)}>encrypted storage</span> : null}
+            </div>
+          </section>
+        </div>
+
+        <div style={styles.surfaceColumns}>
+          <section style={styles.settingsSection(palette)}>
+            <div style={styles.sectionHeaderInline}>
+              <h3 style={styles.settingsHeading(palette)}>Plugin SDK</h3>
+              <div style={styles.tagWrap}>
+                <span style={styles.contextTag(palette)}>{invalidPlugins.length} invalid</span>
+                <button
+                  type="button"
+                  style={styles.iconTextButton(palette)}
+                  onClick={() => void validateSamplePluginManifest()}
+                  disabled={Boolean(productizationAction)}
+                >
+                  {productizationAction === 'validate-sample' ? <Loader2 size={14} className="spin" /> : <CheckCircle2 size={14} />}
+                  Validate sample
+                </button>
+              </div>
+            </div>
+            <div style={styles.modelList}>
+              {plugins.map((plugin) => {
+                const busy = productizationAction.endsWith(`:${plugin.id}`);
+                return (
+                  <div key={plugin.id} style={styles.modelRow(palette, plugin.enabled)}>
+                    <div style={styles.modelRowMain}>
+                      <div style={styles.modelRowTop}>
+                        <div style={styles.cardTitle(palette)}>{plugin.name}</div>
+                        <span style={styles.diagnosticChip(palette, plugin.enabled ? 'ok' : 'warning')}>
+                          {plugin.enabled ? 'enabled' : 'disabled'}
+                        </span>
+                      </div>
+                      <div style={styles.eventDetail(palette)}>{plugin.description || plugin.id}</div>
+                      <div style={styles.tagWrap}>
+                        <span style={styles.contextTag(palette)}>{plugin.version}</span>
+                        <span style={styles.contextTag(palette)}>{plugin.sandbox_profile}</span>
+                        {plugin.trusted ? <span style={styles.goodTag(palette)}>trusted</span> : null}
+                        {plugin.capabilities.slice(0, 4).map((item) => (
+                          <span key={`${plugin.id}-${item}`} style={styles.contextTag(palette)}>
+                            {formatStatusLabel(item)}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <div style={styles.rowActions}>
+                      <button
+                        type="button"
+                        style={styles.iconTextButton(palette)}
+                        onClick={() => void updatePluginState(plugin, plugin.enabled ? 'disable' : 'enable')}
+                        disabled={busy}
+                      >
+                        {busy ? <Loader2 size={14} className="spin" /> : plugin.enabled ? <Pause size={14} /> : <Play size={14} />}
+                        {plugin.enabled ? 'Disable' : 'Enable'}
+                      </button>
+                      <button
+                        type="button"
+                        style={styles.iconTextButton(palette)}
+                        onClick={() => void updatePluginState(plugin, 'trust')}
+                        disabled={plugin.trusted || busy}
+                      >
+                        <CheckCircle2 size={14} />
+                        Trust
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+              {!plugins.length ? <div style={styles.emptyPanel(palette)}>No plugins are registered yet.</div> : null}
+            </div>
+            {(snapshot?.plugin_validation ?? []).slice(0, 4).map((result, index) => (
+              <div key={`${result.normalized_manifest?.id ?? 'plugin'}-${index}`} style={styles.eventRow(palette, result.valid ? 'ok' : 'error')}>
+                <div>
+                  <strong style={styles.eventTitle(palette)}>{result.normalized_manifest?.name ?? 'Plugin manifest'}</strong>
+                  <div style={styles.eventDetail(palette)}>
+                    {result.valid ? result.warnings.join('; ') || 'Manifest validates.' : result.errors.join('; ')}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </section>
+
+          <section style={styles.settingsSection(palette)}>
+            <div style={styles.sectionHeaderInline}>
+              <h3 style={styles.settingsHeading(palette)}>Stable Internal APIs</h3>
+              <span style={styles.contextTag(palette)}>v{snapshot?.api_version ?? '2026.05.07'}</span>
+            </div>
+            <div style={styles.eventList}>
+              {stableApis.map((api) => (
+                <div key={api.id} style={styles.eventRow(palette, api.status === 'stable' ? 'ok' : 'warning')}>
+                  <div>
+                    <strong style={styles.eventTitle(palette)}>{api.name}</strong>
+                    <div style={styles.eventDetail(palette)}>{api.path_prefixes.slice(0, 4).join(', ')}</div>
+                    <div style={styles.tagWrap}>
+                      <span style={styles.contextTag(palette)}>{api.id}</span>
+                      <span style={styles.contextTag(palette)}>{api.status}</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {!stableApis.length ? <div style={styles.emptyPanel(palette)}>Stable API contracts will appear after refresh.</div> : null}
+            </div>
+          </section>
+        </div>
+
+        <div style={styles.surfaceColumns}>
+          <section style={styles.settingsSection(palette)}>
+            <div style={styles.sectionHeaderInline}>
+              <h3 style={styles.settingsHeading(palette)}>Reliability Metrics</h3>
+              <span style={styles.contextTag(palette)}>{metrics.length} metric(s)</span>
+            </div>
+            <div style={styles.eventList}>
+              {metrics.map((metric) => (
+                <div key={metric.name} style={styles.eventRow(palette, reliabilityStatusToEventStatus(metric.status))}>
+                  <div>
+                    <strong style={styles.eventTitle(palette)}>{formatStatusLabel(metric.name)}</strong>
+                    <div style={styles.eventDetail(palette)}>{metric.detail}</div>
+                  </div>
+                  <span style={styles.eventTime(palette)}>{metricLabel(metric)}</span>
+                </div>
+              ))}
+              {!metrics.length ? <div style={styles.emptyPanel(palette)}>Reliability metrics will appear after snapshot refresh.</div> : null}
+            </div>
+          </section>
+
+          <section style={styles.settingsSection(palette)}>
+            <div style={styles.sectionHeaderInline}>
+              <h3 style={styles.settingsHeading(palette)}>Scaling, Packaging, Docs</h3>
+              <span style={styles.contextTag(palette)}>{snapshot?.docs.length ?? 0} docs</span>
+            </div>
+            <div style={styles.workspaceMeta(palette)}>
+              <strong>Monorepo</strong>
+              <span>{snapshot?.scaling?.monorepo_ready ? 'ready' : 'pending'}</span>
+              <strong>Distributed</strong>
+              <span>{snapshot?.scaling?.distributed_runtime_ready ? 'ready' : 'pending'}</span>
+              <strong>Installer</strong>
+              <span>{String(snapshot?.packaging?.signed_installers ?? 'planned')}</span>
+              <strong>Updates</strong>
+              <span>{String(snapshot?.packaging?.auto_updates ?? 'planned')}</span>
+            </div>
+            <div style={styles.tagWrap}>
+              {(snapshot?.docs ?? []).slice(0, 8).map((doc) => (
+                <span key={doc} style={styles.contextTag(palette)}>
+                  {doc.replace('docs/', '')}
+                </span>
+              ))}
+            </div>
+            <div style={styles.eventList}>
+              {(snapshot?.recommendations ?? []).slice(0, 6).map((item) => (
+                <div key={item} style={styles.eventRow(palette, 'warning')}>
+                  <div>
+                    <strong style={styles.eventTitle(palette)}>Recommendation</strong>
+                    <div style={styles.eventDetail(palette)}>{item}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
+      </div>
+    );
+  }
+
+  function renderEcosystemSurface() {
+    const snapshot = ecosystemSnapshot;
+    const packages = snapshot?.packages ?? [];
+    const catalog = snapshot?.marketplace_catalog ?? [];
+    const workflows = snapshot?.workflows ?? [];
+    const graph = snapshot?.knowledge_graph;
+    const policy = snapshot?.organization_policy;
+    const governance = snapshot?.governance ?? [];
+    const search = ecosystemSearch ?? snapshot?.search ?? null;
+    const invalidPackages = (snapshot?.package_validation ?? []).filter((item) => !item.valid);
+    const governanceStatus = (status: string) => (status === 'blocked' ? 'error' : status === 'trusted' ? 'ok' : 'warning');
+
+    return (
+      <div style={styles.surfacePage}>
+        {renderSurfaceHeader(
+          <Brain size={22} />,
+          'Ecosystem',
+          'Reusable agents, workflows, shared intelligence, organization policy, knowledge graph, search, and reproducibility.',
+          <div style={styles.surfaceActions}>
+            <button
+              type="button"
+              style={styles.secondaryButton(palette)}
+              onClick={() => void refreshEcosystemSignals(undefined, false)}
+              disabled={ecosystemLoading}
+            >
+              {ecosystemLoading ? <Loader2 size={16} className="spin" /> : <Zap size={16} />}
+              Refresh
+            </button>
+            <button
+              type="button"
+              style={styles.primaryButton(palette)}
+              onClick={() => void refreshEcosystemSignals(undefined, true)}
+              disabled={ecosystemLoading}
+            >
+              {ecosystemLoading ? <Loader2 size={16} className="spin" /> : <Save size={16} />}
+              Rebuild graph
+            </button>
+          </div>
+        )}
+
+        <div style={styles.metricGrid}>
+          <div style={styles.metricCard(palette)}>
+            <span style={styles.metricLabel(palette)}>Marketplace</span>
+            <strong style={styles.metricValue(palette)}>{catalog.length}</strong>
+          </div>
+          <div style={styles.metricCard(palette)}>
+            <span style={styles.metricLabel(palette)}>Workflows</span>
+            <strong style={styles.metricValue(palette)}>{workflows.length}</strong>
+          </div>
+          <div style={styles.metricCard(palette)}>
+            <span style={styles.metricLabel(palette)}>Graph Nodes</span>
+            <strong style={styles.metricValue(palette)}>{graph?.nodes.length ?? 0}</strong>
+          </div>
+          <div style={styles.metricCard(palette)}>
+            <span style={styles.metricLabel(palette)}>Governance</span>
+            <strong style={styles.metricValue(palette)}>
+              {governance.some((item) => item.status === 'blocked') ? 'Blocked' : 'Ready'}
+            </strong>
+          </div>
+        </div>
+
+        {ecosystemStatus ? (
+          <div
+            style={styles.eventRow(
+              palette,
+              ecosystemStatus.includes('Could not') || ecosystemStatus.includes('invalid') ? 'error' : 'ok'
+            )}
+          >
+            <div>
+              <strong style={styles.eventTitle(palette)}>Ecosystem Status</strong>
+              <div style={styles.eventDetail(palette)}>{ecosystemStatus}</div>
+            </div>
+          </div>
+        ) : null}
+
+        <div style={styles.surfaceColumns}>
+          <section style={styles.settingsSection(palette)}>
+            <div style={styles.sectionHeaderInline}>
+              <h3 style={styles.settingsHeading(palette)}>Agent Marketplace</h3>
+              <div style={styles.tagWrap}>
+                <span style={styles.contextTag(palette)}>{invalidPackages.length} invalid</span>
+                <button
+                  type="button"
+                  style={styles.iconTextButton(palette)}
+                  onClick={() => void validateSampleEcosystemPackage()}
+                  disabled={Boolean(ecosystemAction)}
+                >
+                  {ecosystemAction === 'validate-sample' ? <Loader2 size={14} className="spin" /> : <CheckCircle2 size={14} />}
+                  Validate sample
+                </button>
+              </div>
+            </div>
+            <div style={styles.modelList}>
+              {packages.map((item) => {
+                const busy = ecosystemAction.endsWith(`:${item.id}`);
+                return (
+                  <div key={item.id} style={styles.modelRow(palette, item.enabled)}>
+                    <div style={styles.modelRowMain}>
+                      <div style={styles.modelRowTop}>
+                        <div style={styles.cardTitle(palette)}>{item.name}</div>
+                        <span style={styles.diagnosticChip(palette, item.enabled ? 'ok' : 'warning')}>
+                          {item.enabled ? 'enabled' : 'disabled'}
+                        </span>
+                      </div>
+                      <div style={styles.eventDetail(palette)}>{item.description || item.id}</div>
+                      <div style={styles.tagWrap}>
+                        <span style={styles.contextTag(palette)}>{formatStatusLabel(item.kind)}</span>
+                        <span style={styles.contextTag(palette)}>{item.version}</span>
+                        <span style={item.trust_level === 'trusted' || item.trust_level === 'signed' ? styles.goodTag(palette) : styles.contextTag(palette)}>
+                          {item.trust_level}
+                        </span>
+                        <span style={styles.contextTag(palette)}>{item.update_channel}</span>
+                      </div>
+                    </div>
+                    <div style={styles.rowActions}>
+                      <button
+                        type="button"
+                        style={styles.iconTextButton(palette)}
+                        onClick={() => void updateEcosystemPackageState(item, item.enabled ? 'disable' : 'enable')}
+                        disabled={busy}
+                      >
+                        {busy ? <Loader2 size={14} className="spin" /> : item.enabled ? <Pause size={14} /> : <Play size={14} />}
+                        {item.enabled ? 'Disable' : 'Enable'}
+                      </button>
+                      <button
+                        type="button"
+                        style={styles.iconTextButton(palette)}
+                        onClick={() => void updateEcosystemPackageState(item, 'trust')}
+                        disabled={item.trust_level === 'trusted' || item.trust_level === 'signed' || busy}
+                      >
+                        <CheckCircle2 size={14} />
+                        Trust
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+              {!packages.length ? <div style={styles.emptyPanel(palette)}>No ecosystem packages are installed yet.</div> : null}
+            </div>
+            <div style={styles.tagWrap}>
+              {catalog.slice(0, 6).map((item) => (
+                <span key={item.id} style={styles.contextTag(palette)}>
+                  {item.name}
+                </span>
+              ))}
+            </div>
+          </section>
+
+          <section style={styles.settingsSection(palette)}>
+            <div style={styles.sectionHeaderInline}>
+              <h3 style={styles.settingsHeading(palette)}>Workflow Manager</h3>
+              <span style={styles.contextTag(palette)}>{workflows.length} reusable</span>
+            </div>
+            <div style={styles.eventList}>
+              {workflows.slice(0, 8).map((workflow) => {
+                const busy = ecosystemAction === `workflow:${workflow.id}`;
+                return (
+                  <div key={workflow.id} style={styles.eventRow(palette, workflow.enabled ? 'ok' : 'warning')}>
+                    <div>
+                      <strong style={styles.eventTitle(palette)}>{workflow.name}</strong>
+                      <div style={styles.eventDetail(palette)}>{workflow.description}</div>
+                      <div style={styles.tagWrap}>
+                        <span style={styles.contextTag(palette)}>{workflow.category}</span>
+                        <span style={styles.contextTag(palette)}>{workflow.steps.length} steps</span>
+                        <span style={styles.contextTag(palette)}>{workflow.approvals.length} approvals</span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      style={styles.iconTextButton(palette)}
+                      onClick={() => void runReusableWorkflow(workflow.id)}
+                      disabled={!workflow.enabled || busy}
+                    >
+                      {busy ? <Loader2 size={14} className="spin" /> : <Play size={14} />}
+                      Run
+                    </button>
+                  </div>
+                );
+              })}
+              {!workflows.length ? <div style={styles.emptyPanel(palette)}>Workflow templates will appear after refresh.</div> : null}
+            </div>
+          </section>
+        </div>
+
+        <div style={styles.surfaceColumns}>
+          <section style={styles.settingsSection(palette)}>
+            <div style={styles.sectionHeaderInline}>
+              <h3 style={styles.settingsHeading(palette)}>Knowledge Graph</h3>
+              <span style={styles.contextTag(palette)}>{graph?.edges.length ?? 0} relationships</span>
+            </div>
+            <div style={styles.workspaceMeta(palette)}>
+              <strong>Modules</strong>
+              <span>{graph?.modules_total ?? 0}</span>
+              <strong>APIs</strong>
+              <span>{graph?.api_routes_total ?? 0}</span>
+              <strong>Dependencies</strong>
+              <span>{graph?.dependencies_total ?? 0}</span>
+              <strong>Decisions</strong>
+              <span>{graph?.decisions_total ?? 0}</span>
+            </div>
+            <div style={styles.eventList}>
+              {(graph?.nodes ?? []).slice(0, 8).map((node) => (
+                <div key={node.id} style={styles.eventRow(palette, node.kind === 'failure' ? 'warning' : 'ok')}>
+                  <div>
+                    <strong style={styles.eventTitle(palette)}>{node.label}</strong>
+                    <div style={styles.eventDetail(palette)}>{node.summary || node.path}</div>
+                    <span style={styles.contextTag(palette)}>{node.kind}</span>
+                  </div>
+                </div>
+              ))}
+              {!graph?.nodes.length ? <div style={styles.emptyPanel(palette)}>No graph has been generated yet.</div> : null}
+            </div>
+          </section>
+
+          <section style={styles.settingsSection(palette)}>
+            <div style={styles.sectionHeaderInline}>
+              <h3 style={styles.settingsHeading(palette)}>Advanced Search</h3>
+              <button
+                type="button"
+                style={styles.iconTextButton(palette)}
+                onClick={() => void runEcosystemSearch()}
+                disabled={ecosystemAction === 'search'}
+              >
+                {ecosystemAction === 'search' ? <Loader2 size={14} className="spin" /> : <Search size={14} />}
+                Search
+              </button>
+            </div>
+            <div style={styles.searchWrap(palette)}>
+              <Search size={16} />
+              <input
+                value={ecosystemSearchQuery}
+                onChange={(event) => setEcosystemSearchQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') void runEcosystemSearch();
+                }}
+                placeholder="Search architecture, tasks, memory, workflows..."
+                style={styles.searchInput(palette)}
+              />
+            </div>
+            <div style={styles.eventList}>
+              {(search?.results ?? []).slice(0, 8).map((result) => (
+                <div key={`${result.kind}-${result.id}`} style={styles.eventRow(palette, 'ok')}>
+                  <div>
+                    <strong style={styles.eventTitle(palette)}>{result.title}</strong>
+                    <div style={styles.eventDetail(palette)}>{result.detail || result.reference}</div>
+                    <div style={styles.tagWrap}>
+                      <span style={styles.contextTag(palette)}>{result.kind}</span>
+                      <span style={styles.contextTag(palette)}>{Math.round(result.score * 10) / 10}</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {!search?.results.length ? <div style={styles.emptyPanel(palette)}>Search results will appear here.</div> : null}
+            </div>
+          </section>
+        </div>
+
+        <div style={styles.surfaceColumns}>
+          <section style={styles.settingsSection(palette)}>
+            <div style={styles.sectionHeaderInline}>
+              <h3 style={styles.settingsHeading(palette)}>Organization Dashboard</h3>
+              <span style={styles.contextTag(palette)}>{policy?.collaboration_mode ?? 'local'}</span>
+            </div>
+            <div style={styles.workspaceMeta(palette)}>
+              <strong>Signed packages</strong>
+              <span>{policy?.require_signed_packages ? 'required' : 'optional'}</span>
+              <strong>Community</strong>
+              <span>{policy?.allow_community_packages ? 'allowed' : 'blocked'}</span>
+              <strong>Shared tasks</strong>
+              <span>{snapshot?.team.shared_task_count ?? 0}</span>
+              <strong>Approvals</strong>
+              <span>{snapshot?.team.pending_approvals ?? 0}</span>
+            </div>
+            <div style={styles.eventList}>
+              {governance.map((signal) => (
+                <div key={signal.id} style={styles.eventRow(palette, governanceStatus(signal.status))}>
+                  <div>
+                    <strong style={styles.eventTitle(palette)}>{signal.label}</strong>
+                    <div style={styles.eventDetail(palette)}>{signal.detail}</div>
+                  </div>
+                  <span style={styles.eventTime(palette)}>{Math.round(signal.score * 100)}%</span>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section style={styles.settingsSection(palette)}>
+            <div style={styles.sectionHeaderInline}>
+              <h3 style={styles.settingsHeading(palette)}>Shared Intelligence</h3>
+              <button
+                type="button"
+                style={styles.iconTextButton(palette)}
+                onClick={() => void exportProjectIntelligenceProfile()}
+                disabled={ecosystemAction === 'export-profile'}
+              >
+                {ecosystemAction === 'export-profile' ? <Loader2 size={14} className="spin" /> : <Download size={14} />}
+                Export current
+              </button>
+            </div>
+            <div style={styles.eventList}>
+              {(snapshot?.shared_profiles ?? []).slice(0, 8).map((profile) => (
+                <div key={profile.id} style={styles.eventRow(palette, 'ok')}>
+                  <div>
+                    <strong style={styles.eventTitle(palette)}>{profile.name}</strong>
+                    <div style={styles.eventDetail(palette)}>{profile.description || profile.id}</div>
+                    <div style={styles.tagWrap}>
+                      <span style={styles.contextTag(palette)}>{formatStatusLabel(profile.kind)}</span>
+                      <span style={styles.contextTag(palette)}>{profile.version}</span>
+                      <span style={styles.contextTag(palette)}>{profile.trust_level}</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {!snapshot?.shared_profiles.length ? <div style={styles.emptyPanel(palette)}>No shared intelligence profiles have been imported or exported.</div> : null}
+            </div>
+          </section>
+        </div>
+
+        <div style={styles.surfaceColumns}>
+          <section style={styles.settingsSection(palette)}>
+            <div style={styles.sectionHeaderInline}>
+              <h3 style={styles.settingsHeading(palette)}>Cross-Project Intelligence</h3>
+              <span style={styles.contextTag(palette)}>{snapshot?.cross_project_insights.length ?? 0} insight(s)</span>
+            </div>
+            <div style={styles.eventList}>
+              {(snapshot?.cross_project_insights ?? []).slice(0, 8).map((insight) => (
+                <div key={insight.id} style={styles.eventRow(palette, insight.severity === 'high' ? 'error' : insight.severity === 'medium' ? 'warning' : 'ok')}>
+                  <div>
+                    <strong style={styles.eventTitle(palette)}>{insight.title}</strong>
+                    <div style={styles.eventDetail(palette)}>{insight.recommendation || insight.detail}</div>
+                    <div style={styles.tagWrap}>
+                      <span style={styles.contextTag(palette)}>{formatStatusLabel(insight.category)}</span>
+                      <span style={styles.contextTag(palette)}>{insight.projects.length} projects</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section style={styles.settingsSection(palette)}>
+            <div style={styles.sectionHeaderInline}>
+              <h3 style={styles.settingsHeading(palette)}>Reproducibility & Audit</h3>
+              <span style={styles.contextTag(palette)}>{snapshot?.reproducibility.length ?? 0} records</span>
+            </div>
+            <div style={styles.eventList}>
+              {(snapshot?.reproducibility ?? []).slice(0, 5).map((record) => (
+                <div key={record.id} style={styles.eventRow(palette, record.status === 'ready' ? 'ok' : 'warning')}>
+                  <div>
+                    <strong style={styles.eventTitle(palette)}>{record.deterministic_hash.slice(0, 12)}</strong>
+                    <div style={styles.eventDetail(palette)}>{record.replay_notes[0] || record.task_id}</div>
+                  </div>
+                  <span style={styles.eventTime(palette)}>{record.artifacts.length} artifacts</span>
+                </div>
+              ))}
+              {(snapshot?.audit_events ?? []).slice(0, 5).map((event) => (
+                <div key={event.id} style={styles.eventRow(palette, event.status)}>
+                  <div>
+                    <strong style={styles.eventTitle(palette)}>{formatStatusLabel(event.action)}</strong>
+                    <div style={styles.eventDetail(palette)}>{event.detail}</div>
+                  </div>
+                </div>
+              ))}
+              {!snapshot?.audit_events.length && !snapshot?.reproducibility.length ? (
+                <div style={styles.emptyPanel(palette)}>Audit and reproducibility events will appear after ecosystem actions.</div>
+              ) : null}
+            </div>
+          </section>
+        </div>
+      </div>
+    );
+  }
+
+  function renderAutonomousEngineeringSurface() {
+    const snapshot = autonomousSnapshot;
+    const detail = selectedAutonomousObjective;
+    const objective = detail?.objective;
+    const pendingGates = (snapshot?.approval_gates ?? []).filter((gate) => gate.status === 'pending');
+    const latestSimulation = detail?.simulations[0] ?? snapshot?.simulations[0] ?? null;
+    const metricLabel = (metric: { value: number; unit: string }) => {
+      if (metric.unit === 'ratio') return `${Math.round(metric.value * 100)}%`;
+      return `${Math.round(metric.value * 10) / 10} ${metric.unit}`;
+    };
+    const verificationStatus = (status: string) =>
+      status === 'failed' ? 'error' : status === 'passed' ? 'ok' : status === 'warning' ? 'warning' : 'ok';
+
+    return (
+      <div style={styles.surfacePage}>
+        {renderSurfaceHeader(
+          <Zap size={22} />,
+          'Autonomous',
+          'Supervised long-running engineering objectives with dry runs, approval gates, verification, explainability, and rollback-oriented limits.',
+          <div style={styles.surfaceActions}>
+            <button
+              type="button"
+              style={styles.secondaryButton(palette)}
+              onClick={() => void refreshAutonomousSignals()}
+              disabled={autonomousLoading}
+            >
+              {autonomousLoading ? <Loader2 size={16} className="spin" /> : <Zap size={16} />}
+              Refresh
+            </button>
+            <button
+              type="button"
+              style={styles.primaryButton(palette)}
+              onClick={() => void createDryRunAutonomousObjective()}
+              disabled={Boolean(autonomousAction)}
+            >
+              {autonomousAction === 'create' ? <Loader2 size={16} className="spin" /> : <Save size={16} />}
+              Dry run
+            </button>
+          </div>
+        )}
+
+        <div style={styles.metricGrid}>
+          <div style={styles.metricCard(palette)}>
+            <span style={styles.metricLabel(palette)}>Objectives</span>
+            <strong style={styles.metricValue(palette)}>{snapshot?.objectives.length ?? 0}</strong>
+          </div>
+          <div style={styles.metricCard(palette)}>
+            <span style={styles.metricLabel(palette)}>Active</span>
+            <strong style={styles.metricValue(palette)}>{snapshot?.active_objectives.length ?? 0}</strong>
+          </div>
+          <div style={styles.metricCard(palette)}>
+            <span style={styles.metricLabel(palette)}>Pending Gates</span>
+            <strong style={styles.metricValue(palette)}>{pendingGates.length}</strong>
+          </div>
+          <div style={styles.metricCard(palette)}>
+            <span style={styles.metricLabel(palette)}>Risk</span>
+            <strong style={styles.metricValue(palette)}>
+              {latestSimulation ? `${Math.round(latestSimulation.predicted_validation_risk * 100)}%` : 'n/a'}
+            </strong>
+          </div>
+        </div>
+
+        {autonomousStatus ? (
+          <div style={styles.eventRow(palette, autonomousStatus.includes('Could not') ? 'error' : 'ok')}>
+            <div>
+              <strong style={styles.eventTitle(palette)}>Autonomous Status</strong>
+              <div style={styles.eventDetail(palette)}>{autonomousStatus}</div>
+            </div>
+          </div>
+        ) : null}
+
+        <div style={styles.surfaceColumns}>
+          <section style={styles.settingsSection(palette)}>
+            <h3 style={styles.settingsHeading(palette)}>Create Objective</h3>
+            <label style={styles.fieldLabel(palette)}>
+              <span>Title</span>
+              <input
+                value={autonomousObjectiveTitle}
+                onChange={(event) => setAutonomousObjectiveTitle(event.target.value)}
+                style={styles.fieldInput(palette)}
+              />
+            </label>
+            <label style={styles.fieldLabel(palette)}>
+              <span>Goal</span>
+              <textarea
+                value={autonomousObjectiveGoal}
+                onChange={(event) => setAutonomousObjectiveGoal(event.target.value)}
+                style={styles.fieldTextarea(palette)}
+                rows={4}
+              />
+            </label>
+            <div style={styles.tagWrap}>
+              <span style={styles.contextTag(palette)}>dry-run first</span>
+              <span style={styles.contextTag(palette)}>approval gated</span>
+              <span style={styles.contextTag(palette)}>checkpoint required</span>
+            </div>
+          </section>
+
+          <section style={styles.settingsSection(palette)}>
+            <div style={styles.sectionHeaderInline}>
+              <h3 style={styles.settingsHeading(palette)}>Objectives</h3>
+              <span style={styles.contextTag(palette)}>{snapshot?.objectives.length ?? 0} total</span>
+            </div>
+            <div style={styles.modelList}>
+              {(snapshot?.objectives ?? []).slice(0, 10).map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  style={styles.modelRow(palette, selectedAutonomousObjective?.objective.id === item.id)}
+                  onClick={() => {
+                    setSelectedAutonomousObjective(null);
+                    void getAutonomousObjective(item.id).then(setSelectedAutonomousObjective).catch((error) => {
+                      setAutonomousStatus(error instanceof Error ? error.message : 'Could not open objective');
+                    });
+                  }}
+                >
+                  <div style={styles.modelRowMain}>
+                    <div style={styles.modelRowTop}>
+                      <div style={styles.cardTitle(palette)}>{item.title}</div>
+                      <span style={styles.diagnosticChip(palette, taskStatusToEventStatus(item.status))}>{formatStatusLabel(item.status)}</span>
+                    </div>
+                    <div style={styles.eventDetail(palette)}>{item.user_goal}</div>
+                    <div style={styles.tagWrap}>
+                      <span style={styles.contextTag(palette)}>{item.iteration_count}/{item.safety_limits.max_iterations} iterations</span>
+                      <span style={styles.contextTag(palette)}>{item.assigned_agent_roles.length} agents</span>
+                      <span style={styles.contextTag(palette)}>{item.approval_gate_ids.length} gates</span>
+                    </div>
+                  </div>
+                </button>
+              ))}
+              {!snapshot?.objectives.length ? <div style={styles.emptyPanel(palette)}>No autonomous objectives have been created yet.</div> : null}
+            </div>
+          </section>
+        </div>
+
+        {objective ? (
+          <>
+            <div style={styles.surfaceColumns}>
+              <section style={styles.settingsSection(palette)}>
+                <div style={styles.sectionHeaderInline}>
+                  <h3 style={styles.settingsHeading(palette)}>{objective.title}</h3>
+                  <span style={styles.diagnosticChip(palette, taskStatusToEventStatus(objective.status))}>
+                    {formatStatusLabel(objective.status)}
+                  </span>
+                </div>
+                <div style={styles.workspaceMeta(palette)}>
+                  <strong>Current phase</strong>
+                  <span>{formatStatusLabel(objective.current_phase)}</span>
+                  <strong>Token budget</strong>
+                  <span>{objective.safety_limits.token_budget.toLocaleString()}</span>
+                  <strong>Parallel agents</strong>
+                  <span>{objective.safety_limits.max_parallel_agents}</span>
+                  <strong>Rollback</strong>
+                  <span>{objective.safety_limits.rollback_required ? 'required' : 'optional'}</span>
+                </div>
+                <div style={styles.rowActions}>
+                  <button type="button" style={styles.iconTextButton(palette)} onClick={() => void updateAutonomousObjective('start')} disabled={Boolean(autonomousAction)}>
+                    <Play size={14} />
+                    Start
+                  </button>
+                  <button type="button" style={styles.iconTextButton(palette)} onClick={() => void updateAutonomousObjective('iterate')} disabled={Boolean(autonomousAction)}>
+                    <Zap size={14} />
+                    Iterate
+                  </button>
+                  <button type="button" style={styles.iconTextButton(palette)} onClick={() => void updateAutonomousObjective('simulate')} disabled={Boolean(autonomousAction)}>
+                    <Search size={14} />
+                    Simulate
+                  </button>
+                  <button type="button" style={styles.iconTextButton(palette)} onClick={() => void updateAutonomousObjective('pause')} disabled={Boolean(autonomousAction)}>
+                    <Pause size={14} />
+                    Pause
+                  </button>
+                  <button type="button" style={styles.iconTextButton(palette)} onClick={() => void updateAutonomousObjective('cancel')} disabled={Boolean(autonomousAction)}>
+                    <Square size={14} />
+                    Cancel
+                  </button>
+                </div>
+              </section>
+
+              <section style={styles.settingsSection(palette)}>
+                <div style={styles.sectionHeaderInline}>
+                  <h3 style={styles.settingsHeading(palette)}>Simulation</h3>
+                  <span style={styles.contextTag(palette)}>{latestSimulation?.estimated_impact ?? 'pending'}</span>
+                </div>
+                {latestSimulation ? (
+                  <>
+                    <div style={styles.workspaceMeta(palette)}>
+                      <strong>Validation risk</strong>
+                      <span>{Math.round(latestSimulation.predicted_validation_risk * 100)}%</span>
+                      <strong>Projected tokens</strong>
+                      <span>{latestSimulation.projected_token_cost.toLocaleString()}</span>
+                      <strong>Iterations</strong>
+                      <span>{latestSimulation.projected_iterations}</span>
+                      <strong>Dependencies</strong>
+                      <span>{latestSimulation.projected_dependency_changes.length}</span>
+                    </div>
+                    <div style={styles.tagWrap}>
+                      {latestSimulation.projected_file_changes.slice(0, 8).map((file) => (
+                        <span key={file} style={styles.contextTag(palette)}>{file}</span>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <div style={styles.emptyPanel(palette)}>No dry-run simulation has been recorded.</div>
+                )}
+              </section>
+            </div>
+
+            <div style={styles.surfaceColumns}>
+              <section style={styles.settingsSection(palette)}>
+                <div style={styles.sectionHeaderInline}>
+                  <h3 style={styles.settingsHeading(palette)}>Phases</h3>
+                  <span style={styles.contextTag(palette)}>{detail.phases.length} phase(s)</span>
+                </div>
+                <div style={styles.eventList}>
+                  {detail.phases.map((phase) => (
+                    <div key={phase.id} style={styles.eventRow(palette, taskStatusToEventStatus(phase.status))}>
+                      <div>
+                        <strong style={styles.eventTitle(palette)}>{phase.title}</strong>
+                        <div style={styles.eventDetail(palette)}>{phase.summary || phase.agent_roles.join(', ')}</div>
+                        <div style={styles.tagWrap}>
+                          <span style={styles.contextTag(palette)}>{formatStatusLabel(phase.kind)}</span>
+                          <span style={styles.contextTag(palette)}>{formatStatusLabel(phase.status)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              <section style={styles.settingsSection(palette)}>
+                <div style={styles.sectionHeaderInline}>
+                  <h3 style={styles.settingsHeading(palette)}>Approval Gates</h3>
+                  <span style={styles.contextTag(palette)}>{detail.approval_gates.filter((gate) => gate.status === 'pending').length} pending</span>
+                </div>
+                <div style={styles.eventList}>
+                  {detail.approval_gates.map((gate) => {
+                    const busy = autonomousAction.endsWith(`:${gate.id}`);
+                    return (
+                      <div key={gate.id} style={styles.eventRow(palette, gate.status === 'approved' ? 'ok' : gate.status === 'rejected' ? 'error' : 'warning')}>
+                        <div>
+                          <strong style={styles.eventTitle(palette)}>{gate.title}</strong>
+                          <div style={styles.eventDetail(palette)}>{gate.reason}</div>
+                          <span style={styles.contextTag(palette)}>{formatStatusLabel(gate.kind)}</span>
+                        </div>
+                        {gate.status === 'pending' ? (
+                          <div style={styles.rowActions}>
+                            <button type="button" style={styles.iconTextButton(palette)} onClick={() => void resolveAutonomousGate(gate.id, 'approve')} disabled={busy}>
+                              <CheckCircle2 size={14} />
+                              Approve
+                            </button>
+                            <button type="button" style={styles.iconTextButton(palette)} onClick={() => void resolveAutonomousGate(gate.id, 'reject')} disabled={busy}>
+                              <X size={14} />
+                              Reject
+                            </button>
+                          </div>
+                        ) : (
+                          <span style={styles.eventTime(palette)}>{formatStatusLabel(gate.status)}</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            </div>
+
+            <div style={styles.surfaceColumns}>
+              <section style={styles.settingsSection(palette)}>
+                <div style={styles.sectionHeaderInline}>
+                  <h3 style={styles.settingsHeading(palette)}>Verification</h3>
+                  <span style={styles.contextTag(palette)}>{detail.verification.length} signal(s)</span>
+                </div>
+                <div style={styles.eventList}>
+                  {detail.verification.slice(0, 10).map((signal) => (
+                    <div key={signal.id} style={styles.eventRow(palette, verificationStatus(signal.status))}>
+                      <div>
+                        <strong style={styles.eventTitle(palette)}>{formatStatusLabel(signal.kind)}</strong>
+                        <div style={styles.eventDetail(palette)}>{signal.detail || signal.command}</div>
+                      </div>
+                      <span style={styles.eventTime(palette)}>{formatStatusLabel(signal.status)}</span>
+                    </div>
+                  ))}
+                  {!detail.verification.length ? <div style={styles.emptyPanel(palette)}>Verification signals will appear after validation and review phases.</div> : null}
+                </div>
+              </section>
+
+              <section style={styles.settingsSection(palette)}>
+                <div style={styles.sectionHeaderInline}>
+                  <h3 style={styles.settingsHeading(palette)}>Explainability</h3>
+                  <span style={styles.contextTag(palette)}>{detail.explanations.length} note(s)</span>
+                </div>
+                <div style={styles.eventList}>
+                  {detail.explanations.slice(0, 10).map((entry) => (
+                    <div key={entry.id} style={styles.eventRow(palette, 'ok')}>
+                      <div>
+                        <strong style={styles.eventTitle(palette)}>{entry.title}</strong>
+                        <div style={styles.eventDetail(palette)}>{entry.detail}</div>
+                        <span style={styles.contextTag(palette)}>{formatStatusLabel(entry.category)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            </div>
+          </>
+        ) : null}
+
+        <div style={styles.surfaceColumns}>
+          <section style={styles.settingsSection(palette)}>
+            <div style={styles.sectionHeaderInline}>
+              <h3 style={styles.settingsHeading(palette)}>Engineering Analytics</h3>
+              <span style={styles.contextTag(palette)}>{snapshot?.analytics.length ?? 0} metric(s)</span>
+            </div>
+            <div style={styles.eventList}>
+              {(snapshot?.analytics ?? []).map((metric) => (
+                <div key={metric.name} style={styles.eventRow(palette, reliabilityStatusToEventStatus(metric.status))}>
+                  <div>
+                    <strong style={styles.eventTitle(palette)}>{formatStatusLabel(metric.name)}</strong>
+                    <div style={styles.eventDetail(palette)}>{metric.detail}</div>
+                  </div>
+                  <span style={styles.eventTime(palette)}>{metricLabel(metric)}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section style={styles.settingsSection(palette)}>
+            <div style={styles.sectionHeaderInline}>
+              <h3 style={styles.settingsHeading(palette)}>Goal Memory</h3>
+              <span style={styles.contextTag(palette)}>{objective?.goal_memory.remaining_work.length ?? 0} remaining</span>
+            </div>
+            <div style={styles.eventList}>
+              {(objective?.goal_memory.successful_patterns ?? []).slice(0, 6).map((item) => (
+                <div key={item} style={styles.eventRow(palette, 'ok')}>
+                  <div>
+                    <strong style={styles.eventTitle(palette)}>Successful pattern</strong>
+                    <div style={styles.eventDetail(palette)}>{item}</div>
+                  </div>
+                </div>
+              ))}
+              {(objective?.goal_memory.remaining_work ?? snapshot?.recommendations ?? []).slice(0, 6).map((item) => (
+                <div key={item} style={styles.eventRow(palette, 'warning')}>
+                  <div>
+                    <strong style={styles.eventTitle(palette)}>Remaining work</strong>
+                    <div style={styles.eventDetail(palette)}>{item}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
+      </div>
+    );
+  }
+
+  function renderCreativeStudioSurface() {
+    const tabs: Array<{ id: typeof creativeStudioTab; label: string; prompt: string }> = [
+      { id: 'image', label: 'Image', prompt: 'Create a premium product mockup for Auralith Creative Studio' },
+      { id: 'video', label: 'Video', prompt: 'Create a short app showcase video for Auralith Creative Studio' },
+      { id: 'beat', label: 'Beat', prompt: 'Generate a clean tech beat with crisp drums and a loopable hook' },
+      { id: 'voice', label: 'Voice', prompt: 'Create a calm narration for a premium product launch' },
+      { id: 'library', label: 'Library', prompt: creativePrompt }
+    ];
+    const currentKind = creativeKindForTab();
+    const providers = (creativeCapabilities?.providers ?? []).filter((provider) => provider.supports.includes(currentKind));
+    const selectedProviderId = creativeProviderForTab();
+    const selectedProvider = creativeCapabilities?.providers.find((provider) => provider.id === selectedProviderId);
+    const imageAssets = selectedCreativeJob?.assets.filter((asset) => ['png', 'jpg', 'gif', 'svg'].includes(asset.format)) ?? [];
+    const previewAsset = imageAssets[0] ?? null;
+    const audioAssets = selectedCreativeJob?.assets.filter((asset) => ['wav', 'mp3', 'midi'].includes(asset.format)) ?? [];
+    const assetUrl = (path: string) =>
+      `${(import.meta.env.VITE_API_BASE ?? 'http://127.0.0.1:8787').replace(/\/+$/, '')}/api/creative-studio/assets/file?path=${encodeURIComponent(path)}`;
+
+    return (
+      <div style={styles.surfacePage}>
+        {renderSurfaceHeader(
+          <Zap size={22} />,
+          'Creative Studio',
+          'Generate, organize, revise, and export local images, motion packages, beats, voice drafts, prompts, and asset packs.',
+          <div style={styles.surfaceActions}>
+            <button type="button" style={styles.secondaryButton(palette)} onClick={() => void refreshCreativeStudio()} disabled={creativeLoading}>
+              {creativeLoading ? <Loader2 size={16} className="spin" /> : <Search size={16} />}
+              Refresh
+            </button>
+            <button type="button" style={styles.primaryButton(palette)} onClick={() => void generateCreativeAsset()} disabled={Boolean(creativeAction) || creativeStudioTab === 'library'}>
+              {creativeAction.startsWith('generate') ? <Loader2 size={16} className="spin" /> : <Play size={16} />}
+              Generate
+            </button>
+          </div>
+        )}
+
+        <div style={styles.metricGrid}>
+          <div style={styles.metricCard(palette)}>
+            <span style={styles.metricLabel(palette)}>Jobs</span>
+            <strong style={styles.metricValue(palette)}>{creativeJobs.length}</strong>
+          </div>
+          <div style={styles.metricCard(palette)}>
+            <span style={styles.metricLabel(palette)}>Assets</span>
+            <strong style={styles.metricValue(palette)}>{creativeLibrary?.total_assets ?? 0}</strong>
+          </div>
+          <div style={styles.metricCard(palette)}>
+            <span style={styles.metricLabel(palette)}>Providers</span>
+            <strong style={styles.metricValue(palette)}>{creativeCapabilities?.providers.length ?? 0}</strong>
+          </div>
+          <div style={styles.metricCard(palette)}>
+            <span style={styles.metricLabel(palette)}>Formats</span>
+            <strong style={styles.metricValue(palette)}>{creativeLibrary?.formats.slice(0, 4).join(', ') || 'pending'}</strong>
+          </div>
+        </div>
+
+        {creativeStatus ? (
+          <div style={styles.eventRow(palette, creativeStatus.includes('Could not') || creativeStatus.includes('requires') ? 'error' : 'ok')}>
+            <div>
+              <strong style={styles.eventTitle(palette)}>Creative Status</strong>
+              <div style={styles.eventDetail(palette)}>{creativeStatus}</div>
+            </div>
+          </div>
+        ) : null}
+
+        <section style={styles.settingsSection(palette)}>
+          <div style={styles.segmentedControl(palette)} role="group" aria-label="Creative Studio sections">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                style={styles.segmentedButton(palette, creativeStudioTab === tab.id)}
+                onClick={() => {
+                  setCreativeStudioTab(tab.id);
+                  if (tab.id !== 'library') setCreativePrompt(tab.prompt);
+                }}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </section>
+
+        {creativeStudioTab !== 'library' ? (
+          <div style={styles.surfaceColumns}>
+            <section style={styles.settingsSection(palette)}>
+              <div style={styles.sectionHeaderInline}>
+                <h3 style={styles.settingsHeading(palette)}>Prompt Builder</h3>
+                <span style={styles.contextTag(palette)}>{formatStatusLabel(currentKind)}</span>
+              </div>
+              <label style={styles.fieldLabel(palette)}>
+                <span>Prompt</span>
+                <textarea
+                  value={creativePrompt}
+                  onChange={(event) => setCreativePrompt(event.target.value)}
+                  rows={5}
+                  style={styles.fieldTextarea(palette)}
+                />
+              </label>
+              <label style={styles.fieldLabel(palette)}>
+                <span>Style</span>
+                <input value={creativeStyle} onChange={(event) => setCreativeStyle(event.target.value)} style={styles.fieldInput(palette)} />
+              </label>
+              <label style={styles.fieldLabel(palette)}>
+                <span>Provider</span>
+                <select value={selectedProviderId} onChange={(event) => setCreativeProviderId(event.target.value)} style={styles.fieldInput(palette)}>
+                  {providers.map((provider) => (
+                    <option key={provider.id} value={provider.id}>
+                      {provider.name}{provider.paid ? ' (approval)' : ''}
+                    </option>
+                  ))}
+                  {!providers.length ? <option value={selectedProviderId}>{selectedProvider?.name || selectedProviderId}</option> : null}
+                </select>
+              </label>
+              <div style={styles.tagWrap}>
+                <span style={styles.contextTag(palette)}>local drafts first</span>
+                <span style={styles.contextTag(palette)}>prompt pack saved</span>
+                <span style={styles.contextTag(palette)}>exports supported</span>
+              </div>
+              {selectedProvider ? <div style={styles.eventDetail(palette)}>{selectedProvider.notes}</div> : null}
+            </section>
+
+            <section style={styles.settingsSection(palette)}>
+              <div style={styles.sectionHeaderInline}>
+                <h3 style={styles.settingsHeading(palette)}>Selected Job</h3>
+                <span style={styles.diagnosticChip(palette, selectedCreativeJob?.status === 'failed' ? 'error' : selectedCreativeJob ? 'ok' : 'warning')}>
+                  {selectedCreativeJob ? formatStatusLabel(selectedCreativeJob.status) : 'None'}
+                </span>
+              </div>
+              {selectedCreativeJob ? (
+                <>
+                  {previewAsset ? (
+                    <img
+                      src={assetUrl(previewAsset.thumbnail_path || previewAsset.path)}
+                      alt={previewAsset.role}
+                      style={{ width: '100%', maxHeight: 260, objectFit: 'cover', borderRadius: 8, border: `1px solid ${palette.inputBorder}` }}
+                    />
+                  ) : audioAssets.length ? (
+                    <audio src={assetUrl(audioAssets[0].path)} controls style={{ width: '100%' }} />
+                  ) : (
+                    <div style={styles.emptyPanel(palette)}>This job saved source assets without a browser preview.</div>
+                  )}
+                  <div style={styles.workspaceMeta(palette)}>
+                    <strong>Provider</strong>
+                    <span>{selectedCreativeJob.provider_name}</span>
+                    <strong>Assets</strong>
+                    <span>{selectedCreativeJob.assets.length}</span>
+                    <strong>Seed</strong>
+                    <span>{selectedCreativeJob.seed ?? 'n/a'}</span>
+                    <strong>Time</strong>
+                    <span>{selectedCreativeJob.time_taken_seconds}s</span>
+                  </div>
+                  <div style={styles.rowActions}>
+                    {['zip', 'png', 'jpg', 'svg', 'wav', 'midi'].map((format) => (
+                      <button key={format} type="button" style={styles.iconTextButton(palette)} onClick={() => void exportSelectedCreativeJob(format)} disabled={Boolean(creativeAction)}>
+                        <Download size={14} />
+                        {format.toUpperCase()}
+                      </button>
+                    ))}
+                    <button type="button" style={styles.iconTextButton(palette)} onClick={() => void cancelSelectedCreativeJob()} disabled={Boolean(creativeAction)}>
+                      <Square size={14} />
+                      Cancel
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div style={styles.emptyPanel(palette)}>Generate or select a creative job to preview assets and exports.</div>
+              )}
+            </section>
+          </div>
+        ) : null}
+
+        <div style={styles.surfaceColumns}>
+          <section style={styles.settingsSection(palette)}>
+            <div style={styles.sectionHeaderInline}>
+              <h3 style={styles.settingsHeading(palette)}>Generation Jobs</h3>
+              <span style={styles.contextTag(palette)}>{creativeJobs.length} tracked</span>
+            </div>
+            <div style={styles.modelList}>
+              {creativeJobs.slice(0, 12).map((job) => (
+                <button
+                  key={job.id}
+                  type="button"
+                  style={styles.modelRow(palette, selectedCreativeJob?.id === job.id)}
+                  onClick={() => {
+                    setSelectedCreativeJob(job);
+                    void getCreativeJob(job.id).then(setSelectedCreativeJob).catch((error) => {
+                      setCreativeStatus(error instanceof Error ? error.message : 'Could not open creative job');
+                    });
+                  }}
+                >
+                  <div style={styles.modelRowMain}>
+                    <div style={styles.modelRowTop}>
+                      <div style={styles.cardTitle(palette)}>{formatStatusLabel(job.kind)}</div>
+                      <span style={styles.diagnosticChip(palette, job.status === 'failed' ? 'error' : job.status === 'canceled' ? 'warning' : 'ok')}>{formatStatusLabel(job.status)}</span>
+                    </div>
+                    <div style={styles.eventDetail(palette)}>{job.prompt}</div>
+                    <div style={styles.tagWrap}>
+                      <span style={styles.contextTag(palette)}>{job.provider_name || job.provider_id}</span>
+                      <span style={styles.contextTag(palette)}>{job.assets.length} assets</span>
+                      <span style={styles.contextTag(palette)}>{formatDateTime(job.created_at)}</span>
+                    </div>
+                  </div>
+                </button>
+              ))}
+              {!creativeJobs.length ? <div style={styles.emptyPanel(palette)}>Creative jobs will appear after the first generation.</div> : null}
+            </div>
+          </section>
+
+          <section style={styles.settingsSection(palette)}>
+            <div style={styles.sectionHeaderInline}>
+              <h3 style={styles.settingsHeading(palette)}>Asset Library</h3>
+              <span style={styles.contextTag(palette)}>{creativeLibrary?.total_assets ?? 0} asset(s)</span>
+            </div>
+            <div style={styles.eventList}>
+              {(creativeLibrary?.assets ?? []).slice(0, 14).map((asset) => (
+                <div key={asset.id || asset.path} style={styles.eventRow(palette, 'ok')}>
+                  <div>
+                    <strong style={styles.eventTitle(palette)}>{asset.role}</strong>
+                    <div style={styles.eventDetail(palette)}>{asset.path}</div>
+                    <div style={styles.tagWrap}>
+                      <span style={styles.contextTag(palette)}>{asset.format}</span>
+                      <span style={styles.contextTag(palette)}>{formatStatusLabel(asset.kind)}</span>
+                      {asset.editable ? <span style={styles.goodTag(palette)}>Editable</span> : null}
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {!creativeLibrary?.assets.length ? <div style={styles.emptyPanel(palette)}>No creative assets are saved yet.</div> : null}
+            </div>
+          </section>
+        </div>
+      </div>
+    );
+  }
+
   function renderAgentsSurface() {
     return (
       <div style={styles.surfacePage}>
@@ -2980,10 +7614,10 @@ function App() {
               type="button"
               style={styles.secondaryButton(palette)}
               onClick={() => void activateDefaultAgent()}
-              disabled={activeAgentId === defaultAgentId && assistantName === 'Aegis AI'}
+              disabled={activeAgentId === defaultAgentId && assistantName === assistantIdentity}
             >
               <Bot size={16} />
-              Use default Aegis
+              Use {assistantIdentity}
             </button>
             {saveStatus ? <div style={styles.inlineStatus(palette)}>{saveStatus}</div> : null}
           </section>
@@ -3192,23 +7826,16 @@ function App() {
             <span>{modelEndpoint}</span>
           </div>
           <div style={styles.formGridTwo}>
-            <label style={styles.fieldLabel(palette)}>
-              <span>Switch Model</span>
-              <select
-                value={modelOptionKey({ api: modelApi, endpoint: modelEndpoint, name: modelName })}
-                onChange={(event) => {
-                  const target = selectableModelOptions.find((item) => modelOptionKey(item) === event.target.value);
-                  if (target) selectModelDraft(target);
-                }}
-                style={styles.fieldInput(palette)}
-              >
-                {selectableModelOptions.map((item) => (
-                  <option key={`surface-model-${modelOptionKey(item)}`} value={modelOptionKey(item)}>
-                    {item.name} {item.active ? '(active)' : ''}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <ModelSelector
+              label="Switch Model"
+              value={{ api: modelApi, endpoint: modelEndpoint, name: modelName }}
+              options={selectableModelOptions}
+              onSelect={selectModelDraft}
+              labelStyle={styles.fieldLabel(palette)}
+              selectStyle={styles.fieldInput(palette)}
+              optionKeyPrefix="surface-model"
+              renderOptionLabel={(item) => `${item.name} ${item.active ? '(active)' : ''}`}
+            />
             <div style={styles.fieldButtonSlot}>
               <button
                 type="button"
@@ -3635,23 +8262,16 @@ function App() {
               Refresh
             </button>
           </div>
-          <label style={styles.fieldLabel(palette)}>
-            <span>Installed / Configured Model</span>
-            <select
-              value={modelOptionKey({ api: modelApi, endpoint: modelEndpoint, name: modelName })}
-              onChange={(event) => {
-                const target = selectableModelOptions.find((item) => modelOptionKey(item) === event.target.value);
-                if (target) selectModelDraft(target);
-              }}
-              style={styles.fieldInput(palette)}
-            >
-              {selectableModelOptions.map((item) => (
-                <option key={`settings-model-${modelOptionKey(item)}`} value={modelOptionKey(item)}>
-                  {item.name} / {item.api}
-                </option>
-              ))}
-            </select>
-          </label>
+          <ModelSelector
+            label="Installed / Configured Model"
+            value={{ api: modelApi, endpoint: modelEndpoint, name: modelName }}
+            options={selectableModelOptions}
+            onSelect={selectModelDraft}
+            labelStyle={styles.fieldLabel(palette)}
+            selectStyle={styles.fieldInput(palette)}
+            optionKeyPrefix="settings-model"
+            renderOptionLabel={(item) => `${item.name} / ${item.api}`}
+          />
           <div style={styles.formGridTwo}>
             <label style={styles.fieldLabel(palette)}>
               <span>API Type</span>
@@ -3871,18 +8491,50 @@ function App() {
     );
   }
 
+  const routeIsProtected = isProtectedAppRoute(routePath);
+  if (!routeIsProtected) {
+    return (
+      <PublicSite
+        routePath={routePath}
+        authLoading={authLoading}
+        authStatus={authStatus}
+        onNavigate={navigateTo}
+        onLogin={handleLogin}
+        onRegister={handleRegister}
+        onForgotPassword={handleForgotPassword}
+      />
+    );
+  }
+
+  if (!authSession) {
+    return (
+      <PublicSite
+        routePath="/login"
+        authLoading={authLoading}
+        authStatus={authStatus}
+        onNavigate={navigateTo}
+        onLogin={handleLogin}
+        onRegister={handleRegister}
+        onForgotPassword={handleForgotPassword}
+      />
+    );
+  }
+
+  const accountName = authSession.user.name || 'Auralith User';
+  const accountPlan = `${authSession.user.plan || 'Local'} Plan`;
+
   return (
     <div style={styles.appShell(palette)}>
       <div style={styles.backdrop(palette)} />
       <div style={styles.frame}>
         <header style={styles.header(palette)}>
-          <div style={styles.topSearch(palette)}>
+          <div style={styles.topSearch(palette)} className="aegis-search-surface">
             <Search size={17} />
             <input
               value={chatSearch}
               onChange={(event) => setChatSearch(event.target.value)}
-              placeholder="Search Aegis... (Ctrl + K)"
-              aria-label="Search Aegis"
+              placeholder={`Search ${productName}... (Ctrl + K)`}
+              aria-label={`Search ${productName}`}
               style={styles.searchInput(palette)}
             />
           </div>
@@ -3925,29 +8577,40 @@ function App() {
             >
               <Settings size={18} />
             </button>
+            <button
+              type="button"
+              style={styles.accountPill(palette)}
+              onClick={handleLogout}
+              title="Sign out"
+            >
+              <User size={16} />
+              <span>{accountName}</span>
+              <small style={styles.accountPlanText(palette)}>{accountPlan}</small>
+            </button>
           </div>
         </header>
 
         <div style={styles.utilityBar(palette)}>
           <div style={styles.sidebarBrand}>
             <div style={styles.brandIcon(palette)}>
-              <Code size={20} />
+              <img style={styles.brandIconImage} src={brandAssets.mark} alt="" aria-hidden="true" />
             </div>
             <div>
-              <div style={styles.brandTitle(palette)}>AEGIS</div>
-              <div style={styles.brandSubtitle(palette)}>Coding AI</div>
+              <div style={styles.brandTitle(palette)}>{productName}</div>
+              <div style={styles.brandSubtitle(palette)}>Powered by {runtimeIdentity}</div>
             </div>
           </div>
 
           <div style={styles.utilityActions}>
             <button
               type="button"
+              className="aegis-primary-action"
               style={styles.primaryUtilityButton(palette)}
               onClick={startNewChat}
               disabled={loading}
             >
               <MessageSquarePlus size={16} />
-              <span>New chat</span>
+              <span>New session</span>
             </button>
             <button
               type="button"
@@ -3974,7 +8637,7 @@ function App() {
             <button
               type="button"
               style={styles.sidebarNavItem(palette, activeSection === 'chat')}
-              onClick={() => setActiveSection('chat')}
+              onClick={() => openAppSection('chat')}
               aria-label="Home"
             >
               <FolderOpen size={16} />
@@ -3983,7 +8646,7 @@ function App() {
             <button
               type="button"
               style={styles.sidebarNavItem(palette, activeSection === 'projects')}
-              onClick={() => setActiveSection('projects')}
+              onClick={() => openAppSection('projects')}
               aria-label="Projects"
             >
               <FolderOpen size={16} />
@@ -3991,8 +8654,116 @@ function App() {
             </button>
             <button
               type="button"
+              style={styles.sidebarNavItem(palette, activeSection === 'intelligence')}
+              onClick={() => {
+                openAppSection('intelligence');
+                void refreshProjectIntelligence();
+              }}
+              aria-label="Project Intelligence"
+            >
+              <Brain size={16} />
+              Intelligence
+            </button>
+            <button
+              type="button"
+              style={styles.sidebarNavItem(palette, activeSection === 'workspace-intelligence')}
+              onClick={() => {
+                openAppSection('workspace-intelligence');
+                void refreshWorkspaceOperations();
+              }}
+              aria-label="Workspace Intelligence"
+            >
+              <Zap size={16} />
+              Workspace
+            </button>
+            <button
+              type="button"
+              style={styles.sidebarNavItem(palette, activeSection === 'tasks')}
+              onClick={() => {
+                openAppSection('tasks');
+                void refreshTasks();
+              }}
+              aria-label="Tasks"
+            >
+              <CheckCircle2 size={16} />
+              Tasks
+            </button>
+            <button
+              type="button"
+              style={styles.sidebarNavItem(palette, activeSection === 'runtime')}
+              onClick={() => {
+                openAppSection('runtime');
+                void refreshDistributedRuntime();
+              }}
+              aria-label="Distributed runtime"
+            >
+              <Code size={16} />
+              Runtime
+            </button>
+            <button
+              type="button"
+              style={styles.sidebarNavItem(palette, activeSection === 'adaptive')}
+              onClick={() => {
+                openAppSection('adaptive');
+                void refreshAdaptiveSignals();
+              }}
+              aria-label="Adaptive Intelligence"
+            >
+              <Brain size={16} />
+              Adaptive
+            </button>
+            <button
+              type="button"
+              style={styles.sidebarNavItem(palette, activeSection === 'hardening')}
+              onClick={() => {
+                openAppSection('hardening');
+                void refreshProductizationSignals();
+              }}
+              aria-label="Productization and runtime hardening"
+            >
+              <Wrench size={16} />
+              Hardening
+            </button>
+            <button
+              type="button"
+              style={styles.sidebarNavItem(palette, activeSection === 'ecosystem')}
+              onClick={() => {
+                openAppSection('ecosystem');
+                void refreshEcosystemSignals();
+              }}
+              aria-label="Ecosystem and shared intelligence"
+            >
+              <Brain size={16} />
+              Ecosystem
+            </button>
+            <button
+              type="button"
+              style={styles.sidebarNavItem(palette, activeSection === 'autonomous')}
+              onClick={() => {
+                openAppSection('autonomous');
+                void refreshAutonomousSignals();
+              }}
+              aria-label="Autonomous engineering"
+            >
+              <Zap size={16} />
+              Autonomous
+            </button>
+            <button
+              type="button"
+              style={styles.sidebarNavItem(palette, activeSection === 'creative')}
+              onClick={() => {
+                openAppSection('creative');
+                void refreshCreativeStudio();
+              }}
+              aria-label="Creative Studio"
+            >
+              <Download size={16} />
+              Creative
+            </button>
+            <button
+              type="button"
               style={styles.sidebarNavItem(palette, activeSection === 'agents')}
-              onClick={() => setActiveSection('agents')}
+              onClick={() => openAppSection('agents')}
               aria-label="Agents"
             >
               <Bot size={16} />
@@ -4002,7 +8773,7 @@ function App() {
               type="button"
               style={styles.sidebarNavItem(palette, activeSection === 'models')}
               onClick={() => {
-                setActiveSection('models');
+                openAppSection('models');
                 void refreshModelCatalog();
               }}
               aria-label="Models"
@@ -4026,12 +8797,12 @@ function App() {
             <input
               value={chatSearch}
               onChange={(event) => setChatSearch(event.target.value)}
-              placeholder="Search chats"
+              placeholder="Search sessions"
               style={styles.searchInput(palette)}
             />
           </div>
 
-          <div style={styles.sidebarSectionLabel(palette)}>Recent Chats</div>
+          <div style={styles.sidebarSectionLabel(palette)}>Recent Sessions</div>
           <div style={styles.historyRail}>
             <button
               type="button"
@@ -4071,8 +8842,8 @@ function App() {
               <User size={18} />
             </div>
             <div>
-              <div style={styles.sidebarUserName(palette)}>Aegis User</div>
-              <div style={styles.sidebarUserPlan(palette)}>Pro Plan</div>
+              <div style={styles.sidebarUserName(palette)}>{accountName}</div>
+              <div style={styles.sidebarUserPlan(palette)}>{accountPlan}</div>
             </div>
           </div>
         </div>
@@ -4085,11 +8856,11 @@ function App() {
               {history.length === 0 ? (
                 <div style={styles.emptyState}>
                   <div style={styles.emptyLogo(palette)}>
-                    <Code size={30} />
+                    <img style={styles.emptyLogoImage} src={brandAssets.mark} alt="" aria-hidden="true" />
                   </div>
-                  <h2 style={styles.emptyTitle(palette)}>Welcome to {assistantName}</h2>
+                  <h2 style={styles.emptyTitle(palette)}>Welcome to {productName}</h2>
                   <p style={styles.emptyText(palette)}>
-                    Ask for code, fixes, explanations, file generation, or workspace changes.
+                    {assistantIdentity} is ready to code, automate, research, create, and orchestrate through one local-first workspace.
                   </p>
 
                   <div style={styles.promptGrid}>
@@ -4097,6 +8868,7 @@ function App() {
                       <button
                         key={prompt}
                         type="button"
+                        className="aegis-prompt-card"
                         onClick={() => void submit(undefined, prompt)}
                         style={styles.promptCard(palette)}
                         disabled={loading}
@@ -4104,6 +8876,65 @@ function App() {
                         {prompt}
                       </button>
                     ))}
+                  </div>
+
+                  <div style={styles.workspaceSignalGrid} aria-label="Workspace signals">
+                    <div style={styles.workspaceSignalCard(palette)}>
+                      <div style={styles.workspaceSignalTop}>
+                        <span style={styles.workspaceSignalIcon(palette, 'purple')}>
+                          <FolderOpen size={16} />
+                        </span>
+                        <span style={styles.workspaceSignalLabel(palette)}>Workspace</span>
+                      </div>
+                      <strong style={styles.workspaceSignalValue(palette)}>
+                        {workspaceRoot
+                          ? workspaceRoot.split(/[\\/]/).filter(Boolean).slice(-1)[0] || workspaceRoot
+                          : 'No workspace selected'}
+                      </strong>
+                      <span style={styles.workspaceSignalMeta(palette)}>
+                        {workspaceProfile
+                          ? `${formatStatusLabel(workspaceProfile.readiness.status)} / ${workspaceProfile.readiness.score}/100`
+                          : workspaceProfileStatus || 'Runtime context will lock in when a workspace is active.'}
+                      </span>
+                    </div>
+
+                    <div style={styles.workspaceSignalCard(palette)}>
+                      <div style={styles.workspaceSignalTop}>
+                        <span style={styles.workspaceSignalIcon(palette, 'blue')}>
+                          <Brain size={16} />
+                        </span>
+                        <span style={styles.workspaceSignalLabel(palette)}>Project Context</span>
+                      </div>
+                      <strong style={styles.workspaceSignalValue(palette)}>
+                        {projectIntelligence?.profile?.stack?.slice(0, 2).join(' / ') ||
+                          workspaceProfile?.dependency_profile?.project_type ||
+                          'Context map pending'}
+                      </strong>
+                      <span style={styles.workspaceSignalMeta(palette)}>
+                        {projectIntelligence?.architecture?.major_modules?.length
+                          ? `${projectIntelligence.architecture.major_modules.length} mapped modules`
+                          : projectIntelligenceStatus || 'Project intelligence is ready to scan.'}
+                      </span>
+                    </div>
+
+                    <div style={styles.workspaceSignalCard(palette)}>
+                      <div style={styles.workspaceSignalTop}>
+                        <span style={styles.workspaceSignalIcon(palette, 'green')}>
+                          <CheckCircle2 size={16} />
+                        </span>
+                        <span style={styles.workspaceSignalLabel(palette)}>Active Flow</span>
+                      </div>
+                      <strong style={styles.workspaceSignalValue(palette)}>
+                        {selectedTask?.title ||
+                          selectedTask?.message ||
+                          `${taskBoardTasks.filter((item) => !terminalTaskStatuses.has(item.status)).length} active task(s)`}
+                      </strong>
+                      <span style={styles.workspaceSignalMeta(palette)}>
+                        {taskBoardTasks.length
+                          ? `${taskBoardTasks.length} tracked workflow${taskBoardTasks.length === 1 ? '' : 's'}`
+                          : 'New project work will appear as tracked tasks.'}
+                      </span>
+                    </div>
                   </div>
                 </div>
               ) : (
@@ -4339,14 +9170,20 @@ function App() {
 
               <form onSubmit={submit} style={styles.composerForm}>
                 <textarea
+                  className="aegis-command-input"
                   value={message}
                   onChange={(event) => setMessage(event.target.value)}
-                  placeholder={composerWillQueue ? 'Message Aegis... next prompt will be queued' : 'Message Aegis...'}
+                  placeholder={
+                    composerWillQueue
+                      ? `Message ${assistantIdentity}... next prompt will be queued`
+                      : `Message ${assistantIdentity}...`
+                  }
                   rows={2}
                   style={styles.composerInput(palette)}
                 />
                 <button
                   type="submit"
+                  className="aegis-command-send"
                   style={styles.sendButton(palette, !message.trim())}
                   disabled={!message.trim()}
                   title={composerWillQueue ? 'Queue this prompt for the next available turn' : 'Send prompt'}
@@ -4719,7 +9556,7 @@ function App() {
                     </>
                   ) : (
                     <div style={styles.emptyPanel(palette)}>
-                      Ask Aegis to create or update files and the preview will appear here.
+                      Ask {assistantIdentity} to create or update files and the preview will appear here.
                     </div>
                   )}
 
@@ -5463,7 +10300,7 @@ function App() {
 
                 {!visibleProjectMemory.length && !visibleMemory.length && !visibleTasks.length ? (
                   <div style={styles.emptyPanel(palette)}>
-                    Workspace memory will appear here after Aegis has validated repairs and completed a few tasks.
+                    Workspace memory will appear here after {assistantIdentity} has validated repairs and completed a few tasks.
                   </div>
                 ) : null}
               </div>
@@ -5736,37 +10573,37 @@ function getPalette(isDarkMode: boolean) {
   if (isDarkMode) {
     return {
       bgGlow:
-        'radial-gradient(circle at 72% 0%, rgba(220,38,38,0.18), transparent 24%), radial-gradient(circle at 45% -12%, rgba(59,130,246,0.10), transparent 32%), #05080d',
-      bg: '#05080d',
-      shell: 'rgba(9,13,20,0.88)',
-      shellBorder: 'rgba(148,163,184,0.14)',
-      card: 'rgba(12,17,25,0.94)',
-      cardAlt: 'rgba(17,24,34,0.92)',
-      control: 'rgba(12,17,25,0.86)',
-      sidebar: 'rgba(5,8,13,0.92)',
-      navActive: 'rgba(255,255,255,0.08)',
-      settingsRail: 'rgba(0,0,0,0.10)',
-      settingsActive: 'rgba(255,255,255,0.10)',
-      muted: '#9ca3af',
-      text: '#f4f7fb',
-      textSoft: '#cbd5e1',
-      input: '#0b1018',
-      inputBorder: 'rgba(148,163,184,0.16)',
-      accent: '#ef4444',
-      accentSoft: 'rgba(239,68,68,0.16)',
-      accentAlt: '#b91c1c',
-      userBubble: 'rgba(17,24,34,0.96)',
-      assistantBubble: 'rgba(11,16,24,0.96)',
+        'radial-gradient(circle at 18% 8%, rgba(124,58,237,0.24), transparent 28%), radial-gradient(circle at 78% 2%, rgba(59,130,246,0.18), transparent 30%), radial-gradient(circle at 52% 96%, rgba(34,197,94,0.05), transparent 24%), linear-gradient(180deg, #080B17 0%, #070A14 58%, #050712 100%)',
+      bg: '#080B17',
+      shell: 'rgba(17,24,39,0.82)',
+      shellBorder: 'rgba(255,255,255,0.06)',
+      card: 'rgba(17,24,39,0.72)',
+      cardAlt: 'rgba(21,26,36,0.78)',
+      control: 'rgba(26,32,48,0.72)',
+      sidebar: 'linear-gradient(180deg, rgba(17,24,39,0.86), rgba(8,11,23,0.94))',
+      navActive: 'linear-gradient(135deg, rgba(124,58,237,0.24), rgba(59,130,246,0.12))',
+      settingsRail: 'rgba(8,11,23,0.68)',
+      settingsActive: 'rgba(124,58,237,0.16)',
+      muted: '#8C98AD',
+      text: '#F8FAFC',
+      textSoft: '#CBD5E1',
+      input: 'rgba(8,11,23,0.76)',
+      inputBorder: 'rgba(255,255,255,0.06)',
+      accent: '#7C3AED',
+      accentSoft: 'rgba(124,58,237,0.14)',
+      accentAlt: '#3B82F6',
+      userBubble: 'rgba(26,32,48,0.88)',
+      assistantBubble: 'rgba(17,24,39,0.86)',
       good: '#22c55e',
       bad: '#ef4444',
       warning: '#f59e0b',
-      codeBg: '#060a10'
+      codeBg: 'rgba(5,7,18,0.92)'
     };
   }
 
   return {
     bgGlow:
-      'radial-gradient(circle at 80% -10%, rgba(220,38,38,0.12), transparent 25%), linear-gradient(135deg, #f8fafc 0%, #eef2f7 58%, #fff1f2 100%)',
+      'radial-gradient(circle at 80% -10%, rgba(124,58,237,0.12), transparent 25%), linear-gradient(135deg, #f8fafc 0%, #eef2ff 58%, #f5f3ff 100%)',
     bg: '#f8fafc',
     shell: 'rgba(255,255,255,0.94)',
     shellBorder: 'rgba(15,23,42,0.12)',
@@ -5774,17 +10611,17 @@ function getPalette(isDarkMode: boolean) {
     cardAlt: '#f8fafc',
     control: '#ffffff',
     sidebar: 'rgba(255,255,255,0.96)',
-    navActive: 'rgba(220,38,38,0.10)',
+    navActive: 'rgba(124,58,237,0.10)',
     settingsRail: 'rgba(248,250,252,0.92)',
-    settingsActive: 'rgba(220,38,38,0.10)',
+    settingsActive: 'rgba(124,58,237,0.10)',
     muted: '#64748b',
     text: '#111827',
     textSoft: '#334155',
     input: '#ffffff',
     inputBorder: 'rgba(15,23,42,0.14)',
-    accent: '#dc2626',
-    accentSoft: 'rgba(220,38,38,0.10)',
-    accentAlt: '#991b1b',
+    accent: '#7c3aed',
+    accentSoft: 'rgba(124,58,237,0.10)',
+    accentAlt: '#3b82f6',
     userBubble: 'rgba(255,247,247,0.98)',
     assistantBubble: 'rgba(248,250,252,0.98)',
     good: '#16a34a',
@@ -5792,6 +10629,10 @@ function getPalette(isDarkMode: boolean) {
     warning: '#b45309',
     codeBg: '#f8fafc'
   };
+}
+
+function isDarkPalette(p: Palette): boolean {
+  return p.bg === '#080B17';
 }
 
 const styles = {
@@ -5803,13 +10644,14 @@ const styles = {
     color: p.text,
     fontFamily:
       'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    padding: 10
+    padding: 12
   }),
 
   backdrop: (p: Palette): CSSProperties => ({
     position: 'absolute',
     inset: 0,
-    background: p.bgGlow,
+    background:
+      `${p.bgGlow}, radial-gradient(circle at 50% 42%, rgba(255,255,255,0.035), transparent 42%), radial-gradient(circle at 50% 115%, rgba(0,0,0,0.55), transparent 42%)`,
     zIndex: 0
   }),
 
@@ -5818,11 +10660,11 @@ const styles = {
     zIndex: 1,
     maxWidth: 'none',
     margin: '0 auto',
-    height: 'calc(100vh - 20px)',
+    height: 'calc(100vh - 24px)',
     display: 'grid',
     gridTemplateColumns: '260px minmax(0, 1fr)',
     gridTemplateRows: '54px minmax(0, 1fr)',
-    gap: 10
+    gap: 12
   } as CSSProperties,
 
   header: (p: Palette): CSSProperties => ({
@@ -5841,15 +10683,20 @@ const styles = {
 
   topSearch: (p: Palette): CSSProperties => ({
     width: 'min(620px, 52vw)',
-    height: 44,
-    borderRadius: 14,
+    height: 46,
+    borderRadius: 999,
     border: `1px solid ${p.inputBorder}`,
-    background: p.control,
+    background: isDarkPalette(p) ? 'rgba(17,24,39,0.58)' : 'rgba(255,255,255,0.82)',
     display: 'flex',
     alignItems: 'center',
     gap: 10,
-    padding: '0 14px',
-    color: p.muted
+    padding: '0 16px',
+    color: p.muted,
+    backdropFilter: 'blur(24px)',
+    boxShadow: isDarkPalette(p)
+      ? '0 18px 48px rgba(2,6,23,0.26), inset 0 1px 0 rgba(255,255,255,0.04)'
+      : '0 18px 48px rgba(15,23,42,0.08), inset 0 1px 0 rgba(255,255,255,0.82)',
+    transition: 'border-color 180ms ease, box-shadow 180ms ease, background 180ms ease'
   }),
 
   brandWrap: {
@@ -5862,14 +10709,24 @@ const styles = {
   brandIcon: (p: Palette): CSSProperties => ({
     width: 40,
     height: 40,
-    borderRadius: 10,
+    borderRadius: 14,
     display: 'grid',
     placeItems: 'center',
-    background: 'linear-gradient(135deg, rgba(239,68,68,0.26), rgba(127,29,29,0.28))',
-    border: `1px solid rgba(239,68,68,0.44)`,
+    background: `linear-gradient(135deg, rgba(8,11,23,0.92), rgba(26,32,48,0.76))`,
+    border: `1px solid rgba(139,92,246,0.28)`,
     color: p.text,
-    flexShrink: 0
+    flexShrink: 0,
+    overflow: 'hidden',
+    boxShadow: '0 16px 42px rgba(124,58,237,0.24), 0 0 34px rgba(59,130,246,0.10), inset 0 1px 0 rgba(255,255,255,0.10)'
   }),
+
+  brandIconImage: {
+    width: '84%',
+    height: '84%',
+    objectFit: 'contain',
+    objectPosition: '50% 50%',
+    filter: 'saturate(1.18) contrast(1.05)'
+  } as CSSProperties,
 
   brandTitle: (p: Palette): CSSProperties => ({
     fontSize: 19,
@@ -5898,15 +10755,39 @@ const styles = {
   topStatusPill: (p: Palette, ok: boolean): CSSProperties => ({
     height: 40,
     padding: '0 14px',
-    borderRadius: 10,
+    borderRadius: 999,
     border: `1px solid ${p.inputBorder}`,
-    background: p.card,
+    background: ok ? 'rgba(34,197,94,0.10)' : p.card,
     color: p.text,
     display: 'inline-flex',
     alignItems: 'center',
     gap: 9,
     fontSize: 13,
-    fontWeight: 800
+    fontWeight: 800,
+    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)'
+  }),
+
+  accountPill: (p: Palette): CSSProperties => ({
+    minHeight: 40,
+    maxWidth: 230,
+    padding: '0 14px',
+    borderRadius: 999,
+    border: `1px solid ${p.inputBorder}`,
+    background: isDarkPalette(p) ? 'rgba(17,24,39,0.66)' : p.card,
+    color: p.text,
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 8,
+    cursor: 'pointer',
+    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
+    transition: 'transform 180ms ease, border-color 180ms ease, background 180ms ease'
+  }),
+
+  accountPlanText: (p: Palette): CSSProperties => ({
+    color: p.accent,
+    fontSize: 11,
+    fontWeight: 850,
+    whiteSpace: 'nowrap'
   }),
 
   statusDot: (p: Palette, ok: boolean): CSSProperties => ({
@@ -5925,9 +10806,9 @@ const styles = {
   modelPill: (p: Palette, active = false): CSSProperties => ({
     height: 40,
     padding: '0 14px',
-    borderRadius: 10,
+    borderRadius: 999,
     border: `1px solid ${p.inputBorder}`,
-    background: active ? p.settingsActive : p.card,
+    background: active ? p.settingsActive : isDarkPalette(p) ? 'rgba(17,24,39,0.62)' : p.card,
     color: p.text,
     display: 'inline-flex',
     alignItems: 'center',
@@ -5935,7 +10816,8 @@ const styles = {
     fontSize: 13,
     fontWeight: 800,
     cursor: 'pointer',
-    maxWidth: 240
+    maxWidth: 240,
+    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)'
   }),
 
   modelPillLabel: {
@@ -6012,13 +10894,15 @@ const styles = {
   iconButton: (p: Palette): CSSProperties => ({
     width: 40,
     height: 40,
-    borderRadius: 10,
+    borderRadius: 14,
     border: `1px solid ${p.inputBorder}`,
-    background: p.card,
+    background: isDarkPalette(p) ? 'rgba(17,24,39,0.64)' : p.card,
     color: p.text,
     display: 'grid',
     placeItems: 'center',
-    cursor: 'pointer'
+    cursor: 'pointer',
+    transition: 'transform 180ms ease, border-color 180ms ease, background 180ms ease',
+    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)'
   }),
 
   utilityBar: (p: Palette): CSSProperties => ({
@@ -6026,15 +10910,16 @@ const styles = {
     gridRow: '1 / 3',
     display: 'flex',
     flexDirection: 'column',
-    gap: 14,
+    gap: 16,
     alignItems: 'stretch',
     minHeight: 0,
-    padding: 10,
-    borderRadius: 14,
+    padding: 12,
+    borderRadius: 18,
     background: p.sidebar,
     border: `1px solid ${p.shellBorder}`,
-    boxShadow: 'none',
-    overflow: 'hidden'
+    boxShadow: '0 28px 80px rgba(2,6,23,0.34), inset 0 1px 0 rgba(255,255,255,0.04)',
+    overflow: 'hidden',
+    backdropFilter: 'blur(28px)'
   }),
 
   utilityActions: {
@@ -6054,41 +10939,44 @@ const styles = {
 
   primaryUtilityButton: (p: Palette): CSSProperties => ({
     width: '100%',
-    height: 44,
+    height: 48,
     padding: '0 16px',
-    borderRadius: 8,
+    borderRadius: 14,
     border: 'none',
     background: `linear-gradient(135deg, ${p.accent}, ${p.accentAlt})`,
     color: '#fff',
-    fontWeight: 700,
+    fontWeight: 850,
     display: 'inline-flex',
     alignItems: 'center',
     gap: 10,
-    cursor: 'pointer'
+    cursor: 'pointer',
+    boxShadow: '0 18px 42px rgba(124,58,237,0.30), inset 0 1px 0 rgba(255,255,255,0.18)',
+    transition: 'transform 180ms ease, box-shadow 180ms ease, filter 180ms ease'
   }),
 
   utilityActionButton: (p: Palette): CSSProperties => ({
     width: '100%',
-    height: 38,
-    borderRadius: 8,
+    height: 40,
+    borderRadius: 12,
     border: `1px solid ${p.inputBorder}`,
-    background: p.cardAlt,
+    background: isDarkPalette(p) ? 'rgba(21,26,36,0.72)' : p.cardAlt,
     color: p.text,
     display: 'grid',
     placeItems: 'center',
-    cursor: 'pointer'
+    cursor: 'pointer',
+    transition: 'transform 180ms ease, border-color 180ms ease, background 180ms ease'
   }),
 
   sidebarNav: {
     display: 'grid',
-    gap: 4
+    gap: 6
   } as CSSProperties,
 
   sidebarNavItem: (p: Palette, active: boolean): CSSProperties => ({
     width: '100%',
     minHeight: 42,
-    borderRadius: 8,
-    border: 'none',
+    borderRadius: 12,
+    border: active ? '1px solid rgba(139,92,246,0.20)' : '1px solid transparent',
     background: active ? p.navActive : 'transparent',
     color: p.text,
     display: 'flex',
@@ -6098,7 +10986,9 @@ const styles = {
     cursor: 'pointer',
     fontSize: 14,
     fontWeight: active ? 800 : 650,
-    textAlign: 'left'
+    textAlign: 'left',
+    boxShadow: active ? '0 12px 30px rgba(124,58,237,0.13), inset 0 1px 0 rgba(255,255,255,0.05)' : 'none',
+    transition: 'background 180ms ease, border-color 180ms ease, transform 180ms ease, box-shadow 180ms ease'
   }),
 
   sidebarSectionLabel: (p: Palette): CSSProperties => ({
@@ -6109,15 +10999,17 @@ const styles = {
   }),
 
   searchWrap: (p: Palette): CSSProperties => ({
-    height: 38,
-    borderRadius: 8,
+    minHeight: 40,
+    borderRadius: 999,
     border: `1px solid ${p.inputBorder}`,
-    background: p.cardAlt,
+    background: isDarkPalette(p) ? 'rgba(17,24,39,0.56)' : p.cardAlt,
     display: 'flex',
     alignItems: 'center',
     gap: 10,
     padding: '0 14px',
-    color: p.muted
+    color: p.muted,
+    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
+    transition: 'border-color 180ms ease, box-shadow 180ms ease, background 180ms ease'
   }),
 
   searchInput: (p: Palette): CSSProperties => ({
@@ -6156,14 +11048,15 @@ const styles = {
     width: '100%',
     minHeight: 36,
     padding: '0 10px',
-    borderRadius: 6,
-    border: 'none',
-    background: active ? 'rgba(239,68,68,0.18)' : 'transparent',
+    borderRadius: 10,
+    border: active ? '1px solid rgba(139,92,246,0.18)' : '1px solid transparent',
+    background: active ? 'rgba(124,58,237,0.14)' : 'transparent',
     color: p.text,
     whiteSpace: 'normal',
     cursor: 'pointer',
     fontSize: 12,
-    fontWeight: active ? 700 : 500
+    fontWeight: active ? 750 : 500,
+    transition: 'background 180ms ease, border-color 180ms ease'
   }),
 
   threadGroup: (p: Palette): CSSProperties => ({
@@ -6183,10 +11076,15 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     gap: 10,
-    padding: 10,
-    borderRadius: 10,
+    padding: 12,
+    borderRadius: 16,
     border: `1px solid ${p.inputBorder}`,
-    background: p.card
+    background: isDarkPalette(p)
+      ? 'linear-gradient(135deg, rgba(26,32,48,0.72), rgba(17,24,39,0.58))'
+      : p.card,
+    boxShadow: isDarkPalette(p)
+      ? '0 18px 44px rgba(2,6,23,0.22), inset 0 1px 0 rgba(255,255,255,0.04)'
+      : '0 18px 44px rgba(15,23,42,0.08)'
   }),
 
   sidebarUserName: (p: Palette): CSSProperties => ({
@@ -6219,7 +11117,7 @@ const styles = {
     gridRow: '2 / 3',
     display: 'grid',
     gridTemplateColumns: detailsVisible ? 'minmax(0, 1fr) 360px' : 'minmax(0, 1fr)',
-    gap: 10,
+    gap: 12,
     height: '100%',
     minHeight: 0
   }),
@@ -6228,17 +11126,22 @@ const styles = {
     display: 'grid',
     gridTemplateRows: '1fr auto auto auto',
     minHeight: 0,
-    borderRadius: 12,
-    background: p.shell,
+    borderRadius: 18,
+    background: isDarkPalette(p)
+      ? 'linear-gradient(180deg, rgba(17,24,39,0.84), rgba(8,11,23,0.96)), radial-gradient(circle at 50% 4%, rgba(124,58,237,0.16), transparent 38%)'
+      : p.shell,
     border: `1px solid ${p.shellBorder}`,
-    boxShadow: 'none',
-    overflow: 'hidden'
+    boxShadow: '0 32px 100px rgba(2,6,23,0.42), inset 0 1px 0 rgba(255,255,255,0.05)',
+    overflow: 'hidden',
+    backdropFilter: 'blur(28px)'
   }),
 
   chatScroll: {
     overflowY: 'auto',
-    padding: '18px',
-    minHeight: 0
+    padding: '22px',
+    minHeight: 0,
+    background:
+      'radial-gradient(circle at 50% 18%, rgba(124,58,237,0.10), transparent 34%), radial-gradient(circle at 78% 42%, rgba(59,130,246,0.06), transparent 26%), linear-gradient(180deg, rgba(255,255,255,0.015), transparent 34%)'
   } as CSSProperties,
 
   surfacePage: {
@@ -6253,10 +11156,13 @@ const styles = {
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     gap: 16,
-    padding: 16,
-    borderRadius: 12,
-    background: p.card,
-    border: `1px solid ${p.inputBorder}`
+    padding: 18,
+    borderRadius: 18,
+    background: isDarkPalette(p)
+      ? 'linear-gradient(135deg, rgba(26,32,48,0.72), rgba(17,24,39,0.64))'
+      : p.card,
+    border: `1px solid ${p.inputBorder}`,
+    boxShadow: '0 18px 48px rgba(2,6,23,0.18), inset 0 1px 0 rgba(255,255,255,0.05)'
   }),
 
   surfaceTitleWrap: {
@@ -6269,13 +11175,14 @@ const styles = {
   surfaceIcon: (p: Palette): CSSProperties => ({
     width: 44,
     height: 44,
-    borderRadius: 12,
+    borderRadius: 14,
     display: 'grid',
     placeItems: 'center',
-    background: p.accentSoft,
-    border: `1px solid ${p.inputBorder}`,
+    background: `linear-gradient(135deg, rgba(124,58,237,0.22), rgba(59,130,246,0.12))`,
+    border: `1px solid rgba(139,92,246,0.20)`,
     color: p.text,
-    flexShrink: 0
+    flexShrink: 0,
+    boxShadow: '0 14px 32px rgba(124,58,237,0.12)'
   }),
 
   surfaceTitle: (p: Palette): CSSProperties => ({
@@ -6319,9 +11226,12 @@ const styles = {
     gap: 8,
     alignContent: 'center',
     padding: 14,
-    borderRadius: 12,
-    background: p.card,
-    border: `1px solid ${p.inputBorder}`
+    borderRadius: 16,
+    background: isDarkPalette(p)
+      ? 'linear-gradient(180deg, rgba(26,32,48,0.66), rgba(17,24,39,0.62))'
+      : p.card,
+    border: `1px solid ${p.inputBorder}`,
+    boxShadow: '0 14px 34px rgba(2,6,23,0.16), inset 0 1px 0 rgba(255,255,255,0.04)'
   }),
 
   metricLabel: (p: Palette): CSSProperties => ({
@@ -6345,25 +11255,38 @@ const styles = {
     alignContent: 'center',
     justifyItems: 'center',
     textAlign: 'center',
-    padding: '24px 12px'
+    padding: '32px 12px',
+    position: 'relative'
   } as CSSProperties,
 
   emptyLogo: (p: Palette): CSSProperties => ({
-    width: 64,
-    height: 64,
-    borderRadius: 20,
+    width: 76,
+    height: 76,
+    borderRadius: 24,
     display: 'grid',
     placeItems: 'center',
-    marginBottom: 18,
-    background: p.accentSoft,
-    color: p.text
+    marginBottom: 22,
+    background: `linear-gradient(135deg, rgba(8,11,23,0.96), rgba(26,32,48,0.74))`,
+    color: p.text,
+    border: '1px solid rgba(139,92,246,0.22)',
+    overflow: 'hidden',
+    boxShadow: '0 28px 70px rgba(124,58,237,0.22), 0 0 80px rgba(59,130,246,0.10), inset 0 1px 0 rgba(255,255,255,0.12)'
   }),
+
+  emptyLogoImage: {
+    width: '86%',
+    height: '86%',
+    objectFit: 'contain',
+    objectPosition: '50% 50%',
+    filter: 'saturate(1.18) contrast(1.06)'
+  } as CSSProperties,
 
   emptyTitle: (p: Palette): CSSProperties => ({
     margin: 0,
-    fontSize: 30,
+    fontSize: 34,
     lineHeight: 1.1,
-    color: p.text
+    color: p.text,
+    textShadow: '0 18px 50px rgba(124,58,237,0.22)'
   }),
 
   emptyText: (p: Palette): CSSProperties => ({
@@ -6375,7 +11298,7 @@ const styles = {
   }),
 
   promptGrid: {
-    marginTop: 28,
+    marginTop: 30,
     width: '100%',
     maxWidth: 860,
     display: 'grid',
@@ -6384,15 +11307,85 @@ const styles = {
   } as CSSProperties,
 
   promptCard: (p: Palette): CSSProperties => ({
-    borderRadius: 18,
+    borderRadius: 16,
     border: `1px solid ${p.inputBorder}`,
-    background: p.cardAlt,
+    background: isDarkPalette(p)
+      ? 'linear-gradient(145deg, rgba(26,32,48,0.78), rgba(17,24,39,0.58)), radial-gradient(circle at 0% 0%, rgba(124,58,237,0.12), transparent 38%)'
+      : p.card,
     color: p.text,
-    padding: '16px 18px',
+    padding: '18px 18px',
     textAlign: 'left',
     fontSize: 14,
     lineHeight: 1.5,
-    cursor: 'pointer'
+    cursor: 'pointer',
+    boxShadow: '0 18px 42px rgba(2,6,23,0.20), inset 0 1px 0 rgba(255,255,255,0.05)',
+    transition: 'transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease, background 180ms ease'
+  }),
+
+  workspaceSignalGrid: {
+    marginTop: 22,
+    width: '100%',
+    maxWidth: 860,
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
+    gap: 12
+  } as CSSProperties,
+
+  workspaceSignalCard: (p: Palette): CSSProperties => ({
+    minHeight: 122,
+    display: 'grid',
+    gap: 10,
+    alignContent: 'start',
+    padding: 16,
+    borderRadius: 18,
+    border: `1px solid ${p.inputBorder}`,
+    background: isDarkPalette(p)
+      ? 'linear-gradient(180deg, rgba(17,24,39,0.58), rgba(8,11,23,0.52)), radial-gradient(circle at 16% 0%, rgba(59,130,246,0.08), transparent 42%)'
+      : p.cardAlt,
+    textAlign: 'left',
+    boxShadow: '0 18px 44px rgba(2,6,23,0.18), inset 0 1px 0 rgba(255,255,255,0.04)'
+  }),
+
+  workspaceSignalTop: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10
+  } as CSSProperties,
+
+  workspaceSignalIcon: (p: Palette, tone: 'purple' | 'blue' | 'green'): CSSProperties => {
+    const color = tone === 'green' ? p.good : tone === 'blue' ? '#3B82F6' : p.accent;
+    return {
+      width: 34,
+      height: 34,
+      borderRadius: 12,
+      display: 'grid',
+      placeItems: 'center',
+      background: `${color}1F`,
+      color,
+      border: `1px solid ${color}33`,
+      boxShadow: `0 10px 28px ${color}1F`
+    };
+  },
+
+  workspaceSignalLabel: (p: Palette): CSSProperties => ({
+    color: p.muted,
+    fontSize: 12,
+    fontWeight: 850,
+    textTransform: 'uppercase'
+  }),
+
+  workspaceSignalValue: (p: Palette): CSSProperties => ({
+    color: p.text,
+    fontSize: 15,
+    lineHeight: 1.35,
+    overflowWrap: 'anywhere'
+  }),
+
+  workspaceSignalMeta: (p: Palette): CSSProperties => ({
+    color: p.muted,
+    fontSize: 12,
+    lineHeight: 1.5,
+    overflowWrap: 'anywhere'
   }),
 
   messageRow: (isUser: boolean): CSSProperties => ({
@@ -6423,7 +11416,9 @@ const styles = {
     border: `1px solid ${p.inputBorder}`,
     background: isUser ? p.userBubble : p.assistantBubble,
     color: p.text,
-    boxShadow: '0 10px 30px rgba(2,6,23,0.08)'
+    boxShadow: isUser
+      ? '0 18px 48px rgba(124,58,237,0.12), inset 0 1px 0 rgba(255,255,255,0.05)'
+      : '0 18px 48px rgba(2,6,23,0.20), inset 0 1px 0 rgba(255,255,255,0.04)'
   }),
 
   messageRole: (p: Palette): CSSProperties => ({
@@ -6724,7 +11719,7 @@ const styles = {
 
   queueTray: (p: Palette): CSSProperties => ({
     borderTop: `1px solid ${p.inputBorder}`,
-    background: p.shell,
+    background: isDarkPalette(p) ? 'linear-gradient(180deg, rgba(17,24,39,0.88), rgba(8,11,23,0.94))' : p.shell,
     padding: '14px 20px',
     display: 'grid',
     gap: 12
@@ -6828,7 +11823,8 @@ const styles = {
     gap: 12,
     padding: '14px 20px',
     borderTop: `1px solid ${p.inputBorder}`,
-    background: p.cardAlt
+    background: isDarkPalette(p) ? 'linear-gradient(180deg, rgba(17,24,39,0.58), rgba(8,11,23,0.64))' : p.cardAlt,
+    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.03)'
   }),
 
   statusCluster: {
@@ -6849,7 +11845,8 @@ const styles = {
     color: ok ? p.good : p.bad,
     border: `1px solid ${ok ? 'rgba(34,197,94,0.18)' : 'rgba(248,113,113,0.18)'}`,
     fontSize: 13,
-    fontWeight: 700
+    fontWeight: 700,
+    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)'
   }),
 
   diagnosticChip: (p: Palette, status: 'ok' | 'warning' | 'error'): CSSProperties => ({
@@ -6894,9 +11891,12 @@ const styles = {
   }),
 
   composerWrap: (p: Palette): CSSProperties => ({
-    padding: 12,
+    padding: 16,
     borderTop: `1px solid ${p.inputBorder}`,
-    background: p.card
+    background: isDarkPalette(p)
+      ? 'linear-gradient(180deg, rgba(8,11,23,0.76), rgba(8,11,23,0.94)), radial-gradient(circle at 50% 0%, rgba(124,58,237,0.12), transparent 45%)'
+      : p.card,
+    boxShadow: '0 -20px 70px rgba(2,6,23,0.34), inset 0 1px 0 rgba(255,255,255,0.04)'
   }),
 
   contextPinBar: (p: Palette): CSSProperties => ({
@@ -6908,7 +11908,8 @@ const styles = {
     padding: 10,
     borderRadius: 14,
     border: `1px solid ${p.inputBorder}`,
-    background: p.cardAlt
+    background: isDarkPalette(p) ? 'rgba(21,26,36,0.68)' : p.cardAlt,
+    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)'
   }),
 
   contextPinLead: (p: Palette): CSSProperties => ({
@@ -6955,7 +11956,7 @@ const styles = {
     justifyContent: 'space-between',
     gap: 12,
     flexWrap: 'wrap',
-    marginBottom: 10,
+    marginBottom: 12,
     padding: '0 2px',
     color: p.muted
   }),
@@ -6978,40 +11979,44 @@ const styles = {
   composerForm: {
     display: 'grid',
     gridTemplateColumns: '1fr auto',
-    gap: 12,
+    gap: 14,
     alignItems: 'end'
   } as CSSProperties,
 
   composerInput: (p: Palette): CSSProperties => ({
-    minHeight: 64,
+    minHeight: 76,
     maxHeight: 180,
     resize: 'vertical',
     width: '100%',
-    borderRadius: 10,
+    borderRadius: 20,
     border: `1px solid ${p.inputBorder}`,
-    background: p.input,
+    background: isDarkPalette(p) ? 'rgba(8,11,23,0.72)' : p.input,
     color: p.text,
-    padding: '16px 18px',
+    padding: '18px 20px',
     outline: 'none',
     fontSize: 15,
-    lineHeight: 1.5
+    lineHeight: 1.5,
+    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04), 0 18px 50px rgba(2,6,23,0.18)',
+    transition: 'border-color 180ms ease, box-shadow 180ms ease, background 180ms ease'
   }),
 
   sendButton: (p: Palette, disabled: boolean): CSSProperties => ({
-    width: 52,
-    height: 52,
-    borderRadius: 10,
+    width: 58,
+    height: 58,
+    borderRadius: 18,
     border: 'none',
     background: disabled ? p.cardAlt : `linear-gradient(135deg, ${p.accent}, ${p.accentAlt})`,
     color: disabled ? p.muted : '#fff',
     display: 'grid',
     placeItems: 'center',
-    cursor: disabled ? 'not-allowed' : 'pointer'
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    boxShadow: disabled ? 'inset 0 1px 0 rgba(255,255,255,0.04)' : '0 18px 42px rgba(124,58,237,0.28), inset 0 1px 0 rgba(255,255,255,0.16)',
+    transition: 'transform 180ms ease, box-shadow 180ms ease, filter 180ms ease'
   }),
 
   sidebar: {
     display: 'grid',
-    gap: 10,
+    gap: 12,
     minHeight: 0,
     overflowY: 'auto',
     alignContent: 'start',
@@ -7021,13 +12026,14 @@ const styles = {
 
   panelCard: (p: Palette): CSSProperties => ({
     minHeight: 0,
-    borderRadius: 12,
-    background: p.shell,
+    borderRadius: 18,
+    background: isDarkPalette(p) ? 'linear-gradient(180deg, rgba(17,24,39,0.74), rgba(8,11,23,0.86))' : p.shell,
     border: `1px solid ${p.shellBorder}`,
-    boxShadow: 'none',
+    boxShadow: '0 22px 64px rgba(2,6,23,0.26), inset 0 1px 0 rgba(255,255,255,0.04)',
     overflow: 'hidden',
     display: 'grid',
-    gridTemplateRows: 'auto 1fr'
+    gridTemplateRows: 'auto 1fr',
+    backdropFilter: 'blur(22px)'
   }),
 
   panelHeader: (p: Palette): CSSProperties => ({
@@ -7035,9 +12041,10 @@ const styles = {
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: 10,
-    padding: '14px 16px',
+    padding: '15px 16px',
     borderBottom: `1px solid ${p.inputBorder}`,
-    background: p.cardAlt
+    background: isDarkPalette(p) ? 'linear-gradient(180deg, rgba(26,32,48,0.58), rgba(17,24,39,0.42))' : p.cardAlt,
+    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)'
   }),
 
   panelTitleWrap: {
@@ -7049,7 +12056,8 @@ const styles = {
   panelTitle: (p: Palette): CSSProperties => ({
     margin: 0,
     fontSize: 15,
-    color: p.text
+    color: p.text,
+    fontWeight: 850
   }),
 
   panelHeaderActions: {
@@ -7089,18 +12097,19 @@ const styles = {
   }),
 
   panelBody: {
-    padding: 14,
+    padding: 16,
     overflow: 'visible',
     display: 'grid',
-    gap: 14,
+    gap: 16,
     alignContent: 'start'
   } as CSSProperties,
 
   replyCard: (p: Palette): CSSProperties => ({
-    padding: 14,
+    padding: 16,
     borderRadius: 18,
-    background: p.cardAlt,
-    border: `1px solid ${p.inputBorder}`
+    background: isDarkPalette(p) ? 'rgba(21,26,36,0.62)' : p.cardAlt,
+    border: `1px solid ${p.inputBorder}`,
+    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)'
   }),
 
   replyText: (p: Palette): CSSProperties => ({
@@ -7474,20 +12483,22 @@ const styles = {
     gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
     gap: 4,
     padding: 4,
-    borderRadius: 10,
+    borderRadius: 14,
     border: `1px solid ${p.inputBorder}`,
-    background: p.cardAlt
+    background: isDarkPalette(p) ? 'rgba(21,26,36,0.54)' : p.cardAlt,
+    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)'
   }),
 
   activityFilterButton: (p: Palette, active: boolean): CSSProperties => ({
     minHeight: 30,
-    borderRadius: 8,
+    borderRadius: 10,
     border: 'none',
-    background: active ? p.accent : 'transparent',
+    background: active ? `linear-gradient(135deg, ${p.accent}, ${p.accentAlt})` : 'transparent',
     color: active ? '#fff' : p.textSoft,
     cursor: 'pointer',
     fontSize: 12,
-    fontWeight: 850
+    fontWeight: 850,
+    transition: 'background 160ms ease, color 160ms ease'
   }),
 
   eventRow: (p: Palette, status: ToolEvent['status']): CSSProperties => ({
@@ -7495,13 +12506,14 @@ const styles = {
     gridTemplateColumns: '1fr auto',
     gap: 12,
     alignItems: 'start',
-    padding: 11,
-    borderRadius: 9,
-    background: p.cardAlt,
-    borderLeft: `4px solid ${status === 'ok' ? p.good : status === 'warning' ? p.warning : p.bad}`,
+    padding: 12,
+    borderRadius: 14,
+    background: isDarkPalette(p) ? 'rgba(21,26,36,0.56)' : p.cardAlt,
+    borderLeft: `3px solid ${status === 'ok' ? p.good : status === 'warning' ? p.warning : p.bad}`,
     borderTop: `1px solid ${p.inputBorder}`,
     borderRight: `1px solid ${p.inputBorder}`,
-    borderBottom: `1px solid ${p.inputBorder}`
+    borderBottom: `1px solid ${p.inputBorder}`,
+    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.03)'
   }),
 
   eventTitle: (p: Palette): CSSProperties => ({
@@ -7534,9 +12546,9 @@ const styles = {
     minHeight: 24,
     padding: '0 9px',
     borderRadius: 999,
-    color: p.accent,
-    background: 'rgba(239,68,68,0.12)',
-    border: '1px solid rgba(239,68,68,0.22)',
+    color: p.good,
+    background: 'rgba(34,197,94,0.10)',
+    border: '1px solid rgba(34,197,94,0.18)',
     fontSize: 12,
     fontWeight: 900
   }),
@@ -7545,9 +12557,11 @@ const styles = {
     display: 'grid',
     gridTemplateColumns: '54px 1fr',
     gap: 10,
-    padding: '8px 0 8px 10px',
+    padding: '10px 10px 10px 12px',
     borderLeft: `2px solid ${status === 'ok' ? p.good : status === 'warning' ? p.warning : p.bad}`,
-    color: p.text
+    color: p.text,
+    borderRadius: 12,
+    background: isDarkPalette(p) ? 'rgba(21,26,36,0.34)' : p.card
   }),
 
   activityContent: {
@@ -7655,8 +12669,9 @@ const styles = {
     borderRadius: 18,
     border: `1px dashed ${p.inputBorder}`,
     color: p.muted,
-    background: p.cardAlt,
-    lineHeight: 1.6
+    background: isDarkPalette(p) ? 'rgba(21,26,36,0.48)' : p.cardAlt,
+    lineHeight: 1.6,
+    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.03)'
   }),
 
   workspaceMeta: (p: Palette): CSSProperties => ({
@@ -7664,7 +12679,7 @@ const styles = {
     gap: 6,
     padding: 12,
     borderRadius: 16,
-    background: p.cardAlt,
+    background: isDarkPalette(p) ? 'rgba(21,26,36,0.52)' : p.cardAlt,
     border: `1px solid ${p.inputBorder}`,
     color: p.text
   }),
@@ -7684,6 +12699,22 @@ const styles = {
     borderRadius: 12,
     background: active ? p.accentSoft : p.card,
     border: `1px solid ${active ? p.accent : p.inputBorder}`,
+    minWidth: 0
+  }),
+
+  taskListItem: (p: Palette, active: boolean): CSSProperties => ({
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr) auto',
+    gap: 14,
+    alignItems: 'center',
+    width: '100%',
+    padding: 14,
+    borderRadius: 12,
+    background: active ? p.accentSoft : p.card,
+    border: `1px solid ${active ? p.accent : p.inputBorder}`,
+    color: p.text,
+    textAlign: 'left',
+    cursor: 'pointer',
     minWidth: 0
   }),
 
@@ -7890,12 +12921,13 @@ const styles = {
   } as CSSProperties,
 
   settingsSection: (p: Palette): CSSProperties => ({
-    borderRadius: 12,
+    borderRadius: 18,
     padding: 18,
-    background: p.cardAlt,
+    background: isDarkPalette(p) ? 'linear-gradient(180deg, rgba(21,26,36,0.70), rgba(17,24,39,0.58))' : p.cardAlt,
     border: `1px solid ${p.inputBorder}`,
     display: 'grid',
-    gap: 14
+    gap: 14,
+    boxShadow: '0 14px 36px rgba(2,6,23,0.14), inset 0 1px 0 rgba(255,255,255,0.04)'
   }),
 
   settingsHeading: (p: Palette): CSSProperties => ({
@@ -7963,7 +12995,9 @@ const styles = {
     fontWeight: 700,
     display: 'inline-flex',
     alignItems: 'center',
-    gap: 8
+    gap: 8,
+    boxShadow: '0 14px 34px rgba(124,58,237,0.22), inset 0 1px 0 rgba(255,255,255,0.14)',
+    transition: 'transform 180ms ease, box-shadow 180ms ease, filter 180ms ease'
   }),
 
   warningActionButton: (p: Palette): CSSProperties => ({
@@ -7986,13 +13020,15 @@ const styles = {
     padding: '0 14px',
     borderRadius: 14,
     border: `1px solid ${p.shellBorder}`,
-    background: p.shell,
+    background: isDarkPalette(p) ? 'rgba(17,24,39,0.56)' : p.shell,
     color: p.text,
     cursor: 'pointer',
     fontWeight: 600,
     display: 'inline-flex',
     alignItems: 'center',
-    gap: 8
+    gap: 8,
+    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
+    transition: 'transform 180ms ease, border-color 180ms ease, background 180ms ease'
   }),
 
   iconTextButton: (p: Palette): CSSProperties => ({
@@ -8022,109 +13058,6 @@ const styles = {
   })
 };
 
-function buildAssistantSummary(response: AgentResponse): string {
-  const parts: string[] = [];
-
-  if (response.reply.trim()) {
-    parts.push(response.reply.trim());
-  }
-
-  if (response.changes.length) {
-    const pendingCount = response.changes.filter((change) => !isGeneratedChangeApplied(change, response.applied)).length;
-    const generatedLabel = pendingCount
-      ? 'Pending generated file changes (not written yet):'
-      : 'Generated file changes:';
-    parts.push(
-      [
-        generatedLabel,
-        ...response.changes.map((change) => {
-          const state = isGeneratedChangeApplied(change, response.applied) ? 'applied' : 'pending';
-          return `- ${change.path} (${change.action}, ${state})`;
-        })
-      ].join('\n')
-    );
-  }
-
-  if (response.applied.length) {
-    parts.push(['Applied changes:', ...response.applied.map((item) => `- ${item}`)].join('\n'));
-  }
-
-  if (response.validation) {
-    const validationOutput = [response.validation.stdout, response.validation.stderr]
-      .map((item) => item.trim())
-      .filter(Boolean)
-      .join('\n');
-    const validationLines = [
-      `Validation: ${response.validation.exit_code === 0 ? 'passed' : 'needs attention'}`,
-      response.validation.summary,
-      response.validation.command ? `Command: ${response.validation.command}` : '',
-      validationOutput ? ['Output:', '```shell', validationOutput, '```'].join('\n') : ''
-    ].filter(Boolean);
-    parts.push(validationLines.join('\n'));
-  }
-
-  if (response.task_plan) {
-    parts.push(
-      [
-        'Planning intelligence:',
-        `- route: ${routeProfileLabel(response.task_plan)}`,
-        `- scale: ${response.task_plan.complexity}`,
-        `- estimated slices: ${response.task_plan.estimated_slices}`,
-        `- pass budget hint: ${response.task_plan.pass_budget_hint}`
-      ].join('\n')
-    );
-  }
-
-  if (response.completion_quality) {
-    const qualityLines = [
-      `Completion quality: ${response.completion_quality.status} (${Math.round(response.completion_quality.score * 100)}%)`,
-      ...response.completion_quality.reasons.slice(0, 3).map((reason) => `- ${reason}`)
-    ];
-    parts.push(qualityLines.join('\n'));
-  }
-
-  return parts.join('\n\n');
-}
-
-function routeProfileLabel(plan: { route_profile?: Record<string, unknown> } | null | undefined): string {
-  const profile = plan?.route_profile ?? {};
-  const label = profile.label;
-  const id = profile.id;
-  if (typeof label === 'string' && label.trim()) return label;
-  if (typeof id === 'string' && id.trim()) return id;
-  return 'auto';
-}
-
-function formatEventTime(value: string): string {
-  if (!value) return '';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
-  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-}
-
-function formatDateTime(value: string): string {
-  if (!value) return '';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
-  return date.toLocaleString([], {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
-}
-
-function formatBytes(size: number): string {
-  if (size < 1024) return `${size} B`;
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
-  if (size < 1024 * 1024 * 1024) return `${(size / 1024 / 1024).toFixed(1)} MB`;
-  return `${(size / 1024 / 1024 / 1024).toFixed(1)} GB`;
-}
-
-function normalizeProjectRootKey(value: string): string {
-  return value.trim().replace(/[\\/]+$/, '').toLowerCase();
-}
-
 function latestProjectThread(
   current: SavedConversation | null,
   candidate: SavedConversation | null
@@ -8132,262 +13065,6 @@ function latestProjectThread(
   if (!candidate) return current;
   if (!current) return candidate;
   return new Date(candidate.updatedAt).getTime() > new Date(current.updatedAt).getTime() ? candidate : current;
-}
-
-function modelOptionKey(item: Pick<ManagedModelInfo, 'api' | 'endpoint' | 'name'>): string {
-  return `${item.api || 'ollama'}::${item.endpoint || ''}::${item.name || ''}`;
-}
-
-function managedModelFromConfig(
-  api: string,
-  endpoint: string,
-  name: string,
-  ready: boolean,
-  message: string
-): ManagedModelInfo {
-  const nextApi = api.trim() || 'ollama';
-  const nextEndpoint = endpoint.trim() || (nextApi === 'ollama' ? 'http://127.0.0.1:11434' : '');
-  const nextName = name.trim() || 'qwen2.5-coder:7b';
-
-  return {
-    provider_id: `active-${nextApi}-${nextName}`,
-    label: 'Active configuration',
-    api: nextApi,
-    endpoint: nextEndpoint,
-    name: nextName,
-    local: ['ollama', 'lmstudio'].includes(nextApi),
-    enabled: true,
-    installed: ready,
-    configured: true,
-    active: true,
-    pullable: false,
-    health: ready ? 'available' : message || 'configured',
-    roles: [],
-    capabilities: [],
-    size_bytes: null,
-    modified_at: '',
-    estimated_pull_bytes: null,
-    notes: message || 'Current configured model target'
-  };
-}
-
-function findManagedModelByName(models: ManagedModelInfo[], modelName: string): ManagedModelInfo | null {
-  const normalized = modelName.trim().toLowerCase();
-  if (!normalized) return null;
-  return (
-    models.find((item) => item.name.toLowerCase() === normalized) ||
-    models.find((item) => `${item.name}:latest`.toLowerCase() === normalized) ||
-    models.find((item) => item.name.replace(/:latest$/i, '').toLowerCase() === normalized.replace(/:latest$/i, '')) ||
-    null
-  );
-}
-
-function modelInventoryToManagedModels(models: ModelInfo[]): ManagedModelInfo[] {
-  return models.map((item) => ({
-    provider_id: item.id,
-    label: item.provider,
-    api: item.api,
-    endpoint: item.endpoint,
-    name: item.name,
-    local: item.local,
-    enabled: true,
-    installed: item.available,
-    configured: item.configured,
-    active: item.configured,
-    pullable: false,
-    health: item.ready ? 'available' : item.message || 'unavailable',
-    roles: capabilityNames(item.capabilities),
-    capabilities: capabilityNames(item.capabilities),
-    size_bytes: item.size,
-    modified_at: item.modified_at,
-    estimated_pull_bytes: null,
-    notes: item.message
-  }));
-}
-
-function capabilityNames(capabilities: ModelInfo['capabilities']): string[] {
-  return Object.entries(capabilities)
-    .filter(([, enabled]) => Boolean(enabled))
-    .map(([name]) => name);
-}
-
-function loadDetailsPanelVisible(): boolean {
-  try {
-    const raw = window.localStorage.getItem(detailsPanelVisibleStorageKey);
-    if (!raw) return true;
-    return JSON.parse(raw) !== false;
-  } catch {
-    return true;
-  }
-}
-
-function saveDetailsPanelVisible(visible: boolean) {
-  try {
-    window.localStorage.setItem(detailsPanelVisibleStorageKey, JSON.stringify(visible));
-  } catch {
-    // Layout preferences should never keep the app from opening.
-  }
-}
-
-function loadQueueAutoSendPaused(): boolean {
-  try {
-    const raw = window.localStorage.getItem(queueAutoSendPausedStorageKey);
-    return raw ? JSON.parse(raw) === true : false;
-  } catch {
-    return false;
-  }
-}
-
-function saveQueueAutoSendPaused(paused: boolean) {
-  try {
-    window.localStorage.setItem(queueAutoSendPausedStorageKey, JSON.stringify(paused));
-  } catch {
-    // Queue preferences should never block chatting.
-  }
-}
-
-function loadCollapsedDetailSections(): DetailPanelSection[] {
-  try {
-    const raw = window.localStorage.getItem(detailPanelSectionsStorageKey);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((item): item is DetailPanelSection =>
-      detailPanelSectionOptions.includes(item as DetailPanelSection)
-    );
-  } catch {
-    return [];
-  }
-}
-
-function saveCollapsedDetailSections(sections: DetailPanelSection[]) {
-  try {
-    const validSections = detailPanelSectionOptions.filter((section) => sections.includes(section));
-    window.localStorage.setItem(detailPanelSectionsStorageKey, JSON.stringify(validSections));
-  } catch {
-    // Layout preferences are nice to keep, but should never block the app.
-  }
-}
-
-function loadSelectedWorkspaceFile(root: string): string {
-  try {
-    const rootKey = normalizeProjectRootKey(root);
-    if (!rootKey) return '';
-    const raw = window.localStorage.getItem(selectedWorkspaceFileStorageKey);
-    if (!raw) return '';
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return '';
-    const value = (parsed as Record<string, unknown>)[rootKey];
-    return typeof value === 'string' ? value : '';
-  } catch {
-    return '';
-  }
-}
-
-function saveSelectedWorkspaceFile(root: string, filePath: string) {
-  try {
-    const rootKey = normalizeProjectRootKey(root);
-    if (!rootKey) return;
-    const raw = window.localStorage.getItem(selectedWorkspaceFileStorageKey);
-    const parsed = raw ? JSON.parse(raw) : {};
-    const selections = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-
-    if (filePath.trim()) {
-      (selections as Record<string, string>)[rootKey] = filePath;
-    } else {
-      delete (selections as Record<string, string>)[rootKey];
-    }
-
-    window.localStorage.setItem(selectedWorkspaceFileStorageKey, JSON.stringify(selections));
-  } catch {
-    // File preview memory should stay invisible if storage is unavailable.
-  }
-}
-
-function loadCustomAgents(): CustomAgent[] {
-  try {
-    const raw = window.localStorage.getItem(customAgentsStorageKey);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as Partial<CustomAgent>[];
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .filter((item): item is CustomAgent => Boolean(item?.id && item.name))
-      .map((item) => {
-        const nextMode =
-          typeof item.mode === 'string' && ['build', 'develop', 'review', 'chat'].includes(item.mode)
-            ? (item.mode as Mode)
-            : 'build';
-        return {
-          id: item.id,
-          name: item.name,
-          perspective: item.perspective || defaultAgentPerspective,
-          mission: item.mission || defaultAgentPerspective,
-          mode: nextMode,
-          modelName: item.modelName || '',
-          createdAt: item.createdAt || new Date().toISOString()
-        };
-      });
-  } catch {
-    return [];
-  }
-}
-
-function saveCustomAgents(agents: CustomAgent[]) {
-  try {
-    window.localStorage.setItem(customAgentsStorageKey, JSON.stringify(agents));
-  } catch {
-    // Browser storage can be unavailable in private contexts.
-  }
-}
-
-function loadAutoMemoryFingerprints(): string[] {
-  try {
-    if (typeof window === 'undefined') return [];
-    const raw = window.localStorage.getItem(autoMemoryFingerprintStorageKey);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((item): item is string => typeof item === 'string' && Boolean(item.trim())).slice(0, 120);
-  } catch {
-    return [];
-  }
-}
-
-function saveAutoMemoryFingerprints(fingerprints: string[]) {
-  try {
-    if (typeof window === 'undefined') return;
-    window.localStorage.setItem(autoMemoryFingerprintStorageKey, JSON.stringify(fingerprints.slice(-120)));
-  } catch {
-    // Conversation memory is helpful, but storage failures should never block chat.
-  }
-}
-
-function mergeById<T extends { id: string }>(priority: T[], fallback: T[]): T[] {
-  const merged = new Map<string, T>();
-
-  for (const item of priority) {
-    merged.set(item.id, item);
-  }
-
-  for (const item of fallback) {
-    if (!merged.has(item.id)) {
-      merged.set(item.id, item);
-    }
-  }
-
-  return Array.from(merged.values());
-}
-
-function taskStatusToEventStatus(status: string): 'ok' | 'warning' | 'error' {
-  if (status.includes('error') || status.includes('failure')) return 'error';
-  if (status.includes('running') || status.includes('warning')) return 'warning';
-  return 'ok';
-}
-
-function readinessStatusToEventStatus(status: string): 'ok' | 'warning' | 'error' {
-  if (status === 'ready') return 'ok';
-  if (status === 'needs_repair') return 'error';
-  return 'warning';
 }
 
 function validationRepairTrailStatusLabel(status: ValidationRepairTrailStatus): string {
@@ -8436,54 +13113,8 @@ function validationRepairTrailSearchText(item: ValidationRepairTrailItem): strin
     .toLowerCase();
 }
 
-function diagnosticStatusToEventStatus(status: 'ok' | 'warning' | 'error'): 'ok' | 'warning' | 'error' {
-  return status;
-}
-
-function runtimeDiagnosticActionIcon(kind: RuntimeDiagnosticActionKind) {
-  if (kind === 'setup_workspace') return <Wrench size={14} />;
-  if (kind === 'run_validation') return <Play size={14} />;
-  return <Zap size={14} />;
-}
-
-function formatStatusLabel(value: string): string {
-  return value
-    .split(/[_\s-]+/)
-    .filter(Boolean)
-    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
-    .join(' ');
-}
-
 function createValidationRepairTrailId(): string {
   return `repair-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function shouldOfferWorkspaceSetup(
-  profile: WorkspaceProfileResponse | null,
-  recipe: ValidationRecipe | null
-): boolean {
-  if (!profile) return false;
-  if (!profile.has_manifest) return true;
-  return !recipe?.command && profile.dependency_profile.validation_commands.length === 0;
-}
-
-function shouldOfferReadinessValidation(
-  profile: WorkspaceProfileResponse | null,
-  recipe: ValidationRecipe | null
-): boolean {
-  if (!profile) return false;
-  if (!['needs_validation', 'needs_repair'].includes(profile.readiness.status)) return false;
-  return Boolean(recipe?.command || profile.dependency_profile.validation_commands.length);
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => window.setTimeout(resolve, ms));
-}
-
-function isAbortError(error: unknown): boolean {
-  if (!error || typeof error !== 'object') return false;
-  const candidate = error as { name?: unknown; message?: unknown };
-  return candidate.name === 'AbortError' || candidate.message === 'Chat request stopped.';
 }
 
 export default App;

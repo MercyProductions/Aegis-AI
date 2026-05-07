@@ -165,7 +165,7 @@ $expectedRoot = Normalize-PathForCompare -Path $Root
 Write-Step "checking frontend at $FrontendUrl"
 $frontend = Invoke-WebRequest -UseBasicParsing $FrontendUrl
 Assert-True ($frontend.StatusCode -ge 200 -and $frontend.StatusCode -lt 300) "frontend did not return a 2xx response"
-Assert-True ($frontend.Content -match "Aegis Coding AI") "frontend HTML did not look like the Aegis app"
+Assert-True ($frontend.Content -match "Auralith OS") "frontend HTML did not look like the Auralith OS app"
 
 Write-Step "checking backend identity at $BackendUrl"
 $health = Invoke-AegisJson -Method GET -Path "/api/health"

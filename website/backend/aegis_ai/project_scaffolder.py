@@ -10,6 +10,7 @@ from typing import Callable
 
 from .commands import CommandResult, CommandRunner
 from .prompt_intent import prompt_has_explanation_prefix, prompt_requests_execution_validation
+from .scaffolding import template_method_name
 from .schemas import (
     CommandRun,
     FileChange,
@@ -1306,7 +1307,7 @@ class ProjectScaffolder:
                 if validation_command and not request.run_validation
                 else "Review captured validation output and continue the repair loop from the chat workspace."
             ),
-            "Ask Aegis for the first feature pass once the scaffold validates or the captured failure is repaired.",
+            "Ask Auralith Prime for the first feature pass once the scaffold validates or the captured failure is repaired.",
         ]
 
         return ProjectScaffoldResponse(
@@ -1580,7 +1581,7 @@ class ProjectScaffolder:
                 if validation is not None and self._command_ok(validation)
                 else "Review captured validation output and continue the repair loop from the chat workspace."
             ),
-            "Ask Aegis to continue from the saved .aegis command history and known-error memory.",
+            "Ask Auralith Prime to continue from the saved .aegis command history and known-error memory.",
         ]
 
         return ProjectScaffoldResponse(
@@ -1623,46 +1624,7 @@ class ProjectScaffolder:
 
     @classmethod
     def _template_for(cls, preset_id: str) -> TemplateBuilder:
-        templates: dict[str, TemplateBuilder] = {
-            "nextjs-ts-tailwind": cls._nextjs_template,
-            "vite-react-ts": cls._vite_template,
-            "static-html-site": cls._static_html_site_template,
-            "browser-extension-mv3": cls._browser_extension_template,
-            "vscode-extension-js": cls._vscode_extension_template,
-            "node-cli-js": cls._node_cli_template,
-            "node-http-api-js": cls._node_http_api_template,
-            "node-fullstack-js": cls._node_fullstack_template,
-            "powershell-module": cls._powershell_module_template,
-            "python-cli": cls._python_cli_template,
-            "python-tkinter-desktop": cls._python_tkinter_desktop_template,
-            "python-stdlib-api": cls._python_stdlib_api_template,
-            "fastapi-python-api": cls._fastapi_template,
-            "express-ts-api": cls._express_ts_template,
-            "sqlite-python-db": cls._sqlite_python_db_template,
-            "cpp-cmake-cli": cls._cpp_cmake_template,
-            "cpp-cmake-dll": cls._cpp_cmake_dll_template,
-            "cpp-imgui-win32-dx11": cls._cpp_imgui_win32_dx11_template,
-            "cpp-game-loop-cmake": cls._cpp_game_loop_template,
-            "python-game-file-analyzer": cls._python_game_file_analyzer_template,
-            "cpp-msvc-console-sln": cls._cpp_msvc_console_template,
-            "cpp-windows-service": cls._cpp_windows_service_template,
-            "cpp-windows-internals-hooking": cls._cpp_windows_internals_hooking_template,
-            "python-sln-refactor-tool": cls._python_sln_refactor_tool_template,
-            "windows-kernel-driver-controller": cls._windows_kernel_driver_controller_template,
-            "electron-react-ts": cls._electron_react_template,
-            "expo-react-native-ts": cls._expo_react_native_template,
-            "django-python-web": cls._django_template,
-            "rust-cli": cls._rust_cli_template,
-            "go-http-api": cls._go_http_api_template,
-            "dotnet-webapi-csharp": cls._dotnet_webapi_template,
-            "dotnet-console-csharp": cls._dotnet_console_template,
-            "dotnet-wpf-csharp": cls._dotnet_wpf_template,
-            "tauri-react-ts": cls._tauri_react_template,
-        }
-        try:
-            return templates[preset_id]
-        except KeyError as exc:
-            raise ValueError(f"unknown project scaffold preset: {preset_id}") from exc
+        return getattr(cls, template_method_name(preset_id))
 
     @classmethod
     def _specialize_template_for_prompt(

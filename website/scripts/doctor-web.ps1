@@ -200,8 +200,8 @@ Write-Host "Backend: $BackendUrl"
 
 try {
     $frontend = Invoke-WebRequest -UseBasicParsing $FrontendUrl -TimeoutSec 15
-    if ($frontend.StatusCode -ge 200 -and $frontend.StatusCode -lt 300 -and $frontend.Content -match "Aegis Coding AI") {
-        Add-Pass "frontend returned Aegis HTML"
+    if ($frontend.StatusCode -ge 200 -and $frontend.StatusCode -lt 300 -and $frontend.Content -match "Auralith OS") {
+        Add-Pass "frontend returned Auralith OS HTML"
     } else {
         Add-Failure "frontend responded but did not look like the Aegis app"
     }
@@ -218,8 +218,8 @@ try {
         Add-Failure "backend responded but ready=false"
     }
 
-    if ($health.app -eq "Aegis Coding AI") {
-        Add-Pass "backend identity is Aegis Coding AI"
+    if ($health.app -eq "Auralith OS") {
+        Add-Pass "backend identity is Auralith OS"
     } else {
         Add-Failure "backend identity was '$($health.app)'"
     }

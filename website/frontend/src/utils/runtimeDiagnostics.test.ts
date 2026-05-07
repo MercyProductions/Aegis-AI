@@ -6,7 +6,7 @@ const health: HealthResponse = {
   ok: true,
   ready: true,
   status: 'ready',
-  app: 'Aegis Coding AI',
+  app: 'Auralith OS',
   version: '0.3.0',
   engine: 'Aegis Core / qwen2.5-coder:7b',
   engine_ready: true,
@@ -23,7 +23,7 @@ const health: HealthResponse = {
 };
 
 const config: AppConfig = {
-  assistant_name: 'Aegis AI',
+  assistant_name: 'Auralith Prime',
   assistant_mission: 'Build software',
   default_mode: 'build',
   modes: [],
