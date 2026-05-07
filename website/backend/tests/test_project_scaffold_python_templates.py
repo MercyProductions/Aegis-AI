@@ -4,11 +4,31 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from aegis_ai.project_scaffold_python_templates import python_stdlib_api_template
+from aegis_ai.project_scaffold_python_templates import python_cli_template, python_stdlib_api_template
 from aegis_ai.project_scaffolder import ProjectScaffolder
 
 
 class ProjectScaffoldPythonTemplatesTests(unittest.TestCase):
+    def test_python_cli_template_matches_project_scaffolder_wrapper(self) -> None:
+        files = python_cli_template("Validated Tool")
+
+        self.assertEqual(files, ProjectScaffolder._python_cli_template("Validated Tool"))
+        self.assertIn("pyproject.toml", files)
+        self.assertIn("src/validated_tool/main.py", files)
+        self.assertIn("tests/test_smoke.py", files)
+        self.assertIn('name = "validated-tool"', files["pyproject.toml"])
+        self.assertIn('validated_tool = "validated_tool.main:main"', files["pyproject.toml"])
+        self.assertIn("argparse.ArgumentParser", files["src/validated_tool/main.py"])
+        self.assertIn("compileall.compile_dir", files["build.py"])
+        self.assertIn("python build.py", files["README.md"])
+
+    def test_python_cli_template_prefixes_numeric_distribution_name(self) -> None:
+        files = python_cli_template("123 My Tool")
+
+        self.assertIn('name = "aegis-123-my-tool"', files["pyproject.toml"])
+        self.assertIn("src/app_123_my_tool/main.py", files)
+        self.assertIn("app_123_my_tool = \"app_123_my_tool.main:main\"", files["pyproject.toml"])
+
     def test_python_stdlib_api_template_matches_project_scaffolder_wrapper(self) -> None:
         files = python_stdlib_api_template("Inventory Bridge")
 
