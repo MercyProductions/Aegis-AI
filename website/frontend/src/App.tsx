@@ -1,6 +1,6 @@
 // frontend/src/App.tsx
 import type { FormEvent, ReactNode } from 'react';
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   ArrowDown,
@@ -123,6 +123,16 @@ import {
 } from './api';
 import { brandAssets } from './brandAssets';
 import { LazyPanelBoundary } from './components/LazyPanelBoundary';
+import {
+  ApprovalSettings,
+  CreativeStudioSurface,
+  MemoryEditor,
+  ModelSelector,
+  ObservabilityPanel,
+  ProductizationSurface,
+  PublicSite,
+  TaskStatusSummary
+} from './components/lazySurfaces';
 import { getPalette, styles, type Palette } from './styles/appStyles';
 import {
   connectionStateDetail,
@@ -345,31 +355,6 @@ import type {
   WorkspaceFile,
   WorkspaceProfileResponse
 } from './types';
-
-const ApprovalSettings = lazy(() =>
-  import('./components/ApprovalSettings').then((module) => ({ default: module.ApprovalSettings }))
-);
-const MemoryEditor = lazy(() =>
-  import('./components/MemoryEditor').then((module) => ({ default: module.MemoryEditor }))
-);
-const ObservabilityPanel = lazy(() =>
-  import('./components/ObservabilityPanel').then((module) => ({ default: module.ObservabilityPanel }))
-);
-const PublicSite = lazy(() =>
-  import('./components/PublicSite').then((module) => ({ default: module.PublicSite }))
-);
-const ProductizationSurface = lazy(() =>
-  import('./components/ProductizationSurface').then((module) => ({ default: module.ProductizationSurface }))
-);
-const CreativeStudioSurface = lazy(() =>
-  import('./components/CreativeStudioSurface').then((module) => ({ default: module.CreativeStudioSurface }))
-);
-const ModelSelector = lazy(() =>
-  import('./components/ModelSelector').then((module) => ({ default: module.ModelSelector }))
-);
-const TaskStatusSummary = lazy(() =>
-  import('./components/TaskStatusSummary').then((module) => ({ default: module.TaskStatusSummary }))
-);
 
 type SubmitOptions = Partial<QueuedMessage> & {
   repairTrailId?: string;
