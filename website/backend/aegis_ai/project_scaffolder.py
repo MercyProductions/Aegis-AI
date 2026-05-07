@@ -14,6 +14,9 @@ from .project_scaffold_build_logs import (
     command_log_section as scaffold_command_log_section,
     write_build_log as scaffold_write_build_log,
 )
+from .project_scaffold_command_stage import (
+    run_command_stage as scaffold_run_command_stage,
+)
 from .project_scaffold_handoff import (
     aegis_handoff_files as scaffold_aegis_handoff_files,
     first_product_pass_items as scaffold_first_product_pass_items,
@@ -2576,34 +2579,13 @@ class ProjectScaffolder:
         command: str,
         target: Path,
     ) -> tuple[ProjectBuildStage, CommandRun | None]:
-        if self.commands is None:
-            return (
-                ProjectBuildStage(
-                    id=stage_id,
-                    label=label,
-                    status="blocked",
-                    detail="Command runner is not available in this runtime.",
-                    command=command,
-                    error="Command runner unavailable.",
-                ),
-                None,
-            )
-
-        result = self.commands.run(command, target, sandbox_profile=self.sandbox_profile)
-        run = self._command_run(result, label=label)
-        ok = self._command_ok(run)
-        status = "succeeded" if ok else ("blocked" if not run.allowed else "failed")
-        return (
-            ProjectBuildStage(
-                id=stage_id,
-                label=label,
-                status=status,
-                detail=run.summary or run.reason,
-                command=command,
-                output_excerpt=self._command_excerpt(run),
-                error="" if ok else (run.summary or run.reason),
-            ),
-            run,
+        return scaffold_run_command_stage(
+            self.commands,
+            sandbox_profile=self.sandbox_profile,
+            stage_id=stage_id,
+            label=label,
+            command=command,
+            target=target,
         )
 
     @staticmethod
