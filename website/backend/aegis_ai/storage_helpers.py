@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from pathlib import Path
 from typing import Any
 
 
@@ -37,6 +38,48 @@ def parse_json_payload(value: str) -> dict[str, Any]:
     except (TypeError, json.JSONDecodeError):
         return {}
     return payload if isinstance(payload, dict) else {}
+
+
+def content_hash(content: str) -> str:
+    normalized = " ".join((content or "").split())
+    if not normalized:
+        return ""
+    return hashlib.sha256(normalized.encode("utf-8", errors="ignore")).hexdigest()
+
+
+def project_root_aliases(store_project_root: Path, project_root: Path) -> list[str]:
+    resolved = project_root.resolve()
+    aliases = {str(resolved)}
+
+    current_workspace = (store_project_root / "workspace").resolve()
+    legacy_workspace = (store_project_root / "backend" / "workspace").resolve()
+
+    if resolved == legacy_workspace:
+        aliases.add(str(current_workspace))
+    elif resolved == current_workspace:
+        aliases.add(str(legacy_workspace))
+    elif resolved.is_relative_to(current_workspace):
+        aliases.add(str((legacy_workspace / resolved.relative_to(current_workspace)).resolve()))
+    elif resolved.is_relative_to(legacy_workspace):
+        aliases.add(str((current_workspace / resolved.relative_to(legacy_workspace)).resolve()))
+
+    return list(aliases)
+
+
+def normalize_legacy_workspace_root(store_project_root: Path, value: str) -> str:
+    try:
+        path = Path(value).resolve()
+    except OSError:
+        return value
+
+    legacy_workspace = (store_project_root / "backend" / "workspace").resolve()
+    current_workspace = (store_project_root / "workspace").resolve()
+
+    if path == legacy_workspace:
+        return str(current_workspace)
+    if path.is_relative_to(legacy_workspace):
+        return str((current_workspace / path.relative_to(legacy_workspace)).resolve())
+    return str(path)
 
 
 def int_value(value: Any, default: int = 0) -> int:

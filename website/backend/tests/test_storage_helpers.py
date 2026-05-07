@@ -3,12 +3,14 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 import sys
+import tempfile
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from aegis_ai.storage_helpers import (
     average,
+    content_hash,
     context_budget_utilization,
     fingerprint,
     float_value,
@@ -20,8 +22,10 @@ from aegis_ai.storage_helpers import (
     optional_positive_int,
     parse_json_list,
     parse_json_payload,
+    project_root_aliases,
     rate,
     reliability_score,
+    normalize_legacy_workspace_root,
     task_title_from_message,
     token_metadata_int,
     token_relative_error,
@@ -49,6 +53,46 @@ class StorageHelperTests(unittest.TestCase):
         self.assertEqual(parse_json_payload('{"status": "ok"}'), {"status": "ok"})
         self.assertEqual(parse_json_payload("[1, 2]"), {})
         self.assertEqual(parse_json_payload("not json"), {})
+
+    def test_content_hash_normalizes_whitespace_and_empty_content(self) -> None:
+        self.assertEqual(content_hash("   "), "")
+        expected = hashlib.sha256("hello world".encode("utf-8", errors="ignore")).hexdigest()
+        self.assertEqual(content_hash("hello\n   world"), expected)
+
+    def test_project_root_aliases_bridge_current_and_legacy_workspace_locations(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            store_root = Path(tempdir)
+            current_workspace = (store_root / "workspace").resolve()
+            legacy_workspace = (store_root / "backend" / "workspace").resolve()
+            current_nested = (current_workspace / "src" / "app").resolve()
+            legacy_nested = (legacy_workspace / "src" / "app").resolve()
+
+            self.assertEqual(
+                set(project_root_aliases(store_root, current_workspace)),
+                {str(current_workspace), str(legacy_workspace)},
+            )
+            self.assertEqual(
+                set(project_root_aliases(store_root, legacy_workspace)),
+                {str(current_workspace), str(legacy_workspace)},
+            )
+            self.assertEqual(
+                set(project_root_aliases(store_root, current_nested)),
+                {str(current_nested), str(legacy_nested)},
+            )
+            self.assertEqual(set(project_root_aliases(store_root, store_root / "external")), {str((store_root / "external").resolve())})
+
+    def test_normalize_legacy_workspace_root_rewrites_legacy_paths_only(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            store_root = Path(tempdir)
+            current_workspace = (store_root / "workspace").resolve()
+            legacy_workspace = (store_root / "backend" / "workspace").resolve()
+
+            self.assertEqual(normalize_legacy_workspace_root(store_root, str(legacy_workspace)), str(current_workspace))
+            self.assertEqual(
+                normalize_legacy_workspace_root(store_root, str(legacy_workspace / "src" / "app.py")),
+                str((current_workspace / "src" / "app.py").resolve()),
+            )
+            self.assertEqual(normalize_legacy_workspace_root(store_root, str(current_workspace)), str(current_workspace))
 
     def test_numeric_helpers_preserve_storage_defaults(self) -> None:
         self.assertEqual(int_value("7"), 7)

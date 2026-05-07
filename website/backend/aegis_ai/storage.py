@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-import hashlib
 import json
 import sqlite3
 from datetime import datetime, timedelta, timezone
@@ -84,6 +83,7 @@ from .schemas import (
 from .settings import Settings
 from .storage_helpers import (
     average,
+    content_hash,
     context_budget_utilization,
     fingerprint,
     float_value,
@@ -95,8 +95,10 @@ from .storage_helpers import (
     optional_positive_int,
     parse_json_list,
     parse_json_payload,
+    project_root_aliases,
     rate,
     reliability_score,
+    normalize_legacy_workspace_root,
     task_title_from_message,
     token_metadata_int,
     token_relative_error,
@@ -3937,22 +3939,7 @@ class EventStore:
         return provider_id or provider_label or provider_api or model or "unknown"
 
     def _project_root_aliases(self, project_root: Path) -> list[str]:
-        resolved = project_root.resolve()
-        aliases = {str(resolved)}
-
-        current_workspace = (self.project_root / "workspace").resolve()
-        legacy_workspace = (self.project_root / "backend" / "workspace").resolve()
-
-        if resolved == legacy_workspace:
-            aliases.add(str(current_workspace))
-        elif resolved == current_workspace:
-            aliases.add(str(legacy_workspace))
-        elif resolved.is_relative_to(current_workspace):
-            aliases.add(str((legacy_workspace / resolved.relative_to(current_workspace)).resolve()))
-        elif resolved.is_relative_to(legacy_workspace):
-            aliases.add(str((current_workspace / resolved.relative_to(legacy_workspace)).resolve()))
-
-        return list(aliases)
+        return project_root_aliases(self.project_root, project_root)
 
     def _task_summary_from_row(self, row: sqlite3.Row, *, workspace_root: Path | None = None) -> TaskSummary:
         payload = dict(row)
@@ -5844,10 +5831,7 @@ class EventStore:
         return recommendations[:6]
 
     def _content_hash(self, content: str) -> str:
-        normalized = " ".join((content or "").split())
-        if not normalized:
-            return ""
-        return hashlib.sha256(normalized.encode("utf-8", errors="ignore")).hexdigest()
+        return content_hash(content)
 
     def _feedback_metadata(self, request: FeedbackRecordRequest) -> dict[str, Any]:
         metadata = dict(request.metadata or {})
@@ -7057,19 +7041,7 @@ class EventStore:
         }
 
     def _normalize_legacy_workspace_root(self, value: str) -> str:
-        try:
-            path = Path(value).resolve()
-        except OSError:
-            return value
-
-        legacy_workspace = (self.project_root / "backend" / "workspace").resolve()
-        current_workspace = (self.project_root / "workspace").resolve()
-
-        if path == legacy_workspace:
-            return str(current_workspace)
-        if path.is_relative_to(legacy_workspace):
-            return str((current_workspace / path.relative_to(legacy_workspace)).resolve())
-        return str(path)
+        return normalize_legacy_workspace_root(self.project_root, value)
 
     def _context_budget_payload(self, value: str) -> ContextBudgetInfo:
         return ContextBudgetInfo.model_validate(self._json_payload(value))
