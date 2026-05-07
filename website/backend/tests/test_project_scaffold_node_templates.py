@@ -7,6 +7,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from aegis_ai.project_scaffold_node_templates import (
     express_ts_template,
     node_cli_template,
+    node_fullstack_template,
     node_http_api_template,
 )
 from aegis_ai.project_scaffolder import ProjectScaffolder
@@ -80,6 +81,33 @@ class ProjectScaffoldNodeTemplatesTests(unittest.TestCase):
 
         self.assertIn('"name": "aegis-node-api"', files["package.json"])
         self.assertIn("Dependency-free Node.js HTTP API scaffold", files["README.md"])
+
+    def test_node_fullstack_template_matches_project_scaffolder_wrapper(self) -> None:
+        files = node_fullstack_template("Task Ops")
+
+        self.assertEqual(files, ProjectScaffolder._node_fullstack_template("Task Ops"))
+        self.assertIn("package.json", files)
+        self.assertIn("public/index.html", files)
+        self.assertIn("public/styles.css", files)
+        self.assertIn("public/app.js", files)
+        self.assertIn("src/store.js", files)
+        self.assertIn("src/server.js", files)
+        self.assertIn("tests/fullstack.test.js", files)
+        self.assertIn("build.js", files)
+        self.assertIn('"name": "task-ops"', files["package.json"])
+        self.assertIn('"test": "node --test tests/fullstack.test.js"', files["package.json"])
+        self.assertIn("data-task-form", files["public/index.html"])
+        self.assertIn("requestJson('/api/tasks'", files["public/app.js"])
+        self.assertIn("createJsonStore", files["src/store.js"])
+        self.assertIn("export function createAppServer", files["src/server.js"])
+        self.assertIn("'--test', 'tests/fullstack.test.js'", files["build.js"])
+        self.assertIn("Then open `http://127.0.0.1:8790`.", files["README.md"])
+
+    def test_node_fullstack_template_uses_default_package_name_when_blank(self) -> None:
+        files = node_fullstack_template("!!!")
+
+        self.assertIn('"name": "aegis-fullstack-app"', files["package.json"])
+        self.assertIn("Dependency-free full-stack app scaffold", files["README.md"])
 
 
 if __name__ == "__main__":
