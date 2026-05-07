@@ -9,6 +9,20 @@ from pathlib import Path
 from typing import Callable
 
 from .commands import CommandResult, CommandRunner
+from .project_scaffold_names import (
+    GENERIC_TARGET_NAMES as SCAFFOLD_GENERIC_TARGET_NAMES,
+    INSTRUCTIONAL_PROJECT_NAME_TOKENS as SCAFFOLD_INSTRUCTIONAL_PROJECT_NAME_TOKENS,
+    PRESET_DEFAULT_PROJECT_NAMES as SCAFFOLD_PRESET_DEFAULT_PROJECT_NAMES,
+    PROMPT_NAMED_ON_GENERIC_TARGET_PRESETS as SCAFFOLD_PROMPT_NAMED_ON_GENERIC_TARGET_PRESETS,
+    TARGET_NAMED_WEB_PRESETS as SCAFFOLD_TARGET_NAMED_WEB_PRESETS,
+    has_explicit_project_name as scaffold_has_explicit_project_name,
+    looks_like_instructional_project_name as scaffold_looks_like_instructional_project_name,
+    preset_default_project_name_if_needed as scaffold_preset_default_project_name_if_needed,
+    project_name as scaffold_project_name,
+    project_name_from_prompt as scaffold_project_name_from_prompt,
+    should_use_target_leaf_project_name as scaffold_should_use_target_leaf_project_name,
+    target_leaf_is_specific as scaffold_target_leaf_is_specific,
+)
 from .project_scaffold_paths import (
     WINDOWS_PATH_ACTION_FOLLOWERS as SCAFFOLD_WINDOWS_PATH_ACTION_FOLLOWERS,
     WINDOWS_PATH_CONTEXTUAL_ACTIONS as SCAFFOLD_WINDOWS_PATH_CONTEXTUAL_ACTIONS,
@@ -70,59 +84,11 @@ class ProjectScaffolder:
     WINDOWS_PATH_STRONG_STOP_PHRASES = SCAFFOLD_WINDOWS_PATH_STRONG_STOP_PHRASES
     WINDOWS_PATH_CONTEXTUAL_ACTIONS = SCAFFOLD_WINDOWS_PATH_CONTEXTUAL_ACTIONS
     WINDOWS_PATH_ACTION_FOLLOWERS = SCAFFOLD_WINDOWS_PATH_ACTION_FOLLOWERS
-    TARGET_NAMED_WEB_PRESETS = {
-        "nextjs-ts-tailwind",
-        "vite-react-ts",
-        "static-html-site",
-    }
-    PROMPT_NAMED_ON_GENERIC_TARGET_PRESETS = {
-        "cpp-imgui-win32-dx11",
-        "cpp-game-loop-cmake",
-        "python-game-file-analyzer",
-        "cpp-windows-internals-hooking",
-        "python-sln-refactor-tool",
-        "windows-kernel-driver-controller",
-    }
-    PRESET_DEFAULT_PROJECT_NAMES = {
-        "cpp-imgui-win32-dx11": "imgui-tool",
-        "cpp-game-loop-cmake": "game-loop-sandbox",
-        "python-game-file-analyzer": "game-file-analyzer",
-        "cpp-windows-internals-hooking": "windows-internals-tool",
-        "python-sln-refactor-tool": "solution-refactor-tool",
-        "windows-kernel-driver-controller": "kernel-driver-controller",
-    }
-    INSTRUCTIONAL_PROJECT_NAME_TOKENS = {
-        "build",
-        "combine",
-        "create",
-        "enumerate",
-        "extract",
-        "generate",
-        "inspect",
-        "instrument",
-        "make",
-        "merge",
-        "separate",
-        "split",
-        "tool",
-        "write",
-    }
-    GENERIC_TARGET_NAMES = {
-        "app",
-        "application",
-        "desktop",
-        "folder",
-        "new-folder",
-        "project",
-        "roblox",
-        "site",
-        "test",
-        "tests",
-        "untitled",
-        "web",
-        "website",
-        "workspace",
-    }
+    TARGET_NAMED_WEB_PRESETS = SCAFFOLD_TARGET_NAMED_WEB_PRESETS
+    PROMPT_NAMED_ON_GENERIC_TARGET_PRESETS = SCAFFOLD_PROMPT_NAMED_ON_GENERIC_TARGET_PRESETS
+    PRESET_DEFAULT_PROJECT_NAMES = SCAFFOLD_PRESET_DEFAULT_PROJECT_NAMES
+    INSTRUCTIONAL_PROJECT_NAME_TOKENS = SCAFFOLD_INSTRUCTIONAL_PROJECT_NAME_TOKENS
+    GENERIC_TARGET_NAMES = SCAFFOLD_GENERIC_TARGET_NAMES
 
     def __init__(
         self,
@@ -4227,43 +4193,27 @@ class ProjectScaffolder:
 
     @staticmethod
     def _has_explicit_project_name(prompt: str) -> bool:
-        return re.search(r"\b(?:named|called|titled)\s+", prompt, re.IGNORECASE) is not None
+        return scaffold_has_explicit_project_name(prompt)
 
     @staticmethod
     def _project_name(value: str) -> str:
-        cleaned = re.sub(r"[^A-Za-z0-9_-]+", "-", (value or "").strip()).strip("-_").lower()
-        return cleaned or "aegis-app"
+        return scaffold_project_name(value)
 
     @classmethod
     def _preset_default_project_name_if_needed(cls, preset_id: str, raw_name: str) -> str:
-        default_name = cls.PRESET_DEFAULT_PROJECT_NAMES.get(preset_id, "")
-        if not default_name:
-            return raw_name
-
-        slug = cls._project_name(raw_name)
-        if slug in cls.GENERIC_TARGET_NAMES or slug == "aegis-app":
-            return default_name
-        if cls._looks_like_instructional_project_name(slug):
-            return default_name
-        return raw_name
+        return scaffold_preset_default_project_name_if_needed(preset_id, raw_name)
 
     @classmethod
     def _looks_like_instructional_project_name(cls, slug: str) -> bool:
-        tokens = [token for token in slug.split("-") if token]
-        if not tokens:
-            return True
-        if tokens[0] in {"app", "project", "tool"}:
-            return True
-        return any(token in cls.INSTRUCTIONAL_PROJECT_NAME_TOKENS for token in tokens[:3])
+        return scaffold_looks_like_instructional_project_name(slug)
 
     @classmethod
     def _should_use_target_leaf_project_name(cls, preset_id: str, target_leaf: str) -> bool:
-        return preset_id in cls.TARGET_NAMED_WEB_PRESETS and cls._target_leaf_is_specific(target_leaf)
+        return scaffold_should_use_target_leaf_project_name(preset_id, target_leaf)
 
     @classmethod
     def _target_leaf_is_specific(cls, target_leaf: str) -> bool:
-        slug = cls._project_name(target_leaf)
-        return slug not in cls.GENERIC_TARGET_NAMES
+        return scaffold_target_leaf_is_specific(target_leaf)
 
     @classmethod
     def _extract_windows_path_from_prompt(cls, prompt: str) -> str:
@@ -4307,83 +4257,7 @@ class ProjectScaffolder:
 
     @classmethod
     def _project_name_from_prompt(cls, prompt: str) -> str:
-        lowered = prompt.lower()
-        if re.search(r"\bkernel\s+driver\b", lowered):
-            if "controller" in lowered or "desktop app" in lowered or "communication" in lowered:
-                return "kernel-driver-controller"
-            return "kernel-driver"
-
-        explicit = re.search(
-            r"\b(?:named|called|titled)\s+([A-Za-z0-9][A-Za-z0-9 _-]{1,64}?)(?=\s+(?:as|that|for|with|using|to|which|and)\b|[,.!?]|$)",
-            prompt,
-            re.IGNORECASE,
-        )
-        if explicit:
-            return explicit.group(1)
-
-        stop_words = {
-            "a",
-            "accept",
-            "an",
-            "and",
-            "app",
-            "application",
-            "as",
-            "at",
-            "backend",
-            "build",
-            "brown",
-            "cli",
-            "cmake",
-            "code",
-            "create",
-            "dashboard",
-            "desktop",
-            "django",
-            "electron",
-            "expo",
-            "express",
-            "fastapi",
-            "for",
-            "frontend",
-            "full",
-            "generate",
-            "go",
-            "how",
-            "input",
-            "its",
-            "make",
-            "me",
-            "native",
-            "next",
-            "nextjs",
-            "node",
-            "project",
-            "python",
-            "react",
-            "react-native",
-            "requires",
-            "rust",
-            "scaffold",
-            "tauri",
-            "service",
-            "site",
-            "starter",
-            "syscalls",
-            "that",
-            "the",
-            "this",
-            "typescript",
-            "using",
-            "uses",
-            "vite",
-            "web",
-            "website",
-            "with",
-        }
-        tokens = re.findall(r"[A-Za-z0-9]+", lowered)
-        useful = [token for token in tokens if token not in stop_words and len(token) > 1]
-        return "-".join(useful[:4]) if useful else "aegis-app"
+        return scaffold_project_name_from_prompt(prompt)
 
     @staticmethod
     def _keyword_in_prompt(prompt: str, keyword: str) -> bool:
