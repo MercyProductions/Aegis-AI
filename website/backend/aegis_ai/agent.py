@@ -66,6 +66,22 @@ from .storage import EventStore, utc_now
 from .structured_streaming import StructuredReplyDeltaExtractor
 from .task_planner import TaskPlan, TaskPlanner
 from .validation import ValidationManager
+from .validation_diagnostics import (
+    diagnostic_brief as validation_diagnostic_brief,
+    diagnostic_display as validation_diagnostic_display,
+    extract_validation_diagnostics,
+    failed_step_display as validation_failed_step_display,
+    failed_step_parts_from_steps as validation_failed_step_parts_from_steps,
+    fenced_log_text as validation_fenced_log_text,
+    first_diagnostic_brief as validation_first_diagnostic_brief,
+    first_diagnostic_display as validation_first_diagnostic_display,
+    normalize_diagnostic_path as validation_normalize_diagnostic_path,
+    repair_target_from_validation as validation_repair_target,
+    strip_ansi as validation_strip_ansi,
+    to_positive_int as validation_to_positive_int,
+    validation_diagnostics_log,
+    validation_steps_log,
+)
 from .validation_outcome import (
     categorize_validation_failure as outcome_categorize_validation_failure,
     error_signature as outcome_error_signature,
@@ -6841,238 +6857,46 @@ Large-file behavior:
         return text
 
     def _extract_validation_diagnostics(self, result: CommandResult, *, limit: int = 12) -> list[dict[str, Any]]:
-        text = "\n".join(part for part in (result.stderr, result.stdout, result.reason) if part).strip()
-        if not text:
-            return []
-
-        diagnostics: list[dict[str, Any]] = []
-        seen: set[tuple[str, int | None, int | None, str, str]] = set()
-
-        def add(
-            *,
-            file: str,
-            line: str | int | None = None,
-            column: str | int | None = None,
-            severity: str = "error",
-            code: str = "",
-            message: str = "",
-            raw: str = "",
-        ) -> None:
-            if len(diagnostics) >= limit:
-                return
-            clean_file = self._normalize_diagnostic_path(file)
-            if not clean_file:
-                return
-            line_no = self._to_positive_int(line)
-            column_no = self._to_positive_int(column)
-            clean_severity = (severity or "error").lower().replace("fatal error", "error")
-            clean_code = self._status_text(code, limit=40)
-            clean_message = self._status_text(message or raw, limit=260)
-            key = (clean_file.lower(), line_no, column_no, clean_code.lower(), clean_message.lower())
-            if key in seen:
-                return
-            seen.add(key)
-            diagnostics.append(
-                {
-                    "file": clean_file,
-                    "line": line_no,
-                    "column": column_no,
-                    "severity": clean_severity,
-                    "code": clean_code,
-                    "message": clean_message,
-                    "raw": self._status_text(raw, limit=360),
-                }
-            )
-
-        lines = [line.rstrip() for line in text.splitlines()]
-        msvc_or_ts = re.compile(
-            r"^\s*(?P<file>.+?)\((?P<line>\d+)(?:,(?P<column>\d+))?\):\s*"
-            r"(?P<severity>fatal error|error|warning|note)\s*"
-            r"(?:(?P<code>[A-Za-z]{1,8}\d{2,6})\s*:)?\s*(?P<message>.+)\s*$",
-            re.IGNORECASE,
-        )
-        gcc_or_clang = re.compile(
-            r"^\s*(?P<file>(?:[A-Za-z]:)?[^:\n]+?):(?P<line>\d+)(?::(?P<column>\d+))?:\s*"
-            r"(?P<severity>fatal error|error|warning|note)\s*:?\s*"
-            r"(?:(?P<code>[A-Za-z]{1,8}\d{2,6})\s*:)?\s*(?P<message>.+)\s*$",
-            re.IGNORECASE,
-        )
-        python_traceback = re.compile(
-            r'^\s*File\s+"(?P<file>[^"]+)",\s+line\s+(?P<line>\d+)(?:,\s+in\s+(?P<message>.+))?\s*$',
-            re.IGNORECASE,
-        )
-
-        for index, raw_line in enumerate(lines):
-            line = self._strip_ansi(raw_line).strip()
-            if not line:
-                continue
-            match = msvc_or_ts.match(line) or gcc_or_clang.match(line)
-            if match:
-                add(raw=line, **match.groupdict())
-                continue
-            match = python_traceback.match(line)
-            if match:
-                next_message = ""
-                for followup in lines[index + 1 : index + 4]:
-                    candidate = self._strip_ansi(followup).strip()
-                    if candidate and not candidate.startswith("File "):
-                        next_message = candidate
-                        break
-                groups = match.groupdict()
-                add(
-                    file=groups.get("file") or "",
-                    line=groups.get("line"),
-                    severity="error",
-                    message=next_message or groups.get("message") or "Python traceback frame",
-                    raw=line,
-                )
-
-        return diagnostics
+        return extract_validation_diagnostics(result, limit=limit)
 
     def _normalize_diagnostic_path(self, path: str) -> str:
-        clean = self._strip_ansi(path).strip().strip("\"'")
-        clean = clean.replace("\\", "/")
-        clean = re.sub(r"^\./+", "", clean)
-        while clean.startswith("../"):
-            clean = clean[3:]
-        if len(clean) > 260:
-            clean = clean[-260:]
-        return clean
+        return validation_normalize_diagnostic_path(path)
 
     def _to_positive_int(self, value: str | int | None) -> int | None:
-        if value is None or value == "":
-            return None
-        try:
-            parsed = int(value)
-        except (TypeError, ValueError):
-            return None
-        return parsed if parsed > 0 else None
+        return validation_to_positive_int(value)
 
     def _strip_ansi(self, text: str) -> str:
-        return re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", text or "")
+        return validation_strip_ansi(text)
 
     def _failed_step_parts_from_steps(self, steps: list[dict[str, Any]]) -> tuple[str, str]:
-        for raw_step in steps:
-            if raw_step.get("ok"):
-                continue
-            step_index = self._status_text(raw_step.get("index"), limit=20)
-            command = self._status_text(raw_step.get("command"), limit=260)
-            return step_index, command
-        return "", ""
+        return validation_failed_step_parts_from_steps(steps)
 
     def _failed_step_display(self, payload: dict[str, Any]) -> str:
-        step_index = self._status_text(payload.get("failed_step"), limit=40)
-        command = self._status_text(payload.get("failed_step_command"), limit=260)
-        if not command and isinstance(payload.get("steps"), list):
-            step_index, command = self._failed_step_parts_from_steps(
-                [item for item in payload["steps"] if isinstance(item, dict)]
-            )
-        if step_index and command:
-            return f"step {step_index}: {command}"
-        return command or step_index
+        return validation_failed_step_display(payload)
 
     def _first_diagnostic_display(self, payload: dict[str, Any]) -> str:
-        diagnostics = payload.get("diagnostics")
-        if not isinstance(diagnostics, list):
-            return ""
-        for diagnostic in diagnostics:
-            if isinstance(diagnostic, dict):
-                display = self._diagnostic_display(diagnostic)
-                if display:
-                    return display
-        return ""
+        return validation_first_diagnostic_display(payload)
 
     def _first_diagnostic_brief(self, payload: dict[str, Any]) -> str:
-        diagnostics = payload.get("diagnostics")
-        if not isinstance(diagnostics, list):
-            return ""
-        for diagnostic in diagnostics:
-            if isinstance(diagnostic, dict):
-                brief = self._diagnostic_brief(diagnostic)
-                if brief:
-                    return brief
-        return ""
+        return validation_first_diagnostic_brief(payload)
 
     def _repair_target_from_validation(self, payload: dict[str, Any], *, validation_command: str = "") -> str:
-        failed_step = self._failed_step_display(payload)
-        diagnostic = self._first_diagnostic_display(payload)
-        failed_command = str(payload.get("command") or validation_command).strip()
-        if failed_step and diagnostic:
-            return f"{failed_step}; first diagnostic {diagnostic}"
-        return diagnostic or failed_step or failed_command or "the failed validation step"
+        return validation_repair_target(payload, validation_command=validation_command)
 
     def _diagnostic_display(self, diagnostic: dict[str, Any]) -> str:
-        file = self._status_text(diagnostic.get("file"), limit=180)
-        if not file:
-            return ""
-        line = self._status_text(diagnostic.get("line"), limit=20)
-        column = self._status_text(diagnostic.get("column"), limit=20)
-        location = file
-        if line:
-            location += f":{line}"
-        if column:
-            location += f":{column}"
-        severity = self._status_text(diagnostic.get("severity"), limit=40)
-        code = self._status_text(diagnostic.get("code"), limit=40)
-        message = self._status_text(diagnostic.get("message"), limit=220)
-        detail = " ".join(part for part in (severity, code) if part)
-        if detail and message:
-            return f"{location} {detail}: {message}"
-        if detail:
-            return f"{location} {detail}"
-        if message:
-            return f"{location}: {message}"
-        return location
+        return validation_diagnostic_display(diagnostic)
 
     def _diagnostic_brief(self, diagnostic: dict[str, Any]) -> str:
-        file = self._status_text(diagnostic.get("file"), limit=150)
-        if not file:
-            return ""
-        line = self._status_text(diagnostic.get("line"), limit=20)
-        column = self._status_text(diagnostic.get("column"), limit=20)
-        location = file
-        if line:
-            location += f":{line}"
-        if column:
-            location += f":{column}"
-        severity = self._status_text(diagnostic.get("severity"), limit=24)
-        code = self._status_text(diagnostic.get("code"), limit=32)
-        detail = " ".join(part for part in (severity, code) if part)
-        return f"{location} {detail}".strip()
+        return validation_diagnostic_brief(diagnostic)
 
     def _fenced_log_text(self, text: str) -> str:
-        if not text:
-            return ""
-        return text.replace("```", "` ` `").strip()
+        return validation_fenced_log_text(text)
 
     def _validation_steps_log(self, steps: list[dict[str, Any]]) -> str:
-        if not steps:
-            return "(single command)"
-
-        lines: list[str] = []
-        for raw_step in steps:
-            index = raw_step.get("index", len(lines) + 1)
-            command = self._status_text(raw_step.get("command"), limit=260)
-            reason = self._status_text(raw_step.get("reason"), limit=220)
-            exit_code = raw_step.get("exit_code")
-            status = "passed" if raw_step.get("ok") else "failed"
-            if raw_step.get("timed_out"):
-                status = "timed out"
-            elif raw_step.get("allowed") is False:
-                status = "blocked"
-            lines.append(f"{index}. `{command}` - {status} (exit: {exit_code if exit_code is not None else 'n/a'}; {reason})")
-        return "\n".join(lines)
+        return validation_steps_log(steps)
 
     def _validation_diagnostics_log(self, diagnostics: list[dict[str, Any]]) -> str:
-        if not diagnostics:
-            return "(none captured)"
-
-        lines: list[str] = []
-        for diagnostic in diagnostics[:12]:
-            display = self._diagnostic_display(diagnostic)
-            if display:
-                lines.append(f"- {display}")
-        return "\n".join(lines) if lines else "(none captured)"
+        return validation_diagnostics_log(diagnostics)
 
     def _command_run(self, result: CommandResult, *, recipe=None) -> CommandRun:
         category = self._categorize_command_result(result, recipe=recipe)
