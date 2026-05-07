@@ -37,6 +37,16 @@ from .model_execution import ModelExecutionPlan, ModelExecutionPlanner
 from .model_registry import ModelRegistryManager
 from .multi_agent import MultiAgentCoordinator
 from .project_indexer import ProjectIndexer
+from .project_status import (
+    display_workspace_relative_path as project_display_workspace_relative_path,
+    latest_project_build_log as project_latest_build_log,
+    read_aegis_json as project_read_aegis_json,
+    read_text_tail as project_read_text_tail,
+    redact_project_status_text as project_redact_status_text,
+    safe_log_display_path as project_safe_log_display_path,
+    safe_project_build_log_path as project_safe_build_log_path,
+    status_text as project_status_text,
+)
 from .prompt_intent import (
     prompt_requests_creative_media,
     prompt_requests_execution_validation,
@@ -7170,120 +7180,28 @@ Large-file behavior:
         return self._redact_project_status_text("\n".join(lines))[:7_000]
 
     def _read_aegis_json(self, workspace_root: Path, filename: str) -> dict[str, Any]:
-        if "/" in filename or "\\" in filename:
-            return {}
-        path = workspace_root / ".aegis" / filename
-        try:
-            if not path.exists() or path.stat().st_size > 256_000:
-                return {}
-            payload = json.loads(path.read_text(encoding="utf-8-sig", errors="replace"))
-        except (OSError, json.JSONDecodeError):
-            return {}
-        return payload if isinstance(payload, dict) else {}
+        return project_read_aegis_json(workspace_root, filename)
 
     def _latest_project_build_log(self, workspace_root: Path, references: list[str]) -> tuple[str, Path] | None:
-        candidates: dict[str, tuple[str, Path]] = {}
-        for reference in references:
-            candidate = self._safe_project_build_log_path(workspace_root, reference)
-            if candidate is not None and candidate.exists():
-                display = self._safe_log_display_path(workspace_root, reference)
-                candidates[str(candidate.resolve())] = (display, candidate)
-
-        logs_dir = workspace_root / ".aegis" / "build_logs"
-        try:
-            if logs_dir.exists():
-                for path in logs_dir.iterdir():
-                    if path.is_file() and path.suffix.lower() in {".md", ".txt", ".log"}:
-                        display = self._display_workspace_relative_path(workspace_root, path)
-                        candidates[str(path.resolve())] = (display, path)
-        except OSError:
-            pass
-
-        latest: tuple[str, Path] | None = None
-        latest_mtime = -1.0
-        for display, path in candidates.values():
-            try:
-                mtime = path.stat().st_mtime
-            except OSError:
-                continue
-            if mtime > latest_mtime:
-                latest = (display, path)
-                latest_mtime = mtime
-        return latest
+        return project_latest_build_log(workspace_root, references)
 
     def _safe_project_build_log_path(self, workspace_root: Path, value: Any) -> Path | None:
-        text = self._status_text(value, limit=260)
-        if not text:
-            return None
-        normalized = text.replace("\\", "/").strip()
-        if normalized.startswith(".aegis/build_logs/"):
-            candidate = workspace_root / Path(*normalized.split("/"))
-        else:
-            candidate = Path(text)
-            if not candidate.is_absolute():
-                return None
-
-        try:
-            resolved = candidate.resolve()
-            build_log_root = (workspace_root / ".aegis" / "build_logs").resolve()
-            resolved.relative_to(build_log_root)
-        except (OSError, ValueError):
-            return None
-        if resolved.suffix.lower() not in {".md", ".txt", ".log"}:
-            return None
-        return resolved
+        return project_safe_build_log_path(workspace_root, value)
 
     def _safe_log_display_path(self, workspace_root: Path, value: Any) -> str:
-        path = self._safe_project_build_log_path(workspace_root, value)
-        if path is None:
-            return self._status_text(value, limit=180)
-        return self._display_workspace_relative_path(workspace_root, path)
+        return project_safe_log_display_path(workspace_root, value)
 
     def _display_workspace_relative_path(self, workspace_root: Path, path: Path) -> str:
-        try:
-            return path.resolve().relative_to(workspace_root.resolve()).as_posix()
-        except (OSError, ValueError):
-            return path.name
+        return project_display_workspace_relative_path(workspace_root, path)
 
     def _read_text_tail(self, path: Path, *, max_chars: int) -> str:
-        try:
-            text = path.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            return ""
-        if len(text) > max_chars:
-            text = text[-max_chars:]
-            text = "[truncated to latest output]\n" + text
-        return text.strip()[:max_chars]
+        return project_read_text_tail(path, max_chars=max_chars)
 
     def _status_text(self, value: Any, *, default: str = "", limit: int = 500) -> str:
-        if value is None:
-            return default
-        text = str(value).replace("\r", "\n")
-        text = re.sub(r"\s+", " ", text).strip()
-        if not text:
-            return default
-        return text[:limit]
+        return project_status_text(value, default=default, limit=limit)
 
     def _redact_project_status_text(self, text: str) -> str:
-        patterns = (
-            (re.compile(r"\bsk-[A-Za-z0-9_-]{20,}\b"), "[REDACTED_OPENAI_KEY]"),
-            (re.compile(r"\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{20,}\b"), "[REDACTED_GITHUB_TOKEN]"),
-            (re.compile(r"\bgithub_pat_[A-Za-z0-9_]{20,}\b"), "[REDACTED_GITHUB_TOKEN]"),
-            (re.compile(r"\bAKIA[0-9A-Z]{16}\b"), "[REDACTED_AWS_KEY]"),
-            (re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{20,}\b"), "[REDACTED_SLACK_TOKEN]"),
-            (re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b"), "[REDACTED_JWT]"),
-            (
-                re.compile(
-                    r"(?i)\b((?:api[_-]?key|secret|token|password|passwd|pwd|authorization)\s*[:=]\s*)"
-                    r"([\"']?)[^\s\"']+"
-                ),
-                r"\1\2[REDACTED_SECRET]",
-            ),
-        )
-        redacted = text
-        for pattern, replacement in patterns:
-            redacted = pattern.sub(replacement, redacted)
-        return redacted
+        return project_redact_status_text(text)
 
     def _merge_memory_hits(
         self,
