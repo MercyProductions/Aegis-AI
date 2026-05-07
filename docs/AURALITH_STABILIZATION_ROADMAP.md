@@ -21,6 +21,7 @@ The stabilization pass covered:
 - Compact laptop/mobile app shell behavior.
 - Public marketing/auth route responsiveness.
 - Compact settings modal behavior.
+- Authenticated overlay responsiveness.
 - Initial bundle shape and optional panel loading.
 - Lazy-surface crash containment.
 - Live frontend/backend identity checks.
@@ -47,6 +48,9 @@ The stabilization pass covered:
 - Added unit coverage for the lazy-panel boundary healthy and fallback states.
 - Made the settings modal stack its section rail on narrow viewports so settings remain usable on mobile-sized screens.
 - Added E2E coverage that opens and closes settings on tablet and mobile viewports while checking horizontal overflow and modal visibility.
+- Made Memory Center collapse from a fixed two-column layout into a single-column compact overlay with bounded note list height and visible close affordance.
+- Made approval controls resize within the viewport, stack footer actions on compact screens, and expose a labeled close affordance.
+- Added E2E coverage that opens and closes Memory Center and approval controls on tablet/mobile viewports while checking horizontal overflow.
 
 ## Current Validation Baseline
 
@@ -64,7 +68,7 @@ Validation details:
 - Backend tests: 494 passed, 108 subtests passed.
 - Live doctor check: passed.
 - Live smoke check: passed.
-- Browser E2E: passed, including public mobile route checks, protected laptop/mobile responsive shell checks, and tablet/mobile settings modal checks.
+- Browser E2E: passed, including public mobile route checks, protected laptop/mobile responsive shell checks, tablet/mobile settings modal checks, and tablet/mobile authenticated overlay checks.
 
 Known warning:
 
@@ -73,7 +77,7 @@ Known warning:
 ## Critical Next Fixes
 
 - Extract the largest protected workspace sections from `App.tsx` into dedicated modules so route-level code splitting can finish the initial bundle reduction without hiding warnings.
-- Extend responsive E2E coverage to authenticated overlays such as Memory Center and approval controls.
+- Add focused visual regression snapshots for the compact authenticated overlays after the next component extraction pass.
 - Add a focused visual regression pass for the public site, protected workspace shell, right observability panel, and auth pages.
 - Add auth-session cleanup or database isolation for repeated E2E account registration runs.
 - Standardize script default ports or document the live validation port strategy to avoid confusion between `5173/8787` defaults and active `5177/8793` runs.

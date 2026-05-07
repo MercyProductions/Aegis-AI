@@ -32,6 +32,7 @@ interface MemoryEditorProps {
 const API_BASE = (import.meta.env.VITE_API_BASE ?? 'http://127.0.0.1:8787').replace(/\/+$/, '');
 
 export function MemoryEditor({ workspaceRoot, onClose, palette }: MemoryEditorProps) {
+  const [viewportWidth, setViewportWidth] = useState(() => (typeof window === 'undefined' ? 1200 : window.innerWidth));
   const [notes, setNotes] = useState<MemoryNote[]>([]);
   const [selectedNote, setSelectedNote] = useState<MemoryNote | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -43,6 +44,15 @@ export function MemoryEditor({ workspaceRoot, onClose, palette }: MemoryEditorPr
   useEffect(() => {
     loadNotes();
   }, [workspaceRoot]);
+
+  useEffect(() => {
+    function handleResize() {
+      setViewportWidth(window.innerWidth);
+    }
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   async function loadNotes() {
     try {
@@ -133,6 +143,7 @@ export function MemoryEditor({ workspaceRoot, onClose, palette }: MemoryEditorPr
     note.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
     note.content.toLowerCase().includes(searchQuery.toLowerCase())
   );
+  const compact = viewportWidth < 720;
 
   const styles = {
     modal: {
@@ -143,15 +154,16 @@ export function MemoryEditor({ workspaceRoot, onClose, palette }: MemoryEditorPr
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
+      padding: compact ? 12 : 24,
       zIndex: 1000
     },
     container: {
       background: palette.shell,
       borderRadius: 16,
       border: `1px solid ${palette.shellBorder}`,
-      width: '90%',
+      width: compact ? 'calc(100vw - 24px)' : '90%',
       maxWidth: 900,
-      maxHeight: '90vh',
+      maxHeight: compact ? 'calc(100vh - 24px)' : '90vh',
       display: 'flex',
       flexDirection: 'column' as const,
       overflow: 'hidden'
@@ -161,7 +173,8 @@ export function MemoryEditor({ workspaceRoot, onClose, palette }: MemoryEditorPr
       borderBottom: `1px solid ${palette.shellBorder}`,
       display: 'flex',
       justifyContent: 'space-between',
-      alignItems: 'center'
+      alignItems: 'center',
+      gap: 12
     },
     title: {
       fontSize: 20,
@@ -170,15 +183,18 @@ export function MemoryEditor({ workspaceRoot, onClose, palette }: MemoryEditorPr
     },
     body: {
       display: 'grid',
-      gridTemplateColumns: '300px 1fr',
+      gridTemplateColumns: compact ? 'minmax(0, 1fr)' : '300px minmax(0, 1fr)',
       flex: 1,
-      overflow: 'hidden'
+      overflow: compact ? 'auto' : 'hidden',
+      minHeight: 0
     },
     listPanel: {
-      borderRight: `1px solid ${palette.shellBorder}`,
+      borderRight: compact ? 'none' : `1px solid ${palette.shellBorder}`,
+      borderBottom: compact ? `1px solid ${palette.shellBorder}` : 'none',
       overflow: 'auto',
       display: 'flex',
-      flexDirection: 'column' as const
+      flexDirection: 'column' as const,
+      minHeight: 0
     },
     searchBox: {
       padding: 12,
@@ -195,7 +211,8 @@ export function MemoryEditor({ workspaceRoot, onClose, palette }: MemoryEditorPr
     },
     noteList: {
       flex: 1,
-      overflow: 'auto'
+      overflow: 'auto',
+      maxHeight: compact ? 180 : undefined
     },
     noteItem: {
       padding: 12,
@@ -224,7 +241,8 @@ export function MemoryEditor({ workspaceRoot, onClose, palette }: MemoryEditorPr
       padding: 20,
       overflow: 'auto',
       display: 'flex',
-      flexDirection: 'column' as const
+      flexDirection: 'column' as const,
+      minHeight: compact ? 220 : 0
     },
     detailTitle: {
       fontSize: 18,
@@ -243,7 +261,8 @@ export function MemoryEditor({ workspaceRoot, onClose, palette }: MemoryEditorPr
     },
     buttonGroup: {
       display: 'flex',
-      gap: 8
+      gap: 8,
+      flexWrap: 'wrap' as const
     },
     button: {
       padding: '8px 12px',
@@ -277,6 +296,7 @@ export function MemoryEditor({ workspaceRoot, onClose, palette }: MemoryEditorPr
           <div style={styles.title}>Memory Editor</div>
           <button
             onClick={onClose}
+            aria-label="Close Memory Editor"
             style={{ background: 'none', border: 'none', cursor: 'pointer', color: palette.text }}
           >
             <X size={24} />

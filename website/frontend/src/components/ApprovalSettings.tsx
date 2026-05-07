@@ -11,6 +11,7 @@ interface ApprovalSettingsProps {
 }
 
 export function ApprovalSettings({ workspaceRoot, onClose, palette }: ApprovalSettingsProps) {
+  const [viewportWidth, setViewportWidth] = useState(() => (typeof window === 'undefined' ? 1200 : window.innerWidth));
   const [approvalTier, setApprovalTier] = useState('guided');
   const [sandboxProfile, setSandboxProfile] = useState('standard');
   const [loading, setLoading] = useState(false);
@@ -20,6 +21,15 @@ export function ApprovalSettings({ workspaceRoot, onClose, palette }: ApprovalSe
   useEffect(() => {
     loadSettings();
   }, [workspaceRoot]);
+
+  useEffect(() => {
+    function handleResize() {
+      setViewportWidth(window.innerWidth);
+    }
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   async function loadSettings() {
     try {
@@ -50,6 +60,7 @@ export function ApprovalSettings({ workspaceRoot, onClose, palette }: ApprovalSe
     }
   }
 
+  const compact = viewportWidth < 640;
   const styles = {
     container: {
       position: 'fixed' as const,
@@ -59,20 +70,24 @@ export function ApprovalSettings({ workspaceRoot, onClose, palette }: ApprovalSe
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
+      padding: compact ? 12 : 24,
       zIndex: 1001
     },
     modal: {
       background: palette.shell,
       borderRadius: 16,
       border: `1px solid ${palette.shellBorder}`,
-      width: '90%',
+      width: compact ? 'calc(100vw - 24px)' : '90%',
       maxWidth: 500,
-      padding: 24
+      maxHeight: compact ? 'calc(100vh - 24px)' : '90vh',
+      overflow: 'auto',
+      padding: compact ? 18 : 24
     },
     header: {
       display: 'flex',
       justifyContent: 'space-between',
       alignItems: 'center',
+      gap: 12,
       marginBottom: 20
     },
     title: {
@@ -108,6 +123,7 @@ export function ApprovalSettings({ workspaceRoot, onClose, palette }: ApprovalSe
     footer: {
       display: 'flex',
       gap: 12,
+      flexDirection: compact ? 'column' as const : 'row' as const,
       marginTop: 24
     },
     button: {
@@ -163,6 +179,7 @@ export function ApprovalSettings({ workspaceRoot, onClose, palette }: ApprovalSe
           <div style={styles.title}>Approval & Sandbox Settings</div>
           <button
             onClick={onClose}
+            aria-label="Close Approval Settings"
             style={{ background: 'none', border: 'none', cursor: 'pointer', color: palette.text }}
           >
             <X size={24} />

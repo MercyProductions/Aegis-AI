@@ -101,6 +101,7 @@ try {
     await exerciseStopActiveResponse(page);
     await exerciseResponsiveShell(page);
     await exerciseResponsiveSettingsModal(page);
+    await exerciseResponsiveAuthenticatedOverlays(page);
 
     await clickUnique(page.getByRole('button', { name: 'Settings', exact: true }), 'Settings button');
 
@@ -2525,6 +2526,66 @@ async function exerciseResponsiveSettingsModal(page) {
   await page.setViewportSize(desktopViewport);
   await delay(700);
   await waitForLocatorCount(page.getByTestId('details-panel'), 1, 'details panel restored after responsive settings checks');
+}
+
+async function exerciseResponsiveAuthenticatedOverlays(page) {
+  const desktopViewport = { width: 1440, height: 1050 };
+  const responsiveViewports = [
+    { label: 'tablet', width: 768, height: 1024 },
+    { label: 'mobile', width: 390, height: 844 }
+  ];
+
+  for (const viewport of responsiveViewports) {
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    await delay(700);
+
+    await clickUnique(page.getByRole('button', { name: 'Memory Editor', exact: true }), `${viewport.label} Memory Editor button`);
+    await waitForLocatorCount(page.getByText('Memory Editor', { exact: true }), 1, `${viewport.label} Memory Editor overlay`);
+    await assertOverlayViewportFit(page, `${viewport.label} Memory Editor`, 'Close Memory Editor');
+    await clickUnique(page.getByRole('button', { name: 'Close Memory Editor', exact: true }), `${viewport.label} close Memory Editor`);
+    await waitForLocatorExactCount(page.getByText('Memory Editor', { exact: true }), 0, `${viewport.label} Memory Editor closed`);
+
+    await clickUnique(page.getByRole('button', { name: 'Approval Settings', exact: true }), `${viewport.label} Approval Settings button`);
+    await waitForLocatorCount(
+      page.getByText('Approval & Sandbox Settings', { exact: true }),
+      1,
+      `${viewport.label} Approval Settings overlay`
+    );
+    await assertOverlayViewportFit(page, `${viewport.label} Approval Settings`, 'Close Approval Settings');
+    await clickUnique(
+      page.getByRole('button', { name: 'Close Approval Settings', exact: true }),
+      `${viewport.label} close Approval Settings`
+    );
+    await waitForLocatorExactCount(
+      page.getByText('Approval & Sandbox Settings', { exact: true }),
+      0,
+      `${viewport.label} Approval Settings closed`
+    );
+  }
+
+  await page.setViewportSize(desktopViewport);
+  await delay(700);
+  await waitForLocatorCount(page.getByTestId('details-panel'), 1, 'details panel restored after responsive overlay checks');
+}
+
+async function assertOverlayViewportFit(page, label, closeButtonLabel) {
+  const metrics = await page.evaluate((buttonLabel) => {
+    const root = document.documentElement;
+    const body = document.body;
+    const closeButton = document.querySelector(`button[aria-label="${buttonLabel}"]`);
+    const closeButtonBox = closeButton?.getBoundingClientRect();
+    return {
+      innerWidth: window.innerWidth,
+      scrollWidth: Math.max(root.scrollWidth, body.scrollWidth),
+      closeButtonVisible: Boolean(closeButtonBox && closeButtonBox.width > 20 && closeButtonBox.height > 20)
+    };
+  }, closeButtonLabel);
+
+  assert(
+    metrics.scrollWidth <= metrics.innerWidth + 4,
+    `${label} overflowed horizontally: scrollWidth ${metrics.scrollWidth}, viewport ${metrics.innerWidth}.`
+  );
+  assert(metrics.closeButtonVisible, `${label} close button was not visibly sized.`);
 }
 
 function queueTestResponse(overrides = {}) {
