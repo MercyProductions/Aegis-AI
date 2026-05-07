@@ -32,6 +32,11 @@ from .project_intelligence import ProjectIntelligenceEngine
 from .project_scaffolder import ProjectScaffolder
 from .unified_context import UnifiedContextEngine
 from .unified_runtime import RuntimeSignalCounts, UnifiedRuntimeEngine
+from .workspace_autopilot import (
+    compact_repair_brief,
+    first_diagnostic_brief,
+    latest_history_validation,
+)
 from .workspace_operations import WorkspaceOperationsEngine
 from .workspace_setup import (
     merge_missing_manifest_fields,
@@ -2371,74 +2376,6 @@ async def workspace_setup(request: WorkspaceSetupRequest) -> WorkspaceSetupRespo
     )
 
 
-def _latest_history_validation(command_history: dict[str, Any]) -> dict[str, Any]:
-    commands = command_history.get("commands") if isinstance(command_history, dict) else []
-    if not isinstance(commands, list):
-        return {}
-    for item in reversed(commands):
-        if not isinstance(item, dict):
-            continue
-        kind = str(item.get("kind") or "").strip().lower()
-        if kind == "validation" or kind.startswith("verification:"):
-            return item
-    return {}
-
-
-def _status_value(value: Any, *, limit: int = 260) -> str:
-    text = str(value or "").strip()
-    if len(text) > limit:
-        return text[:limit].rstrip() + "..."
-    return text
-
-
-def _first_diagnostic_brief(payload: dict[str, Any]) -> str:
-    diagnostics = payload.get("diagnostics")
-    if not isinstance(diagnostics, list):
-        return ""
-    for diagnostic in diagnostics:
-        if not isinstance(diagnostic, dict):
-            continue
-        file = _status_value(diagnostic.get("file"), limit=150)
-        if not file:
-            continue
-        line = _status_value(diagnostic.get("line"), limit=20)
-        column = _status_value(diagnostic.get("column"), limit=20)
-        location = file
-        if line:
-            location += f":{line}"
-        if column:
-            location += f":{column}"
-        severity = _status_value(diagnostic.get("severity"), limit=24)
-        code = _status_value(diagnostic.get("code"), limit=32)
-        detail = " ".join(part for part in (severity, code) if part)
-        return f"{location} {detail}".strip()
-    return ""
-
-
-def _compact_repair_brief(payload: dict[str, Any], *, validation_command: str = "") -> str:
-    failed_step = _status_value(payload.get("failed_step"), limit=40)
-    failed_step_command = _status_value(payload.get("failed_step_command"), limit=220)
-    failed_command = _status_value(payload.get("command") or validation_command, limit=220)
-    diagnostic = _first_diagnostic_brief(payload)
-
-    parts: list[str] = []
-    if failed_step and failed_step_command:
-        parts.append(f"Repair step {failed_step}: {failed_step_command}")
-    elif failed_step_command:
-        parts.append(f"Repair {failed_step_command}")
-    elif diagnostic:
-        parts.append(f"Repair diagnostic {diagnostic}")
-    elif failed_command:
-        parts.append(f"Repair {failed_command}")
-    else:
-        parts.append("Repair failed validation")
-
-    if diagnostic and not parts[0].endswith(diagnostic):
-        parts.append(f"diagnostic {diagnostic}")
-    parts.append("rerun validation")
-    return "; ".join(parts)
-
-
 @app.get("/api/workspace/autopilot-status", response_model=WorkspaceAutopilotStatusResponse)
 async def workspace_autopilot_status(workspace_root: str | None = Query(default=None)) -> WorkspaceAutopilotStatusResponse:
     root = _resolve_workspace_or_400(workspace_root)
@@ -2462,11 +2399,11 @@ async def workspace_autopilot_status(workspace_root: str | None = Query(default=
         if isinstance(instruction_status.last_validation, dict)
         else {}
     )
-    latest_validation = _latest_history_validation(command_history) or last_run or instruction_last_validation
+    latest_validation = latest_history_validation(command_history) or last_run or instruction_last_validation
     latest_validation_status = str(latest_validation.get("status") or "").strip()
     failed_step = str(latest_validation.get("failed_step") or "").strip()
     failed_step_command = str(latest_validation.get("failed_step_command") or "").strip()
-    first_diagnostic = _first_diagnostic_brief(latest_validation)
+    first_diagnostic = first_diagnostic_brief(latest_validation)
     repair_brief = ""
     instruction_source = (
         instruction_status.schema_version
@@ -2610,7 +2547,7 @@ async def workspace_autopilot_status(workspace_root: str | None = Query(default=
             next_action = "Add project metadata and a validation command."
 
     if phase == "repair" and latest_validation:
-        repair_brief = _compact_repair_brief(latest_validation, validation_command=validation_command)
+        repair_brief = compact_repair_brief(latest_validation, validation_command=validation_command)
 
     suggested_prompt = next_action
     if should_continue:
