@@ -66,6 +66,15 @@ from .project_scaffold_targets import (
     title_from_name as scaffold_title_from_name,
     visible_entries as scaffold_visible_entries,
 )
+from .project_scaffold_intent import (
+    continuity_preset_id as scaffold_continuity_preset_id,
+    existing_project_validation_command as scaffold_existing_project_validation_command,
+    prompt_is_existing_project_validation_intent as scaffold_prompt_is_existing_project_validation_intent,
+    prompt_requests_validation as scaffold_prompt_requests_validation,
+    prompt_should_reuse_existing_project as scaffold_prompt_should_reuse_existing_project,
+    should_update_existing_scaffold as scaffold_should_update_existing_scaffold,
+    should_validate_existing_project_only as scaffold_should_validate_existing_project_only,
+)
 from .project_scaffold_stack_rules import (
     preset_stack_locks as scaffold_preset_stack_locks,
     prompt_allows_stack_switch as scaffold_prompt_allows_stack_switch,
@@ -80,7 +89,6 @@ from .project_scaffold_validation_plan import (
     validation_step_label as scaffold_validation_step_label,
     validation_step_phase as scaffold_validation_step_phase,
 )
-from .prompt_intent import prompt_has_explanation_prefix, prompt_requests_execution_validation
 from .scaffolding import template_method_name
 from .schemas import (
     CommandRun,
@@ -2113,61 +2121,16 @@ class ProjectScaffolder:
         request: ProjectScaffoldRequest,
         profile: WorkspaceDependencyProfile,
     ) -> bool:
-        if not target.exists() or not target.is_dir():
-            return False
-        if not request.run_validation:
-            return False
-        if not cls._prompt_is_existing_project_validation_intent(prompt):
-            return False
-        if (target / ".aegis" / "project.json").exists():
-            return True
-        if profile.config_files or profile.build_systems or profile.validation_commands:
-            return True
-        return False
+        return scaffold_should_validate_existing_project_only(
+            prompt,
+            target,
+            run_validation=request.run_validation,
+            profile=profile,
+        )
 
     @staticmethod
     def _prompt_is_existing_project_validation_intent(prompt: str) -> bool:
-        lowered = f" {' '.join(prompt.lower().split())} "
-        if prompt_has_explanation_prefix(prompt):
-            return False
-
-        create_terms = (
-            " create ",
-            " generate ",
-            " scaffold ",
-            " starter ",
-            " write me ",
-            " make me ",
-            " build me ",
-            " implement ",
-            " add ",
-            " new project ",
-            " brand new ",
-            " from scratch ",
-            " set up ",
-            " setup ",
-        )
-        if any(term in lowered for term in create_terms):
-            return False
-
-        return prompt_requests_execution_validation(
-            prompt,
-            extra_phrases=(
-                "continue",
-                "continue building",
-                "continue the build",
-                "finish",
-                "keep going",
-                "make it complete",
-                "make this complete",
-                "make it production ready",
-                "make this production ready",
-                "no errors",
-                "production ready",
-                "repair",
-                "rebuild",
-            ),
-        )
+        return scaffold_prompt_is_existing_project_validation_intent(prompt)
 
     @staticmethod
     def _existing_project_validation_command(
@@ -2175,25 +2138,7 @@ class ProjectScaffolder:
         profile: WorkspaceDependencyProfile,
         preferred_command: str,
     ) -> str:
-        command = preferred_command.strip()
-        if command == "python build.py" and not (target / "build.py").exists():
-            command = ""
-        if "cmake --build build" in command.lower() and not (target / "build").exists():
-            return "cmake -S . -B build && cmake --build build --config Release"
-        if command:
-            return command
-        if (target / "build.py").exists():
-            return "python build.py"
-        solution_files = sorted(target.glob("*.sln"))
-        if solution_files:
-            return f"msbuild {solution_files[0].name} /m /p:Configuration=Release"
-        if (target / "CMakeLists.txt").exists():
-            if (target / "build").exists():
-                return "cmake --build build --config Release"
-            return "cmake -S . -B build && cmake --build build --config Release"
-        if profile.validation_commands:
-            return profile.validation_commands[0]
-        return ""
+        return scaffold_existing_project_validation_command(target, profile, preferred_command)
 
     @classmethod
     def _continuity_preset_id(
@@ -2204,118 +2149,17 @@ class ProjectScaffolder:
         manifest: WorkspaceProjectManifest | None,
         profile: WorkspaceDependencyProfile,
     ) -> str:
-        if not target.exists() or not cls._prompt_should_reuse_existing_project(prompt):
-            return ""
-
-        if manifest is not None and cls._is_known_preset_id(manifest.preset_id):
-            return manifest.preset_id
-        if manifest is not None:
-            contract_preset_id = str(manifest.mission_contract.get("preset_id", "")).strip()
-            if cls._is_known_preset_id(contract_preset_id):
-                return contract_preset_id
-
-        config_files = {item.lower().replace("\\", "/") for item in profile.config_files}
-        build_systems = {item.lower() for item in profile.build_systems}
-        frameworks = {item.lower() for item in profile.frameworks}
-
-        if "dll/shared library" in frameworks or any(item.endswith((".dll", ".lib", ".def", ".exp")) for item in config_files):
-            return "cpp-cmake-dll"
-
-        if any(item.endswith(".sln") or item.endswith(".vcxproj") for item in config_files):
-            return "cpp-msvc-console-sln"
-
-        if "cmakelists.txt" in config_files or "cmake" in build_systems:
-            if any("imgui" in item for item in config_files) or (target / "vendor" / "imgui_shim").exists():
-                return "cpp-imgui-win32-dx11"
-            return "cpp-cmake-cli"
-
-        if (target / "package.json").exists():
-            if "electron" in frameworks:
-                return "electron-react-ts"
-            if "next.js" in frameworks:
-                return "nextjs-ts-tailwind"
-            if "vite" in frameworks or "react" in frameworks:
-                return "vite-react-ts"
-            return "node-fullstack-js"
-
-        if (target / "index.html").exists():
-            return "static-html-site"
-
-        if (target / "pyproject.toml").exists() or (target / "requirements.txt").exists():
-            if "fastapi" in frameworks:
-                return "fastapi-python-api"
-            return "python-cli"
-
-        return ""
+        return scaffold_continuity_preset_id(
+            prompt=prompt,
+            target=target,
+            manifest=manifest,
+            profile=profile,
+            known_preset_ids=[preset.id for preset in cls.presets()],
+        )
 
     @classmethod
     def _prompt_should_reuse_existing_project(cls, prompt: str) -> bool:
-        lowered = f" {' '.join(prompt.lower().split())} "
-        if any(
-            phrase in lowered
-            for phrase in (
-                " new project ",
-                " brand new ",
-                " from scratch ",
-                " different project ",
-                " separate project ",
-                " separate app ",
-            )
-        ):
-            return False
-
-        continuation_terms = (
-            "also build",
-            "add",
-            "and build",
-            "build it",
-            "build this",
-            "build the project",
-            "compile it",
-            "continue",
-            "complete it",
-            "complete the project",
-            "existing",
-            "finish",
-            "fix",
-            "improve",
-            "launch it",
-            "launch this",
-            "launch the app",
-            "launch the project",
-            "make better",
-            "optimize",
-            "repair",
-            "rebuild",
-            "refine",
-            "run it",
-            "start it",
-            "start this",
-            "start the app",
-            "start the project",
-            "execute it",
-            "execute this",
-            "execute the app",
-            "execute the project",
-            "test it",
-            "update",
-            "validate",
-            "verify",
-            "work on",
-            "already made",
-            "already built",
-            "keep going",
-            "make it complete",
-            "make this complete",
-            "make it production ready",
-            "make this production ready",
-            "production ready",
-            "my dll",
-            "my library",
-        )
-        if any(term in lowered for term in continuation_terms):
-            return True
-        return len(lowered.split()) <= 10
+        return scaffold_prompt_should_reuse_existing_project(prompt)
 
     @classmethod
     def _is_known_preset_id(cls, preset_id: str) -> bool:
@@ -2326,100 +2170,11 @@ class ProjectScaffolder:
 
     @staticmethod
     def _should_update_existing_scaffold(prompt: str, target: Path) -> bool:
-        lowered = prompt.lower()
-        if not target.exists():
-            return False
-
-        if any(term in lowered for term in ("overwrite", "replace existing", "replace the existing", "regenerate")):
-            return True
-
-        update_intent = any(
-            term in lowered
-            for term in (
-                "build it",
-                "build this",
-                "also build",
-                "and build",
-                "fix",
-                "launch it",
-                "launch this",
-                "launch the app",
-                "launch the project",
-                "repair",
-                "rebuild",
-                "continue",
-                "start it",
-                "start this",
-                "start the app",
-                "start the project",
-                "execute it",
-                "execute this",
-                "execute the app",
-                "execute the project",
-                "write me",
-                "create",
-                "generate",
-                "complete",
-            )
-        )
-        if not update_intent:
-            return False
-
-        if (target / ".aegis" / "project.json").exists():
-            return True
-
-        readme = target / "README.md"
-        try:
-            readme_text = readme.read_text(encoding="utf-8", errors="replace").lower()[:16_000] if readme.exists() else ""
-        except OSError:
-            readme_text = ""
-        if "generated by aegis" in readme_text or "aegis c++ console app" in readme_text:
-            return True
-
-        cpp_request = any(term in lowered for term in ("c++", "cpp", "cmake", "sln", "console app", "console project"))
-        if cpp_request and (target / "CMakeLists.txt").exists() and (target / "src" / "main.cpp").exists():
-            return True
-        if any(target.glob("*.sln")) or any(target.glob("*.vcxproj")):
-            return True
-        if (target / "CMakeLists.txt").exists():
-            return True
-
-        web_request = any(term in lowered for term in ("website", "web app", "landing page", "site"))
-        if web_request and any((target / name).exists() for name in ("index.html", "app/page.tsx", "package.json")):
-            return True
-
-        return False
+        return scaffold_should_update_existing_scaffold(prompt, target)
 
     @staticmethod
     def _prompt_requests_validation(prompt: str) -> bool:
-        extra_terms = (
-            "also build",
-            "and build",
-            "build this",
-            "build the project",
-            "continue",
-            "continue building",
-            "continue the build",
-            "finish",
-            "keep going",
-            "make it complete",
-            "make this complete",
-            "make it production ready",
-            "make this production ready",
-            "production ready",
-            "tests",
-            "with tests",
-            "include tests",
-            "including tests",
-            "and tests",
-            "and validation",
-            "with validation",
-            "include validation",
-            "including validation",
-            "no errors",
-            "ensure there are no errors",
-        )
-        return prompt_requests_execution_validation(prompt, extra_phrases=extra_terms)
+        return scaffold_prompt_requests_validation(prompt)
 
     @staticmethod
     def _prompt_negates_web_stack(prompt: str) -> bool:
