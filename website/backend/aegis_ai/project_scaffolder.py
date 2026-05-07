@@ -23,6 +23,11 @@ from .project_scaffold_names import (
     should_use_target_leaf_project_name as scaffold_should_use_target_leaf_project_name,
     target_leaf_is_specific as scaffold_target_leaf_is_specific,
 )
+from .project_scaffold_planning import (
+    default_plan_steps as scaffold_default_plan_steps,
+    inspection_detail as scaffold_inspection_detail,
+    risk_warnings_for_target as scaffold_risk_warnings_for_target,
+)
 from .project_scaffold_paths import (
     WINDOWS_PATH_ACTION_FOLLOWERS as SCAFFOLD_WINDOWS_PATH_ACTION_FOLLOWERS,
     WINDOWS_PATH_CONTEXTUAL_ACTIONS as SCAFFOLD_WINDOWS_PATH_CONTEXTUAL_ACTIONS,
@@ -2078,24 +2083,7 @@ class ProjectScaffolder:
         install_command: str,
         validation_command: str,
     ) -> list[str]:
-        steps = [
-            "Detect project intent, requested path, and target stack from the prompt.",
-            "Inspect the target folder before deciding whether to update in place or create a clean child project.",
-            f"Generate the {preset.label} structure for `{project_name}` with Aegis metadata.",
-            "Prepare a file diff preview so the user can see creates versus updates.",
-            "Apply files through a checkpointed workspace write.",
-        ]
-        if install_command:
-            steps.append(f"Capture install command `{install_command}` for the dependency pass.")
-        if validation_command:
-            steps.append(f"Run or save validation command `{validation_command}` and capture stdout/stderr.")
-        steps.extend(
-            [
-                "Record command history, file index, known errors, and project decisions under `.aegis`.",
-                "Hand off failed validation output to the repair loop with a bounded retry budget.",
-            ]
-        )
-        return steps
+        return scaffold_default_plan_steps(preset, project_name, install_command, validation_command)
 
     @staticmethod
     def _inspection_detail(
@@ -2103,15 +2091,7 @@ class ProjectScaffolder:
         existing_files: list[WorkspaceFile],
         profile: WorkspaceDependencyProfile,
     ) -> str:
-        if not target.exists():
-            return "Target folder does not exist yet; Aegis will create it as a new project workspace."
-        detected: list[str] = []
-        if profile.project_type:
-            detected.append(profile.project_type)
-        detected.extend(profile.frameworks[:3])
-        detected.extend(profile.languages[:3])
-        detected_text = ", ".join(dict.fromkeys(detected)) if detected else "no framework manifest detected"
-        return f"Scanned {len(existing_files)} file(s); detected {detected_text}."
+        return scaffold_inspection_detail(target, existing_files, profile)
 
     @classmethod
     def _should_validate_existing_project_only(
@@ -2202,24 +2182,7 @@ class ProjectScaffolder:
 
     @staticmethod
     def _risk_warnings_for_target(target: Path, *, overwrite: bool) -> list[str]:
-        warnings: list[str] = []
-        if target.exists():
-            visible = []
-            try:
-                visible = [entry for entry in target.iterdir() if entry.name != ".aegis"]
-            except OSError:
-                visible = []
-            if visible and not overwrite:
-                warnings.append(
-                    "Target folder is not empty; Aegis will avoid overwriting existing visible files and may create a child project."
-                )
-            elif visible and overwrite:
-                warnings.append(
-                    "Overwrite is enabled for scaffold-owned paths; unrelated user files still remain protected."
-                )
-        else:
-            warnings.append("Target folder will be created inside an allowed workspace root.")
-        return warnings
+        return scaffold_risk_warnings_for_target(target, overwrite=overwrite)
 
     @classmethod
     def _project_memory_files(
