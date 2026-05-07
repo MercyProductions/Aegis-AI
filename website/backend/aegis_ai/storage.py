@@ -115,6 +115,15 @@ from .storage_route_policy import (
     route_policy_role_proposals as storage_route_policy_role_proposals,
     route_policy_warnings as storage_route_policy_warnings,
 )
+from .storage_telemetry import (
+    bounded_snapshot_limits as storage_bounded_snapshot_limits,
+    model_json as storage_model_json,
+    parse_snapshot_timestamp as storage_parse_snapshot_timestamp,
+    snapshot_age_seconds as storage_snapshot_age_seconds,
+    snapshot_updated_before as storage_snapshot_updated_before,
+    telemetry_snapshot_from_row as storage_telemetry_snapshot_from_row,
+    telemetry_snapshot_key as storage_telemetry_snapshot_key,
+)
 from .storage_records import (
     execution_job_from_row as storage_execution_job_from_row,
     execution_job_values as storage_execution_job_values,
@@ -3532,14 +3541,10 @@ class EventStore:
         fallback_limit: int,
         feedback_limit: int,
     ) -> tuple[int, int, int]:
-        return (
-            max(1, min(500, route_quality_limit)),
-            max(1, min(100, fallback_limit)),
-            max(1, min(500, feedback_limit)),
-        )
+        return storage_bounded_snapshot_limits(route_quality_limit, fallback_limit, feedback_limit)
 
     def _telemetry_snapshot_key(self, route_quality_limit: int, fallback_limit: int, feedback_limit: int) -> str:
-        return f"route:{route_quality_limit}|fallback:{fallback_limit}|feedback:{feedback_limit}"
+        return storage_telemetry_snapshot_key(route_quality_limit, fallback_limit, feedback_limit)
 
     def _telemetry_snapshot_from_row(
         self,
@@ -3547,53 +3552,19 @@ class EventStore:
         project_root: Path,
         stale_after_seconds: int,
     ) -> TelemetrySnapshot:
-        updated_at = str(row["updated_at"])
-        age_seconds = self._snapshot_age_seconds(updated_at)
-        stale_after = max(60, stale_after_seconds or int(row["stale_after_seconds"] or 900))
-        return TelemetrySnapshot(
-            id=str(row["id"]),
-            workspace_root=str(project_root.resolve()),
-            snapshot_key=str(row["snapshot_key"]),
-            created_at=str(row["created_at"]),
-            updated_at=updated_at,
-            route_quality_limit=int(row["route_quality_limit"]),
-            fallback_limit=int(row["fallback_limit"]),
-            feedback_limit=int(row["feedback_limit"]),
-            stale_after_seconds=stale_after,
-            age_seconds=age_seconds,
-            is_stale=age_seconds > stale_after,
-            route_quality=RouteQualityResponse.model_validate(self._json_payload(str(row["route_quality_json"]))),
-            fallback_inspector=FallbackInspectorResponse.model_validate(
-                self._json_payload(str(row["fallback_inspector_json"]))
-            ),
-            feedback=FeedbackTelemetryResponse.model_validate(self._json_payload(str(row["feedback_json"]))),
-        )
+        return storage_telemetry_snapshot_from_row(row, project_root, stale_after_seconds)
 
     def _snapshot_age_seconds(self, updated_at: str) -> int:
-        parsed = self._parse_snapshot_timestamp(updated_at)
-        if parsed is None:
-            return 0
-        return max(0, int((datetime.now(timezone.utc) - parsed.astimezone(timezone.utc)).total_seconds()))
+        return storage_snapshot_age_seconds(updated_at)
 
     def _snapshot_updated_before(self, updated_at: str, cutoff: datetime) -> bool:
-        parsed = self._parse_snapshot_timestamp(updated_at)
-        if parsed is None:
-            return False
-        return parsed.astimezone(timezone.utc) < cutoff.astimezone(timezone.utc)
+        return storage_snapshot_updated_before(updated_at, cutoff)
 
     def _parse_snapshot_timestamp(self, updated_at: str) -> datetime | None:
-        try:
-            parsed = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
-        except ValueError:
-            return None
-        if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=timezone.utc)
-        return parsed
+        return storage_parse_snapshot_timestamp(updated_at)
 
     def _model_json(self, value: Any) -> str:
-        if hasattr(value, "model_dump"):
-            return json.dumps(value.model_dump(mode="json"), ensure_ascii=True, sort_keys=True)
-        return json.dumps(value, ensure_ascii=True, sort_keys=True)
+        return storage_model_json(value)
 
     def _project_root_aliases(self, project_root: Path) -> list[str]:
         return project_root_aliases(self.project_root, project_root)
