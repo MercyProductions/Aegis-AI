@@ -25,10 +25,14 @@ export function loadComposerDraft(storage = resolveComposerDraftStorage()): Comp
     if (!raw) return null;
 
     const parsed = JSON.parse(raw);
-    if (!isComposerDraft(parsed)) return null;
+    if (!isComposerDraft(parsed)) {
+      clearComposerDraft(storage);
+      return null;
+    }
 
     return createComposerDraft(parsed.content, parsed.updatedAt);
   } catch {
+    clearComposerDraft(storage);
     return null;
   }
 }

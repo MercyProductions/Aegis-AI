@@ -24,6 +24,7 @@ The stabilization pass covered:
 - Authenticated overlay responsiveness.
 - Long saved-session history behavior.
 - Protected-route auth gating and malformed session recovery.
+- Malformed persisted UI state recovery for saved sessions, composer drafts, and queued prompts.
 - Initial bundle shape and optional panel loading.
 - Lazy-surface crash containment.
 - Live frontend/backend identity checks.
@@ -56,6 +57,8 @@ The stabilization pass covered:
 - Added E2E coverage for a 50-session saved history: reload persistence, sidebar/search filtering, opening a saved result, command-surface visibility, and horizontal-overflow detection.
 - Invalid or malformed persisted auth sessions are now cleared automatically instead of lingering in localStorage.
 - Added E2E coverage for unauthenticated protected-route redirects and malformed auth-session cleanup.
+- Invalid saved-session, composer-draft, and queued-prompt localStorage payloads now self-heal by clearing or normalizing the stored data during load.
+- Added unit coverage and browser E2E coverage for malformed persisted UI state so a corrupted browser profile cannot break the protected command surface.
 
 ## Current Validation Baseline
 
@@ -68,12 +71,12 @@ The following checks passed in this stabilization pass:
 
 Validation details:
 
-- Frontend unit tests: 119 passed.
+- Frontend unit tests: 123 passed.
 - Frontend production build: passed.
 - Backend tests: 494 passed, 108 subtests passed.
 - Live doctor check: passed.
 - Live smoke check: passed.
-- Browser E2E: passed, including public mobile route checks, protected-route auth gates, malformed auth cleanup, protected laptop/mobile responsive shell checks, tablet/mobile settings modal checks, tablet/mobile authenticated overlay checks, and 50-session history stress.
+- Browser E2E: passed, including public mobile route checks, protected-route auth gates, malformed auth cleanup, malformed persisted UI state recovery, protected laptop/mobile responsive shell checks, tablet/mobile settings modal checks, tablet/mobile authenticated overlay checks, and 50-session history stress.
 
 Known warning:
 
@@ -85,6 +88,7 @@ Known warning:
 - Add focused visual regression snapshots for the compact authenticated overlays after the next component extraction pass.
 - Add a focused visual regression pass for the public site, protected workspace shell, right observability panel, and auth pages.
 - Add auth-session cleanup or database isolation for repeated E2E account registration runs.
+- Add one shared persisted-storage helper for optional local UI state once `App.tsx` extraction begins, so malformed storage cleanup is consistent without coupling unrelated utilities.
 - Standardize script default ports or document the live validation port strategy to avoid confusion between `5173/8787` defaults and active `5177/8793` runs.
 
 ## High-Priority Refinements

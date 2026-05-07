@@ -15,7 +15,7 @@ export type SavedConversation = ChatThreadPreview & {
   messages: ChatMessage[];
 };
 
-type ConversationStorage = Pick<Storage, 'getItem' | 'setItem'>;
+type ConversationStorage = Pick<Storage, 'getItem' | 'setItem'> & Partial<Pick<Storage, 'removeItem'>>;
 
 export function createConversationId(): string {
   return `thread-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -93,10 +93,19 @@ export function loadSavedConversations(storage = resolveConversationStorage()): 
     if (!raw) return [];
 
     const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
+    if (!Array.isArray(parsed)) {
+      clearSavedConversationStorage(storage);
+      return [];
+    }
 
-    return parsed.filter(isSavedConversation).slice(0, 50);
+    const conversations = parsed.filter(isSavedConversation).slice(0, 50);
+    if (conversations.length !== parsed.length || parsed.length > 50) {
+      saveSavedConversations(conversations, storage);
+    }
+
+    return conversations;
   } catch {
+    clearSavedConversationStorage(storage);
     return [];
   }
 }
@@ -333,5 +342,23 @@ function resolveConversationStorage(): ConversationStorage | null {
     return typeof window === 'undefined' ? null : window.localStorage;
   } catch {
     return null;
+  }
+}
+
+function clearSavedConversationStorage(storage: ConversationStorage) {
+  try {
+    if (storage.removeItem) {
+      try {
+        storage.removeItem(CONVERSATION_STORAGE_KEY);
+        return;
+      } catch {
+        storage.setItem(CONVERSATION_STORAGE_KEY, '[]');
+        return;
+      }
+    }
+
+    storage.setItem(CONVERSATION_STORAGE_KEY, '[]');
+  } catch {
+    // Broken persisted history should never prevent the app shell from opening.
   }
 }

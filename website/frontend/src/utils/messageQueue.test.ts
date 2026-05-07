@@ -23,6 +23,10 @@ class MemoryStorage {
   setItem(key: string, value: string) {
     this.values.set(key, value);
   }
+
+  removeItem(key: string) {
+    this.values.delete(key);
+  }
 }
 
 describe('message queue utilities', () => {
@@ -182,9 +186,20 @@ describe('message queue utilities', () => {
         history: [{ role: 'user', content: 'first request' }]
       }
     ]);
+    const cleanedRaw = storage.getItem(QUEUED_MESSAGES_STORAGE_KEY);
+    expect(cleanedRaw ? JSON.parse(cleanedRaw) : []).toHaveLength(1);
 
     storage.setItem(QUEUED_MESSAGES_STORAGE_KEY, '{ nope');
     expect(loadQueuedMessages(storage)).toEqual([]);
+    expect(storage.getItem(QUEUED_MESSAGES_STORAGE_KEY)).toBeNull();
+  });
+
+  it('clears non-array queued message payloads during recovery', () => {
+    const storage = new MemoryStorage();
+    storage.setItem(QUEUED_MESSAGES_STORAGE_KEY, JSON.stringify({ id: 'wrong-shape' }));
+
+    expect(loadQueuedMessages(storage)).toEqual([]);
+    expect(storage.getItem(QUEUED_MESSAGES_STORAGE_KEY)).toBeNull();
   });
 
   it('keeps legacy queued messages without thread snapshots valid', () => {

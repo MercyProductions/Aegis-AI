@@ -25,7 +25,7 @@ export type QueuedMessageDraft = Partial<QueuedMessage> & {
   content?: string;
 };
 
-type QueueStorage = Pick<Storage, 'getItem' | 'setItem'>;
+type QueueStorage = Pick<Storage, 'getItem' | 'setItem'> & Partial<Pick<Storage, 'removeItem'>>;
 
 export function createQueuedMessage(
   content: string,
@@ -95,10 +95,19 @@ export function loadQueuedMessages(storage = resolveQueueStorage()): QueuedMessa
     if (!raw) return [];
 
     const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
+    if (!Array.isArray(parsed)) {
+      clearQueuedMessageStorage(storage);
+      return [];
+    }
 
-    return parsed.filter(isQueuedMessage).map(normalizeQueuedMessage).slice(-MAX_QUEUED_MESSAGES);
+    const messages = parsed.filter(isQueuedMessage).map(normalizeQueuedMessage).slice(-MAX_QUEUED_MESSAGES);
+    if (messages.length !== parsed.length || parsed.length > MAX_QUEUED_MESSAGES) {
+      saveQueuedMessages(messages, storage);
+    }
+
+    return messages;
   } catch {
+    clearQueuedMessageStorage(storage);
     return [];
   }
 }
@@ -174,5 +183,23 @@ function resolveQueueStorage(): QueueStorage | null {
     return typeof window === 'undefined' ? null : window.localStorage;
   } catch {
     return null;
+  }
+}
+
+function clearQueuedMessageStorage(storage: QueueStorage) {
+  try {
+    if (storage.removeItem) {
+      try {
+        storage.removeItem(QUEUED_MESSAGES_STORAGE_KEY);
+        return;
+      } catch {
+        storage.setItem(QUEUED_MESSAGES_STORAGE_KEY, '[]');
+        return;
+      }
+    }
+
+    storage.setItem(QUEUED_MESSAGES_STORAGE_KEY, '[]');
+  } catch {
+    // Queue recovery is best-effort; the composer should remain usable.
   }
 }

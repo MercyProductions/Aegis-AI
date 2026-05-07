@@ -14,6 +14,7 @@ const workspaceRoot = path.join(root, '.tmp', `e2e-web-${timestamp()}-${process.
 const alternateProjectRoot = path.join(workspaceRoot, 'project-switch-fixture');
 const conversationStorageKey = 'aegis.web.conversations.v1';
 const composerDraftStorageKey = 'aegis.web.composerDraft.v1';
+const queuedMessagesStorageKey = 'aegis.web.queuedMessages.v1';
 const customAgentsStorageKey = 'aegis.customAgents.v1';
 const authSessionStorageKey = 'aegis.auth.session.v1';
 const detailsPanelVisibleStorageKey = 'aegis.detailsPanelVisible.v1';
@@ -84,6 +85,7 @@ try {
 
     await page.goto(`${frontendUrl}/app`, { waitUntil: 'domcontentloaded' });
     await waitForLocatorCount(page.getByTestId('details-panel'), 1, 'details panel visible on clean startup');
+    await exerciseMalformedPersistedUiState(page);
     await exerciseProjectHistorySwitcher(page);
     await exerciseCustomAgentEditor(page);
     await exerciseHeaderModelSwitcher(page);
@@ -1065,6 +1067,50 @@ async function exerciseHeaderModelSwitcher(page) {
   await page.unroute(`${backendUrl}/api/model-manager`);
   await page.unroute(`${backendUrl}/api/model-registry`);
   await page.unroute(`${backendUrl}/api/config`);
+}
+
+async function exerciseMalformedPersistedUiState(page) {
+  await page.evaluate(
+    ({ conversationKey, draftKey, queueKey }) => {
+      localStorage.setItem(conversationKey, '{ malformed conversations');
+      localStorage.setItem(draftKey, JSON.stringify({ content: '', updatedAt: '2026-05-07T00:00:00.000Z' }));
+      localStorage.setItem(queueKey, JSON.stringify({ id: 'not-a-queue-array' }));
+    },
+    {
+      conversationKey: conversationStorageKey,
+      draftKey: composerDraftStorageKey,
+      queueKey: queuedMessagesStorageKey
+    }
+  );
+
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await waitForLocatorCount(page.getByTestId('details-panel'), 1, 'details panel after malformed UI storage recovery');
+  await waitForLocatorCount(
+    page.getByPlaceholder('Message Auralith Prime...', { exact: true }),
+    1,
+    'command input after malformed UI storage recovery'
+  );
+  await waitForLocatorExactCount(
+    page.getByRole('button', { name: /queued$/i }),
+    0,
+    'malformed queued prompt tray remains hidden after recovery'
+  );
+
+  const persistedKeys = await page.evaluate(
+    ({ conversationKey, draftKey, queueKey }) => ({
+      conversations: localStorage.getItem(conversationKey),
+      draft: localStorage.getItem(draftKey),
+      queued: localStorage.getItem(queueKey)
+    }),
+    {
+      conversationKey: conversationStorageKey,
+      draftKey: composerDraftStorageKey,
+      queueKey: queuedMessagesStorageKey
+    }
+  );
+  assert(persistedKeys.conversations === null, 'Malformed saved-session storage was not cleared.');
+  assert(persistedKeys.draft === null, 'Malformed composer draft storage was not cleared.');
+  assert(isNullOrEmptyArrayPayload(persistedKeys.queued), 'Malformed queued-prompt storage was not normalized.');
 }
 
 async function exerciseWorkspaceFileFilter(page) {
@@ -2749,6 +2795,17 @@ function queueTestResponse(overrides = {}) {
     completion_quality: null,
     ...overrides
   };
+}
+
+function isNullOrEmptyArrayPayload(value) {
+  if (value === null) return true;
+
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) && parsed.length === 0;
+  } catch {
+    return false;
+  }
 }
 
 async function waitForJson(url, predicate, label) {

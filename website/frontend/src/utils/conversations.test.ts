@@ -24,6 +24,10 @@ class MemoryStorage {
   setItem(key: string, value: string) {
     this.values.set(key, value);
   }
+
+  removeItem(key: string) {
+    this.values.delete(key);
+  }
 }
 
 describe('conversation utilities', () => {
@@ -213,9 +217,20 @@ describe('conversation utilities', () => {
     );
 
     expect(loadSavedConversations(storage)).toHaveLength(1);
+    const cleanedRaw = storage.getItem(CONVERSATION_STORAGE_KEY);
+    expect(cleanedRaw ? JSON.parse(cleanedRaw) : []).toHaveLength(1);
 
     storage.setItem(CONVERSATION_STORAGE_KEY, '{ nope');
     expect(loadSavedConversations(storage)).toEqual([]);
+    expect(storage.getItem(CONVERSATION_STORAGE_KEY)).toBeNull();
+  });
+
+  it('clears non-array saved conversation payloads during recovery', () => {
+    const storage = new MemoryStorage();
+    storage.setItem(CONVERSATION_STORAGE_KEY, JSON.stringify({ id: 'wrong-shape' }));
+
+    expect(loadSavedConversations(storage)).toEqual([]);
+    expect(storage.getItem(CONVERSATION_STORAGE_KEY)).toBeNull();
   });
 
   it('saves at most 50 conversations', () => {

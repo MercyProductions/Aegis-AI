@@ -58,6 +58,11 @@ describe('composer draft utilities', () => {
     const storage = new MemoryStorage();
     storage.setItem(COMPOSER_DRAFT_STORAGE_KEY, '{ nope');
     expect(loadComposerDraft(storage)).toBeNull();
+    expect(storage.getItem(COMPOSER_DRAFT_STORAGE_KEY)).toBeNull();
+
+    storage.setItem(COMPOSER_DRAFT_STORAGE_KEY, JSON.stringify({ content: '', updatedAt: '2026-05-05T00:00:00.000Z' }));
+    expect(loadComposerDraft(storage)).toBeNull();
+    expect(storage.getItem(COMPOSER_DRAFT_STORAGE_KEY)).toBeNull();
 
     const largeDraft = 'x'.repeat(MAX_COMPOSER_DRAFT_CHARS + 20);
     saveComposerDraft(largeDraft, storage);
