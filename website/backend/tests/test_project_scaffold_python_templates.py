@@ -5,6 +5,7 @@ import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from aegis_ai.project_scaffold_python_templates import (
+    fastapi_template,
     python_cli_template,
     python_stdlib_api_template,
     python_tkinter_desktop_template,
@@ -13,6 +14,29 @@ from aegis_ai.project_scaffolder import ProjectScaffolder
 
 
 class ProjectScaffoldPythonTemplatesTests(unittest.TestCase):
+    def test_fastapi_template_matches_project_scaffolder_wrapper(self) -> None:
+        files = fastapi_template("Agent Runtime API")
+
+        self.assertEqual(files, ProjectScaffolder._fastapi_template("Agent Runtime API"))
+        self.assertIn("pyproject.toml", files)
+        self.assertIn("src/agent_runtime_api/settings.py", files)
+        self.assertIn("src/agent_runtime_api/main.py", files)
+        self.assertIn("tests/test_health.py", files)
+        self.assertIn(".env.example", files)
+        self.assertIn('name = "agent-runtime-api"', files["pyproject.toml"])
+        self.assertIn('"fastapi>=0.115"', files["pyproject.toml"])
+        self.assertIn("SettingsConfigDict", files["src/agent_runtime_api/settings.py"])
+        self.assertIn("def create_app() -> FastAPI", files["src/agent_runtime_api/main.py"])
+        self.assertIn('client.get("/health")', files["tests/test_health.py"])
+        self.assertIn("uvicorn agent_runtime_api.main:app --reload", files["README.md"])
+
+    def test_fastapi_template_prefixes_numeric_distribution_name(self) -> None:
+        files = fastapi_template("123 API")
+
+        self.assertIn('name = "aegis-123-api"', files["pyproject.toml"])
+        self.assertIn("src/app_123_api/main.py", files)
+        self.assertIn("from app_123_api.main import create_app", files["tests/test_health.py"])
+
     def test_python_cli_template_matches_project_scaffolder_wrapper(self) -> None:
         files = python_cli_template("Validated Tool")
 
