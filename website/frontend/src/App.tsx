@@ -166,7 +166,6 @@ import {
   severityToEventStatus,
   starterPrompts,
   taskFilterOptions,
-  terminalTaskStatuses,
   thinkingStates,
   type ActivityFilter,
   type TaskBoardFilter
@@ -179,6 +178,13 @@ import {
   filterActivityEvents,
   payloadValueText
 } from './utils/activityEvents';
+import {
+  collectTaskArtifacts,
+  filterTaskBoardTasks,
+  findTaskBoardSelection,
+  summarizeTaskBoard,
+  taskIsTerminal
+} from './utils/taskBoard';
 import {
   defaultAgentId,
   defaultAgentPerspective,
@@ -984,19 +990,14 @@ function App() {
   ]);
   const taskBoardTasks = useMemo(() => mergeById<TaskSummary>(tasks, visibleTasks), [tasks, visibleTasks]);
   const selectedTask = useMemo(
-    () => taskBoardTasks.find((item) => item.id === selectedTaskId || item.task_id === selectedTaskId) ?? null,
+    () => findTaskBoardSelection(taskBoardTasks, selectedTaskId),
     [selectedTaskId, taskBoardTasks]
   );
   const filteredTaskBoardTasks = useMemo(
-    () =>
-      taskBoardTasks.filter((item) => {
-        if (taskStatusFilter === 'all') return true;
-        if (taskStatusFilter === 'active') return !terminalTaskStatuses.has(item.status);
-        if (taskStatusFilter === 'completed') return item.status === 'completed';
-        return item.status === 'failed' || item.status === 'canceled';
-      }),
+    () => filterTaskBoardTasks(taskBoardTasks, taskStatusFilter),
     [taskBoardTasks, taskStatusFilter]
   );
+  const taskBoardSummary = useMemo(() => summarizeTaskBoard(taskBoardTasks), [taskBoardTasks]);
   const visibleFiles = useMemo(() => filterWorkspaceFiles(files, fileSearch), [fileSearch, files]);
   const visibleValidationRepairTrail = useMemo(
     () => filterValidationRepairTrail(validationRepairTrail, validationRepairSearch, validationRepairStatusFilter),
@@ -4504,10 +4505,6 @@ function App() {
     const architectureMetric = health?.metrics.find((item) => item.name === 'Architecture drift');
     const validationMetric = health?.metrics.find((item) => item.name === 'Validation instability');
     const dependencyMetric = health?.metrics.find((item) => item.name === 'Dependency freshness');
-    const activeTaskCount = taskBoardTasks.filter((item) => !terminalTaskStatuses.has(item.status)).length;
-    const completedTaskCount = taskBoardTasks.filter((item) => item.status === 'completed').length;
-    const failedTaskCount = taskBoardTasks.filter((item) => item.status === 'failed' || item.status === 'canceled').length;
-
     return (
       <div style={styles.surfacePage}>
         {renderSurfaceHeader(
@@ -4795,15 +4792,15 @@ function App() {
             <div style={styles.metricGrid}>
               <div style={styles.metricCard(palette)}>
                 <span style={styles.metricLabel(palette)}>Active tasks</span>
-                <strong style={styles.metricValue(palette)}>{activeTaskCount}</strong>
+                <strong style={styles.metricValue(palette)}>{taskBoardSummary.active}</strong>
               </div>
               <div style={styles.metricCard(palette)}>
                 <span style={styles.metricLabel(palette)}>Completed</span>
-                <strong style={styles.metricValue(palette)}>{completedTaskCount}</strong>
+                <strong style={styles.metricValue(palette)}>{taskBoardSummary.completed}</strong>
               </div>
               <div style={styles.metricCard(palette)}>
                 <span style={styles.metricLabel(palette)}>Failed</span>
-                <strong style={styles.metricValue(palette)}>{failedTaskCount}</strong>
+                <strong style={styles.metricValue(palette)}>{taskBoardSummary.failed}</strong>
               </div>
             </div>
             <div style={styles.sectionBlock}>
@@ -4848,16 +4845,8 @@ function App() {
   }
 
   function renderTasksSurface() {
-    const relatedFiles = Array.from(
-      new Set([...(selectedTask?.related_files ?? []), ...(taskArtifacts?.related_files ?? [])])
-    );
-    const validationCommands = Array.from(
-      new Set([...(selectedTask?.validation_commands ?? []), ...(taskArtifacts?.validation_commands ?? [])])
-    );
-    const checkpointIds = Array.from(
-      new Set([...(selectedTask?.checkpoints ?? []), ...(taskArtifacts?.checkpoints ?? [])])
-    );
-    const selectedTaskTerminal = selectedTask ? terminalTaskStatuses.has(selectedTask.status) : true;
+    const { relatedFiles, validationCommands, checkpointIds } = collectTaskArtifacts(selectedTask, taskArtifacts);
+    const selectedTaskTerminal = selectedTask ? taskIsTerminal(selectedTask.status) : true;
 
     return (
       <div style={styles.surfacePage}>
@@ -8224,7 +8213,7 @@ function App() {
                       <strong style={styles.workspaceSignalValue(palette)}>
                         {selectedTask?.title ||
                           selectedTask?.message ||
-                          `${taskBoardTasks.filter((item) => !terminalTaskStatuses.has(item.status)).length} active task(s)`}
+                          `${taskBoardSummary.active} active task(s)`}
                       </strong>
                       <span style={styles.workspaceSignalMeta(palette)}>
                         {taskBoardTasks.length
