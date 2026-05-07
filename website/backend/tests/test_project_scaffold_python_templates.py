@@ -4,7 +4,11 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from aegis_ai.project_scaffold_python_templates import python_cli_template, python_stdlib_api_template
+from aegis_ai.project_scaffold_python_templates import (
+    python_cli_template,
+    python_stdlib_api_template,
+    python_tkinter_desktop_template,
+)
 from aegis_ai.project_scaffolder import ProjectScaffolder
 
 
@@ -28,6 +32,30 @@ class ProjectScaffoldPythonTemplatesTests(unittest.TestCase):
         self.assertIn('name = "aegis-123-my-tool"', files["pyproject.toml"])
         self.assertIn("src/app_123_my_tool/main.py", files)
         self.assertIn("app_123_my_tool = \"app_123_my_tool.main:main\"", files["pyproject.toml"])
+
+    def test_python_tkinter_desktop_template_matches_project_scaffolder_wrapper(self) -> None:
+        files = python_tkinter_desktop_template("Task Pad")
+
+        self.assertEqual(files, ProjectScaffolder._python_tkinter_desktop_template("Task Pad"))
+        self.assertIn("pyproject.toml", files)
+        self.assertIn("src/task_pad/state.py", files)
+        self.assertIn("src/task_pad/app.py", files)
+        self.assertIn("src/task_pad/main.py", files)
+        self.assertIn("tests/test_state.py", files)
+        self.assertIn("build.py", files)
+        self.assertIn('name = "task-pad"', files["pyproject.toml"])
+        self.assertIn('task_pad = "task_pad.main:main"', files["pyproject.toml"])
+        self.assertIn("TaskStore", files["src/task_pad/state.py"])
+        self.assertIn("import tkinter as tk", files["src/task_pad/app.py"])
+        self.assertIn("compileall.compile_dir", files["build.py"])
+        self.assertIn("python -m task_pad.main", files["README.md"])
+
+    def test_python_tkinter_desktop_template_prefixes_numeric_distribution_name(self) -> None:
+        files = python_tkinter_desktop_template("123 Desktop")
+
+        self.assertIn('name = "aegis-123-desktop"', files["pyproject.toml"])
+        self.assertIn("src/app_123_desktop/app.py", files)
+        self.assertIn("app_123_desktop = \"app_123_desktop.main:main\"", files["pyproject.toml"])
 
     def test_python_stdlib_api_template_matches_project_scaffolder_wrapper(self) -> None:
         files = python_stdlib_api_template("Inventory Bridge")
