@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
 import json
 from pathlib import Path
 import re
@@ -221,6 +220,14 @@ from .schemas import (
 from .settings import PROJECT_ROOT, clear_settings_cache, get_settings, has_env_file, update_env
 from .storage import utc_now
 from .workspace import WorkspaceManager
+from .workspace_cache import (
+    ProjectPlanCache,
+    WorkspaceStatusSnapshot,
+    WorkspaceStatusSnapshotCache,
+    cache_paths_are_related,
+    normalized_cache_path,
+    project_plan_cache_key,
+)
 
 
 settings = get_settings()
@@ -251,45 +258,26 @@ _PROJECT_PLAN_CACHE_TTL_SECONDS = 30.0
 _PROJECT_PLAN_CACHE_MAX = 128
 
 
-@dataclass(frozen=True)
-class _WorkspaceStatusSnapshot:
-    created_at: float
-    manifest: Any
-    dependency_profile: Any
-    instruction_status: Any
-    validation_plan: Any
-    command_history: dict[str, Any]
-    readiness: Any
-
-
-@dataclass(frozen=True)
-class _ProjectPlanCacheEntry:
-    created_at: float
-    response: ProjectScaffoldPlanResponse
-
-
-_workspace_status_cache: dict[str, _WorkspaceStatusSnapshot] = {}
-_project_plan_cache: dict[str, _ProjectPlanCacheEntry] = {}
+_workspace_status_cache = WorkspaceStatusSnapshotCache(
+    ttl_seconds=_WORKSPACE_SNAPSHOT_TTL_SECONDS,
+    max_size=_WORKSPACE_SNAPSHOT_CACHE_MAX,
+)
+_project_plan_cache = ProjectPlanCache(
+    ttl_seconds=_PROJECT_PLAN_CACHE_TTL_SECONDS,
+    max_size=_PROJECT_PLAN_CACHE_MAX,
+)
 
 
 def _normalized_cache_path(path: Path) -> str:
-    return str(path.resolve()).rstrip("\\/").casefold()
+    return normalized_cache_path(path)
 
 
 def _cache_paths_are_related(left: str, right: str) -> bool:
-    if left == right:
-        return True
-    return left.startswith(right + "\\") or right.startswith(left + "\\")
+    return cache_paths_are_related(left, right)
 
 
 def _clear_workspace_status_cache(root: Path | None = None) -> None:
-    if root is None:
-        _workspace_status_cache.clear()
-        return
-    target = _normalized_cache_path(root)
-    for key in list(_workspace_status_cache):
-        if _cache_paths_are_related(key, target):
-            _workspace_status_cache.pop(key, None)
+    _workspace_status_cache.clear(root)
 
 
 def _clear_project_plan_cache() -> None:
@@ -302,22 +290,17 @@ def _invalidate_workspace_caches(root: Path | None = None) -> None:
 
 
 def _prune_workspace_status_cache() -> None:
-    while len(_workspace_status_cache) > _WORKSPACE_SNAPSHOT_CACHE_MAX:
-        oldest_key = min(_workspace_status_cache, key=lambda key: _workspace_status_cache[key].created_at)
-        _workspace_status_cache.pop(oldest_key, None)
+    _workspace_status_cache.prune()
 
 
 def _prune_project_plan_cache() -> None:
-    while len(_project_plan_cache) > _PROJECT_PLAN_CACHE_MAX:
-        oldest_key = min(_project_plan_cache, key=lambda key: _project_plan_cache[key].created_at)
-        _project_plan_cache.pop(oldest_key, None)
+    _project_plan_cache.prune()
 
 
-def _workspace_status_snapshot(root: Path) -> _WorkspaceStatusSnapshot:
-    key = _normalized_cache_path(root)
+def _workspace_status_snapshot(root: Path) -> WorkspaceStatusSnapshot:
     now = time.monotonic()
-    cached = _workspace_status_cache.get(key)
-    if cached is not None and now - cached.created_at <= _WORKSPACE_SNAPSHOT_TTL_SECONDS:
+    cached = _workspace_status_cache.get(root, now=now)
+    if cached is not None:
         return cached
 
     manifest = workspace_manager.load_project_manifest(root)
@@ -332,7 +315,7 @@ def _workspace_status_snapshot(root: Path) -> _WorkspaceStatusSnapshot:
         validation_plan=validation_plan,
         command_history=command_history,
     )
-    snapshot = _WorkspaceStatusSnapshot(
+    snapshot = WorkspaceStatusSnapshot(
         created_at=now,
         manifest=manifest,
         dependency_profile=dependency_profile,
@@ -341,8 +324,7 @@ def _workspace_status_snapshot(root: Path) -> _WorkspaceStatusSnapshot:
         command_history=command_history,
         readiness=readiness,
     )
-    _workspace_status_cache[key] = snapshot
-    _prune_workspace_status_cache()
+    _workspace_status_cache.set(root, snapshot)
     return snapshot
 
 
@@ -508,19 +490,16 @@ def _run_scheduled_intelligence_jobs(root: Path, request: ScheduledJobRunRequest
 
 
 def _project_plan_cache_key(request: ProjectScaffoldPlanRequest) -> str:
-    return json.dumps(request.model_dump(mode="json"), sort_keys=True, ensure_ascii=False)
+    return project_plan_cache_key(request)
 
 
 def _cached_project_plan(request: ProjectScaffoldPlanRequest) -> ProjectScaffoldPlanResponse:
-    key = _project_plan_cache_key(request)
-    now = time.monotonic()
-    cached = _project_plan_cache.get(key)
-    if cached is not None and now - cached.created_at <= _PROJECT_PLAN_CACHE_TTL_SECONDS:
-        return cached.response.model_copy(deep=True)
+    cached = _project_plan_cache.get(request)
+    if cached is not None:
+        return cached
 
     response = project_scaffolder().plan_from_prompt(request)
-    _project_plan_cache[key] = _ProjectPlanCacheEntry(created_at=now, response=response.model_copy(deep=True))
-    _prune_project_plan_cache()
+    _project_plan_cache.set(request, response)
     return response
 
 
