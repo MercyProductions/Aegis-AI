@@ -10,6 +10,17 @@ from typing import Any, AsyncIterator, Callable, Literal
 from pydantic import ValidationError
 
 from .approval_sandbox import ApprovalManager
+from .agent_request_intent import (
+    message_without_explicit_paths as request_message_without_explicit_paths,
+    request_mentions_cpp_project,
+    request_mentions_desktop_project,
+    request_mentions_extension_project,
+    request_mentions_python_app_project,
+    request_mentions_specific_web_framework,
+    request_mentions_web_project,
+    request_needs_project_shape,
+    windows_path_fragments as request_windows_path_fragments,
+)
 from .agent_runtime import AgentDraft, MissionAnchor, sanitize_model_change_paths
 from .commands import CommandResult, CommandRunner
 from .context_budget import ContextBudgetManager, ContextBudgetResult
@@ -2847,30 +2858,10 @@ if __name__ == "__main__":
         return False
 
     def _message_without_explicit_paths(self, message: str) -> str:
-        cleaned = message
-        for path_fragment in self._windows_path_fragments(message):
-            cleaned = cleaned.replace(path_fragment, " ", 1)
-        cleaned = re.sub(
-            r"\b(?:at\s+this\s+(?:path|location)|in\s+this\s+(?:folder|directory)|at\s+this\s+folder)\b",
-            " ",
-            cleaned,
-            flags=re.IGNORECASE,
-        )
-        return " ".join(cleaned.split())
+        return request_message_without_explicit_paths(message, self._clean_windows_path_fragment)
 
     def _windows_path_fragments(self, message: str) -> list[str]:
-        fragments: list[str] = []
-        for match in re.finditer(r"[A-Za-z]:[\\/]", message):
-            start = match.start()
-            end = match.end()
-            while end < len(message):
-                if message[end] in "\r\n\"'`<>|*?":
-                    break
-                end += 1
-            candidate = self._clean_windows_path_fragment(message[start:end])
-            if candidate and candidate not in fragments:
-                fragments.append(candidate)
-        return fragments
+        return request_windows_path_fragments(message, self._clean_windows_path_fragment)
 
     def _clean_windows_path_fragment(self, value: str) -> str:
         from .project_scaffolder import ProjectScaffolder
@@ -2878,63 +2869,10 @@ if __name__ == "__main__":
         return ProjectScaffolder._clean_windows_path_fragment(value)
 
     def _request_needs_project_shape(self, message: str, mode: ModeName) -> bool:
-        if not self._request_expects_file_changes(message, mode):
-            return False
-        lower = self._message_without_explicit_paths(message).lower()
-        product_terms = (
-            "website",
-            "web site",
-            "web app",
-            "app",
-            "application",
-            "project",
-            "dashboard",
-            "api",
-            "service",
-            "database",
-            "migration",
-            "schema",
-            "kernel",
-            "driver",
-            "dll",
-            "exe",
-            "executable",
-            "library",
-            "desktop",
-            "console app",
-            "console project",
-            "bot",
-            "cli",
-            "extension",
-            "module",
-            "package",
+        return request_needs_project_shape(
+            self._message_without_explicit_paths(message),
+            expects_file_changes=self._request_expects_file_changes(message, mode),
         )
-        simple_single_file_terms = (
-            "snippet",
-            "single file",
-            "one file",
-            "script that",
-            "code to",
-            "print hello",
-            "hello world script",
-        )
-        if any(term in lower for term in simple_single_file_terms) and not any(
-            term in lower
-            for term in (
-                "project",
-                "app",
-                "application",
-                "website",
-                "web app",
-                "service",
-                "driver",
-                "database",
-                "sln",
-                "solution",
-            )
-        ):
-            return False
-        return any(term in lower for term in product_terms)
 
     def _change_paths(self, draft: AgentDraft) -> set[str]:
         return {change.path.replace("\\", "/").lower().strip("/") for change in draft.changes}
@@ -3584,115 +3522,23 @@ if __name__ == "__main__":
         ) and ("package.json" in paths or "tsconfig.json" in paths)
 
     def _request_mentions_cpp_project(self, message: str) -> bool:
-        lower = self._message_without_explicit_paths(message).lower()
-        return any(
-            term in lower
-            for term in (
-                "c++",
-                "cpp",
-                "cmake",
-                "native project",
-                "native app",
-                "native tool",
-                "visual studio",
-                "sln",
-                "vcxproj",
-                "exe",
-                "executable",
-                "win32",
-                "windows app",
-                "windows desktop",
-                "gui app",
-                "dll",
-                "shared library",
-                "dynamic library",
-                "windows internals",
-                "minhook",
-                "imgui",
-                "console app",
-                "console project",
-            )
-        )
+        return request_mentions_cpp_project(self._message_without_explicit_paths(message))
 
     def _request_mentions_extension_project(self, message: str) -> bool:
-        lower = self._message_without_explicit_paths(message).lower()
-        return any(
-            term in lower
-            for term in (
-                "browser extension",
-                "chrome extension",
-                "edge extension",
-                "manifest v3",
-                " mv3",
-                "vscode extension",
-                "vs code extension",
-                "visual studio code extension",
-            )
-        )
+        return request_mentions_extension_project(self._message_without_explicit_paths(message))
 
     def _request_mentions_python_app_project(self, message: str) -> bool:
-        lower = self._message_without_explicit_paths(message).lower()
-        if "python" not in lower:
-            return False
-        if any(term in lower for term in ("api", "backend", "service", "fastapi", "flask")):
-            return False
-        return any(
-            term in lower
-            for term in (
-                "cli",
-                "command line",
-                "command-line",
-                "app",
-                "application",
-                "program",
-                "tool",
-                "script",
-            )
-        )
+        return request_mentions_python_app_project(self._message_without_explicit_paths(message))
 
     def _request_mentions_web_project(self, message: str) -> bool:
-        if self._prompt_negates_web_stack(message):
-            return False
-        lower = self._message_without_explicit_paths(message).lower()
-        return any(
-            term in lower
-            for term in (
-                "website",
-                "web site",
-                "web app",
-                "landing",
-                "frontend",
-                "next",
-                "react",
-                "vite",
-                "dashboard",
-            )
+        without_paths = self._message_without_explicit_paths(message)
+        return request_mentions_web_project(
+            without_paths,
+            web_stack_negated=self._prompt_negates_web_stack(without_paths),
         )
 
     def _request_mentions_desktop_project(self, message: str) -> bool:
-        lower = self._message_without_explicit_paths(message).lower()
-        return any(
-            term in lower
-            for term in (
-                "desktop app",
-                "desktop application",
-                "desktop tool",
-                "desktop gui",
-                "gui app",
-                "gui tool",
-                "windows app",
-                "windows desktop",
-                "native gui",
-                "electron",
-                "tauri",
-                "wpf",
-                "winforms",
-                "qt app",
-                "qt gui",
-                "imgui",
-                "dear imgui",
-            )
-        )
+        return request_mentions_desktop_project(self._message_without_explicit_paths(message))
 
     def _prompt_negates_web_stack(self, message: str) -> bool:
         from .project_scaffolder import ProjectScaffolder
@@ -3700,25 +3546,7 @@ if __name__ == "__main__":
         return ProjectScaffolder._prompt_negates_web_stack(self._message_without_explicit_paths(message))
 
     def _request_mentions_specific_web_framework(self, message: str) -> bool:
-        lower = self._message_without_explicit_paths(message).lower()
-        return any(
-            term in lower
-            for term in (
-                "next",
-                "next.js",
-                "react",
-                "vite",
-                "vue",
-                "nuxt",
-                "svelte",
-                "sveltekit",
-                "astro",
-                "remix",
-                "angular",
-                "electron",
-                "tauri",
-            )
-        )
+        return request_mentions_specific_web_framework(self._message_without_explicit_paths(message))
 
     def _draft_is_static_site_shape(self, draft: AgentDraft) -> bool:
         paths = self._change_paths(draft)
