@@ -6,12 +6,36 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from aegis_ai.project_scaffold_node_templates import (
     express_ts_template,
+    node_cli_template,
     node_http_api_template,
 )
 from aegis_ai.project_scaffolder import ProjectScaffolder
 
 
 class ProjectScaffoldNodeTemplatesTests(unittest.TestCase):
+    def test_node_cli_template_matches_project_scaffolder_wrapper(self) -> None:
+        files = node_cli_template("Log Formatter")
+
+        self.assertEqual(files, ProjectScaffolder._node_cli_template("Log Formatter"))
+        self.assertIn("package.json", files)
+        self.assertIn("bin/cli.js", files)
+        self.assertIn("src/commands.js", files)
+        self.assertIn("tests/commands.test.js", files)
+        self.assertIn("build.js", files)
+        self.assertIn('"name": "log-formatter"', files["package.json"])
+        self.assertIn('"log-formatter": "./bin/cli.js"', files["package.json"])
+        self.assertIn('"validate": "node build.js"', files["package.json"])
+        self.assertIn("export function parseArgs", files["src/commands.js"])
+        self.assertIn("--repeat must be an integer", files["src/commands.js"])
+        self.assertIn("'--check', 'bin/cli.js'", files["build.js"])
+        self.assertIn("node bin/cli.js --name Aegis --repeat 2", files["README.md"])
+
+    def test_node_cli_template_uses_default_package_name_when_blank(self) -> None:
+        files = node_cli_template("!!!")
+
+        self.assertIn('"name": "aegis-node-cli"', files["package.json"])
+        self.assertIn('"aegis-node-cli": "./bin/cli.js"', files["package.json"])
+
     def test_express_ts_template_matches_project_scaffolder_wrapper(self) -> None:
         files = express_ts_template("Runtime Bridge")
 
