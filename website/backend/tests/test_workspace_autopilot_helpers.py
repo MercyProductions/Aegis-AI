@@ -7,11 +7,20 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from aegis_ai.workspace_autopilot import (
+    build_workspace_autopilot_status,
     compact_repair_brief,
     compact_validation_repair_brief,
     first_diagnostic_brief,
     latest_history_validation,
     status_value,
+)
+from aegis_ai.schemas import (
+    WorkspaceDependencyProfile,
+    WorkspaceInstructionStatusFile,
+    WorkspaceInstructionStatusInfo,
+    WorkspaceProjectManifest,
+    WorkspaceReadinessInfo,
+    WorkspaceValidationPlanInfo,
 )
 
 
@@ -109,6 +118,77 @@ class WorkspaceAutopilotHelperTests(unittest.TestCase):
             compact_validation_repair_brief({"failed_step": "2"}, validation_command="npm run build"),
             "Repair 2; rerun validation",
         )
+
+    def test_build_workspace_autopilot_status_summarizes_repair_state(self) -> None:
+        status = build_workspace_autopilot_status(
+            workspace_root="C:/work/app",
+            manifest=WorkspaceProjectManifest(
+                schema="aegis.project.v1",
+                project_name="app",
+                framework="React + FastAPI",
+                language="TypeScript + Python",
+                validation_command="npm run build",
+                tags=["database"],
+            ),
+            dependency_profile=WorkspaceDependencyProfile(
+                frameworks=["React", "FastAPI"],
+                database_tools=["sqlite"],
+                validation_commands=["npm run build"],
+            ),
+            instruction_status=WorkspaceInstructionStatusInfo(
+                open_items=2,
+                completed_items=1,
+                total_items=3,
+                files=[
+                    WorkspaceInstructionStatusFile(
+                        path="TODO.md",
+                        title="Plan",
+                        kind="instruction",
+                        open_items=2,
+                        completed_items=1,
+                        total_items=3,
+                        pending_items=["Repair validation.", "Repair validation.", "Update docs."],
+                    )
+                ],
+            ),
+            validation_plan=WorkspaceValidationPlanInfo(validation_command="npm run build"),
+            command_history={
+                "commands": [
+                    {
+                        "kind": "validation",
+                        "status": "failed",
+                        "command": "npm run build",
+                        "failed_step": "2",
+                        "failed_step_command": "npm test",
+                        "diagnostics": [
+                            {
+                                "file": "src/app.ts",
+                                "line": 10,
+                                "severity": "error",
+                                "code": "TS2322",
+                            }
+                        ],
+                    }
+                ],
+            },
+            readiness=WorkspaceReadinessInfo(
+                status="needs_repair",
+                score=28,
+                summary="Validation failed.",
+                next_action="Repair npm test.",
+            ),
+        )
+
+        self.assertEqual(status.phase, "repair")
+        self.assertTrue(status.should_continue)
+        self.assertEqual(status.validation_command, "npm run build")
+        self.assertEqual(status.first_diagnostic, "src/app.ts:10 error TS2322")
+        self.assertIn("Repair step 2: npm test", status.repair_brief)
+        self.assertEqual(status.next_open_items, ["Repair validation.", "Update docs."])
+        self.assertIn("frontend", status.execution_lanes)
+        self.assertIn("backend", status.execution_lanes)
+        self.assertIn("database", status.execution_lanes)
+        self.assertIn("roadmap", status.execution_lanes)
 
 
 if __name__ == "__main__":
