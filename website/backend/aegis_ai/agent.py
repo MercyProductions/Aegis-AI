@@ -21,7 +21,22 @@ from .agent_request_intent import (
     request_needs_project_shape,
     windows_path_fragments as request_windows_path_fragments,
 )
-from .agent_runtime import AgentDraft, MissionAnchor, sanitize_model_change_paths
+from .agent_runtime import (
+    AgentDraft,
+    MissionAnchor,
+    draft_change_paths as runtime_draft_change_paths,
+    draft_change_payload_size as runtime_draft_change_payload_size,
+    draft_has_concrete_source_surface as runtime_draft_has_concrete_source_surface,
+    draft_has_desktop_host_surface as runtime_draft_has_desktop_host_surface,
+    draft_stack_families as runtime_draft_stack_families,
+    important_project_path as runtime_important_project_path,
+    looks_like_next_workspace as runtime_looks_like_next_workspace,
+    manifest_contract_value as runtime_manifest_contract_value,
+    manifest_stack_family as runtime_manifest_stack_family,
+    sanitize_model_change_paths,
+    stack_family_label as runtime_stack_family_label,
+    workspace_stack_family as runtime_workspace_stack_family,
+)
 from .commands import CommandResult, CommandRunner
 from .context_budget import ContextBudgetManager, ContextBudgetResult
 from .context_formatting import (
@@ -2670,227 +2685,28 @@ class AgentEngine:
         )
 
     def _change_paths(self, draft: AgentDraft) -> set[str]:
-        return {change.path.replace("\\", "/").lower().strip("/") for change in draft.changes}
+        return runtime_draft_change_paths(draft)
 
     def _change_payload_size(self, draft: AgentDraft) -> int:
-        return sum(len(change.content or "") for change in draft.changes if change.action in {"create", "update"})
+        return runtime_draft_change_payload_size(draft)
 
     def _draft_has_concrete_source_surface(self, draft: AgentDraft) -> bool:
-        source_suffixes = (
-            ".c",
-            ".cc",
-            ".cpp",
-            ".cxx",
-            ".h",
-            ".hpp",
-            ".asm",
-            ".rc",
-            ".cs",
-            ".xaml",
-            ".py",
-            ".rs",
-            ".go",
-            ".ts",
-            ".tsx",
-            ".js",
-            ".jsx",
-            ".html",
-            ".css",
-            ".sql",
-            ".ps1",
-            ".psm1",
-            ".bat",
-            ".cmd",
-        )
-        source_prefixes = (
-            "src/",
-            "app/",
-            "pages/",
-            "components/",
-            "public/",
-            "tests/",
-            "test/",
-            "driver/",
-            "controller/",
-            "host/",
-            "library/",
-            "cmd/",
-            "internal/",
-            "pkg/",
-        )
-        ignored_exact = {
-            "readme.md",
-            "license",
-            "changelog.md",
-            "patch_notes.md",
-            ".gitignore",
-            ".gitattributes",
-            ".editorconfig",
-            "package.json",
-            "tsconfig.json",
-            "pyproject.toml",
-            "requirements.txt",
-            "cargo.toml",
-            "go.mod",
-            "cmakelists.txt",
-            "build.py",
-            "build.ps1",
-        }
-        for change in draft.changes:
-            if change.action not in {"create", "update"}:
-                continue
-            path = change.path.replace("\\", "/").lower().strip("/")
-            if not path or path in ignored_exact or path.startswith(".aegis/"):
-                continue
-            if path.endswith(source_suffixes) or path.startswith(source_prefixes):
-                return True
-        return False
+        return runtime_draft_has_concrete_source_surface(draft)
 
     def _manifest_contract_value(self, manifest: WorkspaceProjectManifest, key: str) -> str:
-        value = manifest.mission_contract.get(key) if isinstance(manifest.mission_contract, dict) else ""
-        return str(value or "").strip()
+        return runtime_manifest_contract_value(manifest, key)
 
     def _manifest_stack_family(self, manifest: WorkspaceProjectManifest | None) -> str:
-        if manifest is None:
-            return ""
-        preset_id = self._manifest_contract_value(manifest, "preset_id") or manifest.preset_id
-        stack_family = self._manifest_contract_value(manifest, "stack_family")
-        normalized_stack_family = stack_family.lower().strip()
-        if normalized_stack_family in {"desktop", "desktop-app", "desktop_app"}:
-            return "desktop"
-        if preset_id in {
-            "electron-react-ts",
-            "tauri-react-ts",
-            "python-tkinter-desktop",
-            "dotnet-wpf-csharp",
-            "cpp-imgui-win32-dx11",
-        }:
-            return "desktop"
-        text = " ".join(
-            str(item or "")
-            for item in (
-                stack_family,
-                preset_id,
-                manifest.preset_label,
-                manifest.framework,
-                manifest.language,
-                " ".join(manifest.tags),
-            )
-        ).lower()
-        manifest_tags = {tag.lower().strip() for tag in manifest.tags if tag.strip()}
-        if "desktop" in manifest_tags and any(
-            term in text
-            for term in ("electron", "tauri", "tkinter", "wpf", "winforms", "xaml", "imgui", "desktop")
-        ):
-            return "desktop"
-        if any(term in text for term in ("cpp", "c++", "cmake", "visual studio", "win32", "windows-internals", "kernel-driver")):
-            return "native-cpp"
-        if any(term in text for term in ("dotnet", ".net", "c#", "csharp", "wpf", "winforms")):
-            return "dotnet"
-        if "python" in text:
-            return "python"
-        if "rust" in text or "cargo" in text:
-            return "rust"
-        if re.search(r"\bgo\b", text) or "golang" in text:
-            return "go"
-        if any(term in text for term in ("next", "react", "vite", "web", "website", "frontend", "electron", "tauri", "expo")):
-            return "web"
-        return ""
+        return runtime_manifest_stack_family(manifest)
 
     def _draft_stack_families(self, draft: AgentDraft) -> set[str]:
-        paths = self._change_paths(draft)
-        families: set[str] = set()
-        web_config = {
-            "package.json",
-            "index.html",
-            "next.config.js",
-            "next.config.mjs",
-            "next.config.ts",
-            "vite.config.js",
-            "vite.config.ts",
-            "vite.config.mjs",
-            "tailwind.config.js",
-            "tailwind.config.ts",
-        }
-        if any(path in web_config for path in paths) or any(
-            path.startswith(("app/", "pages/", "components/", "public/"))
-            or path.endswith((".tsx", ".jsx", ".html", ".css"))
-            for path in paths
-        ):
-            families.add("web")
-        if any(path.endswith((".cpp", ".cxx", ".cc", ".c", ".h", ".hpp", ".asm", ".rc")) for path in paths) or any(
-            path == "cmakelists.txt" or path.endswith((".sln", ".vcxproj", ".vcxproj.filters"))
-            for path in paths
-        ):
-            families.add("native-cpp")
-        if any(
-            (path.endswith(".py") and path != "build.py")
-            or path in {"pyproject.toml", "requirements.txt", "setup.py", "setup.cfg"}
-            for path in paths
-        ):
-            families.add("python")
-        if any(path.endswith((".csproj", ".cs", ".xaml")) or path.endswith(".sln") for path in paths):
-            families.add("dotnet")
-        if any(path == "cargo.toml" or path.endswith(".rs") for path in paths):
-            families.add("rust")
-        if any(path == "go.mod" or path.endswith(".go") for path in paths):
-            families.add("go")
-        if self._draft_has_desktop_host_surface(draft):
-            families.add("desktop")
-        return families
+        return runtime_draft_stack_families(draft)
 
     def _workspace_stack_family(self, files: list[WorkspaceFile]) -> str:
-        paths = {item.path.replace("\\", "/").lower().strip("/") for item in files}
-        if not paths:
-            return ""
-
-        has_electron_host = any(
-            path in {"electron.vite.config.ts", "electron.vite.config.js"}
-            or path.startswith(("src/main/", "src/preload/"))
-            for path in paths
-        )
-        has_tauri_host = any(path.startswith("src-tauri/") for path in paths)
-        has_wpf_host = any(path.endswith("mainwindow.xaml") or path.endswith(".csproj") for path in paths) and any(
-            path.endswith(".xaml")
-            for path in paths
-        )
-        if has_electron_host or has_tauri_host or has_wpf_host:
-            return "desktop"
-
-        has_native = any(path.endswith((".sln", ".vcxproj", ".vcxproj.filters")) for path in paths) or any(
-            path in {"cmakelists.txt", "cmakepresets.json", "makefile"}
-            for path in paths
-        ) or any(path.endswith((".cpp", ".cxx", ".cc", ".c", ".h", ".hpp", ".asm", ".rc", ".inf")) for path in paths)
-        has_dotnet = any(path.endswith((".csproj", ".fsproj", ".vbproj", ".cs", ".xaml")) for path in paths)
-        has_python = any(path in {"pyproject.toml", "requirements.txt", "setup.py", "setup.cfg"} for path in paths) or any(
-            path.endswith(".py") and path != "build.py"
-            for path in paths
-        )
-
-        if has_native:
-            return "native-cpp"
-        if has_dotnet:
-            return "dotnet"
-        if has_python:
-            return "python"
-        if any(path == "cargo.toml" or path.endswith(".rs") for path in paths):
-            return "rust"
-        if any(path == "go.mod" or path.endswith(".go") for path in paths):
-            return "go"
-        if any(path in {"package.json", "index.html"} or path.endswith((".tsx", ".jsx", ".html", ".css")) for path in paths):
-            return "web"
-        return ""
+        return runtime_workspace_stack_family(files)
 
     def _family_label(self, family: str) -> str:
-        return {
-            "native-cpp": "native C++/CMake/Visual Studio",
-            "dotnet": ".NET/C#",
-            "python": "Python",
-            "rust": "Rust",
-            "go": "Go",
-            "web": "web/frontend",
-            "desktop": "desktop application",
-        }.get(family, family)
+        return runtime_stack_family_label(family)
 
     def _prompt_allows_manifest_stack_switch(self, message: str) -> bool:
         lower = self._message_without_explicit_paths(message).lower()
@@ -2939,98 +2755,7 @@ class AgentEngine:
         return any(term in lower for term in destructive_terms)
 
     def _important_project_path(self, path: str) -> bool:
-        normalized = path.replace("\\", "/").lower().strip("/")
-        if not normalized:
-            return False
-        if normalized.startswith(".aegis/"):
-            return True
-
-        important_exact = {
-            ".gitignore",
-            ".gitattributes",
-            ".editorconfig",
-            "agents.md",
-            "readme.md",
-            "package.json",
-            "tsconfig.json",
-            "jsconfig.json",
-            "vite.config.js",
-            "vite.config.ts",
-            "vite.config.mjs",
-            "next.config.js",
-            "next.config.ts",
-            "next.config.mjs",
-            "tailwind.config.js",
-            "tailwind.config.ts",
-            "postcss.config.js",
-            "postcss.config.mjs",
-            "pyproject.toml",
-            "requirements.txt",
-            "setup.py",
-            "setup.cfg",
-            "cargo.toml",
-            "go.mod",
-            "cmakelists.txt",
-            "cmakepresets.json",
-            "makefile",
-            "build.py",
-        }
-        if normalized in important_exact:
-            return True
-
-        important_roots = (
-            "src/",
-            "app/",
-            "pages/",
-            "components/",
-            "public/",
-            "tests/",
-            "test/",
-            "driver/",
-            "controller/",
-            "host/",
-            "library/",
-            "include/",
-            "cmd/",
-            "internal/",
-            "pkg/",
-        )
-        if normalized.startswith(important_roots):
-            return True
-
-        important_suffixes = (
-            ".sln",
-            ".vcxproj",
-            ".vcxproj.filters",
-            ".csproj",
-            ".fsproj",
-            ".vbproj",
-            ".props",
-            ".targets",
-            ".c",
-            ".cc",
-            ".cpp",
-            ".cxx",
-            ".h",
-            ".hpp",
-            ".cs",
-            ".xaml",
-            ".py",
-            ".rs",
-            ".go",
-            ".ts",
-            ".tsx",
-            ".js",
-            ".jsx",
-            ".html",
-            ".css",
-            ".sql",
-            ".ps1",
-            ".psm1",
-            ".bat",
-            ".cmd",
-        )
-        return normalized.endswith(important_suffixes)
+        return runtime_important_project_path(path)
 
     def _draft_destructive_change_reasons(
         self,
@@ -3308,13 +3033,7 @@ class AgentEngine:
         ]
 
     def _looks_like_next_workspace(self, files: list[WorkspaceFile]) -> bool:
-        paths = {item.path.replace("\\", "/").lower().strip("/") for item in files}
-        return (
-            "next.config.js" in paths
-            or "next.config.mjs" in paths
-            or "next.config.ts" in paths
-            or any(path.startswith("app/") for path in paths)
-        ) and ("package.json" in paths or "tsconfig.json" in paths)
+        return runtime_looks_like_next_workspace(files)
 
     def _request_mentions_cpp_project(self, message: str) -> bool:
         return request_mentions_cpp_project(self._message_without_explicit_paths(message))
@@ -3432,34 +3151,7 @@ class AgentEngine:
         return reasons
 
     def _draft_has_desktop_host_surface(self, draft: AgentDraft) -> bool:
-        paths = self._change_paths(draft)
-        if not paths:
-            return False
-
-        if any(
-            path in {"electron.vite.config.ts", "electron.vite.config.js"}
-            or path.startswith(("src/main/", "src/preload/"))
-            for path in paths
-        ):
-            return True
-        if any(path.startswith("src-tauri/") for path in paths):
-            return True
-        if any(path.endswith("mainwindow.xaml") or path.endswith(".csproj") for path in paths) and any(
-            path.endswith(".xaml") or path.endswith(".cs") for path in paths
-        ):
-            return True
-
-        text = "\n".join(
-            (change.content or "").lower()
-            for change in draft.changes
-            if change.action in {"create", "update"}
-        )
-        if any(token in text for token in ("import tkinter", "from tkinter", "pyside6", "pyqt6", "pyqt5")):
-            return True
-        if any(token in text for token in ("imgui::", "dear imgui", "winmain", "createwindow", "directx", "dx11")):
-            return True
-
-        return False
+        return runtime_draft_has_desktop_host_surface(draft)
 
     def _draft_task_adherence_reasons(
         self,
