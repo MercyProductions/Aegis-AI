@@ -9,6 +9,7 @@ from aegis_ai.project_scaffold_python_templates import (
     python_cli_template,
     python_stdlib_api_template,
     python_tkinter_desktop_template,
+    sqlite_python_db_template,
 )
 from aegis_ai.project_scaffolder import ProjectScaffolder
 
@@ -36,6 +37,32 @@ class ProjectScaffoldPythonTemplatesTests(unittest.TestCase):
         self.assertIn('name = "aegis-123-api"', files["pyproject.toml"])
         self.assertIn("src/app_123_api/main.py", files)
         self.assertIn("from app_123_api.main import create_app", files["tests/test_health.py"])
+
+    def test_sqlite_python_db_template_matches_project_scaffolder_wrapper(self) -> None:
+        files = sqlite_python_db_template("Parts Ledger")
+
+        self.assertEqual(files, ProjectScaffolder._sqlite_python_db_template("Parts Ledger"))
+        self.assertIn("schema.sql", files)
+        self.assertIn("seed.sql", files)
+        self.assertIn("queries/report.sql", files)
+        self.assertIn("src/parts_ledger/database.py", files)
+        self.assertIn("src/parts_ledger/cli.py", files)
+        self.assertIn("tests/test_database.py", files)
+        self.assertIn("build.py", files)
+        self.assertIn("inventory_items", files["schema.sql"])
+        self.assertIn("inventory_summary", files["schema.sql"])
+        self.assertIn("VALUES ('project_name', 'Parts Ledger');", files["seed.sql"])
+        self.assertIn("initialize_database", files["src/parts_ledger/database.py"])
+        self.assertIn("command_validate", files["src/parts_ledger/cli.py"])
+        self.assertIn("python -m parts_ledger.cli summary", files["README.md"])
+        self.assertIn("data/*.sqlite3", files[".gitignore"])
+
+    def test_sqlite_python_db_template_prefixes_numeric_package_name(self) -> None:
+        files = sqlite_python_db_template("123 Ledger")
+
+        self.assertIn("src/app_123_ledger/database.py", files)
+        self.assertIn("from app_123_ledger.database import", files["tests/test_database.py"])
+        self.assertIn("python -m app_123_ledger.cli summary", files["README.md"])
 
     def test_python_cli_template_matches_project_scaffolder_wrapper(self) -> None:
         files = python_cli_template("Validated Tool")

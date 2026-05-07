@@ -443,6 +443,421 @@ def python_stdlib_api_template(project_name: str) -> dict[str, str]:
     }
 
 
+def sqlite_python_db_template(project_name: str) -> dict[str, str]:
+    package_name = _python_package_name(project_name)
+    title = _title_from_name(project_name)
+    return {
+        "schema.sql": _strip(
+            """
+            PRAGMA foreign_keys = ON;
+
+            CREATE TABLE IF NOT EXISTS app_metadata (
+              key TEXT PRIMARY KEY,
+              value TEXT NOT NULL,
+              updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS inventory_items (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              name TEXT NOT NULL UNIQUE,
+              category TEXT NOT NULL DEFAULT 'general',
+              quantity INTEGER NOT NULL DEFAULT 0 CHECK (quantity >= 0),
+              status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'archived')),
+              notes TEXT NOT NULL DEFAULT '',
+              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_inventory_items_category
+              ON inventory_items(category);
+
+            CREATE INDEX IF NOT EXISTS idx_inventory_items_status
+              ON inventory_items(status);
+
+            CREATE TRIGGER IF NOT EXISTS trg_inventory_items_updated_at
+            AFTER UPDATE ON inventory_items
+            FOR EACH ROW
+            BEGIN
+              UPDATE inventory_items SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+            END;
+
+            CREATE VIEW IF NOT EXISTS inventory_summary AS
+            SELECT
+              category,
+              COUNT(*) AS item_count,
+              COALESCE(SUM(quantity), 0) AS total_quantity
+            FROM inventory_items
+            WHERE status = 'active'
+            GROUP BY category;
+            """
+        ),
+        "seed.sql": _strip(
+            f"""
+            INSERT OR REPLACE INTO app_metadata(key, value)
+            VALUES ('project_name', '{title}');
+
+            INSERT OR IGNORE INTO inventory_items(name, category, quantity, notes)
+            VALUES
+              ('Starter Record', 'general', 3, 'Generated seed row used by smoke tests.'),
+              ('Backlog Item', 'planning', 7, 'Represents work waiting for a feature pass.'),
+              ('Validated Item', 'quality', 1, 'Confirms the schema, seed, and reporting path are active.');
+            """
+        ),
+        "queries/report.sql": _strip(
+            """
+            SELECT
+              category,
+              item_count,
+              total_quantity
+            FROM inventory_summary
+            ORDER BY category;
+            """
+        ),
+        f"src/{package_name}/__init__.py": _strip(
+            """
+            from .database import DEFAULT_DB, add_item, initialize_database, list_items, summary
+
+            __all__ = [
+                "DEFAULT_DB",
+                "add_item",
+                "initialize_database",
+                "list_items",
+                "summary",
+            ]
+            """
+        ),
+        f"src/{package_name}/database.py": _strip(
+            """
+            from __future__ import annotations
+
+            import sqlite3
+            from contextlib import closing
+            from pathlib import Path
+            from typing import Any
+
+
+            ROOT = Path(__file__).resolve().parents[2]
+            SCHEMA_PATH = ROOT / "schema.sql"
+            SEED_PATH = ROOT / "seed.sql"
+            DEFAULT_DB = ROOT / "data" / "app.sqlite3"
+
+
+            def connect(db_path: Path | str = DEFAULT_DB) -> sqlite3.Connection:
+                path = Path(db_path)
+                path.parent.mkdir(parents=True, exist_ok=True)
+                connection = sqlite3.connect(path)
+                connection.row_factory = sqlite3.Row
+                connection.execute("PRAGMA foreign_keys = ON")
+                return connection
+
+
+            def run_script(connection: sqlite3.Connection, script_path: Path) -> None:
+                connection.executescript(script_path.read_text(encoding="utf-8"))
+
+
+            def initialize_database(
+                db_path: Path | str = DEFAULT_DB,
+                *,
+                seed: bool = True,
+                reset: bool = False,
+            ) -> Path:
+                path = Path(db_path)
+                if reset and path.exists():
+                    path.unlink()
+                path.parent.mkdir(parents=True, exist_ok=True)
+                with closing(connect(path)) as connection:
+                    run_script(connection, SCHEMA_PATH)
+                    if seed:
+                        run_script(connection, SEED_PATH)
+                    connection.commit()
+                return path
+
+
+            def add_item(
+                db_path: Path | str,
+                name: str,
+                *,
+                category: str = "general",
+                quantity: int = 0,
+                notes: str = "",
+            ) -> int:
+                if not name.strip():
+                    raise ValueError("name is required")
+                if quantity < 0:
+                    raise ValueError("quantity must be greater than or equal to zero")
+                with closing(connect(db_path)) as connection:
+                    cursor = connection.execute(
+                        "INSERT INTO inventory_items(name, category, quantity, notes) VALUES (?, ?, ?, ?)",
+                        (name.strip(), category.strip() or "general", quantity, notes.strip()),
+                    )
+                    connection.commit()
+                    return int(cursor.lastrowid)
+
+
+            def list_items(db_path: Path | str = DEFAULT_DB) -> list[dict[str, Any]]:
+                with closing(connect(db_path)) as connection:
+                    rows = connection.execute(
+                        '''
+                        SELECT id, name, category, quantity, status, notes, created_at, updated_at
+                        FROM inventory_items
+                        ORDER BY category, name
+                        '''
+                    ).fetchall()
+                return [dict(row) for row in rows]
+
+
+            def summary(db_path: Path | str = DEFAULT_DB) -> dict[str, Any]:
+                with closing(connect(db_path)) as connection:
+                    total = connection.execute(
+                        '''
+                        SELECT
+                          COUNT(*) AS item_count,
+                          COALESCE(SUM(quantity), 0) AS total_quantity
+                        FROM inventory_items
+                        WHERE status = 'active'
+                        '''
+                    ).fetchone()
+                    categories = connection.execute(
+                        '''
+                        SELECT category, item_count, total_quantity
+                        FROM inventory_summary
+                        ORDER BY category
+                        '''
+                    ).fetchall()
+                return {
+                    "item_count": int(total["item_count"] or 0),
+                    "total_quantity": int(total["total_quantity"] or 0),
+                    "categories": [dict(row) for row in categories],
+                }
+            """
+        ),
+        f"src/{package_name}/cli.py": _strip(
+            f"""
+            from __future__ import annotations
+
+            import argparse
+            import json
+            from pathlib import Path
+
+            from .database import DEFAULT_DB, add_item, initialize_database, list_items, summary
+
+
+            def _db_path(value: str | None) -> Path:
+                return Path(value) if value else DEFAULT_DB
+
+
+            def command_init(args: argparse.Namespace) -> int:
+                path = initialize_database(_db_path(args.db), seed=not args.no_seed, reset=args.reset)
+                print(f"Initialized database: {{path}}")
+                return 0
+
+
+            def command_add(args: argparse.Namespace) -> int:
+                initialize_database(_db_path(args.db), seed=True, reset=False)
+                item_id = add_item(
+                    _db_path(args.db),
+                    args.name,
+                    category=args.category,
+                    quantity=args.quantity,
+                    notes=args.notes,
+                )
+                print(f"Added item #{{item_id}}")
+                return 0
+
+
+            def command_list(args: argparse.Namespace) -> int:
+                initialize_database(_db_path(args.db), seed=True, reset=False)
+                print(json.dumps(list_items(_db_path(args.db)), indent=2))
+                return 0
+
+
+            def command_summary(args: argparse.Namespace) -> int:
+                initialize_database(_db_path(args.db), seed=True, reset=False)
+                print(json.dumps(summary(_db_path(args.db)), indent=2))
+                return 0
+
+
+            def command_validate(args: argparse.Namespace) -> int:
+                path = initialize_database(_db_path(args.db), seed=True, reset=args.reset)
+                add_item(path, "Validation Runtime Record", category="quality", quantity=2)
+                report = summary(path)
+                if report["item_count"] < 4:
+                    raise RuntimeError("database validation expected at least four active records")
+                if report["total_quantity"] < 13:
+                    raise RuntimeError("database validation expected seeded and runtime quantities")
+                print(json.dumps({{"database": str(path), "summary": report}}, indent=2))
+                return 0
+
+
+            def build_parser() -> argparse.ArgumentParser:
+                parser = argparse.ArgumentParser(description="{title} database utility")
+                parser.add_argument("--db", default=str(DEFAULT_DB), help="SQLite database path.")
+                subparsers = parser.add_subparsers(dest="command", required=True)
+
+                init = subparsers.add_parser("init", help="Create schema and optional seed data.")
+                init.add_argument("--reset", action="store_true", help="Delete the selected database before initializing.")
+                init.add_argument("--no-seed", action="store_true", help="Create schema without seed rows.")
+                init.set_defaults(func=command_init)
+
+                add = subparsers.add_parser("add", help="Insert an inventory item.")
+                add.add_argument("name")
+                add.add_argument("--category", default="general")
+                add.add_argument("--quantity", type=int, default=0)
+                add.add_argument("--notes", default="")
+                add.set_defaults(func=command_add)
+
+                list_cmd = subparsers.add_parser("list", help="List inventory items as JSON.")
+                list_cmd.set_defaults(func=command_list)
+
+                summary_cmd = subparsers.add_parser("summary", help="Print category and total counts.")
+                summary_cmd.set_defaults(func=command_summary)
+
+                validate = subparsers.add_parser("validate", help="Run a database smoke validation.")
+                validate.add_argument("--reset", action="store_true", help="Reset the selected validation database first.")
+                validate.set_defaults(func=command_validate)
+                return parser
+
+
+            def main(argv: list[str] | None = None) -> int:
+                parser = build_parser()
+                args = parser.parse_args(argv)
+                return int(args.func(args))
+
+
+            if __name__ == "__main__":
+                raise SystemExit(main())
+            """
+        ),
+        "tests/test_database.py": _strip(
+            f"""
+            from __future__ import annotations
+
+            import sys
+            import tempfile
+            import unittest
+            from pathlib import Path
+
+
+            sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+            from {package_name}.database import add_item, initialize_database, list_items, summary
+
+
+            class DatabaseTests(unittest.TestCase):
+                def test_initialize_creates_seeded_database(self) -> None:
+                    with tempfile.TemporaryDirectory() as tmp:
+                        db_path = Path(tmp) / "test.sqlite3"
+                        initialize_database(db_path, reset=True)
+
+                        items = list_items(db_path)
+                        report = summary(db_path)
+
+                        self.assertGreaterEqual(len(items), 3)
+                        self.assertGreaterEqual(report["item_count"], 3)
+                        self.assertGreaterEqual(report["total_quantity"], 11)
+
+                def test_add_item_updates_summary(self) -> None:
+                    with tempfile.TemporaryDirectory() as tmp:
+                        db_path = Path(tmp) / "test.sqlite3"
+                        initialize_database(db_path, reset=True)
+                        item_id = add_item(db_path, "New Part", category="parts", quantity=4)
+
+                        self.assertGreater(item_id, 0)
+                        names = {{item["name"] for item in list_items(db_path)}}
+                        report = summary(db_path)
+                        self.assertIn("New Part", names)
+                        self.assertGreaterEqual(report["total_quantity"], 15)
+
+
+            if __name__ == "__main__":
+                unittest.main()
+            """
+        ),
+        "build.py": _strip(
+            f"""
+            from __future__ import annotations
+
+            import os
+            import subprocess
+            import sys
+            from pathlib import Path
+
+
+            ROOT = Path(__file__).resolve().parent
+            PYTHONPATH = str(ROOT / "src")
+
+
+            def run(command: list[str]) -> int:
+                env = os.environ.copy()
+                env["PYTHONPATH"] = PYTHONPATH + os.pathsep + env.get("PYTHONPATH", "")
+                print("Running:", " ".join(command))
+                completed = subprocess.run(command, cwd=str(ROOT), text=True, env=env)
+                return completed.returncode
+
+
+            def main() -> int:
+                validation_db = ROOT / "data" / "validation.sqlite3"
+                code = run([
+                    sys.executable,
+                    "-m",
+                    "{package_name}.cli",
+                    "--db",
+                    str(validation_db),
+                    "validate",
+                    "--reset",
+                ])
+                if code != 0:
+                    return code
+                return run([sys.executable, "-m", "unittest", "discover", "-s", "tests"])
+
+
+            if __name__ == "__main__":
+                raise SystemExit(main())
+            """
+        ),
+        ".gitignore": _strip(
+            """
+            __pycache__
+            *.pyc
+            .venv
+            data/*.sqlite3
+            data/*.db
+            data/*.sqlite
+            """
+        ),
+        "README.md": _strip(
+            f"""
+            # {title}
+
+            SQLite database project generated by Aegis Project Builder.
+
+            ## What It Includes
+
+            - `schema.sql` with metadata, inventory records, indexes, trigger, and summary view.
+            - `seed.sql` with repeatable starter data.
+            - `queries/report.sql` with a reusable reporting query.
+            - `src/{package_name}/database.py` with connection, initialization, insert, list, and summary helpers.
+            - `src/{package_name}/cli.py` with `init`, `add`, `list`, `summary`, and `validate` commands.
+            - `tests/test_database.py` covering schema initialization and CRUD summary behavior.
+
+            ## Validate
+
+            ```powershell
+            python build.py
+            ```
+
+            ## Use
+
+            ```powershell
+            $env:PYTHONPATH = "src"
+            python -m {package_name}.cli init --reset
+            python -m {package_name}.cli add "Example Item" --category parts --quantity 4
+            python -m {package_name}.cli summary
+            ```
+            """
+        ),
+    }
+
 
 def python_cli_template(project_name: str) -> dict[str, str]:
     package_name = _python_package_name(project_name)
