@@ -14,6 +14,9 @@ from .project_scaffold_build_logs import (
     command_log_section as scaffold_command_log_section,
     write_build_log as scaffold_write_build_log,
 )
+from .project_scaffold_instruction_status import (
+    instruction_status_payload as scaffold_instruction_status_payload,
+)
 from .project_scaffold_memory import (
     markdown_list as scaffold_markdown_list,
     project_memory_files as scaffold_project_memory_files,
@@ -126,7 +129,6 @@ from .schemas import (
     WorkspaceInstructionFile,
     WorkspaceProjectManifest,
 )
-from .storage import utc_now
 from .validation import ValidationManager
 from .workspace import WorkspaceManager
 
@@ -2344,138 +2346,14 @@ class ProjectScaffolder:
         build_log_path: str,
         applied: list[str],
     ) -> None:
-        files: list[dict[str, object]] = []
-        for item in instruction_files[:12]:
-            files.append(
-                {
-                    "path": item.path,
-                    "title": item.title,
-                    "kind": item.kind,
-                    "score": item.score,
-                    "open_items": item.pending_count,
-                    "completed_items": item.completed_count,
-                    "total_items": item.total_items,
-                    "pending_items": [
-                        self._status_text(pending, limit=220)
-                        for pending in item.pending_items[:10]
-                        if self._status_text(pending, limit=220)
-                    ],
-                    "summary": item.summary,
-                }
-            )
-
-        open_items = sum(item.pending_count for item in instruction_files)
-        completed_items = sum(item.completed_count for item in instruction_files)
-        total_items = sum(item.total_items for item in instruction_files)
-        first_pending = next(
-            (
-                pending.strip()
-                for item in instruction_files
-                for pending in item.pending_items
-                if pending.strip()
-            ),
-            "",
+        payload = scaffold_instruction_status_payload(
+            instruction_files,
+            prompt=prompt,
+            validation=validation,
+            validation_command=validation_command,
+            build_log_path=build_log_path,
+            applied=applied,
         )
-
-        if validation is None:
-            validation_payload: dict[str, object] = {
-                "status": "saved" if validation_command else "not_run",
-                "command": validation_command,
-                "summary": (
-                    "Validation command saved for a later build or repair pass."
-                    if validation_command
-                    else "No validation command was recorded for this scaffold."
-                ),
-                "category": "",
-                "exit_code": None,
-                "build_log_path": build_log_path,
-                "diagnostics": [],
-            }
-        else:
-            validation_payload = {
-                "status": "passed" if self._command_ok(validation) else "failed",
-                "command": validation.command or validation_command,
-                "summary": validation.summary or validation.reason,
-                "category": validation.category,
-                "exit_code": validation.exit_code,
-                "timed_out": validation.timed_out,
-                "build_log_path": build_log_path,
-                "failed_step": validation.failed_step,
-                "failed_step_command": validation.failed_step_command,
-                "diagnostics": validation.diagnostics,
-            }
-
-        validation_failed = validation is not None and not self._command_ok(validation)
-        validation_passed = validation is not None and self._command_ok(validation)
-        if validation_failed:
-            first_diagnostic = self._diagnostics_log(validation.diagnostics).splitlines()[0].removeprefix("- ").strip()
-            repair_target = (
-                first_diagnostic
-                if first_diagnostic and first_diagnostic != "(none captured)"
-                else f"the failure from `{validation.command or validation_command}`"
-            )
-            completion_status = "blocked"
-            completion_score = 0.2
-            should_continue = True
-            reasons = ["Validation failed during scaffold/build, so repair must happen before expanding scope."]
-            next_actions = [
-                f"Repair {repair_target}.",
-                "Rerun validation after the repair.",
-            ]
-        elif open_items:
-            completion_status = "needs_work"
-            completion_score = 0.72 if validation_passed else 0.55
-            should_continue = True
-            reasons = ["Tracked instruction or roadmap items are still open."]
-            next_actions = [
-                f"Continue the next open instruction item: {self._status_text(first_pending, limit=220)}"
-                if first_pending
-                else "Continue the next open instruction item.",
-            ]
-            if validation is None and validation_command:
-                next_actions.append(f"Run the saved validation command: `{validation_command}`.")
-        else:
-            completion_status = "ready"
-            completion_score = 1.0 if validation_passed else 0.82
-            should_continue = False
-            reasons = ["No open instruction items were detected in the tracked files."]
-            next_actions = ["Summarize the current state and propose the next milestone."]
-
-        if validation_failed:
-            first_diagnostic = self._diagnostics_log(validation.diagnostics).splitlines()[0].removeprefix("- ").strip()
-            if first_diagnostic and first_diagnostic != "(none captured)":
-                recommendation = f"Repair validation diagnostic: {first_diagnostic}"
-            else:
-                recommendation = f"Repair validation failure from `{validation.command or validation_command}` before expanding scope."
-        elif open_items and first_pending:
-            recommendation = f"Continue the next open instruction item: {self._status_text(first_pending, limit=220)}"
-        elif open_items:
-            recommendation = "Continue the next open instruction item."
-        elif validation is None and validation_command:
-            recommendation = f"Run the saved validation command: `{validation_command}`."
-        else:
-            recommendation = "All tracked instruction items are currently complete; summarize the validated state and propose the next milestone."
-
-        payload: dict[str, object] = {
-            "schema": "aegis.instruction_status.v1",
-            "updated_at": utc_now(),
-            "source_message": self._status_text(prompt, limit=500),
-            "instruction_file_count": len(files),
-            "open_items": open_items,
-            "completed_items": completed_items,
-            "total_items": total_items,
-            "files": files,
-            "last_validation": validation_payload,
-            "completion": {
-                "status": completion_status,
-                "score": completion_score,
-                "should_continue": should_continue,
-                "reasons": reasons,
-                "next_actions": next_actions[:6],
-            },
-            "applied": [self._status_text(path, limit=220) for path in applied[-40:]],
-            "recommendation": recommendation,
-        }
         self._write_json_file(target / ".aegis" / "instruction_status.json", payload)
 
     @classmethod
