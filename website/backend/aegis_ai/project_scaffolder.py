@@ -69,6 +69,12 @@ from .project_scaffold_reporting import (
     summarize_command_result as scaffold_summarize_command_result,
     to_positive_int as scaffold_to_positive_int,
 )
+from .project_scaffold_runtime_memory import (
+    error_signature as scaffold_error_signature,
+    runtime_file_index_payload as scaffold_runtime_file_index_payload,
+    updated_command_history as scaffold_updated_command_history,
+    updated_known_errors as scaffold_updated_known_errors,
+)
 from .project_scaffold_targets import (
     command_for_project as scaffold_command_for_project,
     conflicting_paths as scaffold_conflicting_paths,
@@ -2255,16 +2261,12 @@ class ProjectScaffolder:
         try:
             files = self.workspace.scan(target, max_files=240)
             profile = self.workspace.inspect_dependency_profile(target)
-            file_index = {
-                "schema": "aegis.file_index.v1",
-                "updated_at": utc_now(),
-                "project_name": project_name,
-                "preset_id": preset.id,
-                "preset_label": preset.label,
-                "workspace_file_count": len(files),
-                "files": [file.model_dump() for file in files],
-                "detected_profile": profile.model_dump(),
-            }
+            file_index = scaffold_runtime_file_index_payload(
+                preset,
+                project_name,
+                files=files,
+                profile=profile,
+            )
             self._write_json_file(target / ".aegis" / "file_index.json", file_index)
         except OSError as exc:
             warnings.append(f"Could not refresh .aegis/file_index.json: {exc}")
@@ -2272,66 +2274,16 @@ class ProjectScaffolder:
         try:
             history_path = target / ".aegis" / "command_history.json"
             history = self._read_json_object(history_path, default={"schema": "aegis.command_history.v1", "commands": []})
-            commands = history.get("commands")
-            if not isinstance(commands, list):
-                commands = []
-            if install is not None:
-                commands.append(
-                    {
-                        "kind": "install",
-                        "command": install.command or install_command,
-                        "cwd": install.cwd,
-                        "status": "passed" if self._command_ok(install) else "failed",
-                        "category": install.category,
-                        "summary": install.summary or install.reason,
-                        "exit_code": install.exit_code,
-                        "timed_out": install.timed_out,
-                        "steps": install.steps,
-                        "failed_step": install.failed_step,
-                        "failed_step_command": install.failed_step_command,
-                        "diagnostics": install.diagnostics,
-                        "checkpoint": checkpoint,
-                        "build_log_path": build_log_path,
-                        "created_at": utc_now(),
-                    }
-                )
-            if validation is not None:
-                commands.append(
-                    {
-                        "kind": "validation",
-                        "command": validation.command or validation_command,
-                        "cwd": validation.cwd,
-                        "status": "passed" if self._command_ok(validation) else "failed",
-                        "category": validation.category,
-                        "summary": validation.summary or validation.reason,
-                        "exit_code": validation.exit_code,
-                        "timed_out": validation.timed_out,
-                        "steps": validation.steps,
-                        "failed_step": validation.failed_step,
-                        "failed_step_command": validation.failed_step_command,
-                        "diagnostics": validation.diagnostics,
-                        "checkpoint": checkpoint,
-                        "build_log_path": build_log_path,
-                        "created_at": utc_now(),
-                    }
-                )
-            elif validation_command:
-                commands.append(
-                    {
-                        "kind": "validation",
-                        "command": validation_command,
-                        "status": "saved",
-                        "summary": "Validation command saved for a later build or repair pass.",
-                        "checkpoint": checkpoint,
-                        "created_at": utc_now(),
-                    }
-                )
-            if install_command:
-                history["install_command"] = install_command
-            history["validation_command"] = validation_command
-            history["updated_at"] = utc_now()
-            history["commands"] = commands[-80:]
-            self._write_json_file(history_path, history)
+            updated_history = scaffold_updated_command_history(
+                history,
+                checkpoint=checkpoint,
+                install=install,
+                validation=validation,
+                install_command=install_command,
+                validation_command=validation_command,
+                build_log_path=build_log_path,
+            )
+            self._write_json_file(history_path, updated_history)
         except OSError as exc:
             warnings.append(f"Could not update .aegis/command_history.json: {exc}")
 
@@ -2339,28 +2291,12 @@ class ProjectScaffolder:
             try:
                 known_path = target / ".aegis" / "known_errors.json"
                 known = self._read_json_object(known_path, default={"schema": "aegis.known_errors.v1", "errors": []})
-                errors = known.get("errors")
-                if not isinstance(errors, list):
-                    errors = []
-                errors.append(
-                    {
-                        "signature": self._error_signature(validation),
-                        "category": validation.category or "unknown",
-                        "command": validation.command,
-                        "summary": validation.summary or validation.reason,
-                        "exit_code": validation.exit_code,
-                        "failed_step": validation.failed_step,
-                        "failed_step_command": validation.failed_step_command,
-                        "diagnostics": validation.diagnostics,
-                        "output_excerpt": self._command_excerpt(validation, limit=1400),
-                        "build_log_path": build_log_path,
-                        "status": "open",
-                        "created_at": utc_now(),
-                    }
+                updated_known_errors = scaffold_updated_known_errors(
+                    known,
+                    validation,
+                    build_log_path=build_log_path,
                 )
-                known["updated_at"] = utc_now()
-                known["errors"] = errors[-60:]
-                self._write_json_file(known_path, known)
+                self._write_json_file(known_path, updated_known_errors)
             except OSError as exc:
                 warnings.append(f"Could not update .aegis/known_errors.json: {exc}")
 
@@ -2679,15 +2615,7 @@ class ProjectScaffolder:
 
     @staticmethod
     def _error_signature(validation: CommandRun) -> str:
-        text = "|".join(
-            [
-                validation.category or "unknown",
-                validation.command,
-                validation.summary or validation.reason,
-                ProjectScaffolder._command_excerpt(validation, limit=400),
-            ]
-        )
-        return hashlib.sha256(text.encode("utf-8", errors="replace")).hexdigest()[:16]
+        return scaffold_error_signature(validation)
 
     @staticmethod
     def _markdown_list(items: list[str]) -> str:
