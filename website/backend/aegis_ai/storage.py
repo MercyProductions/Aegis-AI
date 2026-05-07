@@ -98,7 +98,6 @@ from .storage_helpers import (
     project_root_aliases,
     rate,
     reliability_score,
-    normalize_legacy_workspace_root,
     task_title_from_message,
     token_metadata_int,
     token_relative_error,
@@ -109,6 +108,7 @@ from .storage_schema import (
     ensure_task_columns as storage_ensure_task_columns,
     initialize_event_store_schema,
 )
+from .storage_legacy_import import import_legacy_db_if_needed as storage_import_legacy_db_if_needed
 from .storage_records import (
     execution_job_from_row as storage_execution_job_from_row,
     execution_job_values as storage_execution_job_values,
@@ -5949,188 +5949,11 @@ class EventStore:
         storage_ensure_fix_memory_category_column(conn)
 
     def _import_legacy_db_if_needed(self) -> None:
-        legacy_db = (self.project_root / "backend" / "data" / "aegis.sqlite3").resolve()
-        if legacy_db == self.db_path or not legacy_db.exists():
-            return
-
-        legacy_conn = sqlite3.connect(legacy_db)
-        legacy_conn.row_factory = sqlite3.Row
-        try:
-            with self._session() as conn:
-                self._import_legacy_tasks(conn, legacy_conn)
-                self._import_legacy_events(conn, legacy_conn)
-                self._import_legacy_fix_memory(conn, legacy_conn)
-                self._import_legacy_repair_attempts(conn, legacy_conn)
-                self._import_legacy_project_memory(conn, legacy_conn)
-        finally:
-            legacy_conn.close()
-
-    def _import_legacy_tasks(self, conn: sqlite3.Connection, legacy_conn: sqlite3.Connection) -> None:
-        if not self._table_exists(legacy_conn, "tasks"):
-            return
-        rows = legacy_conn.execute(
-            "select id, created_at, finished_at, mode, workspace_root, message, status from tasks"
-        ).fetchall()
-        for row in rows:
-            workspace_root = self._normalize_legacy_workspace_root(str(row["workspace_root"]))
-            conn.execute(
-                """
-                insert or ignore into tasks (id, created_at, finished_at, mode, workspace_root, message, status)
-                values (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    str(row["id"]),
-                    str(row["created_at"]),
-                    str(row["finished_at"]) if row["finished_at"] is not None else None,
-                    str(row["mode"]),
-                    workspace_root,
-                    str(row["message"]),
-                    str(row["status"]),
-                ),
-            )
-
-    def _import_legacy_events(self, conn: sqlite3.Connection, legacy_conn: sqlite3.Connection) -> None:
-        if not self._table_exists(legacy_conn, "events"):
-            return
-        rows = legacy_conn.execute(
-            "select task_id, created_at, kind, title, status, detail, payload_json from events"
-        ).fetchall()
-        for row in rows:
-            conn.execute(
-                """
-                insert into events (task_id, created_at, kind, title, status, detail, payload_json)
-                select ?, ?, ?, ?, ?, ?, ?
-                where not exists (
-                    select 1 from events
-                    where task_id = ? and created_at = ? and kind = ? and title = ? and detail = ?
-                )
-                """,
-                (
-                    str(row["task_id"]),
-                    str(row["created_at"]),
-                    str(row["kind"]),
-                    str(row["title"]),
-                    str(row["status"]),
-                    str(row["detail"]),
-                    str(row["payload_json"]),
-                    str(row["task_id"]),
-                    str(row["created_at"]),
-                    str(row["kind"]),
-                    str(row["title"]),
-                    str(row["detail"]),
-                ),
-            )
-
-    def _import_legacy_fix_memory(self, conn: sqlite3.Connection, legacy_conn: sqlite3.Connection) -> None:
-        if not self._table_exists(legacy_conn, "fix_memory"):
-            return
-        columns = self._table_columns(legacy_conn, "fix_memory")
-        has_category = "category" in columns
-        select_sql = (
-            "select id, created_at, project_root, error_signature, fix_summary, evidence, confidence, category from fix_memory"
-            if has_category
-            else "select id, created_at, project_root, error_signature, fix_summary, evidence, confidence from fix_memory"
+        storage_import_legacy_db_if_needed(
+            project_root=self.project_root,
+            db_path=self.db_path,
+            session=self._session,
         )
-        rows = legacy_conn.execute(select_sql).fetchall()
-        for row in rows:
-            conn.execute(
-                """
-                insert or ignore into fix_memory (
-                    id, created_at, project_root, error_signature, fix_summary, evidence, confidence, category
-                ) values (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    str(row["id"]),
-                    str(row["created_at"]),
-                    self._normalize_legacy_workspace_root(str(row["project_root"])),
-                    str(row["error_signature"]),
-                    str(row["fix_summary"]),
-                    str(row["evidence"]),
-                    float(row["confidence"]),
-                    str(row["category"]) if has_category else "unknown",
-                ),
-            )
-
-    def _import_legacy_repair_attempts(self, conn: sqlite3.Connection, legacy_conn: sqlite3.Connection) -> None:
-        if not self._table_exists(legacy_conn, "repair_attempts"):
-            return
-        rows = legacy_conn.execute(
-            """
-            select id, task_id, created_at, attempt_number, category, before_signature,
-                   after_signature, outcome, checkpoint, summary
-            from repair_attempts
-            """
-        ).fetchall()
-        for row in rows:
-            conn.execute(
-                """
-                insert or ignore into repair_attempts (
-                    id, task_id, created_at, attempt_number, category, before_signature,
-                    after_signature, outcome, checkpoint, summary
-                ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    str(row["id"]),
-                    str(row["task_id"]),
-                    str(row["created_at"]),
-                    int(row["attempt_number"]),
-                    str(row["category"]),
-                    str(row["before_signature"]),
-                    str(row["after_signature"]),
-                    str(row["outcome"]),
-                    str(row["checkpoint"]) if row["checkpoint"] is not None else None,
-                    str(row["summary"]),
-                ),
-            )
-
-    def _import_legacy_project_memory(self, conn: sqlite3.Connection, legacy_conn: sqlite3.Connection) -> None:
-        if not self._table_exists(legacy_conn, "project_memory"):
-            return
-        columns = self._table_columns(legacy_conn, "project_memory")
-        if not {"id", "created_at", "updated_at", "project_root", "category", "title", "detail", "source", "confidence"}.issubset(columns):
-            return
-
-        rows = legacy_conn.execute(
-            """
-            select id, created_at, updated_at, project_root, category, title, detail, source, confidence
-            from project_memory
-            """
-        ).fetchall()
-        for row in rows:
-            fingerprint = self._fingerprint(str(row["category"]), str(row["title"]), str(row["detail"]))
-            conn.execute(
-                """
-                insert or ignore into project_memory (
-                    id, created_at, updated_at, project_root, category, title, detail, source, confidence, fingerprint
-                ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    str(row["id"]),
-                    str(row["created_at"]),
-                    str(row["updated_at"]),
-                    self._normalize_legacy_workspace_root(str(row["project_root"])),
-                    str(row["category"]),
-                    str(row["title"]),
-                    str(row["detail"]),
-                    str(row["source"]),
-                    float(row["confidence"]),
-                    fingerprint,
-                ),
-            )
-
-    def _table_exists(self, conn: sqlite3.Connection, name: str) -> bool:
-        row = conn.execute("select name from sqlite_master where type = 'table' and name = ?", (name,)).fetchone()
-        return row is not None
-
-    def _table_columns(self, conn: sqlite3.Connection, name: str) -> set[str]:
-        return {
-            str(row["name"])
-            for row in conn.execute(f"pragma table_info({name})").fetchall()
-            if row["name"]
-        }
-
-    def _normalize_legacy_workspace_root(self, value: str) -> str:
-        return normalize_legacy_workspace_root(self.project_root, value)
 
     def _context_budget_payload(self, value: str) -> ContextBudgetInfo:
         return ContextBudgetInfo.model_validate(self._json_payload(value))
