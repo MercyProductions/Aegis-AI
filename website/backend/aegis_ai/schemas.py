@@ -1832,6 +1832,7 @@ class AgentResponse(BaseModel):
     recent_tasks: list[TaskSummary] = Field(default_factory=list)
     repair_attempts: list[RepairAttempt] = Field(default_factory=list)
     completion_quality: CompletionQualityInfo = Field(default_factory=CompletionQualityInfo)
+    media_job: MediaJobResponse | None = None
 
 
 class ChatStreamEventInfo(BaseModel):

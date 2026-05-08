@@ -280,6 +280,10 @@ export function __setApiDiscoveryForTests(enabled: boolean): void {
   apiDiscoveryEnabledForTests = enabled;
 }
 
+export function getResolvedApiBase(): string {
+  return resolvedApiBase;
+}
+
 async function jsonFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await apiFetch(path, {
     headers: {

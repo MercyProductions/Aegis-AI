@@ -1,4 +1,4 @@
-import type { ChatMessage } from '../types';
+import type { ChatMediaJob, ChatMessage } from '../types';
 
 export const CONVERSATION_STORAGE_KEY = 'aegis.web.conversations.v1';
 
@@ -230,7 +230,8 @@ function sanitizeChatMessageMetadata(metadata: ChatMessage['metadata']): ChatMes
     checkpoint:
       typeof metadata.checkpoint === 'string' || metadata.checkpoint === null ? metadata.checkpoint : undefined,
     workspaceRoot: typeof metadata.workspaceRoot === 'string' ? metadata.workspaceRoot : undefined,
-    taskId: typeof metadata.taskId === 'string' ? metadata.taskId : undefined
+    taskId: typeof metadata.taskId === 'string' ? metadata.taskId : undefined,
+    mediaJob: sanitizeMediaJobMetadata(metadata.mediaJob)
   };
 
   return next.generatedChanges.length ||
@@ -238,9 +239,47 @@ function sanitizeChatMessageMetadata(metadata: ChatMessage['metadata']): ChatMes
     next.warnings.length ||
     next.checkpoint ||
     next.workspaceRoot ||
-    next.taskId
+    next.taskId ||
+    next.mediaJob
     ? next
     : undefined;
+}
+
+function sanitizeMediaJobMetadata(value: unknown): ChatMediaJob | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const candidate = value as Record<string, unknown>;
+  if (typeof candidate.id !== 'string' || !candidate.id.trim()) return undefined;
+  if (!Array.isArray(candidate.assets)) return undefined;
+
+  const assets = candidate.assets
+    .filter((asset): asset is Record<string, unknown> => Boolean(asset && typeof asset === 'object'))
+    .map((asset) => ({
+      id: typeof asset.id === 'string' ? asset.id : '',
+      path: typeof asset.path === 'string' ? asset.path : '',
+      kind: typeof asset.kind === 'string' ? asset.kind : '',
+      format: typeof asset.format === 'string' ? asset.format : '',
+      role: typeof asset.role === 'string' ? asset.role : '',
+      mime_type: typeof asset.mime_type === 'string' ? asset.mime_type : '',
+      editable: Boolean(asset.editable),
+      derived_from: typeof asset.derived_from === 'string' ? asset.derived_from : '',
+      thumbnail_path: typeof asset.thumbnail_path === 'string' ? asset.thumbnail_path : '',
+      metadata: {}
+    }))
+    .filter((asset) => asset.path && asset.format)
+    .slice(0, 24);
+
+  if (!assets.length) return undefined;
+
+  return {
+    id: candidate.id.trim(),
+    kind: typeof candidate.kind === 'string' ? candidate.kind : 'image',
+    studio: typeof candidate.studio === 'string' ? candidate.studio : 'image',
+    status: typeof candidate.status === 'string' ? candidate.status : 'completed',
+    provider_name: typeof candidate.provider_name === 'string' ? candidate.provider_name : '',
+    prompt: typeof candidate.prompt === 'string' ? candidate.prompt : '',
+    theme_color: typeof candidate.theme_color === 'string' ? candidate.theme_color : '',
+    assets
+  } as ChatMediaJob;
 }
 
 export function compactText(value: string, maxLength: number): string {

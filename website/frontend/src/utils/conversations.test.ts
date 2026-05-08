@@ -116,6 +116,54 @@ describe('conversation utilities', () => {
     });
   });
 
+  it('preserves creative media job metadata in saved conversations', () => {
+    const preview = buildConversationPreview(
+      'thread-media',
+      [
+        { role: 'user', content: 'generate a random logo' },
+        {
+          role: 'assistant',
+          content: 'Auralith Prime generated a logo package in Creative Studio.',
+          metadata: {
+            workspaceRoot: 'C:\\Projects\\Aegis',
+            taskId: 'task-media',
+            mediaJob: {
+              id: 'media-1',
+              kind: 'logo',
+              studio: 'image',
+              status: 'completed',
+              provider_name: 'Local Creative Renderer',
+              prompt: 'generate a random logo',
+              theme_color: '#6d5dfc',
+              assets: [
+                {
+                  id: 'media-1:preview.png',
+                  path: 'C:\\Projects\\Aegis\\.aegis\\media\\media-1\\preview.png',
+                  kind: 'logo',
+                  format: 'png',
+                  role: 'preview',
+                  mime_type: 'image/png',
+                  editable: false,
+                  derived_from: '',
+                  thumbnail_path: '',
+                  metadata: { ignored: true }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      'C:\\Projects\\Aegis'
+    );
+
+    expect(preview?.messages[1].metadata?.mediaJob).toMatchObject({
+      id: 'media-1',
+      kind: 'logo',
+      studio: 'image',
+      assets: [{ format: 'png', role: 'preview' }]
+    });
+  });
+
   it('uses the latest useful assistant result as the preview summary', () => {
     const preview = buildConversationPreview(
       'thread-summary',

@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { Download, Loader2, Play, Search, Square, Zap } from 'lucide-react';
 import { getCreativeJob } from '../api';
 import { formatDateTime, formatStatusLabel } from '../utils/appUi';
+import { creativeAssetUrl } from '../utils/creativeAssets';
 import type {
   MediaAssetLibraryResponse,
   MediaCapabilitiesResponse,
@@ -83,8 +84,6 @@ export function CreativeStudioSurface({
   const previewAsset = imageAssets[0] ?? null;
   const audioAssets = selectedCreativeJob?.assets.filter((asset) => ['wav', 'mp3', 'midi'].includes(asset.format)) ?? [];
   const inputBorder = typeof palette.inputBorder === 'string' ? palette.inputBorder : 'rgba(255,255,255,0.12)';
-  const assetUrl = (path: string) =>
-    `${(import.meta.env.VITE_API_BASE ?? 'http://127.0.0.1:8787').replace(/\/+$/, '')}/api/creative-studio/assets/file?path=${encodeURIComponent(path)}`;
 
   return (
     <div style={styles.surfacePage}>
@@ -206,12 +205,12 @@ export function CreativeStudioSurface({
               <>
                 {previewAsset ? (
                   <img
-                    src={assetUrl(previewAsset.thumbnail_path || previewAsset.path)}
+                    src={creativeAssetUrl(previewAsset.thumbnail_path || previewAsset.path)}
                     alt={previewAsset.role}
                     style={{ width: '100%', maxHeight: 260, objectFit: 'cover', borderRadius: 8, border: `1px solid ${inputBorder}` }}
                   />
                 ) : audioAssets.length ? (
-                  <audio src={assetUrl(audioAssets[0].path)} controls style={{ width: '100%' }} />
+                  <audio src={creativeAssetUrl(audioAssets[0].path)} controls style={{ width: '100%' }} />
                 ) : (
                   <div style={styles.emptyPanel(palette)}>This job saved source assets without a browser preview.</div>
                 )}

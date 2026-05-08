@@ -277,6 +277,14 @@ import {
 } from './utils/projectRoots';
 import { autoMemoryFingerprint, buildAutoMemoryNote } from './utils/autoMemory';
 import { parseChatContentBlocks } from './utils/chatBlocks';
+import {
+  creativeAssetUrl,
+  creativeStudioTabForMediaJob,
+  mediaJobAssetLabel,
+  mediaJobAudioAsset,
+  mediaJobImageAsset,
+  type PreviewableMediaJob
+} from './utils/creativeAssets';
 import { filterWorkspaceFiles } from './utils/workspaceFiles';
 import {
   combinedApplyValidationStatus,
@@ -3235,21 +3243,28 @@ function App() {
         await refreshWorkspaceOperations(response.workspace_root);
         await refreshValidationRecipe(response.workspace_root);
         await refreshCheckpoints(response.workspace_root);
+        const assistantMetadata: ChatMessage['metadata'] | undefined =
+          response.changes.length || response.media_job
+            ? {
+                ...(response.changes.length
+                  ? {
+                      generatedChanges: response.changes,
+                      applied: response.applied,
+                      warnings: response.warnings,
+                      checkpoint: response.checkpoint ?? null
+                    }
+                  : {}),
+                workspaceRoot: response.workspace_root,
+                taskId: response.task_id,
+                ...(response.media_job ? { mediaJob: response.media_job } : {})
+              }
+            : undefined;
         const finalHistory: ChatMessage[] = [
           ...nextHistory,
           {
             role: 'assistant',
             content: buildAssistantSummary(response),
-            metadata: response.changes.length
-              ? {
-                  generatedChanges: response.changes,
-                  applied: response.applied,
-                  warnings: response.warnings,
-                  checkpoint: response.checkpoint ?? null,
-                  workspaceRoot: response.workspace_root,
-                  taskId: response.task_id
-                }
-              : undefined
+            metadata: assistantMetadata
           }
         ];
         setHistory(finalHistory);
@@ -3742,6 +3757,10 @@ function App() {
     const liveReviewSource =
       item.role === 'assistant' && index === latestAssistantMessageIndex && lastResponse ? activeReviewSource : null;
     const inlineReviewSource = liveReviewSource ?? messageReviewSource;
+    const inlineMediaJob =
+      item.role === 'assistant'
+        ? (index === latestAssistantMessageIndex ? lastResponse?.media_job ?? null : null) ?? item.metadata?.mediaJob ?? null
+        : null;
     const inlineDiffs =
       inlineReviewSource && activeReviewSource && sameReviewSource(inlineReviewSource, activeReviewSource)
         ? changeDiffs
@@ -3785,10 +3804,72 @@ function App() {
             )}
           </div>
 
+          {inlineMediaJob ? renderInlineMediaJob(inlineMediaJob) : null}
           {inlineReviewSource ? renderInlineChangeReview(inlineReviewSource, inlineDiffs) : null}
         </div>
       </div>
     );
+  }
+
+  function renderInlineMediaJob(job: PreviewableMediaJob) {
+    const imageAsset = mediaJobImageAsset(job);
+    const audioAsset = mediaJobAudioAsset(job);
+    const previewPath = imageAsset?.thumbnail_path || imageAsset?.path || audioAsset?.path || '';
+
+    return (
+      <div style={styles.inlineMediaPreview(palette)} data-testid="inline-media-preview">
+        <div style={styles.inlineMediaHeader}>
+          <div style={styles.inlineChangeTitle(palette)}>
+            <Sparkles size={16} />
+            <span>{formatStatusLabel(job.kind)}</span>
+            <span style={styles.contextTag(palette)}>{mediaJobAssetLabel(job)}</span>
+          </div>
+          <div style={styles.inlineChangeActions}>
+            <button
+              type="button"
+              style={styles.reviewChangesButton(palette)}
+              onClick={() => void openCreativeJobFromChat(job)}
+              aria-label={`Open creative job ${job.id}`}
+            >
+              <FolderOpen size={13} />
+              Open Studio
+            </button>
+          </div>
+        </div>
+
+        {imageAsset ? (
+          <img
+            src={creativeAssetUrl(previewPath)}
+            alt={imageAsset.role || `${formatStatusLabel(job.kind)} preview`}
+            style={styles.inlineMediaImage(palette)}
+          />
+        ) : audioAsset ? (
+          <audio src={creativeAssetUrl(audioAsset.path)} controls style={styles.inlineMediaAudio} />
+        ) : (
+          <div style={styles.inlineChangeStatus(palette)}>This creative job saved source assets without a browser preview.</div>
+        )}
+
+        <div style={styles.inlineMediaMeta(palette)}>
+          <span>{job.provider_name || 'local renderer'}</span>
+          <span>{job.theme_color || 'auto theme'}</span>
+          <span>{job.id}</span>
+        </div>
+      </div>
+    );
+  }
+
+  async function openCreativeJobFromChat(job: PreviewableMediaJob) {
+    setCreativeStudioTab(creativeStudioTabForMediaJob(job));
+    openAppSection('creative');
+    try {
+      const hydratedJob = await getCreativeJob(job.id);
+      setSelectedCreativeJob(hydratedJob);
+      setCreativeJobs((current) => mergeById<MediaJobResponse>([hydratedJob], current));
+      await refreshCreativeStudio();
+    } catch {
+      setSelectedCreativeJob(job as MediaJobResponse);
+      setCreativeJobs((current) => mergeById<MediaJobResponse>([job as MediaJobResponse], current));
+    }
   }
 
   function renderInlineChangeReview(source: GeneratedReviewSource, diffs: Record<string, DiffCompareResponse>) {
@@ -8553,6 +8634,8 @@ function App() {
                         'Restored file review from this saved session. Exact line counts are rebuilt from available checkpoints and workspace files.'}
                     </div>
                   </div>
+
+                  {lastResponse?.media_job ? renderInlineMediaJob(lastResponse.media_job) : null}
 
                   {lastResponse?.plan.length ? (
                     <div style={styles.sectionBlock}>

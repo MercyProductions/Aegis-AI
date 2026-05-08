@@ -56,7 +56,14 @@ export interface ChatMessageMetadata {
   checkpoint?: string | null;
   workspaceRoot?: string;
   taskId?: string;
+  mediaJob?: ChatMediaJob;
 }
+
+export type ChatMediaJob = Pick<
+  MediaJobResponse,
+  'id' | 'kind' | 'studio' | 'status' | 'provider_name' | 'prompt' | 'theme_color' | 'assets'
+> &
+  Partial<MediaJobResponse>;
 
 export interface ModeOption {
   id: Mode;
@@ -1428,6 +1435,7 @@ export interface AgentResponse {
   recent_tasks: TaskSummary[];
   repair_attempts: RepairAttempt[];
   completion_quality?: CompletionQualityInfo | null;
+  media_job?: MediaJobResponse | null;
 }
 
 export interface ChatStreamEventInfo {

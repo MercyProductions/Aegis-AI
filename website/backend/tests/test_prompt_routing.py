@@ -124,8 +124,35 @@ class PromptRoutingTests(unittest.TestCase):
         self.assertIsNone(response.validation)
         self.assertIn("Creative Studio", response.reply)
         self.assertIn("Apply changes was ignored", " ".join(response.warnings))
+        self.assertIsNotNone(response.media_job)
+        self.assertEqual(response.media_job.kind if response.media_job else "", "logo")
+        self.assertTrue(any(asset.format == "png" for asset in (response.media_job.assets if response.media_job else [])))
         self.assertTrue(any(event.kind == "creative.intent" for event in response.events))
         self.assertFalse((workspace / "go.mod").exists())
+
+    def test_chat_run_routes_informal_logo_smoke_test_to_creative_job(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            engine = AgentEngine(
+                workspace,
+                Settings(_env_file=None, aegis_model_api="none", aegis_database_path="data/test.sqlite3"),
+            )
+
+            response = asyncio.run(
+                engine.run(
+                    AgentRequest(
+                        message="generate a random logo idc what it is but i want to make sure this is working",
+                        workspace_root=str(workspace),
+                        mode="build",
+                        apply_changes=True,
+                    )
+                )
+            )
+
+        self.assertEqual(response.engine, "Auralith Creative Studio")
+        self.assertEqual(response.task_plan.routing.task_role if response.task_plan and response.task_plan.routing else "", "creative")
+        self.assertIsNotNone(response.media_job)
+        self.assertEqual(response.media_job.kind if response.media_job else "", "logo")
 
     def test_task_planner_is_prompt_first_not_mode_first(self) -> None:
         plan = self.planner.build_plan(

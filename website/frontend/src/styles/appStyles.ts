@@ -968,6 +968,50 @@ export const styles = {
     background: p.cardAlt
   }),
 
+  inlineMediaPreview: (p: Palette): CSSProperties => ({
+    marginTop: 14,
+    border: `1px solid ${p.inputBorder}`,
+    borderRadius: 14,
+    overflow: 'hidden',
+    background: p.cardAlt
+  }),
+
+  inlineMediaHeader: {
+    minHeight: 48,
+    padding: '0 14px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    flexWrap: 'wrap'
+  } as CSSProperties,
+
+  inlineMediaImage: (p: Palette): CSSProperties => ({
+    width: '100%',
+    maxHeight: 340,
+    display: 'block',
+    objectFit: 'contain',
+    background: p.codeBg,
+    borderTop: `1px solid ${p.inputBorder}`
+  }),
+
+  inlineMediaAudio: {
+    width: '100%',
+    padding: '0 14px 14px'
+  } as CSSProperties,
+
+  inlineMediaMeta: (p: Palette): CSSProperties => ({
+    padding: '10px 14px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+    borderTop: `1px solid ${p.inputBorder}`,
+    color: p.muted,
+    fontSize: 12,
+    fontWeight: 750
+  }),
+
   inlineChangeHeader: {
     minHeight: 48,
     padding: '0 14px',
@@ -1004,6 +1048,10 @@ export const styles = {
     background: p.card,
     color: p.text,
     cursor: 'pointer',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
     fontSize: 12,
     fontWeight: 850,
     whiteSpace: 'nowrap'

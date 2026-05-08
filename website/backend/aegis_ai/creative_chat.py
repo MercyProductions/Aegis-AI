@@ -209,6 +209,7 @@ class CreativeChatOrchestrator:
                 reasons=["Creative media request completed without code workspace patches."],
                 should_continue=False,
             ),
+            media_job=media_job,
         )
 
     def _blocked_response(
