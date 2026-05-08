@@ -131,7 +131,9 @@ bool PathLooksLikeExistingProject(const std::string& path)
         L"components",
         L"pages",
         L"main.cpp",
-        L"main.py"
+        L"main.py",
+        L"DllMain.cpp",
+        L"dllmain.cpp"
     };
     for (const std::filesystem::path& marker : project_markers) {
         if (std::filesystem::exists(root / marker, ec)) {
@@ -147,11 +149,32 @@ bool PathLooksLikeExistingProject(const std::string& path)
             continue;
         }
         const std::string extension = Lower(WideToUtf8(entry.path().extension().wstring()));
-        if (extension == ".sln" || extension == ".csproj" || extension == ".vcxproj") {
+        if (extension == ".sln" || extension == ".csproj" || extension == ".vcxproj" ||
+            extension == ".dll" || extension == ".lib" || extension == ".def" || extension == ".exp" || extension == ".pdb") {
             return true;
         }
     }
     return false;
+}
+
+bool PromptTargetsExistingNativeOrDllWork(const std::string& prompt)
+{
+    const std::string lowered = Lower(Trim(prompt));
+    if (lowered.empty()) {
+        return false;
+    }
+
+    const bool existing_or_refine = ContainsAnyTerm(lowered, {
+        "existing", "already made", "already built", "already created", "my dll", "my library",
+        "work on", "refine", "improve", "update", "fix", "debug", "repair", "clean up",
+        "optimize", "continue", "make better"
+    });
+    const bool native_or_dll = ContainsAnyTerm(lowered, {
+        "dll", "shared library", "dynamic library", "library", "native", "c++", "cpp",
+        "vcxproj", "sln", "visual studio", "cmake", "minhook", "hook", "imgui", "win32",
+        "windows internals", "driver"
+    });
+    return existing_or_refine && native_or_dll;
 }
 
 bool ShouldRouteToProjectBuilder(const std::string& prompt)
@@ -194,6 +217,9 @@ bool ShouldRouteToProjectBuilder(const std::string& prompt)
         "implement", "complete", "finish", "write me", "write a", "write an", "build me"
     });
     if (question_like && !explicit_location && !from_scratch && !explicit_create_request) {
+        return false;
+    }
+    if (!from_scratch && PromptTargetsExistingNativeOrDllWork(prompt)) {
         return false;
     }
     const bool project_noun = ContainsAnyTerm(lowered, {
@@ -297,6 +323,9 @@ bool WorkspaceLooksLikeCppProject(const std::string& path)
         }
         const std::string extension = Lower(WideToUtf8(entry.path().extension().wstring()));
         if (extension == ".sln" || extension == ".vcxproj" || extension == ".cpp" || extension == ".cxx" || extension == ".cc") {
+            return true;
+        }
+        if (extension == ".h" || extension == ".hpp" || extension == ".def" || extension == ".dll" || extension == ".lib") {
             return true;
         }
     }
@@ -418,6 +447,7 @@ std::string ExtractWindowsPathFromPrompt(const std::string& text)
         size_t stop = std::string::npos;
         const std::vector<std::string> stop_phrases = {
             " here ", " i want", " i need", " i'm ", " im ", " can you", " could you", " please",
+            " at this path", " at this location", " in this folder", " in this directory",
             " and then ", " then ", " so ", " but ", " because ", " with ", " using ", " for me", " if ",
             " create ", " build ", " make ", " generate ", " scaffold ", " set up ", " setup ",
             " start ", " write ", " add ", " implement ", " complete ", " finish ", " develop ",

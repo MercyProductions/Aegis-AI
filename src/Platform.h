@@ -30,6 +30,10 @@ std::filesystem::path LocateDefaultBackendRoot();
 
 DesktopSettings LoadDesktopSettings();
 bool SaveDesktopSettings(const DesktopSettings& settings, std::string& error);
+bool BackendHealthProjectRootMatches(
+    const DesktopSettings& settings,
+    const std::string& project_root,
+    std::string* detail = nullptr);
 
 std::wstring Utf8ToWide(const std::string& value);
 std::string WideToUtf8(const std::wstring& value);

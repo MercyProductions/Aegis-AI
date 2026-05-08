@@ -1,0 +1,14 @@
+.env
+.venv/
+backend/__pycache__/
+backend/**/*.pyc
+frontend/node_modules/
+frontend/dist/
+logs/
+data/
+workspace/**/node_modules/
+workspace/**/.venv/
+workspace/**/.aegis/
+workspace/**/dist/
+workspace/**/build/
+workspace/**/.next/

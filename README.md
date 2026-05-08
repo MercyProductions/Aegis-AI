@@ -31,10 +31,26 @@ http://127.0.0.1:8787
 It auto-starts the existing website backend through the bundled Python venv without Uvicorn reload, which is better for a desktop process. If the venv is missing, it falls back to:
 
 ```text
-..\..\..\Website\ChatBot\scripts\start-backend.ps1
+website\scripts\start-backend.ps1
 ```
 
 Desktop connection settings live in `AegisChatBot.config.ini`.
+
+## Web Workspace
+
+The React/FastAPI web workspace now lives directly in this repo under:
+
+```text
+website\
+```
+
+From the repo root, launch it with:
+
+```powershell
+.\website\launch.ps1
+```
+
+The desktop app is configured to use that embedded backend by default, so the repo can be restored from GitHub without depending on the old `Website\ChatBot` folder.
 
 ## What It Supports
 

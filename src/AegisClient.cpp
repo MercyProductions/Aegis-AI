@@ -3298,7 +3298,12 @@ HealthStatus AegisClient::GetHealth()
     if (!parsed.ok) {
         throw std::runtime_error(parsed.error);
     }
-    return ParseHealth(parsed.value);
+    HealthStatus health = ParseHealth(parsed.value);
+    std::string root_error;
+    if (!BackendHealthProjectRootMatches(settings_, health.project_root, &root_error)) {
+        throw std::runtime_error(root_error);
+    }
+    return health;
 }
 
 AppConfig AegisClient::GetConfig()

@@ -121,6 +121,10 @@ LRESULT HitTestFramelessWindow(HWND hwnd, LPARAM lparam)
 
     const int x = GET_X_LPARAM(lparam);
     const int y = GET_Y_LPARAM(lparam);
+    if (y >= rect.top && y < rect.top + drag_height && x >= rect.right - chrome_width) {
+        return HTCLIENT;
+    }
+
     const bool left = x >= rect.left && x < rect.left + frame_x;
     const bool right = x < rect.right && x >= rect.right - frame_x;
     const bool top = y >= rect.top && y < rect.top + frame_y;

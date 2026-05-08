@@ -1,0 +1,20 @@
+{
+  "name": "aegis-coding-ai-web-workspace",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "npm --prefix frontend run dev",
+    "build": "npm --prefix frontend run build",
+    "preview": "npm --prefix frontend run preview",
+    "test": "npm --prefix frontend test --",
+    "backend:test": "python -m pytest backend/tests -q",
+    "acceptance:web": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/acceptance-web.ps1",
+    "doctor:web": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/doctor-web.ps1",
+    "e2e:web": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/e2e-web.ps1",
+    "smoke:web": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/smoke-web.ps1",
+    "validate": "npm --prefix frontend test -- --run && npm --prefix frontend run build && python -m pytest backend/tests -q"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.59.1"
+  }
+}

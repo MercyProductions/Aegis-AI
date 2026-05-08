@@ -8,6 +8,22 @@ CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake
 
+# Embedded web app dependency/runtime output
+.tmp/
+py-probe-dir/
+node_modules/
+website/.tmp/
+website/.venv/
+website/logs/
+website/data/
+website/workspace/
+website/frontend/node_modules/
+website/frontend/dist/
+website/backend/.pytest_cache/
+website/backend/**/__pycache__/
+website/.pytest_cache/
+website/**/*.pyc
+
 # Visual Studio / native artifacts
 *.obj
 *.pdb
@@ -34,6 +50,8 @@ crash-dumps/
 # Local environment and secrets
 .env
 .env.*
+!.env.example
+!website/.env.example
 *.local
 *.key
 *.pem

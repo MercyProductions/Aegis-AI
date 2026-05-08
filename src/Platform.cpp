@@ -18,6 +18,7 @@
 #include <chrono>
 #include <cctype>
 #include <cstdlib>
+#include <cwctype>
 #include <fstream>
 #include <iomanip>
 #include <sstream>
@@ -122,6 +123,47 @@ std::filesystem::path ResolveConfigPath(const std::filesystem::path& base, const
 std::string PathToUtf8(const std::filesystem::path& path)
 {
     return WideToUtf8(path.wstring());
+}
+
+std::filesystem::path NormalizePathForComparison(const std::filesystem::path& path)
+{
+    if (path.empty()) {
+        return {};
+    }
+
+    std::error_code ec;
+    std::filesystem::path absolute = std::filesystem::absolute(path, ec);
+    if (ec) {
+        absolute = path;
+        ec.clear();
+    }
+
+    std::filesystem::path canonical = std::filesystem::weakly_canonical(absolute, ec);
+    if (!ec) {
+        absolute = canonical;
+    }
+
+    return absolute.lexically_normal();
+}
+
+std::wstring PathComparisonKey(const std::filesystem::path& path)
+{
+    std::wstring key = NormalizePathForComparison(path).wstring();
+    std::replace(key.begin(), key.end(), L'/', L'\\');
+    while (!key.empty() && (key.back() == L'\\' || key.back() == L'/')) {
+        key.pop_back();
+    }
+    std::transform(key.begin(), key.end(), key.begin(), [](wchar_t ch) {
+        return static_cast<wchar_t>(std::towlower(ch));
+    });
+    return key;
+}
+
+bool IsBackendRootMismatchMessage(const std::string& message)
+{
+    return message.find("different project root") != std::string::npos
+        || message.find("does not include project_root") != std::string::npos
+        || message.find("invalid backend health response") != std::string::npos;
 }
 
 HttpResponse SendWinHttpRequest(
@@ -322,14 +364,25 @@ std::filesystem::path ProjectDirectoryFromExecutable()
 
 std::filesystem::path LocateDefaultBackendRoot()
 {
+    const std::filesystem::path project_root = ProjectDirectoryFromExecutable();
+    const std::filesystem::path embedded_backend = project_root / "website";
+    if (std::filesystem::exists(embedded_backend / "backend" / "aegis_ai" / "main.py")) {
+        return embedded_backend.lexically_normal();
+    }
+
     std::vector<std::filesystem::path> starts = {
-        ProjectDirectoryFromExecutable(),
+        project_root,
         ExecutableDirectory(),
         std::filesystem::current_path()
     };
 
     for (std::filesystem::path start : starts) {
         for (int i = 0; i < 10; ++i) {
+            const std::filesystem::path local_candidate = start / "website";
+            if (std::filesystem::exists(local_candidate / "backend" / "aegis_ai" / "main.py")) {
+                return local_candidate.lexically_normal();
+            }
+
             const std::filesystem::path candidate = start / "Website" / "ChatBot";
             if (std::filesystem::exists(candidate / "backend" / "aegis_ai" / "main.py")) {
                 return candidate.lexically_normal();
@@ -341,12 +394,49 @@ std::filesystem::path LocateDefaultBackendRoot()
         }
     }
 
-    return (ProjectDirectoryFromExecutable() / ".." / ".." / ".." / "Website" / "ChatBot").lexically_normal();
+    return embedded_backend.lexically_normal();
 }
 
 bool BackendRootLooksValid(const std::filesystem::path& root)
 {
     return std::filesystem::exists(root / "backend" / "aegis_ai" / "main.py");
+}
+
+bool BackendHealthProjectRootMatches(
+    const DesktopSettings& settings,
+    const std::string& project_root,
+    std::string* detail)
+{
+    const std::string remote_root = Trim(project_root);
+    if (!BackendRootLooksValid(settings.backend_root)) {
+        SetError(detail, {});
+        return true;
+    }
+
+    const std::filesystem::path expected_root = NormalizePathForComparison(settings.backend_root);
+    if (remote_root.empty()) {
+        std::ostringstream message;
+        message << "Backend health does not include project_root. Expected \""
+            << PathToUtf8(expected_root)
+            << "\". Stop the stale backend on " << settings.api_base_url
+            << " or update AegisChatBot.config.ini before continuing.";
+        SetError(detail, message.str());
+        return false;
+    }
+
+    const std::filesystem::path actual_root = NormalizePathForComparison(std::filesystem::path(Utf8ToWide(remote_root)));
+    if (!PathComparisonKey(expected_root).empty() && PathComparisonKey(expected_root) == PathComparisonKey(actual_root)) {
+        SetError(detail, {});
+        return true;
+    }
+
+    std::ostringstream message;
+    message << "Backend health responded from a different project root: \"" << PathToUtf8(actual_root)
+        << "\". Expected \"" << PathToUtf8(expected_root)
+        << "\". Stop the stale backend on " << settings.api_base_url
+        << " or update AegisChatBot.config.ini before continuing.";
+    SetError(detail, message.str());
+    return false;
 }
 
 DesktopSettings LoadDesktopSettings()
@@ -626,6 +716,14 @@ bool BackendHealthEndpointReady(const DesktopSettings& settings, std::string* de
     try {
         const HttpResponse response = HttpGet(JoinUrl(settings.api_base_url, "/api/health"));
         if (response.status_code >= 200 && response.status_code < 300 && response.error.empty()) {
+            const JsonParseResult parsed = ParseJson(response.body);
+            if (!parsed.ok || !parsed.value.IsObject()) {
+                SetError(detail, "Backend health returned an invalid backend health response; expected JSON with project_root.");
+                return false;
+            }
+            if (!BackendHealthProjectRootMatches(settings, parsed.value["project_root"].AsString(), detail)) {
+                return false;
+            }
             SetError(detail, {});
             return true;
         }
@@ -741,6 +839,8 @@ std::wstring BuildBackendCommand(const DesktopSettings& settings, std::string& e
     command += L"\" -NoProfile -ExecutionPolicy Bypass -File \"";
     command += script.wstring();
     command += L"\"";
+    command += L" -Port ";
+    command += std::to_wstring(BackendPortFromUrl(settings.api_base_url));
     return command;
 }
 
@@ -749,6 +849,10 @@ bool StartBackendProcess(const DesktopSettings& settings, std::string& error)
     std::string health_error;
     if (BackendHealthEndpointReady(settings, &health_error)) {
         return true;
+    }
+    if (IsBackendRootMismatchMessage(health_error)) {
+        error = health_error;
+        return false;
     }
 
     const std::filesystem::path root = settings.backend_root;
@@ -1073,6 +1177,11 @@ bool IsAudioPreviewPlaying()
 
 void RequestWindowClose()
 {
+    HWND hwnd = g_host_window != nullptr ? g_host_window : GetActiveWindow();
+    if (hwnd != nullptr) {
+        PostMessageW(hwnd, WM_CLOSE, 0, 0);
+        return;
+    }
     PostQuitMessage(0);
 }
 
