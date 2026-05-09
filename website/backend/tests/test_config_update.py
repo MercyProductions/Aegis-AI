@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from aegis_ai import main
+from aegis_ai.core_bridge import CoreBridgeResult
 from aegis_ai.schemas import AppConfig
 from aegis_ai.settings import Settings
 
@@ -63,6 +64,44 @@ def _app_config(settings: Settings, workspace: str) -> AppConfig:
     )
 
 
+class FakeCoreBridge:
+    def __init__(self) -> None:
+        self.updates: list[dict] = []
+
+    async def settings_status(self, workspace: Path) -> CoreBridgeResult:
+        return CoreBridgeResult(
+            True,
+            True,
+            200,
+            "settings",
+            {"default_model": "existing-model", "ollama_url": "http://127.0.0.1:11434"},
+            {
+                "ok": True,
+                "api_version": "v1",
+                "contract_version": "2026.05.09",
+                "kind": "settings",
+                "data": {"default_model": "existing-model", "ollama_url": "http://127.0.0.1:11434"},
+            },
+        )
+
+    async def update_settings(self, workspace: Path, settings: dict) -> CoreBridgeResult:
+        self.updates.append({"workspace": str(workspace), "settings": settings})
+        return CoreBridgeResult(
+            True,
+            True,
+            200,
+            "settings.updated",
+            settings,
+            {
+                "ok": True,
+                "api_version": "v1",
+                "contract_version": "2026.05.09",
+                "kind": "settings.updated",
+                "data": settings,
+            },
+        )
+
+
 class ConfigUpdateTests(unittest.TestCase):
     def test_config_post_accepts_partial_update_and_preserves_existing_values(self) -> None:
         settings = _settings()
@@ -71,11 +110,13 @@ class ConfigUpdateTests(unittest.TestCase):
         async def fake_config_snapshot() -> AppConfig:
             return _app_config(settings, captured.get("DEFAULT_WORKSPACE", settings.default_workspace))
 
+        fake_core = FakeCoreBridge()
         with (
             patch.object(main, "settings", settings),
             patch.object(main, "update_env", lambda values: captured.update(values)),
             patch.object(main, "refresh_runtime", lambda: None),
             patch.object(main, "config_snapshot", fake_config_snapshot),
+            patch.object(main, "core_bridge", fake_core),
             TestClient(main.app) as client,
         ):
             response = client.post("/api/config", json={"default_workspace": "new-workspace"})
@@ -95,6 +136,7 @@ class ConfigUpdateTests(unittest.TestCase):
         self.assertEqual(captured["AEGIS_FEEDBACK_REDACTION_ENABLED"], "false")
         self.assertEqual(captured["AEGIS_FEEDBACK_MAX_EXCERPT_CHARS"], "777")
         self.assertEqual(captured["AEGIS_FEEDBACK_HASH_CONTENT"], "false")
+        self.assertEqual(fake_core.updates[0]["settings"]["default_model"], "existing-model")
 
     def test_config_post_full_update_still_normalizes_strings(self) -> None:
         settings = _settings()
@@ -103,11 +145,13 @@ class ConfigUpdateTests(unittest.TestCase):
         async def fake_config_snapshot() -> AppConfig:
             return _app_config(settings, captured.get("DEFAULT_WORKSPACE", settings.default_workspace))
 
+        fake_core = FakeCoreBridge()
         with (
             patch.object(main, "settings", settings),
             patch.object(main, "update_env", lambda values: captured.update(values)),
             patch.object(main, "refresh_runtime", lambda: None),
             patch.object(main, "config_snapshot", fake_config_snapshot),
+            patch.object(main, "core_bridge", fake_core),
             TestClient(main.app) as client,
         ):
             response = client.post(

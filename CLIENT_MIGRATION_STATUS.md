@@ -9,7 +9,7 @@ Goal: migrate clients incrementally toward Aegis Core `/v1` as the shared runtim
 1. VS Code Extension - migrated to Core contracts for shared runtime reads/tasks; hardening pass complete.
 2. Visual Studio Extension - partial Core integration hardened; broader migration not started.
 3. Desktop App - partial Core integration hardened; broader migration not started.
-4. Website backend/frontend - last; do not migrate until client hardening has more interactive coverage.
+4. Website backend/frontend - adapter migration started for low-risk runtime routes only.
 
 ## VS Code Extension
 
@@ -135,17 +135,27 @@ Planned migration candidates:
 
 ## Website Backend/Frontend
 
-Status: adapter layer only; migrate last. No website migration was performed during hardening.
+Status: low-risk backend adapter migration started. The frontend still calls the existing Website `/api` routes.
 
 Current Core bridge:
 
 - `GET /api/core-runtime` reads Core health, models, settings, memory, diagnostics, and dashboard.
 
+Migrated low-risk Website routes:
+
+| Website route | Core source | Compatibility behavior |
+| --- | --- | --- |
+| `GET /api/health`, `GET /api/ready` | `/v1/health`, `/v1/models`, `/v1/settings`, `/v1/diagnostics` | Preserves `RuntimeHealthResponse`; reports degraded Core adapter status if Core is offline. |
+| `GET /api/models` | `/v1/models` | Preserves `ModelInventoryResponse`; overlays Core model inventory when available. |
+| `GET /api/config` | `/v1/settings` | Preserves `AppConfig`; reports Core settings adapter status while keeping Website `.env` values. |
+| `POST /api/config` | `/v1/settings` | Saves Website config first, then best-effort syncs shared model settings to Core. |
+
 Hold until clients are stable:
 
-- Website chat, routing, apply, checkpoint restore, project builder, auth/session, Creative Studio, and advanced product workflows.
+- Website chat, routing, apply, checkpoint restore, project builder, auth/session, Creative Studio, validation/repair, workspace scan/roadmap, memory CRUD, tasks, and advanced product workflows.
 
 Website migration safety:
 
-- Not ready for the website migration phase yet. VS Code has the broadest Core coverage, but Visual Studio and Desktop still use only narrow Core surfaces.
-- Next hardening should add interactive extension-host/manual workflow coverage for VS Code and Visual Studio before shifting Website `/api` behavior toward Core.
+- Safe for low-risk status/settings/model adapter reads.
+- Not safe yet for Website chat, generated changes, validation/repair, tasks, memory CRUD, or checkpoint workflows.
+- Next hardening should add live website smoke coverage for Core online/offline states before migrating workspace scan or validation.

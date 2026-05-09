@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -22,6 +23,10 @@ class CoreBridgeResult:
     data: dict[str, Any] | list[Any] | None
     envelope: dict[str, Any] | None = None
     error: str = ""
+
+
+def _workspace_text(workspace: str | Path) -> str:
+    return str(Path(workspace).resolve())
 
 
 def normalize_core_base_url(value: str, default: str = DEFAULT_CORE_API_URL) -> str:
@@ -71,22 +76,78 @@ class AegisCoreBridge:
     def from_settings(cls, settings: Any) -> "AegisCoreBridge":
         return cls(getattr(settings, "aegis_core_api_url", DEFAULT_CORE_API_URL))
 
-    async def get(self, path: str, *, params: dict[str, Any] | None = None) -> CoreBridgeResult:
-        return await self._request("GET", path, params=params)
+    async def get(
+        self,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+        expected_kind: str | None = None,
+    ) -> CoreBridgeResult:
+        return await self._request("GET", path, params=params, expected_kind=expected_kind)
 
-    async def post(self, path: str, *, payload: dict[str, Any]) -> CoreBridgeResult:
-        return await self._request("POST", path, json=payload)
+    async def post(
+        self,
+        path: str,
+        *,
+        payload: dict[str, Any],
+        expected_kind: str | None = None,
+    ) -> CoreBridgeResult:
+        return await self._request("POST", path, json=payload, expected_kind=expected_kind)
+
+    async def health_status(self, workspace: str | Path) -> CoreBridgeResult:
+        return await self.get("/v1/health", params={"workspace": _workspace_text(workspace)}, expected_kind="health")
+
+    async def model_status(self, workspace: str | Path) -> CoreBridgeResult:
+        return await self.get("/v1/models", params={"workspace": _workspace_text(workspace)}, expected_kind="models")
+
+    async def settings_status(self, workspace: str | Path) -> CoreBridgeResult:
+        return await self.get("/v1/settings", params={"workspace": _workspace_text(workspace)}, expected_kind="settings")
+
+    async def diagnostics_status(self, workspace: str | Path) -> CoreBridgeResult:
+        return await self.get("/v1/diagnostics", params={"workspace": _workspace_text(workspace)}, expected_kind="diagnostics.summary")
+
+    async def dashboard_status(self, workspace: str | Path) -> CoreBridgeResult:
+        return await self.get(
+            "/v1/ecosystem/dashboard",
+            params={"workspace": _workspace_text(workspace)},
+            expected_kind="ecosystem.dashboard",
+        )
+
+    async def update_settings(self, workspace: str | Path, settings: dict[str, Any]) -> CoreBridgeResult:
+        return await self.post(
+            "/v1/settings",
+            payload={"workspace": _workspace_text(workspace), "settings": settings},
+            expected_kind="settings.updated",
+        )
+
+    async def low_risk_runtime_status(self, workspace: str | Path) -> dict[str, CoreBridgeResult]:
+        names = ("health", "models", "settings", "diagnostics")
+        results = await asyncio.gather(
+            self.health_status(workspace),
+            self.model_status(workspace),
+            self.settings_status(workspace),
+            self.diagnostics_status(workspace),
+        )
+        return dict(zip(names, results, strict=True))
 
     async def shared_runtime_status(self, workspace: str | Path) -> dict[str, Any]:
-        workspace_text = str(Path(workspace).resolve())
+        workspace_text = _workspace_text(workspace)
         params = {"workspace": workspace_text}
+        health, models, settings, memory, diagnostics, dashboard = await asyncio.gather(
+            self.health_status(workspace),
+            self.model_status(workspace),
+            self.settings_status(workspace),
+            self.get("/v1/memory", params=params, expected_kind="memory.summary"),
+            self.diagnostics_status(workspace),
+            self.dashboard_status(workspace),
+        )
         results = {
-            "health": await self.get("/v1/health", params=params),
-            "models": await self.get("/v1/models", params=params),
-            "settings": await self.get("/v1/settings", params=params),
-            "memory": await self.get("/v1/memory", params=params),
-            "diagnostics": await self.get("/v1/diagnostics", params=params),
-            "dashboard": await self.get("/v1/ecosystem/dashboard", params=params),
+            "health": health,
+            "models": models,
+            "settings": settings,
+            "memory": memory,
+            "diagnostics": diagnostics,
+            "dashboard": dashboard,
         }
         errors = [f"{name}: {result.error}" for name, result in results.items() if result.error]
         reachable = any(result.reachable for result in results.values())
@@ -131,6 +192,7 @@ class AegisCoreBridge:
         *,
         params: dict[str, Any] | None = None,
         json: dict[str, Any] | None = None,
+        expected_kind: str | None = None,
     ) -> CoreBridgeResult:
         try:
             async with httpx.AsyncClient(timeout=self.timeout_seconds, transport=self.transport) as client:
@@ -147,13 +209,26 @@ class AegisCoreBridge:
                     data=None,
                     error="Core response was not a JSON object.",
                 )
+            contract_error = _core_envelope_contract_error(envelope, expected_kind)
+            if contract_error:
+                return CoreBridgeResult(
+                    reachable=True,
+                    ok=False,
+                    status_code=status_code,
+                    kind=str(envelope.get("kind") or ""),
+                    data=envelope.get("data"),
+                    envelope=envelope,
+                    error=contract_error,
+                )
+            ok = bool(envelope.get("ok"))
             return CoreBridgeResult(
                 reachable=True,
-                ok=bool(envelope.get("ok")),
+                ok=ok,
                 status_code=status_code,
                 kind=str(envelope.get("kind") or ""),
                 data=envelope.get("data"),
                 envelope=envelope,
+                error="" if ok else core_envelope_error(envelope),
             )
         except (httpx.HTTPError, ValueError) as exc:
             status_code = exc.response.status_code if isinstance(exc, httpx.HTTPStatusError) and exc.response else None
@@ -165,6 +240,30 @@ class AegisCoreBridge:
                 data=None,
                 error=str(exc),
             )
+
+
+def _core_envelope_contract_error(envelope: dict[str, Any], expected_kind: str | None) -> str:
+    api_version = str(envelope.get("api_version") or "")
+    if api_version != CORE_API_VERSION:
+        return f"Core response used unexpected api_version: {api_version or 'missing'}."
+    if expected_kind:
+        kind = str(envelope.get("kind") or "")
+        if kind != expected_kind:
+            return f"Core response kind mismatch: expected {expected_kind}, got {kind or 'missing'}."
+    return ""
+
+
+def core_envelope_error(envelope: dict[str, Any] | None) -> str:
+    if not isinstance(envelope, dict):
+        return "Core response was unavailable."
+    data = envelope.get("data") if isinstance(envelope.get("data"), dict) else {}
+    detail = data.get("error") or data.get("message") or envelope.get("detail")
+    if detail:
+        return str(detail)
+    deprecations = envelope.get("deprecations")
+    if isinstance(deprecations, list) and deprecations:
+        return "; ".join(str(item) for item in deprecations if str(item).strip())
+    return "Core returned ok=false."
 
 
 def core_envelope_data(envelope: dict[str, Any] | None) -> dict[str, Any]:

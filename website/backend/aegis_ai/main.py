@@ -28,7 +28,7 @@ from .chat_streaming import (
     structured_stream_summary,
 )
 from .continuity import AegisContinuityEngine
-from .core_bridge import AegisCoreBridge
+from .core_bridge import AegisCoreBridge, CoreBridgeResult
 from .creative_media import CreativeMediaEngine
 from .distributed_runtime import DistributedRuntimeManager
 from .ecosystem import ECOSYSTEM_API_VERSION, EcosystemEngine
@@ -1283,6 +1283,75 @@ def _enrich_snapshot_with_adapter_health(root: Path, snapshot: TelemetrySnapshot
     return snapshot
 
 
+def _core_result_data(result: CoreBridgeResult | None) -> dict[str, Any]:
+    return result.data if result is not None and isinstance(result.data, dict) else {}
+
+
+def _core_contract_version(result: CoreBridgeResult | None) -> str:
+    envelope = result.envelope if result is not None else None
+    return str(envelope.get("contract_version") or "") if isinstance(envelope, dict) else ""
+
+
+def _core_route_status(result: CoreBridgeResult | None) -> str:
+    if result is not None and result.ok:
+        return "connected"
+    if result is not None and result.reachable:
+        return "degraded"
+    return "unavailable"
+
+
+def _core_route_message(result: CoreBridgeResult | None, route_group: str) -> str:
+    if result is not None and result.ok:
+        return f"Aegis Core {route_group} adapter is connected."
+    if result is not None and result.error:
+        return f"Aegis Core {route_group} adapter is unavailable; Website /api is using local fallback behavior. {result.error}"
+    return f"Aegis Core {route_group} adapter is unavailable; Website /api is using local fallback behavior."
+
+
+def _core_status_from_results(results: dict[str, CoreBridgeResult]) -> tuple[bool, str, str, str]:
+    primary = results.get("health") or next(iter(results.values()), None)
+    reachable = any(result.reachable for result in results.values())
+    connected = bool(primary and primary.ok)
+    status = "connected" if connected else "degraded" if reachable else "unavailable"
+    contract_version = next((_core_contract_version(result) for result in results.values() if _core_contract_version(result)), "")
+    message = _core_route_message(primary, "runtime")
+    return reachable, status, contract_version, message
+
+
+def _core_models_from_result(result: CoreBridgeResult | None) -> tuple[set[str], str, bool]:
+    data = _core_result_data(result)
+    installed = {
+        str(name).strip()
+        for name in data.get("installed_models", [])
+        if str(name).strip()
+    } if isinstance(data.get("installed_models"), list) else set()
+    selected = str(data.get("selected_model") or "").strip()
+    reachable = bool(data.get("reachable", False))
+    return installed, selected, reachable
+
+
+def _core_model_capabilities(name: str) -> ModelCapabilities:
+    lowered = name.lower()
+    return ModelCapabilities(
+        code=any(marker in lowered for marker in ("code", "coder", "devstral", "starcoder")),
+        debug=any(marker in lowered for marker in ("code", "coder", "devstral", "starcoder")),
+        refactor=any(marker in lowered for marker in ("code", "coder", "devstral", "starcoder")),
+        reasoning=any(marker in lowered for marker in ("reason", "qwen3", "deepseek-r1")),
+        structured_json=any(marker in lowered for marker in ("code", "coder", "qwen", "granite", "llama", "mistral")),
+    )
+
+
+async def _sync_website_settings_to_core(default_workspace: str) -> CoreBridgeResult:
+    workspace = _resolve_workspace_path_for_config(default_workspace)
+    core_updates: dict[str, Any] = {
+        "default_model": settings.aegis_model_name.strip(),
+        "max_context_chars": settings.max_context_chars,
+    }
+    if settings.aegis_model_api.strip().lower() == "ollama":
+        core_updates["ollama_url"] = settings.aegis_model_endpoint.strip().rstrip("/")
+    return await core_bridge.update_settings(workspace, core_updates)
+
+
 async def config_snapshot() -> AppConfig:
     default_mode = settings.default_mode.strip().lower()
     if default_mode not in {"build", "develop", "review", "chat"}:
@@ -1290,6 +1359,19 @@ async def config_snapshot() -> AppConfig:
 
     model_status = await agent.model_status()
     default_workspace = _resolve_workspace_path_for_config(None)
+    core_settings = await core_bridge.settings_status(default_workspace)
+    core_settings_data = _core_result_data(core_settings)
+    engine_message = "The local Aegis backend is ready. No external AI provider is required."
+    model_message = model_status.message
+    core_default_model = str(core_settings_data.get("default_model") or "").strip()
+    core_ollama_url = str(core_settings_data.get("ollama_url") or "").strip().rstrip("/")
+    if core_settings.ok:
+        if core_default_model and core_default_model != settings.aegis_model_name:
+            model_message = f"{model_message} Shared Core default model: {core_default_model}."
+        if core_ollama_url and core_ollama_url != settings.aegis_model_endpoint.strip().rstrip("/"):
+            engine_message = f"{engine_message} Shared Core Ollama URL: {core_ollama_url}."
+    else:
+        engine_message = _core_route_message(core_settings, "settings")
 
     return AppConfig(
         assistant_name=settings.aegis_assistant_name,
@@ -1299,12 +1381,12 @@ async def config_snapshot() -> AppConfig:
         default_workspace=str(default_workspace),
         engine=f"Aegis Core / {settings.aegis_model_name}",
         engine_ready=True,
-        engine_message="The local Aegis backend is ready. No external AI provider is required.",
+        engine_message=engine_message,
         model_name=settings.aegis_model_name,
         model_endpoint=settings.aegis_model_endpoint,
         model_api=settings.aegis_model_api,
         model_ready=model_status.ready,
-        model_message=model_status.message,
+        model_message=model_message,
         database_path=str(_resolve_database_path(settings.aegis_database_path)),
         command_allowlist=settings.aegis_command_allowlist,
         command_timeout_seconds=settings.aegis_command_timeout_seconds,
@@ -1316,12 +1398,20 @@ async def config_snapshot() -> AppConfig:
         feedback_max_excerpt_chars=max(0, min(2000, settings.aegis_feedback_max_excerpt_chars)),
         feedback_hash_content=settings.aegis_feedback_hash_content,
         env_exists=has_env_file(),
+        core_runtime_reachable=core_settings.reachable,
+        core_runtime_status=_core_route_status(core_settings),
+        core_contract_version=_core_contract_version(core_settings),
+        core_runtime_message=_core_route_message(core_settings, "settings"),
     )
 
 
 async def runtime_health_snapshot() -> RuntimeHealthResponse:
     model_status = await agent.model_status()
     default_workspace = _resolve_workspace_path_for_config(None)
+    core_results = await core_bridge.low_risk_runtime_status(default_workspace)
+    core_reachable, core_status, core_contract, core_message = _core_status_from_results(core_results)
+    core_models = core_results.get("models")
+    _, core_selected_model, core_models_reachable = _core_models_from_result(core_models)
     registry = model_registry.snapshot()
     provider_count = len(registry.providers)
     configured_provider_count = sum(1 for provider in registry.providers if provider.configured)
@@ -1335,21 +1425,33 @@ async def runtime_health_snapshot() -> RuntimeHealthResponse:
         recommendations.append("Model routing is disabled; enable routing when fallback and role-based selection should be active.")
     if not settings.aegis_router_execution_enabled:
         recommendations.append("Router execution is disabled in settings; routed prompts will not execute provider chains.")
+    if core_status != "connected":
+        recommendations.append("Aegis Core shared runtime is unavailable; Website /api is running in local fallback mode.")
+    elif core_selected_model and core_selected_model != settings.aegis_model_name:
+        recommendations.append(
+            f"Aegis Core selected shared model {core_selected_model}; Website /api remains configured for {settings.aegis_model_name} during adapter migration."
+        )
+
+    model_message = model_status.message
+    if core_models is not None and core_models.ok and core_models_reachable:
+        model_message = f"{model_message} Aegis Core model inventory is connected."
+    elif core_models is not None and core_models.error:
+        model_message = f"{model_message} Aegis Core model inventory is unavailable; using Website model adapter fallback."
 
     return RuntimeHealthResponse(
         ok=True,
         ready=True,
-        status="ready" if model_status.ready else "degraded",
+        status="ready" if model_status.ready and core_status == "connected" else "degraded",
         app=app.title,
         version=app.version,
         engine=f"Aegis Core / {settings.aegis_model_name}",
         engine_ready=True,
-        engine_message="The Aegis backend process is ready.",
+        engine_message="The Aegis backend process is ready." if core_status == "connected" else core_message,
         model_name=settings.aegis_model_name,
         model_api=settings.aegis_model_api,
         model_endpoint=settings.aegis_model_endpoint,
         model_ready=model_status.ready,
-        model_message=model_status.message,
+        model_message=model_message,
         project_root=str(PROJECT_ROOT),
         workspace_root=str(default_workspace),
         database_path=str(_resolve_database_path(settings.aegis_database_path)),
@@ -1362,6 +1464,10 @@ async def runtime_health_snapshot() -> RuntimeHealthResponse:
         enabled_provider_count=enabled_provider_count,
         role_count=len(registry.roles),
         recommendations=recommendations,
+        core_runtime_reachable=core_reachable,
+        core_runtime_status=core_status,
+        core_contract_version=core_contract,
+        core_runtime_message=core_message,
     )
 
 
@@ -1556,14 +1662,19 @@ async def config() -> AppConfig:
 async def models() -> ModelInventoryResponse:
     inventory = await agent.model_inventory()
     registry = model_registry.snapshot()
-    return ModelInventoryResponse(
-        active_model=inventory.active_model,
-        active_api=inventory.active_api,
-        active_endpoint=inventory.active_endpoint,
-        router_enabled=registry.router_enabled,
-        fallback_supported=registry.fallback_supported,
-        message=inventory.message,
-        models=[
+    default_workspace = _resolve_workspace_path_for_config(None)
+    core_models = await core_bridge.model_status(default_workspace)
+    core_installed, core_selected, core_reachable = _core_models_from_result(core_models)
+    seen_model_names: set[str] = set()
+    model_records: list[ModelInfo] = []
+    for item in inventory.models:
+        seen_model_names.add(item.name)
+        core_available = item.name in core_installed or item.id in core_installed
+        core_ready = core_reachable and bool(core_selected) and item.name == core_selected
+        message = item.message
+        if core_available and not item.available:
+            message = "Available via Aegis Core shared model inventory."
+        model_records.append(
             ModelInfo(
                 id=item.id,
                 name=item.name,
@@ -1572,15 +1683,51 @@ async def models() -> ModelInventoryResponse:
                 endpoint=item.endpoint,
                 local=item.local,
                 configured=item.configured,
-                available=item.available,
-                ready=item.ready,
-                message=item.message,
+                available=item.available or core_available,
+                ready=item.ready or core_ready,
+                message=message,
                 size=item.size,
                 modified_at=item.modified_at,
                 capabilities=ModelCapabilities(**(item.capabilities or {})),
             )
-            for item in inventory.models
-        ],
+        )
+
+    if core_models.ok:
+        for model_name in sorted(name for name in core_installed if name not in seen_model_names):
+            model_records.append(
+                ModelInfo(
+                    id=f"aegis-core:{model_name}",
+                    name=model_name,
+                    provider="Aegis Core",
+                    api="ollama",
+                    endpoint=settings.aegis_model_endpoint,
+                    local=True,
+                    configured=model_name in {settings.aegis_model_name, core_selected},
+                    available=True,
+                    ready=core_reachable and model_name == core_selected,
+                    message="Detected by Aegis Core shared model inventory.",
+                    capabilities=_core_model_capabilities(model_name),
+                )
+            )
+
+    message = inventory.message
+    if core_models.ok:
+        message = f"{message} Aegis Core model inventory is connected."
+    elif core_models.error:
+        message = f"{message} Aegis Core model inventory is unavailable; using Website model adapter fallback."
+
+    return ModelInventoryResponse(
+        active_model=inventory.active_model,
+        active_api=inventory.active_api,
+        active_endpoint=inventory.active_endpoint,
+        router_enabled=registry.router_enabled,
+        fallback_supported=registry.fallback_supported,
+        message=message,
+        models=model_records,
+        core_runtime_reachable=core_models.reachable,
+        core_runtime_status=_core_route_status(core_models),
+        core_contract_version=_core_contract_version(core_models),
+        core_runtime_message=_core_route_message(core_models, "models"),
     )
 
 
@@ -1969,6 +2116,7 @@ async def save_config(request: ConfigUpdateRequest) -> AppConfig:
         }
     )
     refresh_runtime()
+    await _sync_website_settings_to_core(default_workspace)
     return await config_snapshot()
 
 

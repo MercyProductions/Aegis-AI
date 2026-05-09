@@ -13,6 +13,15 @@ The Website backend is the product/application API. Aegis Core is the shared run
 
 Website `/api` remains backwards compatible for the React UI and Desktop app.
 
+Low-risk Website runtime routes now use the Website Core adapter when Core is available:
+
+- `GET /api/health` and `GET /api/ready` include shared Core runtime status while preserving the existing health shape.
+- `GET /api/models` keeps the Website model inventory shape and may annotate/augment local models with Core `/v1/models` state.
+- `GET /api/config` keeps Website `.env` settings and includes Core settings adapter status.
+- `POST /api/config` saves Website settings first, then best-effort syncs shared model settings to Core `/v1/settings`.
+
+These response models include additive optional fields: `core_runtime_reachable`, `core_runtime_status`, `core_contract_version`, and `core_runtime_message`.
+
 Stable product groups:
 
 - `GET /api/health`, `GET /api/ready`
@@ -77,7 +86,7 @@ Returns a Website wrapper around stable Core `/v1` envelopes:
 }
 ```
 
-This endpoint is read-only. It is the first compatibility adapter for moving shared runtime reads toward Aegis Core without breaking Website `/api`.
+This endpoint is read-only. It is the compatibility adapter for observing shared runtime state without breaking Website `/api`.
 
 ## Aegis Core `/v1`
 

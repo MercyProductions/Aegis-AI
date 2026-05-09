@@ -88,6 +88,31 @@ def test_core_bridge_degrades_when_core_is_unavailable(tmp_path: Path) -> None:
     assert len(status["errors"]) == 6
 
 
+def test_core_bridge_rejects_unexpected_contract_kind(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "ok": True,
+                "api_version": "v1",
+                "contract_version": "2026.05.09",
+                "kind": "settings",
+                "workspace": str(workspace.resolve()),
+                "data": {},
+            },
+        )
+
+    bridge = AegisCoreBridge("http://127.0.0.1:8788", transport=httpx.MockTransport(handler))
+    result = asyncio.run(bridge.model_status(workspace))
+
+    assert result.reachable is True
+    assert result.ok is False
+    assert "kind mismatch" in result.error
+
+
 def test_core_runtime_endpoint_delegates_to_core_bridge(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()

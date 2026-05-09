@@ -127,6 +127,20 @@ This phase adds versioned contract metadata without changing existing client URL
 
 No active Website `/api` calls were replaced in this phase. The bridge and adapters are intentionally narrow so the mature frontend contract stays stable.
 
+## Website Runtime Adapter Phase
+
+The Website backend now uses the Core bridge for the first low-risk `/api` route group:
+
+- `GET /api/health` and `GET /api/ready` read Core health, models, settings, and diagnostics to report shared-runtime adapter status while preserving `RuntimeHealthResponse`.
+- `GET /api/models` overlays Core `/v1/models` inventory onto the Website model adapter response without replacing the Website provider registry.
+- `GET /api/config` reads Core `/v1/settings` and reports adapter status while preserving Website `.env` settings.
+- `POST /api/config` saves Website `.env` first, then best-effort syncs shared model settings to Core `/v1/settings`.
+- `GET /api/core-runtime` remains the full read-only Core bridge for health, models, settings, memory, diagnostics, and dashboard envelopes.
+
+Core offline or incompatible responses produce degraded adapter status instead of failing the frontend. The Website frontend continues to call existing `/api` routes and can ignore the additive Core status fields.
+
+This phase still holds workspace scan, roadmap, memory CRUD, validation/repair, task graph, chat, apply, checkpoint restore, project builder, model routing, auth, and Creative Studio in Website `/api`.
+
 ## Migration Strategy
 
 1. Keep Website `/api` stable and backwards compatible.

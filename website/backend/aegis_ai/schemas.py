@@ -3634,6 +3634,10 @@ class RuntimeHealthResponse(BaseModel):
     enabled_provider_count: int = 0
     role_count: int = 0
     recommendations: list[str] = Field(default_factory=list)
+    core_runtime_reachable: bool = False
+    core_runtime_status: str = "unavailable"
+    core_contract_version: str = ""
+    core_runtime_message: str = ""
 
 
 class AppConfig(BaseModel):
@@ -3661,6 +3665,10 @@ class AppConfig(BaseModel):
     feedback_max_excerpt_chars: int = 320
     feedback_hash_content: bool = True
     env_exists: bool = False
+    core_runtime_reachable: bool = False
+    core_runtime_status: str = "unavailable"
+    core_contract_version: str = ""
+    core_runtime_message: str = ""
 
 
 class ModelCapabilities(BaseModel):
@@ -3707,6 +3715,10 @@ class ModelInventoryResponse(BaseModel):
     fallback_supported: bool = False
     message: str = ""
     models: list[ModelInfo] = Field(default_factory=list)
+    core_runtime_reachable: bool = False
+    core_runtime_status: str = "unavailable"
+    core_contract_version: str = ""
+    core_runtime_message: str = ""
 
 
 class ModelRegistryProvider(BaseModel):
