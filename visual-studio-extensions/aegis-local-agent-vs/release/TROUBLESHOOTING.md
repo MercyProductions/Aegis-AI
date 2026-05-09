@@ -80,3 +80,5 @@ Use **Rollback Last** in the tool window. Backups are stored under:
 ```
 
 If you changed the backup location in settings, use that configured path instead.
+
+Rollback now resolves the exact backup by manifest backup ID and validates each rollback path before touching solution files. If rollback reports skipped entries, preserve the backup folder and inspect `last-change.json` plus the matching backup `manifest.json` before retrying.

@@ -138,6 +138,8 @@ Changing settings affects new model calls and new agent workflows. Existing pend
 
 Relative backup paths are kept inside the current solution. Use an absolute path only when you intentionally want backups outside the solution folder.
 
+Rollback metadata includes an explicit backup ID. During rollback, Aegis validates the manifest file paths and backup file paths before touching solution files, and reports skipped entries if metadata is incomplete or unsafe.
+
 ## Health Check
 
 Run `Aegis: Run Health Check` after installation or when something feels off. It verifies:

@@ -28,6 +28,7 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 | Memory resilience | Improved | Dashboard/task reads, agent plan reads, and generated-memory writes now tolerate unreadable or damaged `.aegis` JSON/markdown paths. |
 | VS Code memory resilience | Improved | Workspace startup and later index/history/log writes skip damaged `.aegis` paths instead of breaking scans or post-apply bookkeeping. |
 | Visual Studio memory init | Improved | Solution memory reads and writes are best-effort, so damaged `.aegis` paths do not crash memory-backed workflows. |
+| Visual Studio rollback | Improved | Backup manifests now carry explicit IDs and rollback validates manifest/backup paths before touching solution files. |
 | Website workspace setup | Improved | Damaged `.aegis` project and validation profile paths now return warnings instead of breaking setup. |
 | Website checkpoint restore | Improved | Restore now validates checkpoint IDs, damaged manifests, and backup paths before touching workspace files. |
 | Website safe apply | Improved | Apply refuses to edit when checkpoint creation fails and reports later write/delete failures with checkpoint context. |
@@ -49,6 +50,7 @@ Ran during this pass:
 - `npm run package` in VS Code extension: pass, regenerated `release/aegis-local-autopilot-0.1.1.vsix`
 - Desktop `.\build.ps1`: pass, 0 warnings, 0 errors
 - Visual Studio extension `.\build.ps1`: pass, regenerated `release/AegisLocalAgentVs.vsix`
+- Visual Studio rollback hardening `.\build.ps1`: pass, regenerated `release/AegisLocalAgentVs.vsix`
 - Website frontend tests: 21 files / 169 tests passed
 - Website frontend production build: pass, Vite reported the existing large main chunk warning
 - Website backend tests: 739 tests and 155 subtests passed
@@ -72,6 +74,7 @@ Ran during this pass:
 - Hardened VS Code `.aegis` initialization so damaged memory files are left untouched and reported in the output channel.
 - Hardened VS Code index, managed-section, recovery, validation-log, decision-log, and dogfooding-note writes so damaged memory targets remain degraded instead of crashing workflows.
 - Hardened Visual Studio `.aegis` solution memory so damaged memory files are skipped and health checks surface the degraded state.
+- Hardened Visual Studio rollback so it resolves backups by explicit ID and skips unsafe or incomplete rollback manifest entries.
 - Hardened Website workspace setup so damaged `.aegis/project.json` and `.aegis/validation_profile.json` paths return warnings instead of crashing setup.
 - Hardened Website checkpoint restore so invalid checkpoint IDs, non-file manifests, and escaped backup paths fail safely before workspace files are restored or removed.
 - Hardened Website apply changes so failed checkpoint creation stops the apply before file writes and file write/delete failures are reported as warnings tied to the checkpoint.

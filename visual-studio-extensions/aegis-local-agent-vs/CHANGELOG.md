@@ -7,6 +7,7 @@
 - Fixed VSCT command-resource packaging so Visual Studio can load the Aegis Tools menu and command table after VSIX install.
 - Hardened `build.ps1` so MSBuild failures stop packaging and the generated VSIX is checked for matching manifest version plus embedded `Menus.ctmenu` resources.
 - Hardened solution memory reads and writes so damaged `.aegis` paths degrade safely instead of crashing roadmap, context, build-log, or history workflows.
+- Hardened rollback manifests with explicit backup IDs and rollback path validation so corrupted metadata cannot restore from ambiguous or escaped paths.
 - Updated install and troubleshooting documentation to make manual rescan the expected first-run indexing workflow.
 - Added `DOGFOODING_NOTES.md` to track real-solution test coverage, observed issues, and remaining manual GUI gaps.
 

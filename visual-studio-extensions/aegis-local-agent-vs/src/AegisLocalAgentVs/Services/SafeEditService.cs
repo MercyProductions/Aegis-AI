@@ -83,20 +83,22 @@ namespace Aegis.LocalAgent.VisualStudio.Services
             }
 
             var backupBase = ResolveBackupBase(context);
-            var backupRoot = Path.Combine(backupBase, Timestamp());
+            var backupId = Timestamp();
+            var backupRoot = Path.Combine(backupBase, backupId);
             var filesRoot = Path.Combine(backupRoot, "files");
             Directory.CreateDirectory(filesRoot);
 
-            var manifest = new
+            var manifest = new BackupManifest
             {
-                createdAt = DateTime.UtcNow,
-                solutionRoot = context.SolutionRoot,
-                summary = PendingProposal.Summary,
-                files = PendingProposal.FileEdits.Select(edit => new
+                BackupId = backupId,
+                CreatedAt = DateTime.UtcNow,
+                SolutionRoot = context.SolutionRoot,
+                Summary = PendingProposal.Summary,
+                Files = PendingProposal.FileEdits.Select(edit => new BackupManifestFile
                 {
-                    edit.Path,
-                    existed = File.Exists(ResolvePath(context, edit.Path)),
-                    backupPath = edit.Path.Replace('/', Path.DirectorySeparatorChar)
+                    Path = edit.Path,
+                    Existed = File.Exists(ResolvePath(context, edit.Path)),
+                    BackupPath = edit.Path.Replace('/', Path.DirectorySeparatorChar)
                 }).ToList()
             };
 
@@ -138,37 +140,64 @@ namespace Aegis.LocalAgent.VisualStudio.Services
                 return new[] { "No Aegis backup is available to roll back." };
             }
 
-            dynamic manifest = JsonConvert.DeserializeObject(File.ReadAllText(lastPath));
-            string createdAt = manifest.createdAt;
-            var backupRoot = Path.Combine(backupBase, TimestampFromCreatedAt(createdAt));
-            if (!Directory.Exists(backupRoot))
+            BackupManifest manifest;
+            try
             {
-                var candidates = Directory.GetDirectories(backupBase)
-                    .Where(dir => File.Exists(Path.Combine(dir, "manifest.json")))
-                    .OrderByDescending(Directory.GetCreationTimeUtc)
-                    .ToList();
-                backupRoot = candidates.FirstOrDefault();
+                manifest = JsonConvert.DeserializeObject<BackupManifest>(File.ReadAllText(lastPath));
+            }
+            catch (Exception ex)
+            {
+                return new[] { "The last Aegis backup manifest could not be read: " + ex.Message };
             }
 
+            if (manifest == null || manifest.Files == null)
+            {
+                return new[] { "The last Aegis backup manifest is damaged or empty." };
+            }
+
+            var backupRoot = ResolveBackupRoot(backupBase, manifest);
             if (string.IsNullOrWhiteSpace(backupRoot))
             {
                 return new[] { "The last Aegis backup manifest exists, but its files were not found." };
             }
 
-            var restored = new List<string>();
-            foreach (var file in manifest.files)
+            var filesRoot = Path.Combine(backupRoot, "files");
+            if (!Directory.Exists(filesRoot))
             {
-                string relative = file.Path;
-                bool existed = file.existed;
-                var target = ResolvePath(context, relative);
-                var backup = Path.Combine(backupRoot, "files", relative.Replace('/', Path.DirectorySeparatorChar));
-                if (existed && File.Exists(backup))
+                return new[] { "The last Aegis backup manifest exists, but its files were not found." };
+            }
+
+            var restored = new List<string>();
+            var skipped = new List<string>();
+            foreach (var file in manifest.Files)
+            {
+                var relative = file.Path ?? string.Empty;
+                if (!TryNormalizeSafePath(context, relative, out var normalizedPath, out var message))
                 {
+                    skipped.Add(message);
+                    continue;
+                }
+
+                var target = ResolvePath(context, normalizedPath);
+                if (file.Existed)
+                {
+                    if (!TryResolveBackupFile(filesRoot, file.BackupPath, normalizedPath, out var backup, out var backupMessage))
+                    {
+                        skipped.Add(backupMessage);
+                        continue;
+                    }
+
+                    if (!File.Exists(backup))
+                    {
+                        skipped.Add("Missing backup file for " + normalizedPath);
+                        continue;
+                    }
+
                     Directory.CreateDirectory(Path.GetDirectoryName(target));
                     File.Copy(backup, target, true);
                     restored.Add(relative);
                 }
-                else if (!existed && File.Exists(target))
+                else if (File.Exists(target))
                 {
                     File.Delete(target);
                     restored.Add(relative);
@@ -176,7 +205,13 @@ namespace Aegis.LocalAgent.VisualStudio.Services
             }
 
             await Task.Yield();
-            return new[] { $"Rolled back {restored.Count} file(s): {string.Join(", ", restored)}" };
+            var messages = new List<string> { $"Rolled back {restored.Count} file(s): {string.Join(", ", restored)}" };
+            if (skipped.Any())
+            {
+                messages.Add("Skipped unsafe or incomplete rollback entries: " + string.Join("; ", skipped.Take(8)));
+            }
+
+            return messages;
         }
 
         public string ResolveBackupBase(SolutionContext context)
@@ -355,6 +390,97 @@ namespace Aegis.LocalAgent.VisualStudio.Services
             }
 
             return value;
+        }
+
+        private static string ResolveBackupRoot(string backupBase, BackupManifest manifest)
+        {
+            var normalizedBase = Path.GetFullPath(backupBase);
+            foreach (var rawName in new[] { manifest.BackupId, TimestampFromCreatedAt(manifest.CreatedAtString) })
+            {
+                if (string.IsNullOrWhiteSpace(rawName) || Path.IsPathRooted(rawName))
+                {
+                    continue;
+                }
+
+                var candidateName = rawName.Replace('/', Path.DirectorySeparatorChar);
+                if (candidateName.IndexOf(Path.DirectorySeparatorChar) >= 0 || candidateName == "." || candidateName == "..")
+                {
+                    continue;
+                }
+
+                var candidate = Path.GetFullPath(Path.Combine(normalizedBase, candidateName));
+                if (IsInside(normalizedBase, candidate) && Directory.Exists(candidate))
+                {
+                    return candidate;
+                }
+            }
+
+            try
+            {
+                return Directory.GetDirectories(normalizedBase)
+                    .Where(dir => File.Exists(Path.Combine(dir, "manifest.json")))
+                    .OrderByDescending(Directory.GetCreationTimeUtc)
+                    .FirstOrDefault();
+            }
+            catch
+            {
+                return string.Empty;
+            }
+        }
+
+        private static bool TryResolveBackupFile(string filesRoot, string backupPath, string fallbackPath, out string backup, out string message)
+        {
+            backup = string.Empty;
+            message = string.Empty;
+            var relative = string.IsNullOrWhiteSpace(backupPath) ? fallbackPath : backupPath;
+            if (string.IsNullOrWhiteSpace(relative) || Path.IsPathRooted(relative))
+            {
+                message = "Backup path is invalid for " + fallbackPath;
+                return false;
+            }
+
+            var normalizedRoot = Path.GetFullPath(filesRoot);
+            var candidate = Path.GetFullPath(Path.Combine(normalizedRoot, relative.Replace('/', Path.DirectorySeparatorChar)));
+            if (!IsInside(normalizedRoot, candidate))
+            {
+                message = "Backup path escapes backup folder for " + fallbackPath;
+                return false;
+            }
+
+            backup = candidate;
+            return true;
+        }
+
+        private sealed class BackupManifest
+        {
+            [JsonProperty("backupId")]
+            public string BackupId { get; set; } = string.Empty;
+
+            [JsonProperty("createdAt")]
+            public DateTime CreatedAt { get; set; }
+
+            [JsonProperty("solutionRoot")]
+            public string SolutionRoot { get; set; } = string.Empty;
+
+            [JsonProperty("summary")]
+            public string Summary { get; set; } = string.Empty;
+
+            [JsonProperty("files")]
+            public List<BackupManifestFile> Files { get; set; } = new List<BackupManifestFile>();
+
+            public string CreatedAtString => CreatedAt == default ? string.Empty : CreatedAt.ToUniversalTime().ToString("yyyy-MM-ddTHH-mm-ss-fffZ");
+        }
+
+        private sealed class BackupManifestFile
+        {
+            [JsonProperty("Path")]
+            public string Path { get; set; } = string.Empty;
+
+            [JsonProperty("existed")]
+            public bool Existed { get; set; }
+
+            [JsonProperty("backupPath")]
+            public string BackupPath { get; set; } = string.Empty;
         }
     }
 }

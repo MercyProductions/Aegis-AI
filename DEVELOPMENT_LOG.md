@@ -27,6 +27,7 @@ Actions:
 - Hardened VS Code workspace memory initialization so damaged `.aegis` paths are logged and skipped without startup crashes.
 - Hardened VS Code memory/index/history writes so damaged `.aegis` paths stay degraded instead of breaking scans or post-apply bookkeeping.
 - Hardened Visual Studio solution memory reads/writes so damaged `.aegis` paths no longer crash memory-backed workflows.
+- Hardened Visual Studio rollback manifests with explicit backup IDs and safe path validation for rollback entries and backup files.
 - Hardened Website workspace setup so damaged `.aegis` project and validation profile paths return setup warnings instead of endpoint failures.
 - Hardened Website checkpoint restore against path traversal IDs, damaged manifests, and backup paths outside the checkpoint files folder.
 - Hardened Website apply changes so failed checkpoint creation prevents edits and write/delete failures return warnings instead of raw endpoint failures.
@@ -41,6 +42,7 @@ Validation completed:
 - VS Code extension memory-write hardening lint: pass.
 - Desktop app build: pass.
 - Visual Studio extension build/package: pass.
+- Visual Studio rollback hardening build/package: pass.
 - Website frontend tests/build and backend tests: pass.
 - Website workspace setup regression tests for damaged `.aegis` paths: pass.
 - Website checkpoint restore and apply safety regression tests: pass, 52 storage tests.
