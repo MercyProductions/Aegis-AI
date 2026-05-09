@@ -2841,6 +2841,29 @@ def test_validation_detection_ignores_project_files_in_ignored_folders(tmp_path:
     assert "dotnet build" in [item.name for item in detect_validation_commands(workspace)]
 
 
+def test_validation_detection_does_not_treat_native_solution_as_dotnet(tmp_path: Path) -> None:
+    workspace = tmp_path / "native-solution-project"
+    workspace.mkdir()
+    (workspace / "Native.sln").write_text(
+        'Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Native", "Native.vcxproj", "{11111111-1111-1111-1111-111111111111}"\n',
+        encoding="utf-8",
+    )
+    (workspace / "Native.vcxproj").write_text("<Project />\n", encoding="utf-8")
+
+    assert "dotnet build" not in [item.name for item in detect_validation_commands(workspace)]
+
+
+def test_validation_detection_treats_dotnet_solution_as_dotnet(tmp_path: Path) -> None:
+    workspace = tmp_path / "dotnet-solution-project"
+    workspace.mkdir()
+    (workspace / "Service.sln").write_text(
+        'Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Service", "src\\Service.csproj", "{22222222-2222-2222-2222-222222222222}"\n',
+        encoding="utf-8",
+    )
+
+    assert "dotnet build" in [item.name for item in detect_validation_commands(workspace)]
+
+
 def test_validation_detection_ignores_damaged_root_build_markers(tmp_path: Path) -> None:
     workspace = tmp_path / "damaged-root-markers-project"
     workspace.mkdir()

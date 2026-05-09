@@ -15,6 +15,7 @@ from .safety import is_ignored_path, is_safe_to_read
 
 
 VALIDATION_LOG_FILE = "validation-log.md"
+DOTNET_PROJECT_SUFFIXES = {".csproj", ".fsproj", ".vbproj"}
 
 
 @dataclass
@@ -34,7 +35,7 @@ def detect_validation_commands(workspace: str | Path) -> list[ValidationCommand]
             commands.append(_package_script_command(package_manager, "test"))
         if "build" in package_scripts:
             commands.append(_package_script_command(package_manager, "build"))
-    if _has_root_file_with_suffix(root, {".sln", ".slnx"}) or _has_project_file(root, {".csproj"}):
+    if _has_dotnet_solution(root) or _has_project_file(root, DOTNET_PROJECT_SUFFIXES):
         commands.append(ValidationCommand("dotnet build", ["dotnet", "build"], ".NET project or solution detected"))
     if _has_root_file_named(root, "Cargo.toml"):
         commands.append(ValidationCommand("cargo check", ["cargo", "check"], "Cargo.toml detected"))
@@ -79,15 +80,26 @@ def _package_script_command(package_manager: str, script: str) -> ValidationComm
     )
 
 
-def _has_root_file_with_suffix(root: Path, suffixes: set[str]) -> bool:
+def _has_dotnet_solution(root: Path) -> bool:
     try:
         children = root.iterdir()
     except OSError:
         return False
     for child in children:
-        if child.suffix.lower() in suffixes and _is_root_file(child, root):
+        if child.suffix.lower() in {".sln", ".slnx"} and _solution_references_dotnet_project(child, root):
             return True
     return False
+
+
+def _solution_references_dotnet_project(path: Path, root: Path) -> bool:
+    if not _is_root_file(path, root):
+        return False
+    try:
+        text = path.read_text(encoding="utf-8-sig", errors="ignore")
+    except OSError:
+        return False
+    lowered = text[:200000].lower()
+    return any(suffix in lowered for suffix in DOTNET_PROJECT_SUFFIXES)
 
 
 def _has_root_file_named(root: Path, name: str) -> bool:

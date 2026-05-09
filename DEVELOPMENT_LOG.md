@@ -288,6 +288,25 @@ Validation completed:
 - Aegis Core contract test suite: pass.
 - Repository whitespace check: pass.
 
+## 2026-05-09 - Core Native Solution Validation Detection
+
+Focus:
+
+- Keep Core validation discovery from recommending the wrong build command for native Visual Studio/C++ workspaces.
+- Preserve .NET validation discovery for direct project files and .NET solution references.
+
+Actions:
+
+- Changed Core solution detection so `.sln` and `.slnx` files only trigger `dotnet build` when they reference `.csproj`, `.fsproj`, or `.vbproj` projects.
+- Added regressions for native `.vcxproj` solutions and .NET solution references.
+- Updated validation discovery documentation.
+
+Validation completed:
+
+- Aegis Core validation detection regression slice: pass.
+- Aegis Core contract test suite: pass.
+- Repository whitespace check: pass.
+
 ## 2026-05-09 - Completion Selected Model Guard
 
 Focus:
