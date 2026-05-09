@@ -191,6 +191,7 @@ assertBuildFileDetection(buildFileClassifier);
 assertProjectRiskPattern(extensionText);
 assertPythonLockfilePatterns(extensionText);
 assertGeneratedFolderSafety(extensionText);
+assertSecretFileSafety(extensionText);
 const blockedProposalFormatter = loadExtensionFunction(extensionText, 'formatBlockedProposalEditSummary');
 assertBlockedProposalEditSummary(blockedProposalFormatter);
 assertBlockedProposalVisibleMessages(extensionText);
@@ -634,6 +635,33 @@ function assertGeneratedFolderSafety(source) {
   for (const segment of ['library', 'temp', 'logs']) {
     if (!source.includes(`'${segment}'`)) {
       fail(`BLOCKED_PATH_SEGMENTS must include generated/runtime folder '${segment}'.`);
+    }
+  }
+}
+
+function assertSecretFileSafety(source) {
+  const start = source.indexOf('const SECRET_FILE_PATTERNS = [');
+  if (start === -1) {
+    fail('extension.js must define SECRET_FILE_PATTERNS.');
+  }
+  const end = source.indexOf('];', start);
+  if (end === -1) {
+    fail('extension.js has an unterminated SECRET_FILE_PATTERNS block.');
+  }
+  const patternSource = source.slice(start, end + 2);
+  const secretPatterns = vm.runInNewContext(`${patternSource}\nSECRET_FILE_PATTERNS;`);
+  const isBlockedRelativePath = loadExtensionFunction(source, 'isBlockedRelativePath', {
+    BLOCKED_PATH_SEGMENTS: new Set(),
+    SECRET_FILE_PATTERNS: secretPatterns
+  });
+  for (const file of ['.env', '.env.example', 'id_rsa', 'service-token.json', 'prod.password.txt', 'private-key.pem', 'client_api-key.json', 'auth.json', 'local.keystore']) {
+    if (!isBlockedRelativePath(file)) {
+      fail(`isBlockedRelativePath must block secret-like file ${file}.`);
+    }
+  }
+  for (const file of ['.gitignore', 'src/tokenizer.py', 'src/authenticationService.cs', 'src/privateer.cpp']) {
+    if (isBlockedRelativePath(file)) {
+      fail(`isBlockedRelativePath must not over-block ordinary file ${file}.`);
     }
   }
 }

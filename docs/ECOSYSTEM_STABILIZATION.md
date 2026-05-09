@@ -30,10 +30,10 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 | Desktop settings | Improved | Backend and Aegis Core URL fields normalize host:port inputs and pasted endpoint paths before config writes or runtime requests. |
 | VS Code settings | Improved | Ollama and Aegis Core URL fields normalize host:port inputs and pasted endpoint paths before model or shared-runtime requests. |
 | VS Code diagnostics | Improved | Local API HTTP failures now surface parsed, redacted details instead of raw JSON response bodies, blocked proposal warnings/errors name the first unsafe file instead of hiding the path in the output channel, validation summaries classify missing tools/dependencies before repair prompts are generated, and long local model calls update progress/status state while waiting. |
-| VS Code packaging | Improved | Release lint now verifies command contribution/activation parity, release metadata, source-only helper exclusions, package hygiene, Python lockfile fallback safety, Unity metadata fallback context, and generated/runtime proposal guards before VSIX creation. |
+| VS Code packaging | Improved | Release lint now verifies command contribution/activation parity, release metadata, source-only helper exclusions, package hygiene, Python lockfile fallback safety, Unity metadata fallback context, generated/runtime proposal guards, and secret filename guard parity before VSIX creation. |
 | Visual Studio settings | Improved | Ollama and Aegis Core URL fields normalize host:port inputs and pasted endpoint paths before model or shared-runtime requests. |
 | Shared task API | Improved | Bad task status updates return `400`, missing task IDs return `404`, and malformed local task records are normalized on read. |
-| Visual Studio packaging | Improved | VSIX packaging now validates manifest metadata, command resources, VSCT/C# command table parity, solution scanner parity, NuGet lockfile filename handling, Unity metadata context, Unity generated-folder safe-edit guards, and release documentation/license sources before producing the release archive. |
+| Visual Studio packaging | Improved | VSIX packaging now validates manifest metadata, command resources, VSCT/C# command table parity, solution scanner parity, NuGet lockfile filename handling, Unity metadata context, generated/runtime safe-edit guards, secret filename guard parity, and release documentation/license sources before producing the release archive. |
 | Shared mutation persistence | Improved | Client registration and task creation/update now verify persistence; unwritable `.aegis` roots return clear failures or degraded plan responses instead of phantom successful writes. |
 | Memory resilience | Improved | Dashboard/task reads, agent plan reads, and generated-memory writes now tolerate unreadable or damaged `.aegis` JSON/markdown paths. |
 | VS Code memory resilience | Improved | Workspace startup and later index/history/log writes skip damaged `.aegis` paths instead of breaking scans or post-apply bookkeeping. |
@@ -99,7 +99,9 @@ Ran during this pass:
 - Website workspace/storage, workspace-operation, and golden workflow tests after Website secret path safety hardening: 84 passed
 - VS Code package lint and extension syntax check after Unity metadata context hardening: pass
 - VS Code package lint and extension syntax check after generated/runtime proposal guard hardening: pass
+- VS Code package lint and extension syntax check after editor secret path guard parity: pass
 - Visual Studio package validation guards and Release build after generated/runtime safe-edit hardening: pass
+- Visual Studio package validation guards and Release build after editor secret path guard parity: pass
 - Website focused frontend API/runtime/task tests: 40 tests passed
 - Website acceptance gate with explicit backend/frontend URLs: pass
 - Website backend tests: 739 tests and 155 subtests passed
@@ -135,6 +137,7 @@ Ran during this pass:
 - Hardened Website scan ignores so mixed-case generated/dependency directories such as `Node_Modules`, `BUILD`, `LIBRARY`, `temp`, and `LOGS` stay out of context and dependency profiling.
 - Hardened Website, VS Code, and Visual Studio safe-edit guards so generated proposals cannot write into Unity `Library`, `Temp`, or `Logs` runtime folders, and Website apply blocks ignored dependency/runtime or hidden folders before file writes.
 - Hardened Website workspace scan, context, read, and apply paths so `.env`, token/password, private-key, and certificate-like filenames stay out of model context and generated writes while safe names such as `.gitignore` and `tokenizer.py` remain usable.
+- Aligned VS Code and Visual Studio safe-edit secret filename guards with Core and Website coverage for password, API-key, auth, SSH-key, and keystore-like files while preserving ordinary source names such as `tokenizer.py`.
 - Hardened Core validation detection so ignored dependency/build folders do not trigger false `.NET` build suggestions.
 - Hardened Core validation detection so damaged root build-marker directories do not trigger false Cargo, Python, CMake, pnpm, or Yarn suggestions.
 - Reduced Core validation startup overhead by avoiding duplicate validation-command detection.

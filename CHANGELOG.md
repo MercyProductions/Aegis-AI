@@ -29,6 +29,7 @@
 - Hardened Website workspace scans so ignored generated/dependency directories are matched case-insensitively, preventing `Node_Modules`, `BUILD`, `LIBRARY`, `temp`, or `LOGS` folders from leaking into context or dependency profiling.
 - Hardened Website, VS Code, and Visual Studio safe-edit guards so Unity `Library`, `Temp`, and `Logs` runtime folders cannot be written by generated proposals or workspace apply paths.
 - Hardened Website workspace scan, context, read, and apply safety so `.env`, token/password, private-key, and certificate-like filenames are skipped or blocked before model context or file writes.
+- Aligned VS Code and Visual Studio safe-edit secret filename guards with Core/Website coverage for password, API-key, auth, SSH-key, and keystore-like files while avoiding false positives such as `tokenizer.py`.
 - Improved Website scaffold install preflight so `.fsproj`, `.vbproj`, and `.slnx` projects receive the same missing-restore detection as `.csproj` projects.
 - Improved Website workspace profiling and validation planning so existing `.slnx` Visual Studio solutions are treated like `.sln` workspaces.
 - Improved Website agent and fallback continuation so existing `.slnx` workspaces keep Visual Studio stack guardrails and receive runnable MSBuild validation helpers.

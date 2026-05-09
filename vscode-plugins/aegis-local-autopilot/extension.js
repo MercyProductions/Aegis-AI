@@ -72,11 +72,9 @@ const BLOCKED_PATH_SEGMENTS = new Set([
 ]);
 const SECRET_FILE_PATTERNS = [
   /^\.env(?:\.|$)/i,
-  /(?:^|[._-])secret(?:s)?(?:[._-]|$)/i,
-  /(?:^|[._-])credential(?:s)?(?:[._-]|$)/i,
-  /(?:^|[._-])token(?:s)?(?:[._-]|$)/i,
-  /(?:^|[._-])private(?:[._-]|$)/i,
-  /\.(?:key|pem|pfx|p12|crt|cer)$/i
+  /^id_(?:rsa|dsa|ecdsa|ed25519)$/i,
+  /(?:^|[._\-\s])(?:secret(?:s)?|credential(?:s)?|password|passwd|token(?:s)?|private(?:[._\-\s]?key)?|api[_-]?key|auth)(?:[._\-\s]|$)/i,
+  /\.(?:key|pem|pfx|p12|keystore|crt|cer)$/i
 ];
 const LOCKFILE_PATTERNS = [
   /^package-lock\.json$/i,

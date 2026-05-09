@@ -18,7 +18,7 @@ namespace Aegis.LocalAgent.VisualStudio.Services
             "Library", "Temp", "Logs"
         };
 
-        private static readonly Regex SecretFilePattern = new Regex(@"(^\.env(\.|$)|secret|credential|token|private|\.pfx$|\.p12$|\.pem$|\.key$)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex SecretFilePattern = new Regex(@"(^\.env(\.|$)|^(id_rsa|id_dsa|id_ecdsa|id_ed25519)$|(^|[._\-\s])(secret|secrets|credential|credentials|password|passwd|token|tokens|private|private-key|api[_-]?key|auth)([._\-\s]|$)|\.(pfx|p12|pem|key|keystore|crt|cer)$)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex BackupIdPattern = new Regex(@"^[A-Za-z0-9][A-Za-z0-9_.-]{0,120}$", RegexOptions.Compiled);
         private readonly Func<AegisSettingsSnapshot> settingsProvider;
 
@@ -304,8 +304,7 @@ namespace Aegis.LocalAgent.VisualStudio.Services
             if (segments.Length == 0 || segments.Any(segment =>
                 segment == "." ||
                 segment == ".." ||
-                BlockedSegments.Contains(segment) ||
-                SecretFilePattern.IsMatch(segment)))
+                BlockedSegments.Contains(segment)))
             {
                 message = $"Blocked unsafe path: {proposedPath}";
                 return false;

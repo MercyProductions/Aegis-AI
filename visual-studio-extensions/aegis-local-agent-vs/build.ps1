@@ -241,6 +241,14 @@ function Assert-SafeEditRollbackGuards {
       $issues += "SafeEditService must block Unity generated/runtime folder segment '$blockedSegment'."
     }
   }
+  foreach ($secretNeedle in @("password", "passwd", "api[_-]?key", "auth", "id_rsa", "keystore")) {
+    if ($safeEditText -notmatch [regex]::Escape($secretNeedle)) {
+      $issues += "SafeEditService secret filename guard must include '$secretNeedle'."
+    }
+  }
+  if ($safeEditText -match 'SecretFilePattern\.IsMatch\(segment\)') {
+    $issues += "SafeEditService secret matching should check the leaf filename, not every path segment, so ordinary names like tokenizer.py are allowed."
+  }
   if ($safeEditText -match 'TimestampFromCreatedAt') {
     $issues += "SafeEditService rollback must not fall back from explicit backupId to createdAt-derived folders."
   }

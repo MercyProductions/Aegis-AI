@@ -1,5 +1,26 @@
 # Development Log
 
+## 2026-05-09 - Editor Secret Path Guard Parity
+
+Focus:
+
+- Keep VS Code and Visual Studio proposal path guards aligned with Core and Website secret-like filename safety.
+- Block password/API-key/auth/SSH-key/keystore-like proposal paths without rejecting ordinary source names such as `tokenizer.py`.
+
+Actions:
+
+- Expanded VS Code `SECRET_FILE_PATTERNS` to cover password/passwd, API-key, auth, SSH private key, and keystore/certificate-like filenames.
+- Added VS Code package lint coverage that exercises real secret path patterns and ordinary safe names.
+- Expanded Visual Studio `SecretFilePattern` to the same secret-like filename families.
+- Narrowed Visual Studio secret matching to the proposal leaf filename so normal path segments and source names are not over-blocked.
+- Added Visual Studio package validation guards for the expanded secret filename contract.
+
+Validation completed:
+
+- VS Code package lint and extension syntax check: pass.
+- Visual Studio package validation guards: pass.
+- Visual Studio extension Release build: pass.
+
 ## 2026-05-09 - Website Secret Path Safety
 
 Focus:

@@ -460,7 +460,7 @@ Before applying edits, the extension:
 - validates rollback manifests before restore, including timestamp-like backup IDs, workspace roots, and backup file paths
 - stores proposal history in `.aegis/vscode-autopilot/proposals`
 - refuses absolute paths and writes outside the project folder
-- blocks `.env`, secret, credential, token, key, certificate, dependency, vendor, build, dist, cache, and VCS paths
+- blocks `.env`, secret, credential, token, password, API-key, auth, private-key, key/certificate/keystore, dependency, vendor, build, dist, cache, and VCS paths
 - blocks lockfile edits unless the proposal explicitly explains why a lockfile must change
 
 `.aegis/` is ignored by git in this repo.
