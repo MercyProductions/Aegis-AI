@@ -258,6 +258,29 @@ def test_workspace_scan_framework_detection_ignores_damaged_marker_shapes(tmp_pa
     assert "Unity" in result["frameworks"]
 
 
+def test_workspace_scan_tracks_unity_project_metadata_as_build_files(tmp_path: Path) -> None:
+    workspace = tmp_path / "unity-project"
+    (workspace / "Assets" / "Scripts").mkdir(parents=True)
+    (workspace / "Packages").mkdir(parents=True)
+    (workspace / "ProjectSettings").mkdir(parents=True)
+    (workspace / "Packages" / "manifest.json").write_text('{"dependencies": {}}\n', encoding="utf-8")
+    (workspace / "Packages" / "packages-lock.json").write_text('{"dependencies": {}}\n', encoding="utf-8")
+    (workspace / "ProjectSettings" / "ProjectVersion.txt").write_text("m_EditorVersion: 2022.3.0f1\n", encoding="utf-8")
+    (workspace / "ProjectSettings" / "ProjectSettings.asset").write_text("%YAML 1.1\n", encoding="utf-8")
+    (workspace / "Assets" / "Scripts" / "Gameplay.asmdef").write_text('{"name":"Gameplay"}\n', encoding="utf-8")
+
+    result = WorkspaceScanner(workspace).scan(persist=False)
+
+    assert "Unity" in result["frameworks"]
+    assert {
+        "Packages/manifest.json",
+        "Packages/packages-lock.json",
+        "ProjectSettings/ProjectVersion.txt",
+        "ProjectSettings/ProjectSettings.asset",
+        "Assets/Scripts/Gameplay.asmdef",
+    }.issubset(set(result["build_files"]))
+
+
 def test_workspace_scan_detects_fsharp_and_visual_basic_dotnet_projects(tmp_path: Path) -> None:
     workspace = make_dotnet_polyglot_workspace(tmp_path)
 
@@ -1307,6 +1330,44 @@ def test_change_simulation_tracks_fsharp_and_visual_basic_project_paths(tmp_path
     ]
     assert "src/FSharpApp/FSharpApp.fsproj" in build_risk_files
     assert "src/VisualBasicTool/VisualBasicTool.vbproj" in build_risk_files
+
+
+def test_change_simulation_treats_unity_metadata_as_build_risk(tmp_path: Path) -> None:
+    workspace = tmp_path / "unity-simulation-project"
+    (workspace / "Assets" / "Scripts").mkdir(parents=True)
+    (workspace / "Packages").mkdir(parents=True)
+    (workspace / "ProjectSettings").mkdir(parents=True)
+    (workspace / "Packages" / "manifest.json").write_text('{"dependencies": {}}\n', encoding="utf-8")
+    (workspace / "ProjectSettings" / "ProjectVersion.txt").write_text("m_EditorVersion: 2022.3.0f1\n", encoding="utf-8")
+    (workspace / "Assets" / "Scripts" / "Gameplay.asmdef").write_text('{"name":"Gameplay"}\n', encoding="utf-8")
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/v1/simulation/change",
+        json={
+            "workspace": str(workspace),
+            "objective": "Review Unity package and assembly metadata before gameplay edits.",
+            "files": [
+                "Packages/manifest.json",
+                "ProjectSettings/ProjectVersion.txt",
+                "Assets/Scripts/Gameplay.asmdef",
+            ],
+            "approach": "Minimal Unity metadata review",
+        },
+    )
+
+    assert response.status_code == 200
+    assert_core_contract(response.json(), "simulation.change")
+    data = response.json()["data"]
+    build_risk_files = [
+        path
+        for risk in data["likely_build_risks"]
+        for path in risk.get("files", [])
+        if isinstance(risk, dict)
+    ]
+    assert "Packages/manifest.json" in build_risk_files
+    assert "ProjectSettings/ProjectVersion.txt" in build_risk_files
+    assert "Assets/Scripts/Gameplay.asmdef" in build_risk_files
 
 
 def test_change_simulation_parses_shared_source_suffix_path_mentions(tmp_path: Path) -> None:

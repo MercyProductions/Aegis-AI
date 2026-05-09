@@ -1,5 +1,25 @@
 # Development Log
 
+## 2026-05-09 - Core Unity Metadata Scan Coverage
+
+Focus:
+
+- Keep Unity project metadata visible in Core scans without indexing generated Unity folders.
+- Improve roadmap/context quality for Unity dogfooding by surfacing package, project settings, and assembly-definition files.
+
+Actions:
+
+- Added Unity package manifests, package lockfiles, key `ProjectSettings` metadata, and `.asmdef`/`.asmref` files to Core build-file detection.
+- Aligned Core change simulation so Unity package/settings/assembly metadata is treated as build-impacting risk.
+- Added focused Core regressions for Unity metadata scan visibility and simulation risk.
+
+Validation completed:
+
+- Aegis Core focused Unity scan regression: pass.
+- Aegis Core focused metadata regression group: pass.
+- Aegis Core contract regression suite: pass.
+- Core compile check and Git whitespace check: pass.
+
 ## 2026-05-09 - Visual Studio NuGet Lockfile Scanner Guard
 
 Focus:

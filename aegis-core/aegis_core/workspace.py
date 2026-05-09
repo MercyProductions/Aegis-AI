@@ -10,7 +10,7 @@ from typing import Any
 
 from .diagnostics import scrub
 from .memory import ProjectMemory
-from .safety import IGNORED_DIRS, is_ignored_path, is_safe_to_read
+from .safety import IGNORED_DIRS, is_ignored_path, is_safe_to_read, is_secret_like, is_workspace_local
 
 
 DOTNET_PROJECT_SUFFIXES = {".csproj", ".fsproj", ".vbproj"}
@@ -19,7 +19,18 @@ DOTNET_FRAMEWORK_BY_SUFFIX = {
     ".fsproj": "F#/.NET",
     ".vbproj": "VB.NET",
 }
-BUILD_FILE_SUFFIXES = {".sln", ".slnx", ".vcxproj"} | DOTNET_PROJECT_SUFFIXES
+UNITY_METADATA_SUFFIXES = {".asmdef", ".asmref"}
+UNITY_BUILD_FILE_RELS = {
+    "packages/manifest.json",
+    "packages/packages-lock.json",
+    "projectsettings/editorbuildsettings.asset",
+    "projectsettings/editorsettings.asset",
+    "projectsettings/inputmanager.asset",
+    "projectsettings/projectsettings.asset",
+    "projectsettings/projectversion.txt",
+    "projectsettings/tagsmanager.asset",
+}
+BUILD_FILE_SUFFIXES = {".sln", ".slnx", ".vcxproj"} | DOTNET_PROJECT_SUFFIXES | UNITY_METADATA_SUFFIXES
 SOURCE_CODE_SUFFIXES = {
     ".py",
     ".js",
@@ -61,6 +72,8 @@ TEXT_SUFFIXES = {
     ".props",
     ".targets",
     ".cmake",
+    ".asmdef",
+    ".asmref",
 }
 
 
@@ -148,7 +161,7 @@ class WorkspaceScanner:
                 return cached
 
         language_counts = Counter(LANGUAGE_BY_SUFFIX.get(path.suffix.lower(), path.suffix.lower() or "other") for path in files)
-        build_files = [self._rel(path) for path in files if path.name in BUILD_FILE_NAMES or path.suffix.lower() in BUILD_FILE_SUFFIXES]
+        build_files = [self._rel(path) for path in files if self._is_build_file(path)]
         readmes = [self._rel(path) for path in files if path.name.lower().startswith("readme")]
         tests = [self._rel(path) for path in files if self._is_test_file(path)]
         recent = sorted(files, key=self._mtime_or_zero, reverse=True)[:20]
@@ -191,14 +204,14 @@ class WorkspaceScanner:
         collected: list[Path] = []
         for dirpath, dirnames, filenames in os.walk(self.workspace):
             base = Path(dirpath)
-            dirnames[:] = [name for name in dirnames if not is_ignored_path(base / name, self.workspace)]
+            dirnames[:] = [name for name in dirnames if self._should_descend_dir(base / name)]
             for filename in filenames:
                 if len(collected) >= self.options.max_files:
                     return collected
                 path = base / filename
-                if not is_safe_to_read(path, self.workspace):
+                if not self._is_safe_scan_file(path):
                     continue
-                if path.suffix.lower() not in TEXT_SUFFIXES and path.name not in BUILD_FILE_NAMES:
+                if path.suffix.lower() not in TEXT_SUFFIXES and not self._is_build_file(path):
                     continue
                 try:
                     if path.stat().st_size > self.options.max_file_bytes:
@@ -213,6 +226,37 @@ class WorkspaceScanner:
             return path.relative_to(self.workspace).as_posix()
         except ValueError:
             return str(path)
+
+    def _is_build_file(self, path: Path) -> bool:
+        return (
+            path.name in BUILD_FILE_NAMES
+            or path.suffix.lower() in BUILD_FILE_SUFFIXES
+            or self._rel(path).lower() in UNITY_BUILD_FILE_RELS
+        )
+
+    def _should_descend_dir(self, path: Path) -> bool:
+        if self._is_unity_root_packages_dir(path):
+            return True
+        return not is_ignored_path(path, self.workspace)
+
+    def _is_safe_scan_file(self, path: Path) -> bool:
+        if is_safe_to_read(path, self.workspace):
+            return True
+        return self._is_unity_root_package_metadata(path) and is_workspace_local(path, self.workspace) and not is_secret_like(path)
+
+    def _is_unity_root_packages_dir(self, path: Path) -> bool:
+        try:
+            return (
+                path.name.lower() == "packages"
+                and path.parent.resolve() == self.workspace
+                and (self.workspace / "Assets").is_dir()
+                and (self.workspace / "ProjectSettings").is_dir()
+            )
+        except OSError:
+            return False
+
+    def _is_unity_root_package_metadata(self, path: Path) -> bool:
+        return self._rel(path).lower() in {"packages/manifest.json", "packages/packages-lock.json"}
 
     def _file_index(self, files: list[Path]) -> list[dict[str, Any]]:
         index = []

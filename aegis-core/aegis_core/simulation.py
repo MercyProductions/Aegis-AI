@@ -10,9 +10,9 @@ from .diagnostics import scrub
 from .knowledge import knowledge_graph
 from .memory import ProjectMemory, utc_now
 from .quality import quality_dashboard
-from .safety import is_safe_to_read
+from .safety import is_safe_to_read, is_secret_like, is_workspace_local
 from .validation import detect_validation_commands
-from .workspace import BUILD_FILE_SUFFIXES, SOURCE_CODE_SUFFIXES, WorkspaceScanner
+from .workspace import BUILD_FILE_SUFFIXES, SOURCE_CODE_SUFFIXES, UNITY_BUILD_FILE_RELS, WorkspaceScanner
 
 
 DEPENDENCY_FILES = {
@@ -48,6 +48,28 @@ PATH_EXTENSIONS = tuple(
 PATH_PATTERN = re.compile(
     r"([A-Za-z0-9_./\\-]+\.(?:" + "|".join(PATH_EXTENSIONS) + r"))"
 )
+
+
+def _is_dependency_or_build_path(path: str) -> bool:
+    normalized = path.replace("\\", "/").lstrip("./")
+    candidate = Path(normalized)
+    return (
+        candidate.name in DEPENDENCY_FILES
+        or candidate.suffix.lower() in BUILD_FILE_SUFFIXES
+        or normalized.lower() in UNITY_BUILD_FILE_RELS
+    )
+
+
+def _is_safe_focus_file(root: Path, path: Path) -> bool:
+    if is_safe_to_read(path, root):
+        return True
+    try:
+        relative = path.resolve().relative_to(root).as_posix().lower()
+    except (OSError, RuntimeError, ValueError):
+        return False
+    return relative in UNITY_BUILD_FILE_RELS and is_workspace_local(path, root) and not is_secret_like(path)
+
+
 COMMON_WORDS = {
     "add",
     "and",
@@ -291,7 +313,7 @@ def _focus_files(
         if not relative:
             continue
         candidate = (root / relative).resolve()
-        if not is_safe_to_read(candidate, root):
+        if not _is_safe_focus_file(root, candidate):
             blocked.append({"path": relative, "reason": "secret-like, ignored, or outside workspace"})
             continue
         if not candidate.is_file():
@@ -452,7 +474,7 @@ def _likely_build_risks(
     statuses = quality.get("statuses") if isinstance(quality.get("statuses"), dict) else {}
     if _status_failed(statuses.get("build")) or _status_failed(statuses.get("validation")):
         risks.append({"title": "Existing validation is already failing", "severity": "high", "evidence": statuses})
-    dependency_paths = [path for path in paths if Path(path).name in DEPENDENCY_FILES or Path(path).suffix.lower() in BUILD_FILE_SUFFIXES]
+    dependency_paths = [path for path in paths if _is_dependency_or_build_path(path)]
     if dependency_paths:
         risks.append({"title": "Build or dependency manifest may be affected", "severity": "high", "files": dependency_paths[:8]})
     if not validation["commands"]:
@@ -748,7 +770,7 @@ def _rollback_complexity(
         score += 25
     elif risk_level == "high":
         score += 15
-    if any(Path(str(item.get("path") or "")).name in DEPENDENCY_FILES for item in impacted_files):
+    if any(_is_dependency_or_build_path(str(item.get("path") or "")) for item in impacted_files):
         score += 12
     if score >= 55:
         level = "high"
@@ -828,7 +850,7 @@ def _performance_risks(impacted_paths: list[str], scan: dict[str, Any]) -> list[
         risks.append({"title": "Large workspace size may make scans and validation slower", "severity": "low"})
     if any(any(token in path.lower() for token in ("index", "scanner", "graph", "search", "embedding")) for path in impacted_paths):
         risks.append({"title": "Indexing/search path may affect runtime latency", "severity": "moderate"})
-    if any(Path(path).name in DEPENDENCY_FILES for path in impacted_paths):
+    if any(_is_dependency_or_build_path(path) for path in impacted_paths):
         risks.append({"title": "Dependency changes may alter install or startup time", "severity": "moderate"})
     return risks[:5]
 

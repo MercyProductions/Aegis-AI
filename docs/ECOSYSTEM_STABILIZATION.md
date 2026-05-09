@@ -24,7 +24,7 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 | Visual Studio health check | Improved | Health check now reports Core reachability separately from shared client registration and preserves useful Core error details. |
 | Website integration | Partial | Website has its own mature local backend. For this phase it remains documented as a client and should migrate incrementally to `/v1` Core contracts. |
 | Workspace scan performance | Improved | Core scan results are cached when the workspace fingerprint is unchanged, skipping repeated expensive symbol/dependency/TODO passes. |
-| Workspace scan resilience | Improved | Core scans tolerate malformed package dependency metadata, BOM-prefixed `package.json` files, damaged framework marker paths, and files disappearing during scan sorting. |
+| Workspace scan resilience | Improved | Core scans tolerate malformed package dependency metadata, BOM-prefixed `package.json` files, damaged framework marker paths, Unity project metadata, and files disappearing during scan sorting. |
 | Path safety | Improved | Core now evaluates ignored folders relative to the workspace, blocks secret-like filenames case-insensitively, and rejects paths resolving outside the workspace. |
 | Shared settings | Improved | Core config loading falls back to defaults for malformed values, unsafe memory directory names, and damaged `.aegis/config.json` paths. |
 | Desktop settings | Improved | Backend and Aegis Core URL fields normalize host:port inputs and pasted endpoint paths before config writes or runtime requests. |
@@ -88,7 +88,8 @@ Ran during this pass:
 - Website frontend API tests: pass, including memory and creative asset API base discovery regressions
 - Website frontend tests: 21 files / 172 tests passed
 - Website frontend production build: pass, no Vite chunk-size warning
-- Aegis Core JS/Python/Go/Rust/.NET lockfile/source metadata focused tests: 7 passed
+- Aegis Core JS/Python/Go/Rust/.NET/Unity metadata and simulation focused tests: 9 passed
+- Aegis Core contract regression suite after Unity metadata scan hardening: 158 passed
 - Website approval/autonomous/workspace-operation lockfile safety tests: 36 passed, 11 subtests passed
 - VS Code package lint and extension syntax check: pass
 - Website focused frontend API/runtime/task tests: 40 tests passed
@@ -119,6 +120,7 @@ Ran during this pass:
 - Hardened Core workspace scans against malformed `package.json` dependency shapes and file stat races during recent-file sorting.
 - Hardened Core framework detection so UTF-8 BOM-prefixed `package.json` files still detect React/Vite/Next dependencies.
 - Hardened Core framework detection so damaged `package.json`, `Assets`, or `ProjectSettings` marker shapes do not create false Node or Unity classifications.
+- Improved Core Unity scans and change simulation so package manifests, package lockfiles, project settings, and assembly-definition metadata are available as build/context files and build-impacting risk without scanning generated Unity runtime folders.
 - Hardened Core validation detection so ignored dependency/build folders do not trigger false `.NET` build suggestions.
 - Hardened Core validation detection so damaged root build-marker directories do not trigger false Cargo, Python, CMake, pnpm, or Yarn suggestions.
 - Reduced Core validation startup overhead by avoiding duplicate validation-command detection.
