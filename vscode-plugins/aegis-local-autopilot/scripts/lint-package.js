@@ -68,4 +68,13 @@ for (const file of ['extension.js', 'README.md', 'media/aegis.svg', '.vscodeigno
   }
 }
 
+const ignoreText = fs.readFileSync(path.join(root, '.vscodeignore'), 'utf8');
+for (const privateFile of ['.gitignore', 'DETECTED_MODELS.md', 'DOGFOODING_NOTES.md']) {
+  const escaped = privateFile.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const linePattern = new RegExp(`(^|\\r?\\n)${escaped}(\\r?\\n|$)`);
+  if (!linePattern.test(ignoreText)) {
+    fail(`.vscodeignore must exclude ${privateFile} from release packages.`);
+  }
+}
+
 console.log(`Aegis package lint passed for ${manifest.name}@${manifest.version}.`);

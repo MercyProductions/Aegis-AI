@@ -92,6 +92,7 @@ Fixes applied:
 | 2026-05-09 | Workflow refinement | Daily dogfooding evidence existed, but long-term repeated-friction rules were implicit. | Medium | Added long-term refinement rules and weekly review cadence. |
 | 2026-05-09 | Frontend probe | `Invoke-WebRequest` produced a local null-reference false alarm while the Vite frontend was healthy. | Low | Prefer `curl.exe -I --max-time 5` for daily frontend reachability checks. |
 | 2026-05-09 | Visual Studio profile targeting | VS 2022 and VS 18 have different Aegis extension versions installed. | Medium | Daily GUI checks must name the exact Visual Studio instance/profile under test. |
+| 2026-05-09 | VS Code packaging | VSIX archive included repository-only dogfooding notes and local detected model inventory. | Medium | Excluded those files from packaging and added a lint guard. |
 
 ## Daily Workflow Checklist
 

@@ -7,6 +7,12 @@ const manifest = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'ut
 const releaseDir = path.join(root, 'release');
 const outFile = path.join(releaseDir, `${manifest.name}-${manifest.version}.vsix`);
 
+cp.execFileSync(process.execPath, [path.join(root, 'scripts', 'lint-package.js')], {
+  cwd: root,
+  stdio: 'inherit',
+  windowsHide: true
+});
+
 fs.mkdirSync(releaseDir, { recursive: true });
 for (const file of fs.readdirSync(releaseDir)) {
   if (file.startsWith(`${manifest.name}-`) && file.endsWith('.vsix')) {

@@ -57,6 +57,7 @@
 - Hardened Desktop Core dashboard loading so a shared registration failure no longer blocks dashboard reads when Core is otherwise reachable.
 - Hardened VS Code Ollama/Core URL settings so common local inputs normalize before model detection, health checks, and shared Core sync.
 - Hardened VS Code local API error reporting so Core/Ollama HTTP failures surface parsed, redacted detail text instead of raw JSON bodies.
+- Hardened VS Code VSIX packaging so local dogfooding notes, detected model inventories, and repository-only files are excluded from release archives.
 - Hardened Visual Studio Ollama/Core URL settings so common local inputs normalize before model calls, health checks, and shared Core registration.
 - Hardened Visual Studio Health Check so Core reachability and client registration are reported separately with useful Core error details.
 - Added product-utilization workflow notes for daily Auralith dogfooding.
@@ -69,6 +70,7 @@
 - Aegis Core pytest, compile, CLI/API smoke checks pass.
 - Desktop App build passes.
 - VS Code extension lint and VSIX packaging pass.
+- VS Code package lint now runs before VSIX packaging and verifies release-only exclusions.
 - Visual Studio extension build and VSIX packaging pass.
 - Website frontend tests/build and backend test suite pass.
 - Full validation notes are tracked in `docs/ECOSYSTEM_STABILIZATION.md`.

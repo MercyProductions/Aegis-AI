@@ -96,3 +96,39 @@ Validation completed:
 Known next checks:
 
 - Perform manual live UI click-through in Desktop, VS Code, and Visual Studio when an interactive session is available.
+
+## 2026-05-09 - Autonomous Stabilization Tranche
+
+Focus:
+
+- Continue long-term stabilization without expanding scope.
+- Validate the consolidated ecosystem before pushing updates.
+- Fix only realistic reliability, release, or trust issues found during validation.
+
+Actions:
+
+- Confirmed the working tree was clean and the GitHub remote is `https://github.com/MercyProductions/Aegis-AI.git`.
+- Ran high-signal validation across Aegis Core, Website backend/frontend, Desktop, VS Code extension, and Visual Studio extension.
+- Found a VS Code release packaging hygiene issue: the generated VSIX included repository-only files, dogfooding notes, and local detected model inventory.
+- Updated `.vscodeignore` to exclude `.gitignore`, `DETECTED_MODELS.md`, and `DOGFOODING_NOTES.md` from VSIX archives.
+- Added a package lint guard so those release-only exclusions are required.
+- Made the VS Code package script run package lint before creating the VSIX.
+- Left the source notes in the repo; only the release archive contents changed.
+
+Validation completed:
+
+- Aegis Core tests: pass, 51 tests.
+- Website backend tests: pass, 776 tests and 155 subtests.
+- Website frontend tests: pass, 21 files and 169 tests.
+- Website frontend build: pass, with the existing large main chunk warning.
+- Website smoke script: pass, including frontend/backend checks, workspace setup, generated file apply/read-back, validation, readiness, and real chat.
+- Desktop smoke build/launch: pass, with nonblank login/setup/dashboard captures.
+- VS Code extension compile: pass.
+- VS Code extension lint: pass, including release exclusion guard.
+- VS Code VSIX package: pass; archive contents now exclude local model inventory and dogfooding notes.
+- Visual Studio extension build/package: pass.
+
+Friction recorded:
+
+- `npm test -- --runInBand` is a Jest habit and not valid for this Vitest project. The project command is `npm test`.
+- VS Code packaging reports `extension.js` as large at about 250 KB. This is a warning, not a release blocker, but future maintainability work should consider splitting only when it pays for itself.

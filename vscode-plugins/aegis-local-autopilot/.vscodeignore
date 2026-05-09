@@ -2,6 +2,9 @@
 release/
 scripts/
 .aegis/
+.gitignore
+DETECTED_MODELS.md
+DOGFOODING_NOTES.md
 node_modules/
 .vscode-test/
 out/
