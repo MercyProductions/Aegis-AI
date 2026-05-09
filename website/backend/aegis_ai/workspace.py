@@ -787,6 +787,7 @@ class WorkspaceManager:
         files = payload.get("files", []) if isinstance(payload, dict) else []
         restored: list[str] = []
         files_root = (checkpoint_root / "files").resolve()
+        prepared: list[tuple[str, str, Path, Path]] = []
 
         for entry in files:
             if not isinstance(entry, dict):
@@ -804,15 +805,22 @@ class WorkspaceManager:
             except ValueError as exc:
                 raise ValueError("checkpoint backup path points outside the checkpoint files folder") from exc
 
-            if state == "present" and backup.is_file():
+            if state == "present" and not backup.is_file():
+                raise ValueError(f"{relative_path}: checkpoint backup file is missing")
+
+            if state == "missing" and target.exists() and not target.is_file():
+                raise ValueError(f"{relative_path}: refusing to remove a non-file path during checkpoint restore")
+
+            prepared.append((relative_path, state, target, backup))
+
+        for relative_path, state, target, backup in prepared:
+            if state == "present":
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(backup, target)
                 restored.append(f"restore: {relative_path}")
                 continue
 
             if state == "missing" and target.exists():
-                if not target.is_file():
-                    raise ValueError(f"{relative_path}: refusing to remove a non-file path during checkpoint restore")
                 target.unlink()
                 restored.append(f"remove: {relative_path}")
 

@@ -86,6 +86,33 @@ class WorkspaceAndStorageTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "outside the checkpoint files folder"):
             manager.restore_checkpoint(workspace, "bad-backup-path")
 
+    def test_restore_checkpoint_preflights_missing_backup_before_restoring(self) -> None:
+        manager = WorkspaceManager(self.project_root, self.settings)
+        workspace = manager.resolve_workspace("workspace")
+        tracked = workspace / "app.py"
+        tracked.write_text("after\n", encoding="utf-8")
+        checkpoint_root = workspace / ".aegis" / "checkpoints" / "missing-backup"
+        backup = checkpoint_root / "files" / "app.py"
+        backup.parent.mkdir(parents=True)
+        backup.write_text("before\n", encoding="utf-8")
+        (checkpoint_root / "manifest.json").write_text(
+            json.dumps(
+                {
+                    "id": "missing-backup",
+                    "files": [
+                        {"path": "app.py", "state": "present"},
+                        {"path": "missing.py", "state": "present"},
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        with self.assertRaisesRegex(ValueError, "checkpoint backup file is missing"):
+            manager.restore_checkpoint(workspace, "missing-backup")
+
+        self.assertEqual(tracked.read_text(encoding="utf-8"), "after\n")
+
     def test_apply_changes_does_not_write_when_checkpoint_cannot_be_created(self) -> None:
         manager = WorkspaceManager(self.project_root, self.settings)
         workspace = manager.resolve_workspace("workspace")
