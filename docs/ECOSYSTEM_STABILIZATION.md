@@ -33,7 +33,7 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 | VS Code packaging | Improved | Release lint now verifies command contribution/activation parity, release metadata, source-only helper exclusions, package hygiene, Python lockfile fallback safety, Unity metadata fallback context, generated/runtime proposal guards, and secret filename guard parity before VSIX creation. |
 | Visual Studio settings | Improved | Ollama and Aegis Core URL fields normalize host:port inputs and pasted endpoint paths before model or shared-runtime requests. |
 | Shared task API | Improved | Bad task status updates return `400`, missing task IDs return `404`, and malformed local task records are normalized on read. |
-| Visual Studio packaging | Improved | VSIX packaging now validates manifest metadata, command resources, VSCT/C# command table parity, solution scanner parity, NuGet lockfile filename handling, Unity metadata context, generated/runtime safe-edit guards, secret filename guard parity, and release documentation/license sources before producing the release archive. |
+| Visual Studio packaging | Improved | VSIX packaging now validates manifest metadata, command resources, VSCT/C# command table parity, solution scanner parity, NuGet lockfile filename handling, Unity metadata context, generated/runtime safe-edit guards, scanner/safe-edit secret filename guard parity, and release documentation/license sources before producing the release archive. |
 | Shared mutation persistence | Improved | Client registration and task creation/update now verify persistence; unwritable `.aegis` roots return clear failures or degraded plan responses instead of phantom successful writes. |
 | Memory resilience | Improved | Dashboard/task reads, agent plan reads, and generated-memory writes now tolerate unreadable or damaged `.aegis` JSON/markdown paths. |
 | VS Code memory resilience | Improved | Workspace startup and later index/history/log writes skip damaged `.aegis` paths instead of breaking scans or post-apply bookkeeping. |
@@ -103,6 +103,7 @@ Ran during this pass:
 - VS Code package lint and extension syntax check after dot-segment proposal path guard hardening: pass
 - Visual Studio package validation guards and Release build after generated/runtime safe-edit hardening: pass
 - Visual Studio package validation guards and Release build after editor secret path guard parity: pass
+- Visual Studio package validation guards and Release build after scanner secret filter parity: pass
 - Website focused frontend API/runtime/task tests: 40 tests passed
 - Website acceptance gate with explicit backend/frontend URLs: pass
 - Website backend tests: 739 tests and 155 subtests passed
@@ -140,6 +141,7 @@ Ran during this pass:
 - Hardened Website workspace scan, context, read, and apply paths so `.env`, token/password, private-key, and certificate-like filenames stay out of model context and generated writes while safe names such as `.gitignore` and `tokenizer.py` remain usable.
 - Aligned VS Code and Visual Studio safe-edit secret filename guards with Core and Website coverage for password, API-key, auth, SSH-key, and keystore-like files while preserving ordinary source names such as `tokenizer.py`.
 - Hardened VS Code proposal path safety so dot-segment paths such as `src/../README.md` are rejected before apply.
+- Aligned Visual Studio solution scanning and smart context secret filename filters with safe-edit coverage so secret-like files stay out of context without dropping ordinary names such as `tokenizer.py`.
 - Hardened Core validation detection so ignored dependency/build folders do not trigger false `.NET` build suggestions.
 - Hardened Core validation detection so damaged root build-marker directories do not trigger false Cargo, Python, CMake, pnpm, or Yarn suggestions.
 - Reduced Core validation startup overhead by avoiding duplicate validation-command detection.

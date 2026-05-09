@@ -1,5 +1,22 @@
 # Development Log
 
+## 2026-05-09 - Visual Studio Scanner Secret Filter Parity
+
+Focus:
+
+- Keep Visual Studio scanning and smart context aligned with safe-edit secret filename rules.
+- Avoid indexing password/API-key/auth/SSH-key/keystore-like files while preserving normal source names such as `tokenizer.py`.
+
+Actions:
+
+- Expanded `SolutionScanner` and `SolutionIntelligenceService` secret filename patterns to match the safer editor proposal contract.
+- Added package validation that executes the scanner regexes against blocked and allowed filename samples.
+
+Validation completed:
+
+- Visual Studio package validation guards: pass.
+- Visual Studio extension Release build: pass.
+
 ## 2026-05-09 - VS Code Dot-Segment Proposal Path Guard
 
 Focus:

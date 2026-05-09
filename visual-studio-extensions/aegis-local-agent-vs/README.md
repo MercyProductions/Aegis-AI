@@ -208,7 +208,7 @@ The scanner reads:
 
 The index is incremental inside the running Visual Studio session. Unchanged files are reused from cache, changed files are reparsed, and a manual rescan forces a fresh index.
 
-Ignored folders include `.git/`, `.vs/`, `.aegis/`, `bin/`, `obj/`, NuGet `packages/`, `node_modules/`, `vendor/`, `dist/`, `build/`, `Generated/`, Unity `Library/`, Unity `Temp/`, `Logs/`, and C++ `ipch/`. Unity's top-level `Packages/` folder remains readable for package metadata. Proposed edits also reject leaf filenames that look like `.env` files, tokens, passwords, API keys, auth files, private keys, SSH keys, certificates, or keystores while allowing ordinary source names such as `tokenizer.py`.
+Ignored folders include `.git/`, `.vs/`, `.aegis/`, `bin/`, `obj/`, NuGet `packages/`, `node_modules/`, `vendor/`, `dist/`, `build/`, `Generated/`, Unity `Library/`, Unity `Temp/`, `Logs/`, and C++ `ipch/`. Unity's top-level `Packages/` folder remains readable for package metadata. Scans, smart context, and proposed edits also reject leaf filenames that look like `.env` files, tokens, passwords, API keys, auth files, private keys, SSH keys, certificates, or keystores while allowing ordinary source names such as `tokenizer.py`.
 
 ## Architecture Awareness
 

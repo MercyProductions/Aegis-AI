@@ -298,6 +298,36 @@ function Assert-SolutionScannerParityGuards {
   if ($scannerText -match 'name\.Equals\("packages-lock\.json"') {
     $issues += "SolutionScanner must not use the invalid NuGet lockfile name packages-lock.json as a filename-only rule."
   }
+  foreach ($secretNeedle in @("password", "passwd", "api[_-]?key", "auth", "id_rsa", "keystore", "crt", "cer")) {
+    if ($scannerText -notmatch [regex]::Escape($secretNeedle)) {
+      $issues += "SolutionScanner secret filename guard must include '$secretNeedle'."
+    }
+    if ($intelligenceText -notmatch [regex]::Escape($secretNeedle)) {
+      $issues += "SolutionIntelligenceService secret filename guard must include '$secretNeedle'."
+    }
+  }
+  foreach ($secretGuard in @(
+    @{ Name = "SolutionScanner"; Text = $scannerText },
+    @{ Name = "SolutionIntelligenceService"; Text = $intelligenceText }
+  )) {
+    $match = [regex]::Match($secretGuard.Text, 'SecretFilePattern\s*=\s*new Regex\(@"([^"]+)"')
+    if (-not $match.Success) {
+      $issues += "$($secretGuard.Name) must define a SecretFilePattern regex."
+      continue
+    }
+
+    $pattern = [regex]::new($match.Groups[1].Value, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+    foreach ($blockedFile in @(".env", ".env.example", "id_rsa", "service-token.json", "prod.password.txt", "private-key.pem", "client_api-key.json", "auth.json", "local.keystore", "client.crt")) {
+      if (-not $pattern.IsMatch($blockedFile)) {
+        $issues += "$($secretGuard.Name) must block secret-like file '$blockedFile'."
+      }
+    }
+    foreach ($safeFile in @(".gitignore", "tokenizer.py", "authenticationService.cs", "privateer.cpp")) {
+      if ($pattern.IsMatch($safeFile)) {
+        $issues += "$($secretGuard.Name) must not over-block ordinary file '$safeFile'."
+      }
+    }
+  }
   foreach ($unityFile in @("Packages/manifest.json", "Packages/packages-lock.json", ".asmdef", ".asmref")) {
     if ($scannerText -notmatch [regex]::Escape($unityFile)) {
       $issues += "SolutionScanner must keep Unity metadata visible in important solution context: $unityFile."

@@ -204,11 +204,11 @@ The scanner reads:
 - project references, assembly references, target frameworks, NuGet packages, include paths, and C++ configurations
 - startup project, active project, active document, selected code, and Solution Explorer selection
 - README, TODO, config, XAML, test, source, and project files
-- Unity `Assets/`, `Packages/`, and `ProjectSettings/` signals while ignoring generated runtime folders
+- Unity `Assets/`, `Packages/manifest.json`, `Packages/packages-lock.json`, key `ProjectSettings/` metadata, and `.asmdef` / `.asmref` files while ignoring generated runtime folders
 
 The index is incremental inside the running Visual Studio session. Unchanged files are reused from cache, changed files are reparsed, and a manual rescan forces a fresh index.
 
-Ignored folders include `.git/`, `.vs/`, `.aegis/`, `bin/`, `obj/`, `packages/`, `node_modules/`, `vendor/`, `dist/`, `build/`, `Generated/`, Unity `Library/`, Unity `Temp/`, `Logs/`, and C++ `ipch/`.
+Ignored folders include `.git/`, `.vs/`, `.aegis/`, `bin/`, `obj/`, NuGet `packages/`, `node_modules/`, `vendor/`, `dist/`, `build/`, `Generated/`, Unity `Library/`, Unity `Temp/`, `Logs/`, and C++ `ipch/`. Unity's top-level `Packages/` folder remains readable for package metadata. Scans, smart context, and proposed edits also reject leaf filenames that look like `.env` files, tokens, passwords, API keys, auth files, private keys, SSH keys, certificates, or keystores while allowing ordinary source names such as `tokenizer.py`.
 
 ## Architecture Awareness
 

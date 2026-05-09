@@ -31,6 +31,7 @@
 - Hardened Website workspace scan, context, read, and apply safety so `.env`, token/password, private-key, and certificate-like filenames are skipped or blocked before model context or file writes.
 - Aligned VS Code and Visual Studio safe-edit secret filename guards with Core/Website coverage for password, API-key, auth, SSH-key, and keystore-like files while avoiding false positives such as `tokenizer.py`.
 - Hardened VS Code proposal path safety so `.` and `..` path segments are rejected before apply instead of relying on later path resolution.
+- Aligned Visual Studio solution scanning and smart context secret filename filters with the editor safe-edit contract so password/API-key/auth/SSH-key/keystore-like files are skipped while ordinary names such as `tokenizer.py` remain indexable.
 - Improved Website scaffold install preflight so `.fsproj`, `.vbproj`, and `.slnx` projects receive the same missing-restore detection as `.csproj` projects.
 - Improved Website workspace profiling and validation planning so existing `.slnx` Visual Studio solutions are treated like `.sln` workspaces.
 - Improved Website agent and fallback continuation so existing `.slnx` workspaces keep Visual Studio stack guardrails and receive runnable MSBuild validation helpers.
