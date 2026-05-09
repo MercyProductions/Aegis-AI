@@ -1818,3 +1818,26 @@ Validation completed:
 - Website project-scaffolder regression suite: pass, 120 tests and 46 subtests.
 - Aegis Core contract tests: pass, 138 tests.
 - Git diff whitespace check: pass.
+
+## 2026-05-09 - Website PowerShell Command Execution Narrowing
+
+Focus:
+
+- Keep the Website `build.ps1` validation guard usable without exposing broad PowerShell command execution.
+- Align command execution safety with the narrow command shape emitted by validation discovery, agent continuation, and project-builder planning.
+
+Actions:
+
+- Blocked Website `powershell` and `pwsh` commands unless they exactly invoke root `build.ps1` with `-NoProfile -ExecutionPolicy Bypass -File`.
+- Added command-runner regressions for blocked `-Command` / escaped-path PowerShell invocations and the allowed root guard command.
+- Documented the narrow PowerShell validation contract in troubleshooting and stabilization notes.
+
+Validation completed:
+
+- Website command-runner safety suite: pass, 20 tests.
+- Website validation manager regression suite: pass, 22 tests and 4 subtests.
+- Project-builder focused PowerShell guard tests: pass, 3 tests.
+- Website project-scaffolder regression suite: pass, 120 tests and 46 subtests.
+- Website agent parser focused validation tests: pass, 12 tests.
+- Aegis Core contract tests: pass, 138 tests.
+- Git diff whitespace check: pass.

@@ -298,6 +298,26 @@ class ApprovalAndCommandTests(unittest.TestCase):
         self.assertFalse(result.allowed)
         self.assertIn("shell operators", result.reason.lower())
 
+    def test_powershell_commands_are_limited_to_root_build_guard(self) -> None:
+        runner = CommandRunner(Settings(_env_file=None, aegis_command_allowlist="powershell,pwsh"))
+
+        command = runner.run("powershell -Command Write-Host ok", self.workspace)
+        escaped = runner.run("pwsh -NoProfile -ExecutionPolicy Bypass -File ../build.ps1", self.workspace)
+
+        self.assertFalse(command.allowed)
+        self.assertFalse(escaped.allowed)
+        self.assertIn("limited to the exact root build.ps1", command.reason)
+        self.assertIn("limited to the exact root build.ps1", escaped.reason)
+
+    def test_powershell_root_build_guard_can_run_when_allowlisted(self) -> None:
+        runner = CommandRunner(Settings(_env_file=None, aegis_command_allowlist="powershell,pwsh"))
+        self.workspace.joinpath("build.ps1").write_text("Write-Output 'guard ok'\n", encoding="utf-8")
+
+        result = runner.run("powershell -NoProfile -ExecutionPolicy Bypass -File ./build.ps1", self.workspace)
+
+        self.assertTrue(result.allowed)
+        self.assertNotIn("limited to the exact root build.ps1", result.reason)
+
 
 if __name__ == "__main__":
     unittest.main()
