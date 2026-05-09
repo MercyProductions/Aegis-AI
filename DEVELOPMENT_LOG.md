@@ -1,5 +1,24 @@
 # Development Log
 
+## 2026-05-09 - VS Code Model Call Progress
+
+Focus:
+
+- Improve progress clarity for slow local Ollama calls observed during dogfooding.
+- Keep the change centralized in the shared model-call fallback path instead of adding command-specific UI churn.
+
+Actions:
+
+- Added progress entries when VS Code starts waiting on a local model, receives a response, falls back to another model, or exhausts all candidates.
+- Updated agent status/model state during long local model waits so the sidebar and status bar remain alive.
+- Extended package lint to require progress instrumentation in `askOllamaWithFallback`.
+- Updated dogfooding notes to mark long model-call progress messaging as addressed.
+
+Validation completed:
+
+- VS Code package lint: pass.
+- VS Code extension syntax check: pass.
+
 ## 2026-05-09 - VS Code Validation Failure Classification
 
 Focus:

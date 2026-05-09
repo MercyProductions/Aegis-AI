@@ -3021,16 +3021,32 @@ async function askOllamaWithFallback(model, prompt, options = {}) {
   const uniqueCandidates = Array.from(new Set(candidates));
   let lastError;
 
-  for (const candidate of uniqueCandidates) {
+  for (let index = 0; index < uniqueCandidates.length; index += 1) {
+    const candidate = uniqueCandidates[index];
+    const started = Date.now();
+    const attemptLabel = uniqueCandidates.length > 1 ? `model ${index + 1}/${uniqueCandidates.length}` : 'primary model';
+    pushProgress('Local model request started', `Waiting on ${candidate} (${attemptLabel}).`);
+    updateAgentState({ status: 'Waiting for local model', model: candidate });
     try {
-      return await askOllama(candidate, prompt, options);
+      const response = await askOllama(candidate, prompt, options);
+      const elapsed = ((Date.now() - started) / 1000).toFixed(1);
+      pushProgress('Local model response ready', `${candidate} completed in ${elapsed}s.`);
+      updateAgentState({ status: 'Processing local model response', model: candidate });
+      return response;
     } catch (error) {
       lastError = error;
       output.appendLine(`Ollama model ${candidate} failed: ${safeErrorMessage(error)}`);
+      pushProgress(
+        'Local model fallback',
+        index + 1 < uniqueCandidates.length
+          ? `${candidate} failed; trying ${uniqueCandidates[index + 1]}.`
+          : `${candidate} failed; no fallback model remains.`
+      );
       logExtensionEvent('model-call', `Ollama model ${candidate} failed.`, { error: safeErrorMessage(error) }).catch(() => {});
     }
   }
 
+  updateAgentState({ status: 'Local model call failed' });
   throw lastError || new Error('No local Ollama models were available.');
 }
 

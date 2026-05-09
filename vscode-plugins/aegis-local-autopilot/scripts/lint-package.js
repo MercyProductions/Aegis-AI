@@ -133,6 +133,7 @@ const serviceUrlBuilder = loadExtensionFunction(extensionText, 'serviceUrl', { U
 assertServiceUrl(serviceUrlBuilder, 'https://proxy.local/aegis', '/v1/health', 'https://proxy.local/aegis/v1/health');
 assertServiceUrl(serviceUrlBuilder, 'https://proxy.local/ollama', '/api/tags', 'https://proxy.local/ollama/api/tags');
 assertServiceUrl(serviceUrlBuilder, 'http://127.0.0.1:8788', '/v1/models', 'http://127.0.0.1:8788/v1/models');
+assertModelCallProgressInstrumentation(extensionText);
 
 const validationCommandGuard = loadExtensionFunction(extensionText, 'isSafeValidationCommand');
 assertValidationCommandGuard(validationCommandGuard);
@@ -318,6 +319,26 @@ function assertServiceUrl(builder, baseUrl, pathname, expected) {
   const built = builder(baseUrl, pathname).toString();
   if (built !== expected) {
     fail(`service URL mismatch for "${baseUrl}" + "${pathname}": expected "${expected}", got "${built}".`);
+  }
+}
+
+function assertModelCallProgressInstrumentation(source) {
+  const start = source.indexOf('async function askOllamaWithFallback');
+  const end = source.indexOf('async function askOllama(', start);
+  if (start === -1 || end === -1) {
+    fail('extension.js must expose askOllamaWithFallback before askOllama.');
+  }
+  const body = source.slice(start, end);
+  for (const required of [
+    "pushProgress('Local model request started'",
+    "updateAgentState({ status: 'Waiting for local model'",
+    "pushProgress('Local model response ready'",
+    "pushProgress(\n        'Local model fallback'",
+    "updateAgentState({ status: 'Local model call failed' })"
+  ]) {
+    if (!body.includes(required)) {
+      fail(`askOllamaWithFallback must keep model progress instrumentation: ${required}`);
+    }
   }
 }
 

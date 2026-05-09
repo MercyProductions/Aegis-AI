@@ -29,7 +29,7 @@ Issues found:
 - The messy project validation failure was concrete (`tsc` not recognized), but the old build-error flow did not feed that failure into the model before proposing repairs.
 - Impact analysis sometimes listed `.` as a likely affected file because validation command symbols used `.` as their source location.
 - UTF-8 BOM encoded `package.json` files could hide scripts from framework and validation detection on Windows-created projects.
-- Model-backed commands are slow enough that the UI needs continued progress clarity during normal use.
+- Model-backed commands are slow enough that the UI needs continued progress clarity during normal use. Addressed after 0.1.1 by recording model request start, fallback, completion, and failure progress in the shared Ollama fallback path.
 - Unsafe lockfile proposals were blocked correctly, but the user-facing warning did not name the exact blocked file in the visible message. Addressed after 0.1.1 by naming the first blocked edit in visible warnings/errors.
 
 Fixes applied for 0.1.1:
@@ -50,7 +50,7 @@ Fixes applied for 0.1.1:
 Follow-up candidates:
 
 - Improve visible blocked-edit details in the sidebar/error panel. Addressed for warnings/errors; sidebar detail remains a future polish area.
-- Add clearer progress messaging for long local model calls.
+- Add clearer progress messaging for long local model calls. Addressed after 0.1.1 through shared model-call progress entries and status updates.
 - Consider a lighter roadmap model setting or a fast-mode option for dogfooding large workspaces.
 - Improve build-failure classification for missing dependencies versus code errors. Addressed after 0.1.1 by classifying missing tools, missing dependencies, and likely code/config failures in validation summaries.
 
