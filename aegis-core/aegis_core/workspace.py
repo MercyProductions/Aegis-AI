@@ -93,7 +93,7 @@ class WorkspaceScanner:
         build_files = [self._rel(path) for path in files if path.name in BUILD_FILE_NAMES or path.suffix.lower() in {".sln", ".slnx", ".csproj", ".vcxproj"}]
         readmes = [self._rel(path) for path in files if path.name.lower().startswith("readme")]
         tests = [self._rel(path) for path in files if self._is_test_file(path)]
-        recent = sorted(files, key=lambda path: path.stat().st_mtime if path.exists() else 0, reverse=True)[:20]
+        recent = sorted(files, key=self._mtime_or_zero, reverse=True)[:20]
         todo_comments = self._find_todos(files)
         dependency_graph = self._dependency_graph(files)
         symbol_index = self._symbol_index(files)
@@ -172,6 +172,12 @@ class WorkspaceScanner:
             })
         return index
 
+    def _mtime_or_zero(self, path: Path) -> float:
+        try:
+            return path.stat().st_mtime
+        except OSError:
+            return 0
+
     def _scan_fingerprint(self, files: list[Path]) -> dict[str, Any]:
         max_mtime = 0
         total_size = 0
@@ -212,7 +218,12 @@ class WorkspaceScanner:
         if package_json.exists() and is_safe_to_read(package_json, self.workspace):
             try:
                 package = json.loads(package_json.read_text(encoding="utf-8"))
-                deps = {**package.get("dependencies", {}), **package.get("devDependencies", {})}
+                dependencies = package.get("dependencies", {}) if isinstance(package, dict) else {}
+                dev_dependencies = package.get("devDependencies", {}) if isinstance(package, dict) else {}
+                deps = {
+                    **(dependencies if isinstance(dependencies, dict) else {}),
+                    **(dev_dependencies if isinstance(dev_dependencies, dict) else {}),
+                }
                 if "next" in deps:
                     frameworks.add("Next.js")
                 if "vite" in deps:

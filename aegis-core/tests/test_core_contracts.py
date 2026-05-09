@@ -65,6 +65,43 @@ def test_workspace_scan_cache_reuses_unchanged_scan(tmp_path: Path) -> None:
     assert (workspace / ".aegis" / "scan-cache.json").exists()
 
 
+def test_workspace_scan_handles_malformed_package_dependency_shapes(tmp_path: Path) -> None:
+    workspace = tmp_path / "malformed-package-project"
+    workspace.mkdir()
+    (workspace / "package.json").write_text(
+        json.dumps({"dependencies": ["react"], "devDependencies": None}),
+        encoding="utf-8",
+    )
+
+    result = WorkspaceScanner(workspace).scan(persist=False)
+
+    assert result["workspace"] == str(workspace.resolve())
+    assert result["file_count"] == 1
+    assert "Unknown" in result["frameworks"]
+
+
+def test_workspace_scan_recent_files_survives_stat_race(tmp_path: Path, monkeypatch) -> None:
+    workspace = tmp_path / "stat-race-project"
+    workspace.mkdir()
+    flaky = workspace / "flaky.py"
+    flaky.write_text("print('present during collection')\n", encoding="utf-8")
+    scanner = WorkspaceScanner(workspace)
+    monkeypatch.setattr(scanner, "_collect_files", lambda: [flaky])
+    original_stat = Path.stat
+
+    def stat_race(self, *args, **kwargs):
+        if self == flaky:
+            raise OSError("file disappeared")
+        return original_stat(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", stat_race)
+
+    result = scanner.scan(persist=False)
+
+    assert result["workspace"] == str(workspace.resolve())
+    assert result["recent_files"] == ["flaky.py"]
+
+
 def test_v1_client_task_dashboard_contract(tmp_path: Path) -> None:
     workspace = make_workspace(tmp_path)
     client = TestClient(create_app())

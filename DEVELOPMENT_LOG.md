@@ -24,6 +24,7 @@ Actions:
 - Redacted validation logs before disk writes and made validation log write failures non-fatal.
 - Redacted returned validation output and made Core diagnostic log writes non-fatal.
 - Hardened Core generated-memory writes so damaged `.aegis` paths do not crash workspace scans.
+- Hardened Core workspace scans against malformed `package.json` dependency fields and file stat races.
 - Hardened Core settings read/write paths for damaged `.aegis/config.json` and `.aegis` paths.
 - Restricted shared memory directory settings to safe workspace-local folder names.
 - Hardened Core continue/repair agent endpoints against damaged roadmap and validation-log memory paths.
@@ -39,8 +40,9 @@ Actions:
 
 Validation completed:
 
-- Aegis Core contract test suite: pass, 30 tests.
+- Aegis Core contract test suite: pass, 32 tests.
 - Aegis Core compile check: pass.
+- Aegis Core workspace scan malformed package/stat-race regression tests: pass.
 - Aegis Core Ollama URL normalization and malformed-health regression tests: pass.
 - Aegis Core malformed Ollama model inventory regression tests: pass.
 - Aegis Core validation startup-failure regression test: pass.

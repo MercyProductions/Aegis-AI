@@ -18,6 +18,7 @@
 - Redacted secret-like validation output before writing `.aegis/validation-log.md` and made validation log write failures non-fatal.
 - Redacted validation API output before returning it to clients and made Core diagnostic log writes non-fatal.
 - Made Core memory writes best-effort and atomic where possible so damaged `.aegis` files do not crash scans or generated-memory updates.
+- Hardened Core workspace scans against malformed `package.json` dependency shapes and file stat races during recent-file sorting.
 - Hardened Core config reads and writes so damaged `.aegis/config.json` paths do not crash health or settings APIs.
 - Restricted Core memory directory settings to a single workspace-local folder name so shared config cannot point memory outside the project.
 - Hardened Core agent continue/repair planning so damaged roadmap or validation-log paths return safe responses instead of server errors.

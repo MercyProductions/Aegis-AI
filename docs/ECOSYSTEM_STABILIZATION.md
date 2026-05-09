@@ -22,6 +22,7 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 | Visual Studio health check | Improved | Health check now verifies Aegis Core and registers the Visual Studio client. |
 | Website integration | Partial | Website has its own mature local backend. For this phase it remains documented as a client and should migrate incrementally to `/v1` Core contracts. |
 | Workspace scan performance | Improved | Core scan results are cached when the workspace fingerprint is unchanged, skipping repeated expensive symbol/dependency/TODO passes. |
+| Workspace scan resilience | Improved | Core scans tolerate malformed package dependency metadata and files disappearing during scan sorting. |
 | Path safety | Improved | Core now evaluates ignored folders relative to the workspace and blocks secret-like filenames case-insensitively. |
 | Shared settings | Improved | Core config loading falls back to defaults for malformed values, unsafe memory directory names, and damaged `.aegis/config.json` paths. |
 | Shared task API | Improved | Bad task status updates return `400`; missing task IDs return `404`. |
@@ -41,8 +42,9 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 
 Ran during this pass:
 
-- `python -m pytest tests/test_core_contracts.py -q` in Aegis Core: 30 tests passed
+- `python -m pytest tests/test_core_contracts.py -q` in Aegis Core: 32 tests passed
 - `python -m compileall aegis_core`: pass
+- Core workspace scan malformed package/stat-race regression tests: pass
 - Core validation startup-failure regression test: pass
 - Core Ollama URL normalization, API-path trimming, credential rejection, and malformed-health regression tests: pass
 - Core malformed Ollama model inventory regression tests: pass
@@ -70,6 +72,7 @@ Ran during this pass:
 - Added Core scan cache through `.aegis/scan-cache.json`.
 - Added Core dashboard stale-task detection and suggested actions.
 - Hardened Core scan safety for mixed-case ignored folders, token/password/auth-like files, and Windows workspaces under temp-style parent directories.
+- Hardened Core workspace scans against malformed `package.json` dependency shapes and file stat races during recent-file sorting.
 - Hardened shared Ollama URL settings so common local inputs are normalized, pasted API paths are trimmed, credential-like URLs are rejected, and malformed URLs surface as health diagnostics.
 - Hardened Ollama model inventory parsing so malformed `/api/tags` payloads surface as health diagnostics.
 - Made generated-memory writes best-effort and atomic where possible, so damaged `.aegis` paths do not crash scans.
