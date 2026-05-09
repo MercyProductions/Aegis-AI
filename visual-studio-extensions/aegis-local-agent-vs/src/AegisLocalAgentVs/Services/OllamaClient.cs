@@ -176,13 +176,7 @@ namespace Aegis.LocalAgent.VisualStudio.Services
 
         private static string TruncateDetail(string detail)
         {
-            if (string.IsNullOrWhiteSpace(detail))
-            {
-                return string.Empty;
-            }
-
-            var normalized = detail.Replace("\r", " ").Replace("\n", " ").Trim();
-            return normalized.Length <= 240 ? normalized : normalized.Substring(0, 237) + "...";
+            return DiagnosticRedactor.RedactAndTruncate(detail);
         }
 
         private AegisSettingsSnapshot GetSettings()

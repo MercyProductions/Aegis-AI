@@ -681,3 +681,22 @@ Validation completed:
 - Website backend compile check: pass.
 - Aegis Core contract tests: pass, 89 tests.
 - VS Code extension compile smoke: pass.
+
+## 2026-05-09 - Visual Studio Diagnostic Redaction
+
+Focus:
+
+- Keep Visual Studio Health Check, Core sync, and Ollama failure messages useful without exposing credential-like details.
+- Align the Visual Studio client with the Core and Website adapter redaction behavior.
+
+Actions:
+
+- Added a shared Visual Studio diagnostic redactor for query-string keys, bearer tokens, URL credentials, and assignment-style secrets.
+- Routed Aegis Core HTTP errors, Core `ok=false` envelope details, Core deprecation text, and Ollama HTTP errors through the redactor.
+- Updated Visual Studio extension changelog and release notes.
+
+Validation completed:
+
+- Visual Studio extension Release build: pass, 0 warnings.
+- Aegis Core contract tests: pass, 89 tests.
+- VS Code extension compile smoke: pass.

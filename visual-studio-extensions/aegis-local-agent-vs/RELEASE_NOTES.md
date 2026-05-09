@@ -10,6 +10,7 @@ This dogfooding build keeps the 0.1.0 feature set frozen and focuses on real-use
 - Hardened the release build script to stop on MSBuild errors and validate packaged manifest/resource consistency.
 - Hardened solution memory reads and writes so damaged `.aegis` paths are skipped and reported through Health Check instead of crashing memory-backed workflows.
 - Hardened rollback so backup manifests include explicit IDs and unsafe or incomplete rollback entries are skipped before solution files are touched.
+- Hardened Ollama/Core diagnostics so secret-like HTTP error details are redacted before display.
 - Updated setup guidance so first-run indexing happens through health check, roadmap generation, or manual rescan.
 
 ## What Is Included

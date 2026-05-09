@@ -93,11 +93,11 @@ namespace Aegis.LocalAgent.VisualStudio.Services
             try
             {
                 var parsed = JObject.Parse(responseText);
-                return parsed.Value<string>("detail") ?? string.Empty;
+                return DiagnosticRedactor.RedactAndTruncate(parsed.Value<string>("detail"));
             }
             catch (JsonException)
             {
-                return responseText.Trim();
+                return DiagnosticRedactor.RedactAndTruncate(responseText);
             }
         }
 
@@ -147,13 +147,13 @@ namespace Aegis.LocalAgent.VisualStudio.Services
                 ?? envelope.Value<string>("detail");
             if (!string.IsNullOrWhiteSpace(detail))
             {
-                return detail;
+                return DiagnosticRedactor.RedactAndTruncate(detail);
             }
 
             var deprecations = envelope["deprecations"] as JArray;
             if (deprecations != null && deprecations.Count > 0)
             {
-                return string.Join("; ", deprecations);
+                return DiagnosticRedactor.RedactAndTruncate(string.Join("; ", deprecations));
             }
 
             return "Core returned ok=false.";
