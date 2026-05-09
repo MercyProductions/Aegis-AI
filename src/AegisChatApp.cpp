@@ -149,7 +149,7 @@ bool PathLooksLikeExistingProject(const std::string& path)
             continue;
         }
         const std::string extension = Lower(WideToUtf8(entry.path().extension().wstring()));
-        if (extension == ".sln" || extension == ".csproj" || extension == ".vcxproj" ||
+        if (extension == ".sln" || extension == ".slnx" || extension == ".csproj" || extension == ".vcxproj" ||
             extension == ".dll" || extension == ".lib" || extension == ".def" || extension == ".exp" || extension == ".pdb") {
             return true;
         }
@@ -322,7 +322,7 @@ bool WorkspaceLooksLikeCppProject(const std::string& path)
             continue;
         }
         const std::string extension = Lower(WideToUtf8(entry.path().extension().wstring()));
-        if (extension == ".sln" || extension == ".vcxproj" || extension == ".cpp" || extension == ".cxx" || extension == ".cc") {
+        if (extension == ".sln" || extension == ".slnx" || extension == ".vcxproj" || extension == ".cpp" || extension == ".cxx" || extension == ".cc") {
             return true;
         }
         if (extension == ".h" || extension == ".hpp" || extension == ".def" || extension == ".dll" || extension == ".lib") {
@@ -392,7 +392,7 @@ std::string DefaultValidationCommandForWorkspace(const std::string& path)
             continue;
         }
         const std::string extension = Lower(WideToUtf8(entry.path().extension().wstring()));
-        if (extension == ".sln") {
+        if (extension == ".sln" || extension == ".slnx") {
             return "msbuild \"" + WideToUtf8(entry.path().filename().wstring()) + "\" /m /p:Configuration=Release";
         }
         if (extension == ".vcxproj") {
@@ -1479,7 +1479,10 @@ std::vector<ValidationSuggestionInfo> BuildProjectValidationSuggestions(const st
         AddValidationSuggestion(suggestions, "python -m compileall .", "Python syntax check", "python", "Fast syntax validation for Python projects.");
     }
 
-    const std::string solution = FirstWorkspaceFileWithExtension(files, ".sln");
+    std::string solution = FirstWorkspaceFileWithExtension(files, ".sln");
+    if (solution.empty()) {
+        solution = FirstWorkspaceFileWithExtension(files, ".slnx");
+    }
     const bool has_vcxproj = HasWorkspaceFileWithExtension(files, ".vcxproj");
     const bool has_csproj = HasWorkspaceFileWithExtension(files, ".csproj");
     if (HasNamedWorkspaceFile(files, {"build.py"})) {

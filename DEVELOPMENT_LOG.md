@@ -79,6 +79,7 @@ Actions:
 - Improved VS Code fallback project snapshots so `.slnx`, F#/Visual Basic projects, `.vcxproj`, and `.vcxproj.filters` files stay visible as important build/risk surfaces.
 - Improved VS Code fallback indexing parity so F#/Visual Basic source and XAML files are scanned for symbols and F# `open` / Visual Basic `Imports` dependencies.
 - Improved Website command-runner native wrapper detection so Windows `.slnx` workspaces can receive Visual Studio developer environment setup before MSBuild/build.py validation.
+- Improved Desktop local workspace classification and validation suggestion parity so `.slnx` solutions are treated as Visual Studio/MSBuild projects.
 
 Validation completed:
 
