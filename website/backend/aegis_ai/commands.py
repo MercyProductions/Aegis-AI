@@ -244,7 +244,7 @@ class CommandRunner:
         first = self._normalize_executable(argv[0])
         args = [str(item).strip("\"'").lower() for item in argv[1:]]
 
-        if first == "git" and args and args[0] in {"clean", "reset", "checkout"}:
+        if first == "git" and self._git_subcommand(args) in {"clean", "reset", "checkout"}:
             return True
         if first in {
             "del",
@@ -260,6 +260,41 @@ class CommandRunner:
         }:
             return True
         return False
+
+    def _git_subcommand(self, args: list[str]) -> str:
+        options_with_values = {
+            "-c",
+            "--config-env",
+            "--exec-path",
+            "--git-dir",
+            "--namespace",
+            "--super-prefix",
+            "--work-tree",
+        }
+        option_prefixes_with_values = (
+            "--config-env=",
+            "--exec-path=",
+            "--git-dir=",
+            "--namespace=",
+            "--super-prefix=",
+            "--work-tree=",
+        )
+        index = 0
+        while index < len(args):
+            arg = args[index]
+            if arg == "--":
+                return ""
+            if arg in options_with_values:
+                index += 2
+                continue
+            if any(arg.startswith(prefix) for prefix in option_prefixes_with_values):
+                index += 1
+                continue
+            if arg.startswith("-"):
+                index += 1
+                continue
+            return arg
+        return ""
 
     def _resolve_executable_path(self, value: str) -> str:
         resolved = shutil.which(value)

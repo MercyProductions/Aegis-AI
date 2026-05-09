@@ -1939,6 +1939,26 @@ Validation completed:
 - Website validation command helper tests: pass, 2 tests and 5 subtests.
 - Website backend compile check: pass.
 
+## 2026-05-09 - Website Command Runner Git Option Safety
+
+Focus:
+
+- Prevent destructive Git subcommands from bypassing Website execution safeguards behind global Git options.
+- Keep explicit `git` allowlists safe for validation contexts that should never reset, clean, or checkout workspace files.
+
+Actions:
+
+- Added Git subcommand extraction that skips global options with or without option values.
+- Extended destructive-command detection to block `reset`, `clean`, and `checkout` after options such as `-C`, `-c`, and `--work-tree`.
+- Added command-runner regressions for `git -C . reset --hard`, `git.exe -c ... clean -fd`, and quoted Git paths with `--work-tree`.
+
+Validation completed:
+
+- Website command-runner safety suite: pass, 22 tests and 6 subtests.
+- Website validation command helper suite: pass, 2 tests and 5 subtests.
+- Website backend compile check: pass.
+- Repository whitespace check: pass.
+
 ## 2026-05-09 - Website PowerShell Guard Windows Path Compatibility
 
 Focus:

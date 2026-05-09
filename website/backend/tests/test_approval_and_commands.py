@@ -111,6 +111,9 @@ class ApprovalAndCommandTests(unittest.TestCase):
             "git reset --hard",
             "git.exe reset --hard",
             '"C:\\Program Files\\Git\\cmd\\git.exe" reset --hard',
+            "git -C . reset --hard",
+            "git.exe -c core.safecrlf=false clean -fd",
+            '"C:\\Program Files\\Git\\cmd\\git.exe" --work-tree=. checkout -- .',
         )
 
         for command in commands:
