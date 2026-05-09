@@ -2,6 +2,8 @@ param(
     [string]$Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path,
     [string]$BackendUrl = "http://127.0.0.1:8787",
     [string]$FrontendUrl = "http://127.0.0.1:5173",
+    [int]$RequestTimeoutSeconds = 60,
+    [int]$ChatTimeoutSeconds = 180,
     [switch]$SkipChat,
     [switch]$KeepWorkspace
 )
@@ -40,16 +42,17 @@ function Invoke-AegisJson {
         [ValidateSet("GET", "POST", "PUT", "DELETE")]
         [string]$Method,
         [string]$Path,
-        [object]$Body = $null
+        [object]$Body = $null,
+        [int]$TimeoutSeconds = $script:RequestTimeoutSeconds
     )
 
     $uri = "$BackendUrl$Path"
     if ($null -eq $Body) {
-        return Invoke-RestMethod -Method $Method -Uri $uri -Headers @{ Accept = "application/json" }
+        return Invoke-RestMethod -Method $Method -Uri $uri -Headers @{ Accept = "application/json" } -TimeoutSec $TimeoutSeconds
     }
 
     $json = $Body | ConvertTo-Json -Depth 16
-    return Invoke-RestMethod -Method $Method -Uri $uri -ContentType "application/json" -Headers @{ Accept = "application/json" } -Body $json
+    return Invoke-RestMethod -Method $Method -Uri $uri -ContentType "application/json" -Headers @{ Accept = "application/json" } -Body $json -TimeoutSec $TimeoutSeconds
 }
 
 function Get-DotEnvValue {
@@ -163,7 +166,7 @@ $FrontendUrl = $FrontendUrl.TrimEnd("/")
 $expectedRoot = Normalize-PathForCompare -Path $Root
 
 Write-Step "checking frontend at $FrontendUrl"
-$frontend = Invoke-WebRequest -UseBasicParsing $FrontendUrl
+$frontend = Invoke-WebRequest -UseBasicParsing $FrontendUrl -TimeoutSec $RequestTimeoutSeconds
 Assert-True ($frontend.StatusCode -ge 200 -and $frontend.StatusCode -lt 300) "frontend did not return a 2xx response"
 Assert-True ($frontend.Content -match "Auralith OS") "frontend HTML did not look like the Auralith OS app"
 
@@ -296,7 +299,7 @@ if (-not $SkipChat) {
         apply_changes = $false
         run_validation = $false
         history = @()
-    }
+    } -TimeoutSeconds $ChatTimeoutSeconds
     Assert-True (-not [string]::IsNullOrWhiteSpace($chat.reply)) "chat response was empty"
     Assert-True (-not [string]::IsNullOrWhiteSpace($chat.task_id)) "chat response did not include a task id"
 }

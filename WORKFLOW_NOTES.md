@@ -115,6 +115,24 @@ Fixes applied:
 - Added blocked-port checks before starting backend or frontend processes.
 - Preserved the existing behavior that can restart known Aegis services from the wrong project folder.
 
+### 2026-05-09 - Website Validation Timeout Hardening
+
+Context:
+- Website smoke and e2e wrapper probes should fail clearly when local services stop answering.
+- The smoke script had no HTTP timeouts on backend workflow calls.
+
+What worked:
+- Smoke passed with an explicit request timeout.
+- Direct backend/frontend readiness probes passed with 5 second timeouts.
+
+Friction found:
+- Full browser e2e exceeded the 180 second command budget in this environment. Treat that as a separate validation reliability item, not as a blocker for the smoke/e2e probe timeout change.
+
+Fixes applied:
+- Added bounded smoke HTTP request timeouts.
+- Added a longer explicit chat timeout for the optional model-backed smoke leg.
+- Added timeout handling to e2e wrapper reachability probes.
+
 ### 2026-05-09 - Aegis Core Starter Hardening
 
 Context:
@@ -185,6 +203,8 @@ Fixes applied:
 | 2026-05-09 | VS Code installer | PowerShell installer duplicated the npm/Node install path. | Low | Made it delegate to `npm run install-local` and validated the wrapper. |
 | 2026-05-09 | Website launcher | HTTP readiness probes had no explicit timeout, so half-responsive local services could stall startup. | Medium | Added short launch probe timeouts and validated launch/smoke. |
 | 2026-05-09 | Website launcher | Occupied backend/frontend ports could still lead to duplicate startup attempts after a warning. | Medium | Added blocked-port guards and validated mocked/live launch paths. |
+| 2026-05-09 | Website validation | Smoke/e2e wrapper HTTP probes could hang without explicit request timeouts. | Medium | Added bounded HTTP timeouts and validated smoke/readiness probes. |
+| 2026-05-09 | Website e2e | Full browser e2e exceeded the 180 second command budget during validation. | Medium | Record as separate follow-up; smoke and readiness probes passed. |
 | 2026-05-09 | Aegis Core startup | Core starter accepted any HTTP 200 at `/v1/health` and did not prefer a project virtualenv. | Medium | Verify the Core health envelope, report contract version, and resolve Python predictably. |
 | 2026-05-09 | Aegis Core startup | A non-Core service returning HTTP 200 with invalid JSON could be treated as unreachable. | Medium | Mark malformed responses reachable and report `invalid_json` as the startup blocker. |
 

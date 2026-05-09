@@ -249,6 +249,29 @@ Validation completed:
 - Website launch script: pass; Auralith OS reported ready at `http://127.0.0.1:5173`.
 - Website smoke test without chat: pass.
 
+## 2026-05-09 - Website Validation Timeout Hardening
+
+Focus:
+
+- Keep website smoke/e2e validation from hanging indefinitely when local services are wedged.
+- Preserve the existing validation workflows and only bound their HTTP calls.
+
+Actions:
+
+- Added configurable request timeouts to `website/scripts/smoke-web.ps1`.
+- Added a separate longer chat timeout for the optional real-model smoke leg.
+- Added timeout handling to the e2e wrapper's backend/frontend reachability probes.
+
+Validation completed:
+
+- Website smoke/e2e PowerShell syntax checks: pass.
+- Website smoke test without chat with explicit request timeout: pass.
+- Direct backend/frontend readiness probes with 5 second timeouts: pass.
+
+Remaining risk:
+
+- Full browser e2e exceeded the 180 second command budget during this pass and should be investigated separately; no fresh e2e temp workspace was created by that timed-out run.
+
 ## 2026-05-09 - Aegis Core Starter Hardening
 
 Focus:
