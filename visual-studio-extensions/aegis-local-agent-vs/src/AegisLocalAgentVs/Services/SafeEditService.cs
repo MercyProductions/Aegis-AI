@@ -14,7 +14,8 @@ namespace Aegis.LocalAgent.VisualStudio.Services
     {
         private static readonly HashSet<string> BlockedSegments = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            ".git", ".vs", ".aegis", "bin", "obj", "packages", "node_modules", "vendor", "vendors", "dist", "build", "Generated"
+            ".git", ".vs", ".aegis", "bin", "obj", "packages", "node_modules", "vendor", "vendors", "dist", "build", "Generated",
+            "Library", "Temp", "Logs"
         };
 
         private static readonly Regex SecretFilePattern = new Regex(@"(^\.env(\.|$)|secret|credential|token|private|\.pfx$|\.p12$|\.pem$|\.key$)", RegexOptions.IgnoreCase | RegexOptions.Compiled);

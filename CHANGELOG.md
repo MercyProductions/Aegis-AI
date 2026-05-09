@@ -27,6 +27,7 @@
 - Improved Visual Studio Unity solution scanning so `Packages/manifest.json`, Unity `Packages/packages-lock.json`, key `ProjectSettings` files, and `.asmdef`/`.asmref` files stay in important context and smart config indexing.
 - Improved Website workspace safety so Unity package manifests, package lockfiles, key `ProjectSettings` files, and `.asmdef`/`.asmref` files are treated as dependency/config drift while generated Unity `Library`, `Temp`, and `Logs` folders are skipped during scans.
 - Hardened Website workspace scans so ignored generated/dependency directories are matched case-insensitively, preventing `Node_Modules`, `BUILD`, `LIBRARY`, `temp`, or `LOGS` folders from leaking into context or dependency profiling.
+- Hardened Website, VS Code, and Visual Studio safe-edit guards so Unity `Library`, `Temp`, and `Logs` runtime folders cannot be written by generated proposals or workspace apply paths.
 - Improved Website scaffold install preflight so `.fsproj`, `.vbproj`, and `.slnx` projects receive the same missing-restore detection as `.csproj` projects.
 - Improved Website workspace profiling and validation planning so existing `.slnx` Visual Studio solutions are treated like `.sln` workspaces.
 - Improved Website agent and fallback continuation so existing `.slnx` workspaces keep Visual Studio stack guardrails and receive runnable MSBuild validation helpers.

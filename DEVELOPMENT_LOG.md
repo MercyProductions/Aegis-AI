@@ -1,5 +1,29 @@
 # Development Log
 
+## 2026-05-09 - Generated Runtime Edit Guards
+
+Focus:
+
+- Align Website, VS Code, and Visual Studio write guards with scan-time generated/runtime folder exclusions.
+- Prevent generated proposals from writing into Unity `Library`, `Temp`, or `Logs` folders while preserving normal source-folder workflows.
+
+Actions:
+
+- Hardened Website `_safe_path` so ignored dependency/runtime and hidden folders are blocked before apply/write operations.
+- Added VS Code blocked path segments for Unity `Library` and `Temp` proposal paths, with release lint coverage beside the existing `logs` guard.
+- Added Visual Studio safe-edit blocking for `Library`, `Temp`, and `Logs`, plus package validation guard coverage.
+- Added Website regression coverage for blocked dependency/runtime/hidden apply paths.
+- Preserved normal dotfile leaf edits such as `.gitignore` while keeping hidden parent folders blocked.
+
+Validation completed:
+
+- Website workspace/storage and workspace-operations tests: 76 passed.
+- Website backend compile check: pass.
+- VS Code package lint and extension syntax check: pass.
+- Visual Studio package validation guards: pass.
+- Visual Studio extension Release build: pass.
+- Git whitespace check: pass.
+
 ## 2026-05-09 - Website Case-Insensitive Scan Ignores
 
 Focus:

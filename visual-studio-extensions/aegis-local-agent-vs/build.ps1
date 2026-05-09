@@ -236,6 +236,11 @@ function Assert-SafeEditRollbackGuards {
   $safeEditText = Get-Content -Raw -LiteralPath (Join-Path $ProjectDirectory "Services\SafeEditService.cs")
 
   $issues = @()
+  foreach ($blockedSegment in @("Library", "Temp", "Logs")) {
+    if ($safeEditText -notmatch "`"$([regex]::Escape($blockedSegment))`"") {
+      $issues += "SafeEditService must block Unity generated/runtime folder segment '$blockedSegment'."
+    }
+  }
   if ($safeEditText -match 'TimestampFromCreatedAt') {
     $issues += "SafeEditService rollback must not fall back from explicit backupId to createdAt-derived folders."
   }

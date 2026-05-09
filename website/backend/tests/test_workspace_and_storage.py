@@ -219,10 +219,42 @@ class WorkspaceAndStorageTests(unittest.TestCase):
             ],
         )
 
-        self.assertFalse((workspace / "generated" / "monolith.cpp").exists())
+        self.assertFalse((workspace / "Generated" / "Monolith.cpp").exists())
         self.assertNotIn("append: generated/monolith.cpp", result.applied)
         self.assertTrue(any("missing file content" in warning for warning in result.warnings))
         self.assertTrue(any("seed create" in warning and "did not apply" in warning for warning in result.warnings))
+
+    def test_apply_changes_blocks_ignored_generated_dependency_and_hidden_paths(self) -> None:
+        manager = WorkspaceManager(self.project_root, self.settings)
+        workspace = manager.resolve_workspace("workspace")
+
+        result = manager.apply_changes(
+            workspace,
+            [
+                FileChange(action="create", path="node_modules/pkg/index.js", summary="blocked", content=""),
+                FileChange(action="create", path="Library/generated.cs", summary="blocked", content=""),
+                FileChange(action="create", path="Temp/cache.txt", summary="blocked", content=""),
+                FileChange(action="create", path="Logs/editor.log", summary="blocked", content=""),
+                FileChange(action="create", path=".hidden/file.txt", summary="blocked", content=""),
+            ],
+        )
+
+        self.assertEqual(result.applied, [])
+        self.assertEqual(len(result.warnings), 5)
+        self.assertTrue(all("ignored generated" in warning for warning in result.warnings))
+
+    def test_apply_changes_allows_dotfile_leaf_paths(self) -> None:
+        manager = WorkspaceManager(self.project_root, self.settings)
+        workspace = manager.resolve_workspace("workspace")
+
+        result = manager.apply_changes(
+            workspace,
+            [FileChange(action="create", path=".gitignore", summary="ignore generated outputs", content="build/\n")],
+        )
+
+        self.assertEqual(result.warnings, [])
+        self.assertEqual(result.applied, ["create: .gitignore"])
+        self.assertEqual((workspace / ".gitignore").read_text(encoding="utf-8"), "build/\n")
 
     def test_apply_changes_does_not_delete_after_skipped_create(self) -> None:
         manager = WorkspaceManager(self.project_root, self.settings)

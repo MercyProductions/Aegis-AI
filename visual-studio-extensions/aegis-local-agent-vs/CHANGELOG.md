@@ -25,6 +25,7 @@
 - Improved solution scanning and smart context indexing for `.fsproj`, `.vbproj`, `.slnx`, F#/Visual Basic symbols/imports, Visual Basic XAML code-behind, and newer C++ source/header suffixes.
 - Fixed solution scanning so NuGet `packages.lock.json` is treated as important dependency metadata, and package validation now rejects the invalid `packages-lock.json` typo.
 - Improved Unity solution scanning so package manifests, Unity package lockfiles, key `ProjectSettings` metadata, and `.asmdef`/`.asmref` files are treated as important context/config files.
+- Hardened safe edits so Unity `Library`, `Temp`, and `Logs` folders cannot be modified by proposed file edits.
 - Updated install and troubleshooting documentation to make manual rescan the expected first-run indexing workflow.
 - Kept `DOGFOODING_NOTES.md` in the source tree to track real-solution test coverage, observed issues, and remaining manual GUI gaps.
 

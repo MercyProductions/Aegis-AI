@@ -2082,6 +2082,12 @@ class WorkspaceManager:
         if target == workspace_root:
             raise ValueError("path must point to a file inside the workspace, not the workspace root")
 
+        candidate_parts = candidate.parts
+        if any(_is_ignored_name(part) for part in candidate_parts) or any(
+            part.startswith(".") and part not in {".", ".."} for part in candidate_parts[:-1]
+        ):
+            raise ValueError("path points into an ignored generated, dependency, or hidden folder")
+
         return target
 
     def _safe_checkpoint_root(self, workspace_root: Path, checkpoint_id: str) -> Path:

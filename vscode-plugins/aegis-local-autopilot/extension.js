@@ -64,6 +64,8 @@ const BLOCKED_PATH_SEGMENTS = new Set([
   'cmakefiles',
   '.tmp',
   'tmp',
+  'library',
+  'temp',
   'logs',
   'smoke-artifacts',
   'stress-artifacts'

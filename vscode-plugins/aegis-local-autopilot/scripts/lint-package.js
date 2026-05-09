@@ -190,6 +190,7 @@ const buildFileClassifier = loadExtensionFunctions(
 assertBuildFileDetection(buildFileClassifier);
 assertProjectRiskPattern(extensionText);
 assertPythonLockfilePatterns(extensionText);
+assertGeneratedFolderSafety(extensionText);
 const blockedProposalFormatter = loadExtensionFunction(extensionText, 'formatBlockedProposalEditSummary');
 assertBlockedProposalEditSummary(blockedProposalFormatter);
 assertBlockedProposalVisibleMessages(extensionText);
@@ -625,6 +626,14 @@ function assertBuildFileDetection(classifier) {
   ]) {
     if (!classifier(file)) {
       fail(`isLikelyBuildFile must classify ${file} as a build/config file.`);
+    }
+  }
+}
+
+function assertGeneratedFolderSafety(source) {
+  for (const segment of ['library', 'temp', 'logs']) {
+    if (!source.includes(`'${segment}'`)) {
+      fail(`BLOCKED_PATH_SEGMENTS must include generated/runtime folder '${segment}'.`);
     }
   }
 }
