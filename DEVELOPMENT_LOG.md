@@ -458,3 +458,19 @@ Validation completed:
 
 - VS Code extension lint: pass.
 - VS Code VSIX package: pass; package lint ran before archive creation.
+
+## 2026-05-09 - Visual Studio Ollama Error Hardening
+
+Focus:
+
+- Make Visual Studio model detection and chat failures actionable when Ollama returns HTTP errors, empty bodies, or malformed JSON.
+
+Actions:
+
+- Replaced raw `EnsureSuccessStatusCode()` usage in the Visual Studio Ollama client with bounded error extraction from Ollama JSON/text responses.
+- Added contextual parsing errors for empty or invalid Ollama JSON responses during model listing and chat.
+- Disposed HTTP response objects consistently in the model and chat paths.
+
+Validation completed:
+
+- Visual Studio extension build/package: pass; command-table and VSIX metadata guards ran before packaging.
