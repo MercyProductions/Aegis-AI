@@ -158,6 +158,7 @@ Contract stability:
 | `ecosystem.dashboard` | stable | Aggregated dashboard for Desktop and Website bridge. |
 | `branding.tokens` | experimental | Visual/client token sharing may still change. |
 | `agent.continue.plan`, `agent.repair.plan` | experimental | Plan-only agent contracts; no file edits are applied. |
+| `agents.roster` | experimental | Specialized local agent roles and coordination rules. |
 | `orchestration.plan`, `orchestration.dashboard`, `orchestration.step` | experimental | Supervised autonomous goal queues with approval gates; Core does not blindly edit files. |
 | `patch.proposal`, `rollback.entry`, `rollback.result` | experimental schema-only | Defined for future compatibility; not active Core endpoints yet. |
 
@@ -333,6 +334,20 @@ Returns sanitized tails of Core, extension, validation, and agent-history logs.
 
 Returns shared Auralith/Aegis naming, colors, typography, terminology, and layout tokens.
 
+## GET /v1/agents
+
+Returns the specialized local agent roster:
+
+- Planner Agent
+- Architect Agent
+- Coder Agent
+- Reviewer Agent
+- Tester Agent
+- Repair Agent
+- Documentation Agent
+
+Each agent record includes purpose, responsibilities, approval gates, and expected outputs. The roster is metadata only; it does not grant permission to edit files, run commands, install packages, or call cloud providers.
+
 ## POST /v1/clients/register
 
 Body:
@@ -424,6 +439,8 @@ Creates `.aegis/orchestration-queue.json` and `.aegis/active-orchestration.json`
 - required files
 - blocked context files
 - approval gates
+- owner agent for each queued task
+- active agent and agent pipeline state
 - validation plan
 - rollback plan
 
@@ -442,6 +459,10 @@ Returns UI-ready orchestration state:
 - active task and active step
 - pending approvals
 - validation results
+- active agent
+- agent pipeline
+- recent agent decisions
+- coordination conflicts for overlapping affected files
 - rollback option/checkpoint metadata
 - safety summary
 

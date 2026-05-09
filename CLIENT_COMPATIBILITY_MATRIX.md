@@ -37,6 +37,7 @@ Canonical schemas: `aegis-core/aegis_core/contracts.py`
 | `GET /v1/branding` | `branding.tokens` | experimental | Via dashboard branding | Not direct today | Not direct today | Not direct today |
 | `POST /v1/clients/register` | `client.registered` | stable | Direct registration | Future bridge candidate | Direct registration | Direct registration |
 | `GET /v1/clients` | `clients.list` | stable | Via dashboard client count | Not direct today | Not direct today | Not direct today |
+| `GET /v1/agents` | `agents.roster` | experimental | Future agent activity panel candidate | Future bridge candidate | Future sidebar/status candidate | Future tool window candidate |
 | `POST /v1/tasks` | `task.created` | stable | Not direct today | Future task mirror candidate | Direct task create | Not direct today |
 | `GET /v1/tasks` | `tasks.list` | stable | Via dashboard active/recent task counts | Not direct today | Not direct today | Not direct today |
 | `POST /v1/tasks/{task_id}/status` | `task.updated` | stable | Not direct today | Future task mirror candidate | Direct task status update | Not direct today |

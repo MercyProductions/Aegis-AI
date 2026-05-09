@@ -7,6 +7,15 @@ from typing import Any
 
 from .diagnostics import scrub
 from .memory import ProjectMemory, utc_now
+from .multi_agent import (
+    active_agent,
+    agent_for_order,
+    agent_pipeline,
+    agent_profile,
+    agent_roster,
+    append_agent_decision,
+    coordination_state,
+)
 from .safety import is_safe_to_read
 from .validation import detect_validation_commands, run_validation
 from .workspace import WorkspaceScanner
@@ -77,6 +86,9 @@ def create_orchestration_plan(
         "rollback_plan": rollback_plan,
         "active_task_id": queue_tasks[0]["id"] if queue_tasks else None,
         "active_step": queue_tasks[0]["active_step"] if queue_tasks else "complete",
+        "active_agent": active_agent(queue_tasks[0]) if queue_tasks else None,
+        "agents": agent_roster()["agents"],
+        "agent_pipeline": agent_pipeline(queue_tasks),
         "created_at": now,
         "updated_at": now,
     }
@@ -84,8 +96,18 @@ def create_orchestration_plan(
         "plan": plan,
         "tasks": queue_tasks,
         "validation_results": [],
+        "agent_decisions": [],
         "history": [{"timestamp": now, "event": "orchestration_created", "plan_id": plan_id, "objective": objective}],
     }
+    append_agent_decision(
+        memory,
+        state,
+        agent_id="planner",
+        task_id=queue_tasks[0]["id"] if queue_tasks else None,
+        plan_id=plan_id,
+        summary="Created supervised multi-agent orchestration plan.",
+        details={"risk": risk, "affected_systems": affected_systems, "validation_commands": commands},
+    )
     _write_state(memory, state)
     _append_history(memory, {"event": "orchestration_created", "plan": plan})
     _write_orchestration_roadmap(memory, state)
@@ -105,6 +127,11 @@ def orchestration_dashboard(workspace: str | Path) -> dict[str, Any]:
             "task_list": [],
             "active_task": None,
             "active_step": None,
+            "active_agent": None,
+            "agents": agent_roster()["agents"],
+            "agent_pipeline": [],
+            "agent_decisions": [],
+            "coordination": {"file_claims": {}, "conflicts": []},
             "pending_approvals": [],
             "validation_results": [],
             "rollback_option": _rollback_option(root),
@@ -114,6 +141,9 @@ def orchestration_dashboard(workspace: str | Path) -> dict[str, Any]:
     tasks = state["tasks"]
     active_task = _find_task(tasks, plan.get("active_task_id")) if plan.get("active_task_id") else _first_active_task(tasks)
     active_step = active_task.get("active_step") if active_task else plan.get("active_step")
+    current_agent = active_agent(active_task)
+    plan["active_agent"] = current_agent
+    plan["agent_pipeline"] = agent_pipeline(tasks)
     return {
         "workspace": str(root),
         "current_goal": plan.get("objective"),
@@ -121,6 +151,11 @@ def orchestration_dashboard(workspace: str | Path) -> dict[str, Any]:
         "task_list": tasks,
         "active_task": active_task,
         "active_step": active_step,
+        "active_agent": current_agent,
+        "agents": agent_roster()["agents"],
+        "agent_pipeline": agent_pipeline(tasks),
+        "agent_decisions": state.get("agent_decisions", [])[-25:],
+        "coordination": coordination_state(tasks),
         "pending_approvals": _pending_approvals(tasks),
         "validation_results": state.get("validation_results", [])[-10:],
         "rollback_option": _rollback_option(root),
@@ -151,45 +186,60 @@ def advance_orchestration_step(
         raise ValueError("No active orchestration task is available.")
 
     action_name = _normalize_action(action)
+    transition_summary = summary or ""
     if action_name == "inspect":
-        _transition(task, "in_progress", "plan", summary or "Inspection step recorded.")
+        transition_summary = summary or "Inspection step recorded."
+        _transition(task, "in_progress", "plan", transition_summary)
     elif action_name == "plan":
-        _transition(task, "in_progress", "propose_changes", summary or "Plan step recorded.")
+        transition_summary = summary or "Plan step recorded."
+        _transition(task, "in_progress", "propose_changes", transition_summary)
     elif action_name == "propose_changes":
         if task.get("approval_gates"):
-            _transition(task, "needs_approval", "wait_for_approval", summary or "Proposal is ready for explicit approval before edits or risky commands.")
+            transition_summary = summary or "Proposal is ready for explicit approval before edits or risky commands."
+            _transition(task, "needs_approval", "wait_for_approval", transition_summary)
         else:
-            _transition(task, "in_progress", "apply_approved_changes", summary or "Proposal step recorded; no risky gate is attached to this task.")
+            transition_summary = summary or "Proposal step recorded; no risky gate is attached to this task."
+            _transition(task, "in_progress", "apply_approved_changes", transition_summary)
     elif action_name == "approve":
         if not approval:
-            _transition(task, "needs_approval", "wait_for_approval", summary or "Approval is required before this task can continue.")
+            transition_summary = summary or "Approval is required before this task can continue."
+            _transition(task, "needs_approval", "wait_for_approval", transition_summary)
         else:
+            transition_summary = summary or "Approved changes may now be applied by the client."
             task.setdefault("approvals", []).append({"timestamp": utc_now(), "summary": summary or "Approved by client/user."})
-            _transition(task, "in_progress", "apply_approved_changes", summary or "Approved changes may now be applied by the client.")
+            _transition(task, "in_progress", "apply_approved_changes", transition_summary)
     elif action_name == "apply_approved_changes":
         if task.get("approval_gates") and not approval and not task.get("approvals"):
-            _transition(task, "needs_approval", "wait_for_approval", summary or "File edits require explicit approval before apply.")
+            transition_summary = summary or "File edits require explicit approval before apply."
+            _transition(task, "needs_approval", "wait_for_approval", transition_summary)
         else:
             if affected_files:
                 task["affected_files"] = _merge_lists(task.get("affected_files", []), affected_files)
-            _transition(task, "validating", "validate", summary or "Approved changes were marked as applied by the client.")
+            transition_summary = summary or "Approved changes were marked as applied by the client."
+            _transition(task, "validating", "validate", transition_summary)
     elif action_name == "validate":
         requires_validation_approval = bool(validation_command or task.get("validation_commands"))
         if requires_validation_approval and not approval:
-            _transition(task, "needs_approval", "wait_for_validation_approval", summary or "Validation command approval is required before execution.")
+            transition_summary = summary or "Validation command approval is required before execution."
+            _transition(task, "needs_approval", "wait_for_validation_approval", transition_summary)
         else:
-            _transition(task, "validating", "validate", summary or "Running approved validation.")
+            transition_summary = summary or "Running approved validation."
+            _transition(task, "validating", "validate", transition_summary)
             result = run_validation(root, command=validation_command)
             validation_record = {"task_id": task["id"], "timestamp": utc_now(), **result}
             state.setdefault("validation_results", []).append(validation_record)
             task["latest_validation"] = validation_record
-            _transition(task, "validating" if result.get("ok") else "failed", "summarize" if result.get("ok") else "repair", "Validation passed." if result.get("ok") else "Validation failed; repair proposal required.")
+            transition_summary = "Validation passed." if result.get("ok") else "Validation failed; repair proposal required."
+            _transition(task, "validating" if result.get("ok") else "failed", "summarize" if result.get("ok") else "repair", transition_summary)
     elif action_name in {"summarize", "complete"}:
+        transition_summary = summary or "Task completed and memory updated."
         _complete_task(memory, state, task, summary=summary, affected_files=affected_files or [])
     elif action_name == "block":
-        _transition(task, "blocked", task.get("active_step") or "blocked", summary or "Task blocked.")
+        transition_summary = summary or "Task blocked."
+        _transition(task, "blocked", task.get("active_step") or "blocked", transition_summary)
     elif action_name == "fail":
-        _transition(task, "failed", task.get("active_step") or "failed", summary or "Task failed.")
+        transition_summary = summary or "Task failed."
+        _transition(task, "failed", task.get("active_step") or "failed", transition_summary)
         plan["status"] = "blocked"
     else:
         raise ValueError(f"Unsupported orchestration action: {action}.")
@@ -198,10 +248,21 @@ def advance_orchestration_step(
     active = task if task.get("status") in {"in_progress", "needs_approval", "validating", "blocked", "failed"} else _first_active_task(tasks)
     plan["active_task_id"] = active.get("id") if active else None
     plan["active_step"] = active.get("active_step") if active else "complete"
+    plan["active_agent"] = active_agent(active)
+    plan["agent_pipeline"] = agent_pipeline(tasks)
     if active is None and all(task.get("status") == "completed" for task in tasks):
         plan["status"] = "completed"
     elif any(task.get("status") == "failed" for task in tasks):
         plan["status"] = "blocked"
+    append_agent_decision(
+        memory,
+        state,
+        agent_id=str(task.get("owner_agent") or "planner"),
+        task_id=task.get("id"),
+        plan_id=plan.get("id"),
+        summary=transition_summary,
+        details={"action": action_name, "status": task.get("status"), "active_step": task.get("active_step")},
+    )
     state.setdefault("history", []).append({"timestamp": utc_now(), "event": f"orchestration_{action_name}", "task_id": task["id"]})
     _write_state(memory, state)
     _append_history(memory, {"event": f"orchestration_{action_name}", "task": task, "plan_id": plan.get("id")})
@@ -222,32 +283,58 @@ def _task_breakdown(
     short_goal = objective[:90] + ("..." if len(objective) > 90 else "")
     task_specs = [
         (
-            f"Audit affected systems for: {short_goal}",
+            f"Plan task order for: {short_goal}",
             "development_task",
-            "Inspect relevant files, roadmap, diagnostics, and validation context before proposing edits.",
+            "Break the objective into safe task order, risk, required files, validation plan, and rollback expectations.",
             {"cloud_context"},
+            "planner",
         ),
         (
-            f"Prepare and apply approved changes for: {short_goal}",
+            f"Review architecture boundaries for: {short_goal}",
+            "development_task",
+            "Check ownership boundaries, existing patterns, duplication risk, and rewrite risk before implementation.",
+            set(),
+            "architect",
+        ),
+        (
+            f"Prepare focused approved changes for: {short_goal}",
             "development_task",
             "Draft the smallest safe change set, wait for approval, then let the client apply approved edits.",
-            {"file_edit", "file_delete", "install_package"},
+            {"file_edit", "file_delete", "install_package", "cloud_context"},
+            "coder",
+        ),
+        (
+            f"Review proposed changes for: {short_goal}",
+            "development_task",
+            "Look for bugs, safety violations, overengineering, and unapproved scope expansion.",
+            set(),
+            "reviewer",
         ),
         (
             f"Validate result for: {short_goal}",
             "development_task",
-            "Run detected validation only after approval and summarize failures for repair.",
+            "Run detected validation only after approval and summarize failures.",
             {"build_command"},
+            "tester",
         ),
         (
-            f"Update memory and next steps for: {short_goal}",
+            f"Repair failed validation for: {short_goal}",
             "development_task",
-            "Record decisions, validation outcome, roadmap progress, and the next recommended task.",
-            set(),
+            "Analyze failed builds/tests and propose minimal bounded repairs with an attempt limit.",
+            {"file_edit", "file_delete", "build_command"},
+            "repair",
+        ),
+        (
+            f"Update documentation and memory for: {short_goal}",
+            "development_task",
+            "Record decisions, documentation notes, validation outcome, roadmap progress, and the next recommendation.",
+            {"file_edit"},
+            "documentation",
         ),
     ]
     tasks: list[dict[str, Any]] = []
-    for index, (title, step, detail, gate_filter) in enumerate(task_specs, start=1):
+    for index, (title, step, detail, gate_filter, agent_id) in enumerate(task_specs, start=1):
+        agent = agent_for_order(index)
         task_gates = [gate for gate in gates if gate.get("id") in gate_filter]
         tasks.append(
             {
@@ -260,12 +347,16 @@ def _task_breakdown(
                 "detail": detail,
                 "objective": objective,
                 "risk": risk,
+                "owner_agent": agent_id,
+                "owner_agent_label": agent["label"],
+                "agent": agent,
                 "affected_systems": affected_systems,
                 "required_files": required_files,
                 "affected_files": [],
                 "approval_required": bool(task_gates),
                 "approval_gates": task_gates,
                 "validation_commands": validation_commands,
+                "repair_attempt_limit": 3 if agent_id == "repair" else None,
                 "created_at": now,
                 "updated_at": now,
                 "history": [],
@@ -387,6 +478,7 @@ def _safety_summary() -> dict[str, Any]:
         "approval_required_for": ["file_edit", "file_delete", "build_command", "install_package", "cloud_context"],
         "notes": [
             "Core plans, queues, validates, and records memory.",
+            "Specialized agents coordinate through shared .aegis memory and one owner_agent per task.",
             "File edits and risky commands stay approval-gated and client-mediated.",
         ],
     }
@@ -466,6 +558,7 @@ def _write_orchestration_roadmap(memory: ProjectMemory, state: dict[str, Any]) -
     ]
     for task in state.get("tasks", []):
         lines.append(f"{task.get('order')}. {task.get('title')} [{task.get('status')}]")
+        lines.append(f"   - Agent: {task.get('owner_agent_label') or task.get('owner_agent')}")
         lines.append(f"   - Step: {task.get('active_step')}")
         if task.get("approval_gates"):
             gates = ", ".join(gate.get("id", "") for gate in task["approval_gates"])
@@ -508,6 +601,17 @@ def _normalize_task(task: dict[str, Any]) -> dict[str, Any]:
     task["history"] = task.get("history") if isinstance(task.get("history"), list) else []
     task["approval_gates"] = task.get("approval_gates") if isinstance(task.get("approval_gates"), list) else []
     task["affected_files"] = task.get("affected_files") if isinstance(task.get("affected_files"), list) else []
+    order = int(task.get("order") or 1)
+    owner = str(task.get("owner_agent") or "").strip().lower()
+    agent = agent_profile(owner) or agent_for_order(order)
+    task["owner_agent"] = agent["id"]
+    task["owner_agent_label"] = agent["label"]
+    existing_agent = task.get("agent")
+    task["agent"] = (
+        existing_agent
+        if isinstance(existing_agent, dict) and existing_agent.get("id") == agent["id"]
+        else agent
+    )
     return task
 
 

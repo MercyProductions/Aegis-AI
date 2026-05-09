@@ -24,6 +24,7 @@ from .credentials import CredentialStoreError
 from .diagnostics import CoreLogger
 from .ecosystem import dashboard_summary, diagnostics_summary, shared_memory_summary
 from .model_router import complete_with_route, delete_provider_key, provider_inventory, route_model, store_provider_key
+from .multi_agent import agent_roster
 from .ollama import OllamaClient
 from .orchestration import advance_orchestration_step, create_orchestration_plan, orchestration_dashboard
 from .roadmap import generate_roadmap
@@ -216,6 +217,10 @@ def create_app():
     @app.get("/v1/clients")
     def v1_clients(workspace: str) -> dict[str, Any]:
         return envelope("clients.list", list_clients(workspace), workspace)
+
+    @app.get("/v1/agents")
+    def v1_agents() -> dict[str, Any]:
+        return envelope("agents.roster", agent_roster())
 
     @app.post("/v1/orchestration/plan")
     def v1_orchestration_plan(request: OrchestrationPlanRequest) -> dict[str, Any]:

@@ -7,6 +7,7 @@
 - Memory file creation and generated-section updates
 - Roadmap generation
 - Supervised orchestration queue state
+- Specialized agent roster and ownership metadata
 - Validation command detection
 - Validation log normalization
 - Agent plan and repair plan contracts
@@ -38,6 +39,7 @@ It should call Aegis Core for:
 - ecosystem dashboard data
 - shared task visibility
 - supervised orchestration state
+- current owner agent and agent pipeline state
 - shared diagnostics
 
 Minimum integration:
@@ -72,6 +74,7 @@ It should call Aegis Core for:
 - shared settings
 - shared tasks
 - supervised orchestration state
+- owner-agent metadata for staged tasks
 - diagnostics
 
 ## Visual Studio Extension
@@ -98,6 +101,7 @@ It should call Aegis Core for:
 - plan/repair contracts
 - shared task status
 - supervised orchestration state
+- owner-agent metadata for staged tasks
 - shared diagnostics
 
 ## Website
@@ -121,5 +125,6 @@ It can call Aegis Core only for local dashboard features when running on the use
 - Every client should register itself with a stable `client_id`.
 - Approval remains client-owned because each UI has different diff and editor affordances.
 - Diff preview, patch apply, and rollback execution remain client-owned even when Core owns orchestration queue state.
+- Clients should display `owner_agent`, `active_agent`, and pending approval metadata instead of inventing separate agent ownership.
 - Core owns shared plan data, memory, diagnostics, model status, and settings.
 - Clients should not write directly to `.aegis/tasks.json` unless Core is unavailable and the user explicitly accepts degraded local mode.

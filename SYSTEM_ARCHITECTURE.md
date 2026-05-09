@@ -71,7 +71,7 @@ Aegis Core is the shared local runtime contract. It must stay small, stable, loc
 - Shared memory summaries and diagnostics.
 - Client registration and client listing.
 - Shared tasks, task status, and dashboard aggregation.
-- Supervised autonomous task orchestration: goal planning, local queue state, approval gates, validation state, and memory updates.
+- Supervised autonomous task orchestration: goal planning, local queue state, specialized owner agents, approval gates, validation state, and memory updates.
 - Validation summary/run.
 - Plan-only continue and repair flows.
 - Branding tokens shared by clients.
@@ -86,6 +86,7 @@ Hybrid routing is privacy-first:
 Autonomous orchestration is supervised by design:
 
 - Core may create and advance a staged queue, but it does not blindly edit files.
+- Planner, Architect, Coder, Reviewer, Tester, Repair, and Documentation agents are local roles sharing `.aegis` memory.
 - File edits, deletion, package installs, build/test/lint commands, and cloud context all require explicit approval gates.
 - Clients own the approval UI, diff display, patch application, and rollback execution.
 - Core records progress in `.aegis/orchestration-queue.json`, `.aegis/active-orchestration.json`, `roadmap.md`, `decisions.md`, `validation-log.md`, and `agent-history.json`.

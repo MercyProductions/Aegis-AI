@@ -352,6 +352,21 @@ class AgentTaskEnvelopeData(ContractModel):
     memory_warning: str | None = None
 
 
+class SpecializedAgentData(ContractModel):
+    id: str
+    label: str = ""
+    purpose: str = ""
+    responsibilities: list[str] = Field(default_factory=list)
+    approval_gates: list[str] = Field(default_factory=list)
+    outputs: list[str] = Field(default_factory=list)
+
+
+class AgentRosterData(ContractModel):
+    agents: list[SpecializedAgentData] = Field(default_factory=list)
+    coordination_rules: list[str] = Field(default_factory=list)
+    approval_required_for: list[str] = Field(default_factory=list)
+
+
 class OrchestrationApprovalGateData(ContractModel):
     id: str
     label: str = ""
@@ -367,6 +382,9 @@ class OrchestrationTaskData(ContractModel):
     detail: str = ""
     objective: str = ""
     risk: str = "unknown"
+    owner_agent: str = ""
+    owner_agent_label: str = ""
+    agent: SpecializedAgentData | dict[str, Any] = Field(default_factory=dict)
     affected_systems: list[str] = Field(default_factory=list)
     required_files: list[str] = Field(default_factory=list)
     affected_files: list[str] = Field(default_factory=list)
@@ -374,6 +392,7 @@ class OrchestrationTaskData(ContractModel):
     approval_gates: list[OrchestrationApprovalGateData | dict[str, Any]] = Field(default_factory=list)
     validation_commands: list[ValidationCommandData | dict[str, Any]] = Field(default_factory=list)
     latest_validation: ValidationData | dict[str, Any] = Field(default_factory=dict)
+    repair_attempt_limit: int | None = None
     created_at: str = ""
     updated_at: str = ""
     history: list[dict[str, Any]] = Field(default_factory=list)
@@ -394,6 +413,9 @@ class OrchestrationPlanData(ContractModel):
     rollback_plan: dict[str, Any] = Field(default_factory=dict)
     active_task_id: str | None = None
     active_step: str | None = None
+    active_agent: SpecializedAgentData | dict[str, Any] | None = None
+    agents: list[SpecializedAgentData | dict[str, Any]] = Field(default_factory=list)
+    agent_pipeline: list[dict[str, Any]] = Field(default_factory=list)
     created_at: str = ""
     updated_at: str = ""
 
@@ -405,6 +427,11 @@ class OrchestrationDashboardData(ContractModel):
     task_list: list[OrchestrationTaskData | dict[str, Any]] = Field(default_factory=list)
     active_task: OrchestrationTaskData | dict[str, Any] | None = None
     active_step: str | None = None
+    active_agent: SpecializedAgentData | dict[str, Any] | None = None
+    agents: list[SpecializedAgentData | dict[str, Any]] = Field(default_factory=list)
+    agent_pipeline: list[dict[str, Any]] = Field(default_factory=list)
+    agent_decisions: list[dict[str, Any]] = Field(default_factory=list)
+    coordination: dict[str, Any] = Field(default_factory=dict)
     pending_approvals: list[dict[str, Any]] = Field(default_factory=list)
     validation_results: list[ValidationData | dict[str, Any]] = Field(default_factory=list)
     rollback_option: dict[str, Any] = Field(default_factory=dict)
@@ -495,6 +522,7 @@ CONTRACTS: dict[str, ContractDescriptor] = {
     "validation": ContractDescriptor(kind="validation", stability="stable", notes="Shared validation summary or command result."),
     "agent.continue.plan": ContractDescriptor(kind="agent.continue.plan", stability="experimental", notes="Plan-only continue workflow with task side effect."),
     "agent.repair.plan": ContractDescriptor(kind="agent.repair.plan", stability="experimental", notes="Plan-only repair workflow with task side effect when repair exists."),
+    "agents.roster": ContractDescriptor(kind="agents.roster", stability="experimental", notes="Specialized local agent roles and coordination rules."),
     "orchestration.plan": ContractDescriptor(kind="orchestration.plan", stability="experimental", notes="Approval-gated autonomous goal plan and local task queue."),
     "orchestration.dashboard": ContractDescriptor(kind="orchestration.dashboard", stability="experimental", notes="Current orchestration goal, active step, approvals, validation, and rollback UI state."),
     "orchestration.step": ContractDescriptor(kind="orchestration.step", stability="experimental", notes="Approval-gated orchestration step transition."),
@@ -527,6 +555,7 @@ CONTRACT_DATA_MODELS: dict[str, type[BaseModel] | tuple[type[BaseModel], bool]] 
     "validation": ValidationData,
     "agent.continue.plan": AgentTaskEnvelopeData,
     "agent.repair.plan": AgentTaskEnvelopeData,
+    "agents.roster": AgentRosterData,
     "orchestration.plan": OrchestrationDashboardData,
     "orchestration.dashboard": OrchestrationDashboardData,
     "orchestration.step": OrchestrationDashboardData,

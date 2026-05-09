@@ -19,6 +19,7 @@
 - Hardened Ollama model inventory parsing so malformed `/api/tags` payloads become health diagnostics instead of client-visible exceptions.
 - Added an experimental Aegis Core hybrid model router with local-first defaults, optional OpenAI/Anthropic/Google/OpenRouter/LM Studio provider inventory, cloud approval gates, sanitized context previews, and OS credential storage for provider keys.
 - Added experimental Aegis Core autonomous task orchestration with supervised goal planning, local queue state, approval gates, validation state, rollback metadata, and memory updates without uncontrolled file editing.
+- Added experimental Aegis Core multi-agent specialization with Planner, Architect, Coder, Reviewer, Tester, Repair, and Documentation roles assigned to orchestration tasks.
 - Improved `/v1/tasks/{task_id}/status` error responses for missing tasks and unsupported statuses.
 - Hardened shared task loading so malformed local task records do not break task listing, dashboard sorting, or status summary updates.
 - Hardened shared client registry loading so malformed local client records do not break cross-client dashboard sorting.

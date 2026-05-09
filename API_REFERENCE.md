@@ -147,6 +147,7 @@ Endpoint families:
 | `GET /v1/branding` | `branding.tokens` | experimental | Shared product/runtime/client tokens |
 | `POST /v1/clients/register` | `client.registered` | stable | Cross-client registration |
 | `GET /v1/clients` | `clients.list` | stable | Cross-client list |
+| `GET /v1/agents` | `agents.roster` | experimental | Specialized local agent roster and coordination rules |
 | `POST /v1/tasks` | `task.created` | stable | Shared task creation |
 | `GET /v1/tasks` | `tasks.list` | stable | Shared task list |
 | `POST /v1/tasks/{task_id}/status` | `task.updated` | stable | Shared task status update |
@@ -170,6 +171,7 @@ Hybrid model routing:
 Autonomous task orchestration:
 
 - Core stores staged goal queues in `.aegis/orchestration-queue.json`.
+- Specialized owner agents are Planner, Architect, Coder, Reviewer, Tester, Repair, and Documentation.
 - Queue statuses are `pending`, `in_progress`, `blocked`, `needs_approval`, `validating`, `completed`, and `failed`.
 - File edits, deletes, package installs, validation/build commands, and cloud context require explicit approval gates.
 - Core updates roadmap, decisions, validation log, and agent history, while clients still own diff display, patch apply, and rollback execution.

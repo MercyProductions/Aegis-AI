@@ -18,6 +18,7 @@ This first pass is intentionally small. It consolidates common backend responsib
 - Project memory files in `.aegis/`
 - Roadmap generation from local scan data
 - Autonomous task orchestration for large goals, stored as approval-gated local queues
+- Specialized local agent roles for planning, architecture, coding, review, testing, repair, and documentation
 - Validation command detection and safe opt-in execution
 - Agent planning placeholders that propose next steps without applying edits
 - Diagnostics and local logs
@@ -50,6 +51,7 @@ python -m aegis_core.cli repair --workspace ..
 python -m aegis_core.cli dashboard --workspace ..
 python -m aegis_core.cli tasks --workspace ..
 python -m aegis_core.cli providers --workspace ..
+python -m aegis_core.cli agents --workspace ..
 python -m aegis_core.cli route --workspace .. --task-type hard_debugging
 python -m aegis_core.cli orchestrate --workspace .. --goal "Stabilize the extension packaging flow"
 ```
@@ -65,6 +67,7 @@ aegis repair --workspace <path>
 aegis dashboard --workspace <path>
 aegis tasks --workspace <path>
 aegis providers --workspace <path>
+aegis agents --workspace <path>
 aegis route --workspace <path> --task-type code_completion
 aegis orchestrate --workspace <path> --goal "Stabilize one workflow"
 ```
@@ -106,6 +109,7 @@ POST /v1/workspaces/roadmap
 GET  /v1/memory
 GET  /v1/diagnostics
 POST /v1/clients/register
+GET  /v1/agents
 GET  /v1/tasks
 POST /v1/tasks
 GET  /v1/orchestration
@@ -142,10 +146,12 @@ Core excludes secret-like, ignored, and outside-workspace files from cloud conte
 Core can turn a larger development goal into a local staged queue. The queue is intentionally supervised:
 
 - Each goal records an objective, affected systems, required files, risk level, validation plan, rollback plan, and approval gates.
+- Each queued task has one owner agent: Planner, Architect, Coder, Reviewer, Tester, Repair, or Documentation.
 - Queue statuses are `pending`, `in_progress`, `blocked`, `needs_approval`, `validating`, `completed`, and `failed`.
 - Each task moves through inspect, plan, propose changes, wait for approval, apply approved changes, validate, and summarize.
 - Core records state and memory, but clients remain responsible for showing diffs/context and applying approved file edits.
 - Validation commands only run after approval when the step involves build/test/lint execution.
+- Agent decisions are appended to `agent-history.json` so clients can show who made each recommendation.
 
 Orchestration state is written to `.aegis/orchestration-queue.json` and `.aegis/active-orchestration.json`. Progress updates `roadmap.md`, `decisions.md`, `validation-log.md`, and `agent-history.json`.
 

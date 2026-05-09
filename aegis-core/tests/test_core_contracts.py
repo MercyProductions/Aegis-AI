@@ -263,6 +263,7 @@ def test_v1_endpoint_family_smoke_contracts(tmp_path: Path) -> None:
         ("/v1/branding", {}, "branding.tokens"),
         ("/v1/clients", {"workspace": str(workspace)}, "clients.list"),
         ("/v1/tasks", {"workspace": str(workspace)}, "tasks.list"),
+        ("/v1/agents", {}, "agents.roster"),
         ("/v1/orchestration", {"workspace": str(workspace)}, "orchestration.dashboard"),
         ("/v1/ecosystem/dashboard", {"workspace": str(workspace)}, "ecosystem.dashboard"),
     ]
@@ -362,6 +363,7 @@ def test_contract_catalog_covers_unified_phase_runtime_shapes() -> None:
         "validation",
         "agent.continue.plan",
         "agent.repair.plan",
+        "agents.roster",
         "orchestration.plan",
         "orchestration.dashboard",
         "orchestration.step",
@@ -393,6 +395,23 @@ def test_schema_only_patch_and_rollback_contracts_validate() -> None:
     assert validate_contract_envelope(make_envelope("patch.proposal", model_dump(patch), "C:/workspace")).kind == "patch.proposal"
     assert validate_contract_envelope(make_envelope("rollback.entry", model_dump(rollback), "C:/workspace")).kind == "rollback.entry"
     assert validate_contract_envelope(make_envelope("rollback.result", model_dump(rollback_result), "C:/workspace")).kind == "rollback.result"
+
+
+def test_specialized_agent_roster_contract_lists_safe_roles() -> None:
+    client = TestClient(create_app())
+
+    response = client.get("/v1/agents")
+
+    assert response.status_code == 200
+    assert_core_contract(response.json(), "agents.roster")
+    data = response.json()["data"]
+    agent_ids = [agent["id"] for agent in data["agents"]]
+    assert agent_ids == ["planner", "architect", "coder", "reviewer", "tester", "repair", "documentation"]
+    coder = next(agent for agent in data["agents"] if agent["id"] == "coder")
+    tester = next(agent for agent in data["agents"] if agent["id"] == "tester")
+    assert "file_edit" in coder["approval_gates"]
+    assert "build_command" in tester["approval_gates"]
+    assert "Agents may propose changes, but file edits require approval." in data["coordination_rules"]
 
 
 def test_known_client_contract_parsing_tolerates_missing_optional_fields() -> None:
@@ -526,7 +545,18 @@ def test_orchestration_plan_creates_safe_queue_and_memory(tmp_path: Path) -> Non
     assert data["plan"]["risk"] == "high"
     assert data["task_list"][0]["status"] == "in_progress"
     assert data["task_list"][0]["active_step"] == "inspect"
-    assert len(data["task_list"]) == 4
+    assert len(data["task_list"]) == 7
+    assert data["active_agent"]["id"] == "planner"
+    assert [task["owner_agent"] for task in data["task_list"]] == [
+        "planner",
+        "architect",
+        "coder",
+        "reviewer",
+        "tester",
+        "repair",
+        "documentation",
+    ]
+    assert len(data["agent_pipeline"]) == 7
     gate_ids = {gate["id"] for gate in data["plan"]["approval_gates"]}
     assert {"file_edit", "file_delete", "build_command", "install_package", "cloud_context"}.issubset(gate_ids)
     assert data["plan"]["blocked_context"][0]["path"] == ".env"
@@ -534,6 +564,7 @@ def test_orchestration_plan_creates_safe_queue_and_memory(tmp_path: Path) -> Non
     assert "Active Orchestration" in (workspace / ".aegis" / "roadmap.md").read_text(encoding="utf-8")
     history = json.loads((workspace / ".aegis" / "agent-history.json").read_text(encoding="utf-8"))
     assert any(item.get("event") == "orchestration_created" for item in history)
+    assert any(item.get("event") == "agent_decision" and item.get("agent_id") == "planner" for item in history)
 
 
 def test_orchestration_step_requires_approval_before_apply_and_validation(tmp_path: Path, monkeypatch) -> None:
@@ -544,8 +575,8 @@ def test_orchestration_step_requires_approval_before_apply_and_validation(tmp_pa
         json={"workspace": str(workspace), "goal": "Stabilize build workflow", "source_client": "pytest"},
     )
     tasks = plan_response.json()["data"]["task_list"]
-    apply_task_id = tasks[1]["id"]
-    validation_task_id = tasks[2]["id"]
+    apply_task_id = next(task["id"] for task in tasks if task["owner_agent"] == "coder")
+    validation_task_id = next(task["id"] for task in tasks if task["owner_agent"] == "tester")
 
     proposal = client.post(
         "/v1/orchestration/step",
@@ -611,6 +642,42 @@ def test_orchestration_step_requires_approval_before_apply_and_validation(tmp_pa
     assert completed.status_code == 200
     assert "Validated staged workflow" in (workspace / ".aegis" / "decisions.md").read_text(encoding="utf-8")
     assert "orchestration task passed" in (workspace / ".aegis" / "validation-log.md").read_text(encoding="utf-8")
+    history = json.loads((workspace / ".aegis" / "agent-history.json").read_text(encoding="utf-8"))
+    assert any(item.get("event") == "agent_decision" and item.get("agent_id") == "coder" for item in history)
+    assert any(item.get("event") == "agent_decision" and item.get("agent_id") == "tester" for item in history)
+
+
+def test_orchestration_dashboard_surfaces_agent_file_conflicts(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    client = TestClient(create_app())
+    plan_response = client.post(
+        "/v1/orchestration/plan",
+        json={"workspace": str(workspace), "goal": "Coordinate a risky shared file edit", "source_client": "pytest"},
+    )
+    tasks = plan_response.json()["data"]["task_list"]
+    coder_task_id = next(task["id"] for task in tasks if task["owner_agent"] == "coder")
+    repair_task_id = next(task["id"] for task in tasks if task["owner_agent"] == "repair")
+
+    for task_id in (coder_task_id, repair_task_id):
+        response = client.post(
+            "/v1/orchestration/step",
+            json={
+                "workspace": str(workspace),
+                "task_id": task_id,
+                "action": "apply",
+                "approval": True,
+                "affected_files": ["src/shared.py"],
+            },
+        )
+        assert response.status_code == 200
+
+    dashboard = client.get("/v1/orchestration", params={"workspace": str(workspace)})
+
+    assert dashboard.status_code == 200
+    data = dashboard.json()["data"]
+    conflict = data["coordination"]["conflicts"][0]
+    assert conflict["path"] == "src/shared.py"
+    assert {claim["agent_id"] for claim in conflict["claims"]} == {"coder", "repair"}
 
 
 def test_orchestration_validation_requires_approval_for_detected_commands(tmp_path: Path) -> None:

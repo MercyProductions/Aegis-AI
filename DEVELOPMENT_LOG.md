@@ -528,3 +528,21 @@ Actions:
 Validation completed:
 
 - Aegis Core contract tests: pass, 61 tests.
+
+## 2026-05-09 - Aegis Core Multi-Agent Specialization
+
+Focus:
+
+- Make Core orchestration feel like a small supervised local development team without loosening approval gates.
+
+Actions:
+
+- Added Planner, Architect, Coder, Reviewer, Tester, Repair, and Documentation agent profiles.
+- Added `/v1/agents` and `aegis agents` for roster/coordination metadata.
+- Assigned every orchestration queue task a single `owner_agent`.
+- Added active-agent, agent-pipeline, agent-decision, and coordination-conflict fields to orchestration dashboard responses.
+- Recorded agent decisions in `agent-history.json`.
+
+Validation completed:
+
+- Aegis Core contract tests: pass, 63 tests including agent roster, owned orchestration tasks, approval gates, and coordination-conflict reporting.

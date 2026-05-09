@@ -23,6 +23,7 @@ Aegis Core owns reusable intelligence and workflow services:
 - File indexing, dependency graphs, and symbol indexes
 - Roadmap generation
 - Supervised autonomous task orchestration
+- Specialized local agent roles
 - Validation command detection and safe execution
 - Agent planning, repair planning, rollback metadata, and approval contracts
 - Diagnostics and logs
@@ -53,7 +54,7 @@ Default assumptions:
 - Secrets and protected paths are not read or edited.
 - Edits are proposal-first and approval-based.
 - Validation commands are explicit and non-destructive.
-- Autonomous orchestration means staged queues and approval gates, not uncontrolled edits.
+- Autonomous orchestration means staged queues, specialized owner agents, and approval gates, not uncontrolled edits.
 
 ## Migration Strategy
 
@@ -64,9 +65,10 @@ Default assumptions:
 5. Validation detection and logs move into Core.
 6. Shared tasks flow through `.aegis/tasks.json` and `/v1/tasks`.
 7. The Desktop App reads `/v1/ecosystem/dashboard` for connected clients, active projects, model status, diagnostics, roadmap summaries, and recent activity.
-8. Supervised goal queues flow through `.aegis/orchestration-queue.json` and `/v1/orchestration/*`.
-9. Agent planning and repair loops move into Core.
-10. Clients keep UI approvals, diff/apply/rollback, and editor-native affordances.
+8. Specialized agent roles are exposed through `/v1/agents`.
+9. Supervised goal queues flow through `.aegis/orchestration-queue.json` and `/v1/orchestration/*`.
+10. Agent planning and repair loops move into Core.
+11. Clients keep UI approvals, diff/apply/rollback, and editor-native affordances.
 
 ## Shared API Layer
 
@@ -114,6 +116,8 @@ POST /v1/orchestration/step
 ```
 
 Core records the objective, task list, active step, pending approvals, validation results, and rollback metadata. Clients still own showing proposed diffs, collecting approval, applying files, and restoring checkpoints.
+
+Every orchestration task has an `owner_agent`. The current roles are Planner, Architect, Coder, Reviewer, Tester, Repair, and Documentation. Agent decisions are written to `agent-history.json`.
 
 ## Desktop Ecosystem Dashboard Contract
 
