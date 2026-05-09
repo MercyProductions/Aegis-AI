@@ -1077,3 +1077,22 @@ Validation completed:
 - Core settings/config focused tests: pass, 6 tests.
 - Aegis Core contract tests: pass, 93 tests.
 - Git diff whitespace check: pass.
+
+## 2026-05-09 - Core Job Persistence Failure Handling
+
+Focus:
+
+- Avoid phantom-success scheduled job runs when `.aegis/jobs-state.json` cannot be persisted.
+- Keep blocked jobs-log writes visible without failing otherwise safe scan/report work.
+
+Actions:
+
+- Added `JobPersistenceError` for failed scheduled job state writes.
+- Updated `/v1/jobs/run` and the Core CLI to report job persistence failures cleanly.
+- Added a warning path when `.aegis/jobs-log.md` cannot be written.
+
+Validation completed:
+
+- Core job focused tests: pass, 9 tests.
+- Aegis Core contract tests: pass, 95 tests.
+- Git diff whitespace check: pass.

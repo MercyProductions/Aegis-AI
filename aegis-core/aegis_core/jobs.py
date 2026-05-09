@@ -29,6 +29,10 @@ APPROVAL_GATES = {
 }
 
 
+class JobPersistenceError(RuntimeError):
+    """Raised when maintenance job state cannot be persisted."""
+
+
 @dataclass(frozen=True)
 class MaintenanceJob:
     id: str
@@ -561,6 +565,13 @@ def _is_due(job: MaintenanceJob, job_state: dict[str, Any]) -> bool:
 
 
 def _record_result(memory: ProjectMemory, state: dict[str, Any], job: MaintenanceJob, result: dict[str, Any]) -> None:
+    if not _append_jobs_log(memory, result):
+        result.setdefault("warnings", []).append(
+            f"Could not write jobs log at {memory.root / JOBS_LOG_FILE}."
+        )
+        result.setdefault("suggested_actions", []).append(
+            "Repair the workspace .aegis jobs log path before relying on scheduled job history."
+        )
     jobs = state.setdefault("jobs", {})
     jobs[job.id] = {
         "last_run": result["finished_at"],
@@ -585,10 +596,9 @@ def _record_result(memory: ProjectMemory, state: dict[str, Any], job: Maintenanc
         }
     )
     state["history"] = history[-200:]
-    _append_jobs_log(memory, result)
 
 
-def _append_jobs_log(memory: ProjectMemory, result: dict[str, Any]) -> None:
+def _append_jobs_log(memory: ProjectMemory, result: dict[str, Any]) -> bool:
     memory.ensure()
     warnings = "\n".join(f"- {item}" for item in result.get("warnings", [])) or "- none"
     actions = "\n".join(f"- {item}" for item in result.get("suggested_actions", [])) or "- none"
@@ -608,8 +618,9 @@ def _append_jobs_log(memory: ProjectMemory, result: dict[str, Any]) -> None:
             path.write_text("# Jobs Log\n\n", encoding="utf-8")
         with path.open("a", encoding="utf-8") as handle:
             handle.write(entry)
+        return True
     except OSError:
-        return
+        return False
 
 
 def _load_state(memory: ProjectMemory) -> dict[str, Any]:
@@ -629,6 +640,12 @@ def _load_state(memory: ProjectMemory) -> dict[str, Any]:
 
 def _write_state(memory: ProjectMemory, state: dict[str, Any]) -> None:
     memory.write_json(JOBS_STATE_FILE, state)
+    persisted = _load_state(memory)
+    if persisted != state:
+        raise JobPersistenceError(
+            f"Could not persist maintenance job state at {memory.root / JOBS_STATE_FILE}. "
+            "Check that the workspace .aegis path is a writable directory."
+        )
 
 
 def _trigger_catalog() -> list[dict[str, Any]]:

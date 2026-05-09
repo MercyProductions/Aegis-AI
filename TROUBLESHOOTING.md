@@ -24,6 +24,8 @@ Desktop and VS Code backend/Core URL settings are normalized before use. Inputs 
 
 If saving Core settings returns `Could not persist Aegis Core settings`, inspect the project `.aegis` path. The settings file must be a writable `.aegis/config.json` file, not a directory or a blocked path.
 
+If a scheduled job reports `Could not persist maintenance job state` or `Could not write jobs log`, repair `.aegis/jobs-state.json` and `.aegis/jobs-log.md` so they are writable files. Safe scan/report jobs may still finish, but their history is not trustworthy until those paths are fixed.
+
 ## Ollama
 
 Default local endpoint:

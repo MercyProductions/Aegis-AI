@@ -526,6 +526,41 @@ def test_safe_job_run_writes_jobs_log_and_scan_artifacts(tmp_path: Path) -> None
     assert (workspace / ".aegis" / "project-summary.md").is_file()
 
 
+def test_job_run_reports_state_persistence_failure(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    aegis_dir = workspace / ".aegis"
+    aegis_dir.mkdir()
+    (aegis_dir / "jobs-state.json").mkdir()
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/v1/jobs/run",
+        json={"workspace": str(workspace), "job_id": "daily-project-scan"},
+    )
+
+    assert response.status_code == 503
+    assert "Could not persist maintenance job state" in response.json()["detail"]
+
+
+def test_job_run_warns_when_jobs_log_cannot_be_written(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    aegis_dir = workspace / ".aegis"
+    aegis_dir.mkdir()
+    (aegis_dir / "jobs-log.md").mkdir()
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/v1/jobs/run",
+        json={"workspace": str(workspace), "job_id": "daily-project-scan"},
+    )
+
+    assert response.status_code == 200
+    result = response.json()["data"]["results"][0]
+    assert any("Could not write jobs log" in warning for warning in result["warnings"])
+    state = json.loads((workspace / ".aegis" / "jobs-state.json").read_text(encoding="utf-8"))
+    assert any("Could not write jobs log" in warning for warning in state["jobs"]["daily-project-scan"]["warnings"])
+
+
 def test_build_health_job_requires_approval_before_validation(tmp_path: Path, monkeypatch) -> None:
     workspace = make_workspace(tmp_path)
     client = TestClient(create_app())

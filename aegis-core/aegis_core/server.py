@@ -29,7 +29,7 @@ from .contracts import (
 from .credentials import CredentialStoreError
 from .diagnostics import CoreLogger
 from .ecosystem import dashboard_summary, diagnostics_summary, shared_memory_summary
-from .jobs import jobs_dashboard, run_job
+from .jobs import JobPersistenceError, jobs_dashboard, run_job
 from .knowledge import knowledge_graph, query_knowledge_graph
 from .model_router import complete_with_route, delete_provider_key, provider_inventory, route_model, store_provider_key
 from .multi_agent import agent_roster
@@ -288,6 +288,8 @@ def create_app():
             )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except JobPersistenceError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
         return envelope("jobs.run", data, request.workspace)
 
     @app.get("/v1/quality")

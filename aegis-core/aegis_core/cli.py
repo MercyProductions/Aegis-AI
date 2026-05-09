@@ -9,7 +9,7 @@ from typing import Any
 from .agent import continue_from_roadmap, repair_from_last_validation
 from .config import load_config, write_default_config
 from .ecosystem import dashboard_summary, diagnostics_summary, shared_memory_summary
-from .jobs import jobs_dashboard, run_job
+from .jobs import JobPersistenceError, jobs_dashboard, run_job
 from .knowledge import knowledge_graph, query_knowledge_graph
 from .model_router import provider_inventory, route_model
 from .multi_agent import agent_roster
@@ -197,7 +197,7 @@ def main(argv: list[str] | None = None) -> int:
         else:
             parser.error(f"Unknown command {args.command}")
             return 2
-    except (TaskStorePersistenceError, ValueError) as exc:
+    except (JobPersistenceError, TaskStorePersistenceError, ValueError) as exc:
         print_error(str(exc), command=args.command, workspace=workspace, as_json=args.json)
         return 1
 
