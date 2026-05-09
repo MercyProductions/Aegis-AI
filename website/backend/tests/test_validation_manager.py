@@ -324,6 +324,30 @@ class ValidationManagerTests(unittest.TestCase):
                         "exit_code": 0,
                         "allowed": True,
                     },
+                    {
+                        "kind": "validation",
+                        "command": "cmd.exe /c npm install",
+                        "status": "passed",
+                        "category": "build",
+                        "exit_code": 0,
+                        "allowed": True,
+                    },
+                    {
+                        "kind": "validation",
+                        "command": "npm.cmd install",
+                        "status": "passed",
+                        "category": "build",
+                        "exit_code": 0,
+                        "allowed": True,
+                    },
+                    {
+                        "kind": "validation",
+                        "command": "git.exe reset --hard",
+                        "status": "passed",
+                        "category": "build",
+                        "exit_code": 0,
+                        "allowed": True,
+                    },
                 ],
             }
         )
@@ -341,6 +365,9 @@ class ValidationManagerTests(unittest.TestCase):
             "powershell.exe -NoProfile -Command Invoke-Build",
             [item.command for item in suggestions],
         )
+        self.assertNotIn("cmd.exe /c npm install", [item.command for item in suggestions])
+        self.assertNotIn("npm.cmd install", [item.command for item in suggestions])
+        self.assertNotIn("git.exe reset --hard", [item.command for item in suggestions])
 
     def test_discovers_native_cmake_validation_commands(self) -> None:
         (self.workspace / "CMakeLists.txt").write_text(

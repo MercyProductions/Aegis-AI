@@ -577,6 +577,9 @@ class ValidationManager:
         if normalized.startswith(("powershell ", "powershell.exe ", "pwsh ", "pwsh.exe ")):
             return is_safe_powershell_build_guard_command(command)
 
+        if self._blocked_history_executable_command(normalized):
+            return False
+
         blocked_prefixes = (
             "npm install",
             "npm i ",
@@ -618,6 +621,60 @@ class ValidationManager:
             "docker ",
         )
         return not any(normalized == prefix.strip() or normalized.startswith(prefix) for prefix in blocked_prefixes)
+
+    def _blocked_history_executable_command(self, normalized: str) -> bool:
+        tokens = normalized.split()
+        if not tokens:
+            return False
+
+        executable = tokens[0].strip("\"'")
+        executable = executable.rsplit("\\", 1)[-1].rsplit("/", 1)[-1]
+        for suffix in (".exe", ".cmd", ".bat"):
+            if executable.endswith(suffix):
+                executable = executable[: -len(suffix)]
+                break
+
+        args = [token.strip("\"'") for token in tokens[1:]]
+        if executable in {
+            "winget",
+            "choco",
+            "scoop",
+            "curl",
+            "wget",
+            "irm",
+            "iex",
+            "reg",
+            "regedit",
+            "del",
+            "erase",
+            "rm",
+            "rmdir",
+            "remove-item",
+            "format",
+            "shutdown",
+            "taskkill",
+            "docker",
+        }:
+            return True
+        if executable == "cmd" and args[:1] == ["/c"]:
+            return True
+        if executable == "npm" and args and args[0] in {"install", "i", "publish"}:
+            return True
+        if executable in {"pnpm", "yarn", "bun"} and args[:1] == ["install"]:
+            return True
+        if executable == "pip" and args[:1] == ["install"]:
+            return True
+        if executable == "python" and args[:3] == ["-m", "pip", "install"]:
+            return True
+        if executable == "uv" and args[:1] == ["add"]:
+            return True
+        if executable == "poetry" and args[:1] == ["add"]:
+            return True
+        if executable == "cargo" and args[:1] == ["install"]:
+            return True
+        if executable == "git" and args and args[0] in {"clean", "reset", "checkout", "push"}:
+            return True
+        return False
 
     def _category_for_history_command(self, command: str) -> str:
         suggestion = ValidationSuggestion(

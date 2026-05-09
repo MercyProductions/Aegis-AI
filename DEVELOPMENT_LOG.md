@@ -1836,6 +1836,23 @@ Validation completed:
 
 - Website validation manager regression suite: pass, 23 tests and 4 subtests.
 
+## 2026-05-09 - Website Command History Launcher Alias Filtering
+
+Focus:
+
+- Prevent Windows executable aliases from bypassing Website command-history safety filtering.
+- Keep previously successful install, shell, publishing, and destructive commands out of recovered validation suggestions.
+
+Actions:
+
+- Added executable-name normalization for command-history safety checks, including `.exe`, `.cmd`, and `.bat` launcher forms.
+- Blocked launcher aliases for install commands, shell execution, destructive Git operations, package publishing, network fetch tools, Docker, and Windows system mutation commands.
+- Added regression coverage for `cmd.exe /c`, `npm.cmd install`, and `git.exe reset --hard` history entries.
+
+Validation completed:
+
+- Website validation manager regression suite: pass, 23 tests and 4 subtests.
+
 ## 2026-05-09 - Website PowerShell Guard Windows Path Compatibility
 
 Focus:
