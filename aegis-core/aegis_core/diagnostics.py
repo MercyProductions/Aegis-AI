@@ -28,7 +28,7 @@ SENSITIVE_QUERY_RE = re.compile(
     re.IGNORECASE,
 )
 SENSITIVE_ASSIGNMENT_RE = re.compile(
-    r"\b((?:api[_-]?key|token|secret|password|passwd|credential)\s*=\s*)[^\s&]+",
+    r"\b((?:api[_-]?key|token|secret|password|passwd|credential)\s*[:=]\s*)[^\s&]+",
     re.IGNORECASE,
 )
 SENSITIVE_JSON_RE = re.compile(

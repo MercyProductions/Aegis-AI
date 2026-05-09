@@ -186,6 +186,24 @@ Validation completed:
 - Aegis Core contract test suite: pass, 118 tests.
 - Repository whitespace check: pass.
 
+## 2026-05-09 - Provider Diagnostic Colon Redaction
+
+Focus:
+
+- Close a privacy gap in inline provider diagnostics without replacing useful provider error context.
+- Keep cloud/provider failures safe when backends format secrets as colon assignments instead of JSON or query strings.
+
+Actions:
+
+- Extended inline diagnostic redaction to cover colon-form assignments such as `api_key: ...`, `x-api-key: ...`, and `token: ...`.
+- Added regression coverage proving colon-form provider secrets are redacted while the surrounding failure context remains readable.
+
+Validation completed:
+
+- Aegis Core diagnostic/provider redaction regression slice: pass, 7 tests.
+- Aegis Core contract test suite: pass, 122 tests.
+- Repository whitespace check: pass.
+
 ## 2026-05-09 - Settings Persistence Sanitization
 
 Focus:

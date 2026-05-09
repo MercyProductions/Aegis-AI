@@ -1769,6 +1769,21 @@ def test_diagnostics_redact_inline_handles_json_keys_and_url_credentials() -> No
     assert "https://[redacted]@example.test/v1" in cleaned
 
 
+def test_diagnostics_redact_inline_handles_colon_assignments() -> None:
+    api_secret = "sk-provider-secret"
+    token_secret = "ghp-provider-token"
+    message = f"Provider HTTP 401: api_key: {api_secret}; x-api-key: {api_secret}; token: {token_secret}"
+
+    cleaned = redact_inline(message)
+
+    assert api_secret not in cleaned
+    assert token_secret not in cleaned
+    assert "api_key: [redacted]" in cleaned
+    assert "x-api-key: [redacted]" in cleaned
+    assert "token: [redacted]" in cleaned
+    assert "Provider HTTP 401" in cleaned
+
+
 def test_provider_connection_errors_redact_query_api_keys(monkeypatch) -> None:
     secret = "AIzaSyVerySecretProviderKey"
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini:generateContent?key={secret}"
