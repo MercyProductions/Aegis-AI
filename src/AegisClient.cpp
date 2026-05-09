@@ -2907,7 +2907,7 @@ std::string BuildConfigBody(const AppConfig& config)
     body << "\"model_endpoint\":" << JsonString(config.model_endpoint.empty() ? "http://127.0.0.1:11434" : config.model_endpoint) << ",";
     body << "\"model_name\":" << JsonString(config.model_name.empty() ? "qwen2.5-coder:7b" : config.model_name) << ",";
     body << "\"command_allowlist\":" << JsonString(config.command_allowlist.empty()
-        ? "python,py,node,npm,npx,pnpm,pytest,uvicorn,tsc,vite,cargo,rustc,go,dotnet,cmake,ctest,msbuild,ninja,make,gradle,mvn,javac,java,powershell,pwsh,ruff,mypy,sqlfluff"
+        ? "python,py,node,npm,npx,pnpm,yarn,bun,pytest,uvicorn,tsc,vite,cargo,rustc,go,dotnet,cmake,ctest,msbuild,ninja,make,gradle,gradlew,mvn,mvnw,javac,java,flutter,swift,powershell,pwsh,ruff,mypy,sqlfluff"
         : config.command_allowlist) << ",";
     body << "\"command_timeout_seconds\":" << std::max(5, std::min(3600, config.command_timeout_seconds)) << ",";
     body << "\"auto_run_validation\":" << JsonBool(config.auto_run_validation) << ",";
