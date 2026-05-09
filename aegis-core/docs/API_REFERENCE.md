@@ -79,6 +79,8 @@ When `run` is false, returns detected validation commands.
 
 When `run` is true, runs the provided command or first detected safe command and appends `.aegis/validation-log.md`.
 
+JavaScript package managers are script-aware: `npm`/`pnpm`/`yarn` test and build commands are listed only when matching `package.json` scripts exist.
+
 ## POST /agent/continue
 
 Body:

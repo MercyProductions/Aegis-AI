@@ -16,6 +16,7 @@ Actions:
 - Hardened shared Core config parsing so malformed settings degrade to defaults.
 - Added explicit Core task-status API errors for bad statuses and missing task IDs.
 - Hardened dashboard/task memory reads so corrupted or unreadable `.aegis` files do not crash shared clients.
+- Tightened Core JavaScript validation detection to avoid hallucinated npm/pnpm/yarn test/build commands.
 - Kept unrelated dirty worktree changes out of scope.
 - Recorded workflow friction in `WORKFLOW_NOTES.md`.
 

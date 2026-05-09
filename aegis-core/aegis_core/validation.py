@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,21 +19,13 @@ class ValidationCommand:
 def detect_validation_commands(workspace: str | Path) -> list[ValidationCommand]:
     root = Path(workspace).resolve()
     commands: list[ValidationCommand] = []
-    if (root / "package.json").exists():
-        commands.extend([
-            ValidationCommand("npm test", ["npm", "test"], "package.json detected"),
-            ValidationCommand("npm run build", ["npm", "run", "build"], "package.json detected"),
-        ])
-    if (root / "pnpm-lock.yaml").exists():
-        commands.extend([
-            ValidationCommand("pnpm test", ["pnpm", "test"], "pnpm lockfile detected"),
-            ValidationCommand("pnpm build", ["pnpm", "build"], "pnpm lockfile detected"),
-        ])
-    if (root / "yarn.lock").exists():
-        commands.extend([
-            ValidationCommand("yarn test", ["yarn", "test"], "yarn lockfile detected"),
-            ValidationCommand("yarn build", ["yarn", "build"], "yarn lockfile detected"),
-        ])
+    package_scripts = _package_scripts(root)
+    if package_scripts:
+        package_manager = _detect_package_manager(root)
+        if "test" in package_scripts:
+            commands.append(_package_script_command(package_manager, "test"))
+        if "build" in package_scripts:
+            commands.append(_package_script_command(package_manager, "build"))
     if any(root.glob("*.sln")) or any(root.glob("*.slnx")) or any(root.rglob("*.csproj")):
         commands.append(ValidationCommand("dotnet build", ["dotnet", "build"], ".NET project or solution detected"))
     if (root / "Cargo.toml").exists():
@@ -42,6 +35,40 @@ def detect_validation_commands(workspace: str | Path) -> list[ValidationCommand]
     if (root / "CMakeLists.txt").exists():
         commands.append(ValidationCommand("cmake build", ["cmake", "--build", "build"], "CMakeLists.txt detected"))
     return commands
+
+
+def _package_scripts(root: Path) -> dict[str, str]:
+    package_json = root / "package.json"
+    if not package_json.exists():
+        return {}
+    try:
+        package = json.loads(package_json.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    scripts = package.get("scripts")
+    if not isinstance(scripts, dict):
+        return {}
+    return {str(name): str(command) for name, command in scripts.items() if isinstance(command, str) and command.strip()}
+
+
+def _detect_package_manager(root: Path) -> str:
+    if (root / "pnpm-lock.yaml").exists():
+        return "pnpm"
+    if (root / "yarn.lock").exists():
+        return "yarn"
+    return "npm"
+
+
+def _package_script_command(package_manager: str, script: str) -> ValidationCommand:
+    if package_manager == "npm":
+        if script == "test":
+            return ValidationCommand("npm test", ["npm", "test"], "package.json test script detected")
+        return ValidationCommand(f"npm run {script}", ["npm", "run", script], f"package.json {script} script detected")
+    return ValidationCommand(
+        f"{package_manager} {script}",
+        [package_manager, script],
+        f"package.json {script} script and {package_manager} lockfile detected",
+    )
 
 
 def validation_summary(workspace: str | Path) -> dict[str, Any]:

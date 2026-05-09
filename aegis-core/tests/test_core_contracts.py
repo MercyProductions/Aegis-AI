@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from aegis_core.config import AegisConfig, load_config
 from aegis_core.safety import is_ignored_path, is_safe_to_read, is_secret_like
 from aegis_core.server import create_app
+from aegis_core.validation import detect_validation_commands
 
 
 def make_workspace(tmp_path: Path) -> Path:
@@ -173,3 +174,20 @@ def test_dashboard_survives_unreadable_memory_files(tmp_path: Path) -> None:
     assert data["active_tasks"] == []
     assert data["recent_activity"] == []
     assert data["roadmap"]["excerpt"] == ""
+
+
+def test_validation_detection_respects_package_scripts(tmp_path: Path) -> None:
+    workspace = tmp_path / "node-project"
+    workspace.mkdir()
+    (workspace / "package.json").write_text(json.dumps({"scripts": {"start": "vite"}}), encoding="utf-8")
+
+    assert [item.name for item in detect_validation_commands(workspace)] == []
+
+    (workspace / "package.json").write_text(
+        "\ufeff" + json.dumps({"scripts": {"test": "vitest run", "build": "vite build"}}),
+        encoding="utf-8",
+    )
+    assert [item.name for item in detect_validation_commands(workspace)] == ["npm test", "npm run build"]
+
+    (workspace / "pnpm-lock.yaml").write_text("lockfileVersion: '9.0'\n", encoding="utf-8")
+    assert [item.name for item in detect_validation_commands(workspace)] == ["pnpm test", "pnpm build"]
