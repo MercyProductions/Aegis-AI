@@ -140,6 +140,44 @@ def _clean_bool(value: Any, default: bool) -> bool:
     return default
 
 
+def _clean_config_update(key: str, value: Any) -> Any:
+    if key == "ollama_url":
+        return _clean_ollama_url(value)
+    if key == "lm_studio_url":
+        return _clean_lm_studio_url(value)
+    if key == "default_model":
+        return _clean_string(value, AegisConfig.default_model)
+    if key == "default_local_model":
+        return _clean_string(value, AegisConfig.default_local_model)
+    if key == "local_small_model":
+        return _clean_string(value, AegisConfig.local_small_model)
+    if key == "local_coder_model":
+        return _clean_string(value, AegisConfig.local_coder_model)
+    if key == "local_embedding_model":
+        return _clean_string(value, AegisConfig.local_embedding_model)
+    if key == "preferred_cloud_provider":
+        return _clean_cloud_provider(value)
+    if key == "preferred_cloud_model":
+        return _clean_string(value, AegisConfig.preferred_cloud_model)
+    if key == "model_routing_mode":
+        return _clean_routing_mode(value)
+    if key == "fallback_models":
+        return list(_clean_string_list(value, AegisConfig.fallback_models))
+    if key == "max_context_chars":
+        return _clean_int(value, AegisConfig.max_context_chars, minimum=1000)
+    if key == "cloud_cost_warnings":
+        return _clean_bool(value, AegisConfig.cloud_cost_warnings)
+    if key == "safety_mode":
+        return _clean_string(value, AegisConfig.safety_mode)
+    if key == "auto_scan_on_open":
+        return _clean_bool(value, AegisConfig.auto_scan_on_open)
+    if key == "validation_preferences":
+        return list(_clean_string_list(value, AegisConfig.validation_preferences))
+    if key == "memory_dir_name":
+        return _clean_memory_dir_name(value)
+    return value
+
+
 def load_config(workspace: str | Path | None = None) -> AegisConfig:
     root = workspace_root(workspace)
     config_path = root / ".aegis" / "config.json"
@@ -203,7 +241,7 @@ def update_config(workspace: str | Path | None, updates: dict[str, Any]) -> Aegi
     current = _read_config_data(path)
     for key, value in updates.items():
         if key in allowed:
-            current[key] = _clean_memory_dir_name(value) if key == "memory_dir_name" else value
+            current[key] = _clean_config_update(key, value)
     if not _write_json_best_effort(path, current):
         raise ConfigPersistenceError(f"Could not persist Aegis Core settings to {path}.")
     return load_config(root)

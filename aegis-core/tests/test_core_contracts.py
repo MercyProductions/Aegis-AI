@@ -2417,6 +2417,45 @@ def test_settings_api_sanitizes_memory_dir_name(tmp_path: Path) -> None:
     assert json.loads(config_path.read_text(encoding="utf-8"))["memory_dir_name"] == AegisConfig.memory_dir_name
 
 
+def test_settings_api_persists_sanitized_hybrid_values(tmp_path: Path) -> None:
+    workspace = tmp_path / "settings-hybrid-project"
+    workspace.mkdir()
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/v1/settings",
+        json={
+            "workspace": str(workspace),
+            "settings": {
+                "lm_studio_url": "127.0.0.1:1234/v1/chat/completions",
+                "model_routing_mode": "cloud-allowed",
+                "preferred_cloud_provider": "not-a-provider",
+                "fallback_models": "qwen2.5-coder:7b, granite-code:8b",
+                "max_context_chars": "not-a-number",
+                "cloud_cost_warnings": "false",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["lm_studio_url"] == "http://127.0.0.1:1234"
+    assert data["model_routing_mode"] == "cloud_allowed"
+    assert data["preferred_cloud_provider"] == AegisConfig.preferred_cloud_provider
+    assert data["fallback_models"] == ["qwen2.5-coder:7b", "granite-code:8b"]
+    assert data["max_context_chars"] == AegisConfig.max_context_chars
+    assert data["cloud_cost_warnings"] is False
+
+    config_path = workspace / ".aegis" / "config.json"
+    persisted = json.loads(config_path.read_text(encoding="utf-8"))
+    assert persisted["lm_studio_url"] == "http://127.0.0.1:1234"
+    assert persisted["model_routing_mode"] == "cloud_allowed"
+    assert persisted["preferred_cloud_provider"] == AegisConfig.preferred_cloud_provider
+    assert persisted["fallback_models"] == ["qwen2.5-coder:7b", "granite-code:8b"]
+    assert persisted["max_context_chars"] == AegisConfig.max_context_chars
+    assert persisted["cloud_cost_warnings"] is False
+
+
 def test_config_read_write_survives_damaged_paths(tmp_path: Path) -> None:
     workspace = tmp_path / "damaged-config-project"
     aegis_dir = workspace / ".aegis"

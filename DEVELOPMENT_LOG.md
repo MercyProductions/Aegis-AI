@@ -186,6 +186,24 @@ Validation completed:
 - Aegis Core contract test suite: pass, 118 tests.
 - Repository whitespace check: pass.
 
+## 2026-05-09 - Settings Persistence Sanitization
+
+Focus:
+
+- Keep saved Core settings aligned with the sanitized values returned by `/v1/settings`.
+- Avoid preserving raw invalid hybrid routing values in `.aegis/config.json` after users edit settings.
+
+Actions:
+
+- Normalized settings updates before persistence, including provider IDs, routing modes, local provider URLs, model lists, booleans, context limits, and workspace-local memory folder names.
+- Added regression coverage proving `/v1/settings` writes canonical hybrid settings to disk.
+
+Validation completed:
+
+- Aegis Core settings API regression slice: pass, 2 tests.
+- Aegis Core contract test suite: pass, 120 tests.
+- Repository whitespace check: pass.
+
 ## 2026-05-09 - Hybrid Provider Setting Sanitization
 
 Focus:
