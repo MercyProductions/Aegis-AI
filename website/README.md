@@ -162,6 +162,8 @@ workspace/
 You can change the workspace path in the UI. All file changes stay constrained to that selected workspace.
 If an older install wrote files into `backend/workspace/`, Aegis now migrates that legacy workspace forward into the repo-root `workspace/` folder when the new workspace is empty.
 
+Workspace setup stores project and validation metadata under `.aegis/` in the selected workspace. If those memory paths are damaged, setup now stays usable and reports warnings so you can repair the paths before running setup again.
+
 ## Project Layout
 
 ```text

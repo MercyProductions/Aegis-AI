@@ -28,6 +28,7 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 | Memory resilience | Improved | Dashboard/task reads, agent plan reads, and generated-memory writes now tolerate unreadable or damaged `.aegis` JSON/markdown paths. |
 | VS Code memory init | Improved | Workspace startup memory initialization logs damaged `.aegis` paths and continues in degraded mode. |
 | Visual Studio memory init | Improved | Solution memory reads and writes are best-effort, so damaged `.aegis` paths do not crash memory-backed workflows. |
+| Website workspace setup | Improved | Damaged `.aegis` project and validation profile paths now return warnings instead of breaking setup. |
 | Validation detection | Improved | Core now lists JS test/build validation commands only when matching package scripts exist. |
 | Validation execution | Improved | Core blocks unsafe custom validation commands and returns structured missing-tool/timeout failures. |
 | Validation logging | Improved | Validation output is redacted before API responses and disk writes; log write failures do not crash validation. |
@@ -48,6 +49,7 @@ Ran during this pass:
 - Website frontend tests: 21 files / 169 tests passed
 - Website frontend production build: pass, Vite reported the existing large main chunk warning
 - Website backend tests: 739 tests and 155 subtests passed
+- Website workspace setup regression and helper tests for damaged `.aegis` paths: 8 tests passed
 
 ## Fixes Made In This Pass
 
@@ -65,6 +67,7 @@ Ran during this pass:
 - Hardened agent continue/repair planning so damaged roadmap or validation-log paths degrade to safe responses instead of server errors.
 - Hardened VS Code `.aegis` initialization so damaged memory files are left untouched and reported in the output channel.
 - Hardened Visual Studio `.aegis` solution memory so damaged memory files are skipped and health checks surface the degraded state.
+- Hardened Website workspace setup so damaged `.aegis/project.json` and `.aegis/validation_profile.json` paths return warnings instead of crashing setup.
 
 ## Daily Driver Friction To Watch
 

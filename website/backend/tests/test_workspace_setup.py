@@ -101,6 +101,70 @@ class WorkspaceSetupTests(unittest.TestCase):
         self.assertEqual(profile_payload["source"], "manual")
         self.assertNotIn(".aegis/validation_profile.json", response.updated_files)
 
+    def test_workspace_setup_warns_when_aegis_root_is_not_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir)
+            workspace = project_root / "workspace"
+            workspace.mkdir(parents=True, exist_ok=True)
+            (workspace / ".aegis").write_text("not a directory", encoding="utf-8")
+            (workspace / "package.json").write_text(
+                json.dumps({"scripts": {"test": "node smoke.js"}}),
+                encoding="utf-8",
+            )
+            settings = Settings(
+                _env_file=None,
+                default_workspace="workspace",
+                aegis_database_path="data/test.sqlite3",
+                aegis_command_allowlist="node,npm",
+            )
+            manager = WorkspaceManager(project_root, settings)
+            engine = AgentEngine(project_root, settings)
+
+            with (
+                patch.object(main, "workspace_manager", manager),
+                patch.object(main, "agent", engine),
+            ):
+                response = asyncio.run(main.workspace_setup(WorkspaceSetupRequest(workspace_root=str(workspace))))
+
+        self.assertEqual(response.manifest.schema_version, "aegis.project.v1")
+        self.assertIn("Could not write .aegis/project.json", "\n".join(response.warnings))
+        self.assertIn("Could not write .aegis/validation_profile.json", "\n".join(response.warnings))
+        self.assertNotIn(".aegis/project.json", response.created_files)
+        self.assertNotIn(".aegis/validation_profile.json", response.created_files)
+
+    def test_workspace_setup_warns_when_memory_targets_are_directories(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir)
+            workspace = project_root / "workspace"
+            aegis_dir = workspace / ".aegis"
+            aegis_dir.mkdir(parents=True, exist_ok=True)
+            (aegis_dir / "project.json").mkdir()
+            (aegis_dir / "validation_profile.json").mkdir()
+            (workspace / "package.json").write_text(
+                json.dumps({"scripts": {"test": "node smoke.js"}}),
+                encoding="utf-8",
+            )
+            settings = Settings(
+                _env_file=None,
+                default_workspace="workspace",
+                aegis_database_path="data/test.sqlite3",
+                aegis_command_allowlist="node,npm",
+            )
+            manager = WorkspaceManager(project_root, settings)
+            engine = AgentEngine(project_root, settings)
+
+            with (
+                patch.object(main, "workspace_manager", manager),
+                patch.object(main, "agent", engine),
+            ):
+                response = asyncio.run(main.workspace_setup(WorkspaceSetupRequest(workspace_root=str(workspace))))
+
+        warnings = "\n".join(response.warnings)
+        self.assertIn("Could not write .aegis/project.json", warnings)
+        self.assertIn("Could not write .aegis/validation_profile.json", warnings)
+        self.assertNotIn(".aegis/project.json", response.created_files + response.updated_files)
+        self.assertNotIn(".aegis/validation_profile.json", response.created_files + response.updated_files)
+
 
 if __name__ == "__main__":
     unittest.main()

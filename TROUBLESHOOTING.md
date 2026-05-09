@@ -73,3 +73,5 @@ If an apply fails, use the client's rollback command first, then inspect `.aegis
 ## Website
 
 The Website currently uses its own mature `/api` backend. Do not force it onto standalone Core `/v1` APIs during stabilization unless a specific workflow proves the migration is needed.
+
+If workspace setup warns that `.aegis/project.json` or `.aegis/validation_profile.json` could not be written, inspect those paths in the selected workspace. Preserve anything useful, then repair the damaged file/directory path and run setup again.

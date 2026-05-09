@@ -20,6 +20,7 @@
 - Hardened Core agent continue/repair planning so damaged roadmap or validation-log paths return safe responses instead of server errors.
 - Hardened VS Code workspace memory initialization so damaged `.aegis` files are reported and skipped instead of breaking startup scans.
 - Hardened Visual Studio solution memory reads and writes so damaged `.aegis` paths degrade safely and Health Check can report them.
+- Hardened Website workspace setup so damaged `.aegis` project and validation profile paths return warnings instead of breaking setup.
 - Added product-utilization workflow notes for daily Auralith dogfooding.
 - Documented the current stabilization and validation pass.
 
