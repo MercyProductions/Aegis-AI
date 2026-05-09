@@ -913,6 +913,46 @@ def test_knowledge_graph_links_files_apis_docs_and_validation(tmp_path: Path) ->
     assert (workspace / ".aegis" / "knowledge-summary.md").is_file()
 
 
+def test_knowledge_graph_resolves_fsharp_and_visual_basic_dependencies(tmp_path: Path) -> None:
+    workspace = tmp_path / "dotnet-knowledge-project"
+    fsharp = workspace / "src" / "FSharpApp"
+    visual_basic = workspace / "src" / "VisualBasicTool"
+    fsharp.mkdir(parents=True)
+    visual_basic.mkdir(parents=True)
+    (fsharp / "FSharpApp.fsproj").write_text('<Project Sdk="Microsoft.NET.Sdk"></Project>', encoding="utf-8")
+    (fsharp / "Program.fs").write_text("module Program\nopen src.FSharpApp.Services\n", encoding="utf-8")
+    (fsharp / "Services.fs").write_text("module Services\nlet run = true\n", encoding="utf-8")
+    (visual_basic / "VisualBasicTool.vbproj").write_text('<Project Sdk="Microsoft.NET.Sdk"></Project>', encoding="utf-8")
+    (visual_basic / "Program.vb").write_text(
+        "Imports src.VisualBasicTool.Helpers\nModule Program\nEnd Module\n",
+        encoding="utf-8",
+    )
+    (visual_basic / "Helpers.vb").write_text(
+        "Namespace src.VisualBasicTool\nPublic Module Helpers\nEnd Module\nEnd Namespace\n",
+        encoding="utf-8",
+    )
+    client = TestClient(create_app())
+
+    response = client.post("/v1/knowledge/graph", json={"workspace": str(workspace)})
+
+    assert response.status_code == 200
+    assert_core_contract(response.json(), "knowledge.graph")
+    data = response.json()["data"]
+    edge_types = {(edge["source"], edge["target"], edge["type"]) for edge in data["edges"]}
+    assert ("file:src/FSharpApp/Program.fs", "file:src/FSharpApp/Services.fs", "uses") in edge_types
+    assert ("file:src/VisualBasicTool/Program.vb", "file:src/VisualBasicTool/Helpers.vb", "uses") in edge_types
+    assert not any(
+        edge["source"] == "file:src/FSharpApp/Program.fs"
+        and edge["target"] == "external:src-fsharpapp-services"
+        for edge in data["edges"]
+    )
+    assert not any(
+        edge["source"] == "file:src/VisualBasicTool/Program.vb"
+        and edge["target"] == "external:src-visualbasictool-helpers"
+        for edge in data["edges"]
+    )
+
+
 def test_knowledge_graph_reports_graph_persistence_failure(tmp_path: Path) -> None:
     workspace = make_workspace(tmp_path)
     aegis_dir = workspace / ".aegis"

@@ -16,6 +16,39 @@ from .workspace import WorkspaceScanner
 KNOWLEDGE_GRAPH_FILE = "knowledge-graph.json"
 KNOWLEDGE_SUMMARY_FILE = "knowledge-summary.md"
 GRAPH_VERSION = "2026.05.09"
+CODE_SUFFIXES = {
+    ".py",
+    ".js",
+    ".jsx",
+    ".ts",
+    ".tsx",
+    ".cs",
+    ".fs",
+    ".fsi",
+    ".fsx",
+    ".vb",
+    ".cpp",
+    ".c",
+    ".h",
+    ".hpp",
+}
+PATH_CANDIDATE_SUFFIXES = [
+    "",
+    ".py",
+    ".ts",
+    ".tsx",
+    ".js",
+    ".jsx",
+    ".cs",
+    ".fs",
+    ".fsi",
+    ".fsx",
+    ".vb",
+    ".cpp",
+    ".c",
+    ".h",
+    ".hpp",
+]
 
 COMMON_WORDS = {
     "about",
@@ -404,7 +437,7 @@ class _GraphBuilder:
             paths.update(self.scan["symbol_index"].keys())
         if isinstance(self.scan.get("dependency_graph"), dict):
             paths.update(self.scan["dependency_graph"].get("files", {}).keys())
-        return sorted(path for path in paths if Path(path).suffix.lower() in {".py", ".js", ".jsx", ".ts", ".tsx", ".cs", ".cpp", ".h", ".hpp"})
+        return sorted(path for path in paths if Path(path).suffix.lower() in CODE_SUFFIXES)
 
     def _clusters(self) -> list[dict[str, Any]]:
         cluster_nodes: dict[str, list[str]] = defaultdict(list)
@@ -652,8 +685,7 @@ def _resolve_dependency(source_path: str, dep: str, root: Path) -> str | None:
 
 
 def _path_candidates(path: Path) -> list[Path]:
-    suffixes = ["", ".py", ".ts", ".tsx", ".js", ".jsx", ".cs", ".cpp", ".h", ".hpp"]
-    candidates = [Path(str(path) + suffix) for suffix in suffixes if suffix or not path.suffix]
+    candidates = [Path(str(path) + suffix) for suffix in PATH_CANDIDATE_SUFFIXES if suffix or not path.suffix]
     candidates.extend(path / f"index{suffix}" for suffix in [".ts", ".tsx", ".js", ".jsx"])
     return candidates
 

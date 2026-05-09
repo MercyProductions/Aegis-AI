@@ -2115,6 +2115,23 @@ Validation completed:
 
 - Focused Core .NET simulation/orchestration regression slice: pass, 3 tests.
 
+## 2026-05-09 - Core Knowledge Graph .NET Source Parity
+
+Focus:
+
+- Keep Core knowledge graph indexing aligned with F# and Visual Basic source files now collected by workspace scans.
+- Preserve useful local dependency relationships for non-C# .NET projects.
+
+Actions:
+
+- Added F# and Visual Basic source suffixes to Core knowledge graph code-path filtering.
+- Added F# and Visual Basic suffixes to local dependency path candidates so `open` and `Imports` statements can resolve to workspace files.
+- Added a regression that verifies F#/VB dependencies become file-to-file graph edges instead of external dependency placeholders.
+
+Validation completed:
+
+- Focused Core knowledge/workspace .NET graph regression slice: pass, 2 tests.
+
 ## 2026-05-09 - Website PowerShell Guard Windows Path Compatibility
 
 Focus:
