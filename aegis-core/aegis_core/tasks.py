@@ -10,8 +10,17 @@ from typing import Any
 from .memory import ProjectMemory, utc_now
 
 
-ACTIVE_STATUSES = {"planned", "running", "waiting_for_approval", "blocked"}
-VALID_STATUSES = ACTIVE_STATUSES | {"completed", "cancelled", "rolled_back"}
+ACTIVE_STATUSES = {
+    "planned",
+    "running",
+    "waiting_for_approval",
+    "pending",
+    "in_progress",
+    "needs_approval",
+    "validating",
+    "blocked",
+}
+VALID_STATUSES = ACTIVE_STATUSES | {"completed", "cancelled", "rolled_back", "failed"}
 
 
 class TaskStorePersistenceError(RuntimeError):

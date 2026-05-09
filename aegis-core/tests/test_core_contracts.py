@@ -263,6 +263,7 @@ def test_v1_endpoint_family_smoke_contracts(tmp_path: Path) -> None:
         ("/v1/branding", {}, "branding.tokens"),
         ("/v1/clients", {"workspace": str(workspace)}, "clients.list"),
         ("/v1/tasks", {"workspace": str(workspace)}, "tasks.list"),
+        ("/v1/orchestration", {"workspace": str(workspace)}, "orchestration.dashboard"),
         ("/v1/ecosystem/dashboard", {"workspace": str(workspace)}, "ecosystem.dashboard"),
     ]
 
@@ -312,6 +313,12 @@ def test_v1_endpoint_family_smoke_contracts(tmp_path: Path) -> None:
         ),
         ("/v1/agent/continue", {"workspace": str(workspace), "request": "continue safely"}, "agent.continue.plan", True),
         ("/v1/agent/repair", {"workspace": str(workspace)}, "agent.repair.plan", None),
+        (
+            "/v1/orchestration/plan",
+            {"workspace": str(workspace), "goal": "Stabilize one safe workflow", "source_client": "pytest"},
+            "orchestration.plan",
+            True,
+        ),
     ]
 
     created_task_id = None
@@ -355,6 +362,9 @@ def test_contract_catalog_covers_unified_phase_runtime_shapes() -> None:
         "validation",
         "agent.continue.plan",
         "agent.repair.plan",
+        "orchestration.plan",
+        "orchestration.dashboard",
+        "orchestration.step",
         "patch.proposal",
         "rollback.entry",
         "rollback.result",
@@ -492,6 +502,135 @@ def test_v1_known_client_contracts_match_desktop_vscode_and_visual_studio(tmp_pa
     client_ids = {item["client_id"] for item in data["clients"]}
     assert {"auralith-desktop", "aegis-vscode", "aegis-visual-studio"}.issubset(client_ids)
     assert any(item["id"] == task_id for item in data["active_tasks"])
+
+
+def test_orchestration_plan_creates_safe_queue_and_memory(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    (workspace / ".env").write_text("API_KEY=secret\n", encoding="utf-8")
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/v1/orchestration/plan",
+        json={
+            "workspace": str(workspace),
+            "goal": "Install package, remove dead code, and use OpenAI only if approved",
+            "source_client": "pytest",
+            "context_files": ["README.md", ".env"],
+        },
+    )
+
+    assert response.status_code == 200
+    assert_core_contract(response.json(), "orchestration.plan")
+    data = response.json()["data"]
+    assert data["current_goal"].startswith("Install package")
+    assert data["plan"]["risk"] == "high"
+    assert data["task_list"][0]["status"] == "in_progress"
+    assert data["task_list"][0]["active_step"] == "inspect"
+    assert len(data["task_list"]) == 4
+    gate_ids = {gate["id"] for gate in data["plan"]["approval_gates"]}
+    assert {"file_edit", "file_delete", "build_command", "install_package", "cloud_context"}.issubset(gate_ids)
+    assert data["plan"]["blocked_context"][0]["path"] == ".env"
+    assert (workspace / ".aegis" / "orchestration-queue.json").is_file()
+    assert "Active Orchestration" in (workspace / ".aegis" / "roadmap.md").read_text(encoding="utf-8")
+    history = json.loads((workspace / ".aegis" / "agent-history.json").read_text(encoding="utf-8"))
+    assert any(item.get("event") == "orchestration_created" for item in history)
+
+
+def test_orchestration_step_requires_approval_before_apply_and_validation(tmp_path: Path, monkeypatch) -> None:
+    workspace = make_workspace(tmp_path)
+    client = TestClient(create_app())
+    plan_response = client.post(
+        "/v1/orchestration/plan",
+        json={"workspace": str(workspace), "goal": "Stabilize build workflow", "source_client": "pytest"},
+    )
+    tasks = plan_response.json()["data"]["task_list"]
+    apply_task_id = tasks[1]["id"]
+    validation_task_id = tasks[2]["id"]
+
+    proposal = client.post(
+        "/v1/orchestration/step",
+        json={"workspace": str(workspace), "task_id": apply_task_id, "action": "propose"},
+    )
+    assert proposal.status_code == 200
+    assert_core_contract(proposal.json(), "orchestration.step")
+    assert proposal.json()["data"]["pending_approvals"][0]["task_id"] == apply_task_id
+
+    blocked_apply = client.post(
+        "/v1/orchestration/step",
+        json={"workspace": str(workspace), "task_id": apply_task_id, "action": "apply"},
+    )
+    assert blocked_apply.status_code == 200
+    assert blocked_apply.json()["data"]["pending_approvals"][0]["active_step"] == "wait_for_approval"
+
+    approved = client.post(
+        "/v1/orchestration/step",
+        json={"workspace": str(workspace), "task_id": apply_task_id, "action": "approve", "approval": True},
+    )
+    assert approved.status_code == 200
+    assert approved.json()["data"]["active_task"]["active_step"] == "apply_approved_changes"
+
+    applied = client.post(
+        "/v1/orchestration/step",
+        json={
+            "workspace": str(workspace),
+            "task_id": apply_task_id,
+            "action": "apply",
+            "approval": True,
+            "affected_files": ["src/app.py"],
+        },
+    )
+    assert applied.status_code == 200
+    apply_task = next(task for task in applied.json()["data"]["task_list"] if task["id"] == apply_task_id)
+    assert apply_task["status"] == "validating"
+    assert apply_task["affected_files"] == ["src/app.py"]
+
+    validation_block = client.post(
+        "/v1/orchestration/step",
+        json={"workspace": str(workspace), "task_id": validation_task_id, "action": "validate"},
+    )
+    assert validation_block.status_code == 200
+    assert validation_block.json()["data"]["pending_approvals"][0]["active_step"] == "wait_for_validation_approval"
+
+    monkeypatch.setattr(
+        "aegis_core.orchestration.run_validation",
+        lambda workspace, command=None: {"ok": True, "command": ["npm", "test"], "returncode": 0, "stdout": "ok", "stderr": ""},
+    )
+    validation_run = client.post(
+        "/v1/orchestration/step",
+        json={"workspace": str(workspace), "task_id": validation_task_id, "action": "validate", "approval": True},
+    )
+    assert validation_run.status_code == 200
+    validation_task = next(task for task in validation_run.json()["data"]["task_list"] if task["id"] == validation_task_id)
+    assert validation_task["latest_validation"]["ok"] is True
+    assert validation_task["active_step"] == "summarize"
+
+    completed = client.post(
+        "/v1/orchestration/step",
+        json={"workspace": str(workspace), "task_id": validation_task_id, "action": "complete", "summary": "Validated staged workflow."},
+    )
+    assert completed.status_code == 200
+    assert "Validated staged workflow" in (workspace / ".aegis" / "decisions.md").read_text(encoding="utf-8")
+    assert "orchestration task passed" in (workspace / ".aegis" / "validation-log.md").read_text(encoding="utf-8")
+
+
+def test_orchestration_validation_requires_approval_for_detected_commands(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    client = TestClient(create_app())
+    plan_response = client.post(
+        "/v1/orchestration/plan",
+        json={"workspace": str(workspace), "goal": "Inspect and validate safely", "source_client": "pytest"},
+    )
+    first_task_id = plan_response.json()["data"]["task_list"][0]["id"]
+
+    response = client.post(
+        "/v1/orchestration/step",
+        json={"workspace": str(workspace), "task_id": first_task_id, "action": "validate"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["pending_approvals"][0]["task_id"] == first_task_id
+    assert data["pending_approvals"][0]["active_step"] == "wait_for_validation_approval"
 
 
 def test_shared_mutation_apis_report_unwritable_memory_root(tmp_path: Path) -> None:

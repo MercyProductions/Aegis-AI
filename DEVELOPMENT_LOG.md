@@ -510,3 +510,21 @@ Validation completed:
 
 - Aegis Core contract tests: pass, 56 tests.
 - Aegis Core compile check: pass.
+
+## 2026-05-09 - Aegis Core Autonomous Task Orchestration
+
+Focus:
+
+- Let Core organize larger goals into supervised staged work without enabling uncontrolled edits or risky commands.
+
+Actions:
+
+- Added `.aegis/orchestration-queue.json` and `.aegis/active-orchestration.json` state for objective, task queue, active step, approval gates, validation results, rollback metadata, and safety notes.
+- Added `/v1/orchestration/plan`, `/v1/orchestration`, and `/v1/orchestration/step` contracts.
+- Added CLI support through `aegis orchestrate`.
+- Kept file edits, deletions, package installs, build/test/lint validation, and cloud context behind explicit approval gates.
+- Wired completed orchestration tasks into `roadmap.md`, `decisions.md`, `validation-log.md`, and `agent-history.json`.
+
+Validation completed:
+
+- Aegis Core contract tests: pass, 61 tests.

@@ -6,6 +6,7 @@
 - Workspace scanning and indexing
 - Memory file creation and generated-section updates
 - Roadmap generation
+- Supervised orchestration queue state
 - Validation command detection
 - Validation log normalization
 - Agent plan and repair plan contracts
@@ -36,6 +37,7 @@ It should call Aegis Core for:
 - memory data
 - ecosystem dashboard data
 - shared task visibility
+- supervised orchestration state
 - shared diagnostics
 
 Minimum integration:
@@ -44,6 +46,7 @@ Minimum integration:
 - Read `/v1/ecosystem/dashboard` for the command-center dashboard.
 - Create user-visible tasks with `/v1/tasks`.
 - Use `/v1/branding` for shared naming and visual tokens where practical.
+- Use `/v1/orchestration` for staged goal state, pending approvals, validation summaries, and rollback metadata when building autonomous workflow UI.
 
 ## VS Code Extension
 
@@ -68,6 +71,7 @@ It should call Aegis Core for:
 - shared memory
 - shared settings
 - shared tasks
+- supervised orchestration state
 - diagnostics
 
 ## Visual Studio Extension
@@ -93,6 +97,7 @@ It should call Aegis Core for:
 - shared safety/configuration
 - plan/repair contracts
 - shared task status
+- supervised orchestration state
 - shared diagnostics
 
 ## Website
@@ -115,5 +120,6 @@ It can call Aegis Core only for local dashboard features when running on the use
 - Every client should use the same workspace root when sharing memory and tasks.
 - Every client should register itself with a stable `client_id`.
 - Approval remains client-owned because each UI has different diff and editor affordances.
+- Diff preview, patch apply, and rollback execution remain client-owned even when Core owns orchestration queue state.
 - Core owns shared plan data, memory, diagnostics, model status, and settings.
 - Clients should not write directly to `.aegis/tasks.json` unless Core is unavailable and the user explicitly accepts degraded local mode.

@@ -158,6 +158,7 @@ Contract stability:
 | `ecosystem.dashboard` | stable | Aggregated dashboard for Desktop and Website bridge. |
 | `branding.tokens` | experimental | Visual/client token sharing may still change. |
 | `agent.continue.plan`, `agent.repair.plan` | experimental | Plan-only agent contracts; no file edits are applied. |
+| `orchestration.plan`, `orchestration.dashboard`, `orchestration.step` | experimental | Supervised autonomous goal queues with approval gates; Core does not blindly edit files. |
 | `patch.proposal`, `rollback.entry`, `rollback.result` | experimental schema-only | Defined for future compatibility; not active Core endpoints yet. |
 
 Shared request body conventions:
@@ -165,8 +166,10 @@ Shared request body conventions:
 - Workspace operations use `workspace`.
 - Website compatibility endpoints may accept `workspace_root` and translate it to Core `workspace`.
 - Cross-client task records use `title`, `kind`, `source_client`, optional `request`, and optional `metadata`.
-- Task status values are `planned`, `running`, `waiting_for_approval`, `blocked`, `completed`, `cancelled`, and `rolled_back`.
+- Shared task status values are `planned`, `running`, `waiting_for_approval`, `pending`, `in_progress`, `needs_approval`, `validating`, `blocked`, `completed`, `failed`, `cancelled`, and `rolled_back`.
+- Orchestration queue status values are `pending`, `in_progress`, `blocked`, `needs_approval`, `validating`, `completed`, and `failed`.
 - Continue and repair endpoints are plan-only and never apply file edits.
+- Orchestration endpoints plan, queue, validate, and update memory; clients still own diff display, approval UI, patch apply, and rollback execution.
 
 ## GET /v1/health
 
@@ -395,9 +398,77 @@ Body:
 }
 ```
 
-Supported statuses: `planned`, `running`, `waiting_for_approval`, `blocked`, `completed`, `cancelled`, `rolled_back`.
+Supported statuses: `planned`, `running`, `waiting_for_approval`, `pending`, `in_progress`, `needs_approval`, `validating`, `blocked`, `completed`, `failed`, `cancelled`, `rolled_back`.
 
 Returns `400` for unsupported statuses, `404` when the task ID does not exist, and `503` if the task update cannot be persisted to shared memory.
+
+## POST /v1/orchestration/plan
+
+Body:
+
+```json
+{
+  "workspace": "C:/path/to/project",
+  "goal": "Stabilize the VS Code packaging workflow",
+  "source_client": "vscode-extension",
+  "context_files": ["package.json", ".env"]
+}
+```
+
+Creates `.aegis/orchestration-queue.json` and `.aegis/active-orchestration.json`, then returns an orchestration dashboard envelope. The plan includes:
+
+- objective
+- task breakdown
+- affected systems
+- risk level
+- required files
+- blocked context files
+- approval gates
+- validation plan
+- rollback plan
+
+Secret-like, ignored, unreadable, and outside-workspace context files are listed under `plan.blocked_context`.
+
+## GET /v1/orchestration
+
+Query:
+
+- `workspace`: required workspace path
+
+Returns UI-ready orchestration state:
+
+- current goal
+- task list
+- active task and active step
+- pending approvals
+- validation results
+- rollback option/checkpoint metadata
+- safety summary
+
+## POST /v1/orchestration/step
+
+Body:
+
+```json
+{
+  "workspace": "C:/path/to/project",
+  "task_id": "orch-task-123",
+  "action": "validate",
+  "approval": true,
+  "summary": "Validation approved by user.",
+  "affected_files": ["src/app.ts"],
+  "validation_command": ["npm", "test"]
+}
+```
+
+Supported actions include `inspect`, `plan`, `propose`, `approve`, `apply`, `validate`, `complete`, `block`, and `fail`.
+
+Approval behavior:
+
+- `propose` moves risky tasks to `needs_approval`.
+- `apply` does not proceed past approval gates unless `approval: true` or a previous approval is recorded.
+- `validate` requires `approval: true` when a build/test/lint command gate is attached.
+- Core records approved progress and validation output but does not apply arbitrary file edits itself.
 
 ## POST /v1/validation
 

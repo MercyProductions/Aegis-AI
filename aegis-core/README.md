@@ -17,6 +17,7 @@ This first pass is intentionally small. It consolidates common backend responsib
 - Workspace scanning, language/framework detection, file index, dependency graph, and symbol index
 - Project memory files in `.aegis/`
 - Roadmap generation from local scan data
+- Autonomous task orchestration for large goals, stored as approval-gated local queues
 - Validation command detection and safe opt-in execution
 - Agent planning placeholders that propose next steps without applying edits
 - Diagnostics and local logs
@@ -29,6 +30,7 @@ This first pass is intentionally small. It consolidates common backend responsib
 
 - It does not replace the existing clients in one jump.
 - It does not auto-edit files.
+- It does not turn autonomy into uncontrolled file mutation; orchestration pauses for approval before edits and risky commands.
 - It does not send data to cloud models unless a client explicitly approves a sanitized context plan.
 - It does not store provider API keys in plaintext config files; optional provider keys must live in OS credential storage.
 - It does not implement cloud accounts, licensing, or update infrastructure.
@@ -49,6 +51,7 @@ python -m aegis_core.cli dashboard --workspace ..
 python -m aegis_core.cli tasks --workspace ..
 python -m aegis_core.cli providers --workspace ..
 python -m aegis_core.cli route --workspace .. --task-type hard_debugging
+python -m aegis_core.cli orchestrate --workspace .. --goal "Stabilize the extension packaging flow"
 ```
 
 After installing the package, the same commands are available through:
@@ -63,6 +66,7 @@ aegis dashboard --workspace <path>
 aegis tasks --workspace <path>
 aegis providers --workspace <path>
 aegis route --workspace <path> --task-type code_completion
+aegis orchestrate --workspace <path> --goal "Stabilize one workflow"
 ```
 
 Validation is conservative. `aegis validate` detects commands. Add `--run` to execute the first safe detected command.
@@ -104,6 +108,9 @@ GET  /v1/diagnostics
 POST /v1/clients/register
 GET  /v1/tasks
 POST /v1/tasks
+GET  /v1/orchestration
+POST /v1/orchestration/plan
+POST /v1/orchestration/step
 GET  /v1/ecosystem/dashboard
 ```
 
@@ -130,6 +137,18 @@ Cloud providers require all of the following before Core will call them:
 
 Core excludes secret-like, ignored, and outside-workspace files from cloud context and redacts secret-like lines before context is sent.
 
+## Autonomous Task Orchestration
+
+Core can turn a larger development goal into a local staged queue. The queue is intentionally supervised:
+
+- Each goal records an objective, affected systems, required files, risk level, validation plan, rollback plan, and approval gates.
+- Queue statuses are `pending`, `in_progress`, `blocked`, `needs_approval`, `validating`, `completed`, and `failed`.
+- Each task moves through inspect, plan, propose changes, wait for approval, apply approved changes, validate, and summarize.
+- Core records state and memory, but clients remain responsible for showing diffs/context and applying approved file edits.
+- Validation commands only run after approval when the step involves build/test/lint execution.
+
+Orchestration state is written to `.aegis/orchestration-queue.json` and `.aegis/active-orchestration.json`. Progress updates `roadmap.md`, `decisions.md`, `validation-log.md`, and `agent-history.json`.
+
 ## Memory
 
 Workspace-local memory lives under:
@@ -140,7 +159,7 @@ Workspace-local memory lives under:
 
 Core writes generated files such as `project-summary.md`, `roadmap.md`, `file-index.json`, `dependency-graph.json`, `symbol-index.json`, `validation-log.md`, and `core-log.md`.
 
-Shared ecosystem files include `clients.json` for connected client registrations, `tasks.json` for cross-client task visibility, and `scan-cache.json` for faster repeated workspace scans.
+Shared ecosystem files include `clients.json` for connected client registrations, `tasks.json` for cross-client task visibility, `orchestration-queue.json` for staged autonomous goals, and `scan-cache.json` for faster repeated workspace scans.
 
 ## Migration Direction
 

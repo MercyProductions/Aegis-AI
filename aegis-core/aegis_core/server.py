@@ -11,6 +11,8 @@ from .contracts import (
     CreateTaskRequest,
     ModelCompletionRequest,
     ModelRouteRequest,
+    OrchestrationPlanRequest,
+    OrchestrationStepRequest,
     ProviderKeyRequest,
     SettingsRequest,
     TaskStatusRequest,
@@ -23,6 +25,7 @@ from .diagnostics import CoreLogger
 from .ecosystem import dashboard_summary, diagnostics_summary, shared_memory_summary
 from .model_router import complete_with_route, delete_provider_key, provider_inventory, route_model, store_provider_key
 from .ollama import OllamaClient
+from .orchestration import advance_orchestration_step, create_orchestration_plan, orchestration_dashboard
 from .roadmap import generate_roadmap
 from .tasks import TaskStorePersistenceError, create_task, list_tasks, update_task_status
 from .validation import run_validation, validation_summary
@@ -213,6 +216,41 @@ def create_app():
     @app.get("/v1/clients")
     def v1_clients(workspace: str) -> dict[str, Any]:
         return envelope("clients.list", list_clients(workspace), workspace)
+
+    @app.post("/v1/orchestration/plan")
+    def v1_orchestration_plan(request: OrchestrationPlanRequest) -> dict[str, Any]:
+        try:
+            data = create_orchestration_plan(
+                request.workspace,
+                request.goal,
+                source_client=request.source_client,
+                context_files=request.context_files,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return envelope("orchestration.plan", data, request.workspace)
+
+    @app.get("/v1/orchestration")
+    def v1_orchestration_dashboard(workspace: str) -> dict[str, Any]:
+        return envelope("orchestration.dashboard", orchestration_dashboard(workspace), workspace)
+
+    @app.post("/v1/orchestration/step")
+    def v1_orchestration_step(request: OrchestrationStepRequest) -> dict[str, Any]:
+        try:
+            data = advance_orchestration_step(
+                request.workspace,
+                task_id=request.task_id,
+                action=request.action,
+                approval=request.approval,
+                summary=request.summary,
+                affected_files=request.affected_files,
+                validation_command=request.validation_command,
+            )
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return envelope("orchestration.step", data, request.workspace)
 
     @app.post("/v1/tasks")
     def v1_create_task(request: CreateTaskRequest) -> dict[str, Any]:

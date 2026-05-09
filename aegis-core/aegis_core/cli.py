@@ -11,6 +11,7 @@ from .config import load_config, write_default_config
 from .ecosystem import dashboard_summary, diagnostics_summary, shared_memory_summary
 from .model_router import provider_inventory, route_model
 from .ollama import OllamaClient
+from .orchestration import advance_orchestration_step, create_orchestration_plan, orchestration_dashboard
 from .roadmap import generate_roadmap
 from .tasks import TaskStorePersistenceError, create_task, list_tasks
 from .validation import run_validation, validation_summary
@@ -27,7 +28,22 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--json", action="store_true", help="Print JSON output.")
     subcommands = parser.add_subparsers(dest="command", required=True)
 
-    for name in ("health", "scan", "roadmap", "validate", "continue", "repair", "config", "dashboard", "memory", "diagnostics", "tasks", "providers", "route"):
+    for name in (
+        "health",
+        "scan",
+        "roadmap",
+        "validate",
+        "continue",
+        "repair",
+        "config",
+        "dashboard",
+        "memory",
+        "diagnostics",
+        "tasks",
+        "providers",
+        "route",
+        "orchestrate",
+    ):
         sub = subcommands.add_parser(name)
         sub.add_argument("--workspace", default=".", help="Workspace/project root.")
         if name == "validate":
@@ -43,6 +59,13 @@ def main(argv: list[str] | None = None) -> int:
             sub.add_argument("--difficulty", default=None, help="Optional difficulty label: simple, medium, or hard.")
             sub.add_argument("--allow-cloud", action="store_true", help="Allow a cloud route to be considered after visible approval.")
             sub.add_argument("--cloud-approved", action="store_true", help="Confirm the user approved sending sanitized context to cloud.")
+        if name == "orchestrate":
+            sub.add_argument("--goal", help="Create a new approval-gated orchestration goal.")
+            sub.add_argument("--source-client", default="cli", help="Client creating the orchestration goal.")
+            sub.add_argument("--step", help="Advance the active orchestration task with an action such as inspect, plan, propose, approve, apply, validate, or complete.")
+            sub.add_argument("--task-id", help="Optional orchestration task id to advance.")
+            sub.add_argument("--approval", action="store_true", help="Confirm approval for an approval-gated orchestration step.")
+            sub.add_argument("--summary", help="Optional step summary.")
 
     args = parser.parse_args(raw_args)
     args.json = args.json or json_requested
@@ -85,10 +108,23 @@ def main(argv: list[str] | None = None) -> int:
                 allow_cloud=args.allow_cloud,
                 cloud_approved=args.cloud_approved,
             )
+        elif args.command == "orchestrate":
+            if args.goal:
+                result = create_orchestration_plan(workspace, args.goal, source_client=args.source_client)
+            elif args.step:
+                result = advance_orchestration_step(
+                    workspace,
+                    task_id=args.task_id,
+                    action=args.step,
+                    approval=args.approval,
+                    summary=args.summary,
+                )
+            else:
+                result = orchestration_dashboard(workspace)
         else:
             parser.error(f"Unknown command {args.command}")
             return 2
-    except TaskStorePersistenceError as exc:
+    except (TaskStorePersistenceError, ValueError) as exc:
         print_error(str(exc), command=args.command, workspace=workspace, as_json=args.json)
         return 1
 

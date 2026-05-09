@@ -71,6 +71,7 @@ Aegis Core is the shared local runtime contract. It must stay small, stable, loc
 - Shared memory summaries and diagnostics.
 - Client registration and client listing.
 - Shared tasks, task status, and dashboard aggregation.
+- Supervised autonomous task orchestration: goal planning, local queue state, approval gates, validation state, and memory updates.
 - Validation summary/run.
 - Plan-only continue and repair flows.
 - Branding tokens shared by clients.
@@ -81,6 +82,13 @@ Hybrid routing is privacy-first:
 - Normal chat, code completion, code review, roadmap generation, and smaller fixes stay local on Ollama unless clients explicitly request a route plan that considers cloud.
 - Cloud providers require visible warnings, user approval, sanitized context metadata, and API keys in OS credential storage.
 - Core rejects secret-like, ignored, or outside-workspace files from cloud context.
+
+Autonomous orchestration is supervised by design:
+
+- Core may create and advance a staged queue, but it does not blindly edit files.
+- File edits, deletion, package installs, build/test/lint commands, and cloud context all require explicit approval gates.
+- Clients own the approval UI, diff display, patch application, and rollback execution.
+- Core records progress in `.aegis/orchestration-queue.json`, `.aegis/active-orchestration.json`, `roadmap.md`, `decisions.md`, `validation-log.md`, and `agent-history.json`.
 
 Core `/v1` responses use the shared envelope from `aegis-core/aegis_core/contracts.py`:
 
@@ -122,6 +130,9 @@ Current Core integrations:
 - `/v1/clients/register`
 - `/v1/tasks`
 - `/v1/tasks/{task_id}/status`
+- `/v1/orchestration`
+- `/v1/orchestration/plan`
+- `/v1/orchestration/step`
 
 ### Visual Studio Extension
 
@@ -194,7 +205,7 @@ Duplicate logic is now tracked in `DEPRECATION_PLAN.md`. Removal is allowed only
 
 The current daily dogfooding release candidate keeps the established runtime split:
 
-- Core owns shared `/v1` contracts for health, models, hybrid model routing, settings, workspace scan, roadmap, memory summary, diagnostics, clients, tasks, validation, and plan-only continue/repair.
+- Core owns shared `/v1` contracts for health, models, hybrid model routing, settings, workspace scan, roadmap, memory summary, diagnostics, clients, tasks, supervised orchestration, validation, and plan-only continue/repair.
 - Website `/api` owns rich product workflows, chat, generated changes, apply, checkpoint restore, Website memory CRUD, task UX, auth/session, and advanced product surfaces.
 - Desktop and Website can continue using `/api` when Core is offline.
 - VS Code and Visual Studio keep local IDE-specific apply/rollback behavior while gradually reading shared state from Core.

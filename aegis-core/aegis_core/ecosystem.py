@@ -67,7 +67,12 @@ def dashboard_summary(workspace: str | Path) -> dict[str, Any]:
     memory = shared_memory_summary(root)
     diagnostics = diagnostics_summary(root)
     validation = validation_summary(root)
-    active_tasks = [task for task in tasks if task.get("status") in {"planned", "running", "waiting_for_approval", "blocked"}]
+    active_tasks = [
+        task
+        for task in tasks
+        if task.get("status")
+        in {"planned", "running", "waiting_for_approval", "pending", "in_progress", "needs_approval", "validating", "blocked"}
+    ]
     stale_tasks = [task for task in active_tasks if _task_age_hours(task) >= 24]
     return {
         "workspace": str(root),

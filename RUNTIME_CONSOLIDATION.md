@@ -20,7 +20,7 @@ This phase does not move Website chat, apply, project-builder, Creative Studio, 
 | Memory | SQLite fix/project memory plus Website memory CRUD | `.aegis` memory summaries, decisions, known issues, logs | Core owns shared file-backed client memory. Website owns app telemetry/memory UX and should bridge Core memory for shared state. |
 | Diagnostics | Website telemetry, route health, productization, workspace health | Core/extension/validation/agent log summaries | Core owns shared diagnostics summaries. Website owns app observability dashboards. |
 | Validation | Website command runner, validation profiles, repair loop, build logs | Safe validation detection/run, validation log | Core owns shared safe validation primitives. Website owns advanced validation/repair orchestration until command semantics converge. |
-| Tasks | Website SQLite task graph, approvals, artifacts, timeline | `.aegis/tasks.json` cross-client tasks | Core owns cross-client shared task records. Website owns rich app task graph and may mirror/link tasks later. |
+| Tasks/orchestration | Website SQLite task graph, approvals, artifacts, timeline, rich autonomous engineering | `.aegis/tasks.json` cross-client tasks plus supervised `.aegis/orchestration-queue.json` goal queues | Core owns lightweight shared task records and approval-gated orchestration state. Website owns rich app task graph, artifacts, apply/checkpoint workflows, and product autonomous engineering. |
 | Client registry/dashboard | Website ecosystem/product surfaces | `/v1/clients/*`, `/v1/ecosystem/dashboard` | Core owns shared client registry and ecosystem dashboard data. |
 | Auth/UI/session | Website account/session APIs and frontend state | none | Website only. Do not move to Core. |
 | Creative/media | Creative Studio jobs/assets/providers | none | Website only until there is a non-UI shared media runtime need. |
@@ -46,6 +46,7 @@ This phase does not move Website chat, apply, project-builder, Creative Studio, 
 | Shared diagnostics | Aegis Core | Aegis Core | shared runtime |
 | Product observability | Website backend | Website backend | hold |
 | Shared task records | Aegis Core | Aegis Core | shared runtime |
+| Supervised orchestration queue | Aegis Core | Aegis Core | shared runtime |
 | Website task graph | Website backend | Website backend, possibly linked to Core tasks | adapter later |
 | Shared validation primitive | Aegis Core | Aegis Core | shared runtime |
 | Repair orchestration | Website backend | Website backend | hold |
@@ -61,7 +62,7 @@ This phase does not move Website chat, apply, project-builder, Creative Studio, 
 | Indexing | Lightweight workspace scan/index | Rich project intelligence and workspace operations | Editor/solution context and local indexes | VS Code scan fallback remains. Website/VS still native. |
 | Roadmap | Shared `.aegis/roadmap.md` generation | Autopilot planning/orchestration | IDE roadmap UX and proposal flow | VS Code roadmap fallback remains. |
 | Validation | Safe command detection/run primitive | Validation profile, repair loop, verify pipeline | IDE terminal/build validation UX | Core validation is a primitive; Website validation remains native. |
-| Tasks | Cross-client lightweight task records | SQLite task graph, artifacts, timeline, approvals | Client task UI/sync | Core task mirror/link not started for Website. |
+| Tasks/orchestration | Cross-client lightweight task records and supervised goal queue state | SQLite task graph, artifacts, timeline, approvals, apply/checkpoint flows | Client task UI/sync, approval surfaces, diff/apply UX | Core orchestration is stateful and approval-gated; clients still own file mutation UX. |
 | Rollback | Schema-only future contracts | Checkpoints/restore | IDE backups/rollback | Do not deprecate until active Core rollback exists. |
 
 ## Standard Contract Shapes
@@ -86,9 +87,9 @@ Website `/api` responses remain product-specific Pydantic response models. When 
 
 The canonical contract package is `aegis-core/aegis_core/contracts.py`. It defines:
 
-- shared request models for workspace, settings, model routing/completion, provider key status, client registration, tasks, validation, continue, and repair;
+- shared request models for workspace, settings, model routing/completion, provider key status, client registration, tasks, orchestration, validation, continue, and repair;
 - stable response data models for health, models, settings, workspace scan, roadmap, memory, diagnostics, tasks, validation, and dashboard;
-- experimental response data models for hybrid model providers/routes/completions and agent continue/repair;
+- experimental response data models for hybrid model providers/routes/completions, supervised orchestration, and agent continue/repair;
 - schema-only experimental patch proposal and rollback models for future migration.
 
 Compatibility rules:
@@ -110,7 +111,9 @@ Shared request bodies should follow these names:
 | Provider key | `api_key` | Stored only in OS credential storage; never written to workspace config. |
 | Client registration | `workspace`, `client_id`, `client_type`, `name`, optional `version`, `capabilities` | Used by Desktop, VS Code, Visual Studio, Website later. |
 | Task create | `workspace`, `title`, optional `kind`, `source_client`, `request`, `metadata` | Cross-client task record only. |
-| Task status | `workspace`, `status`, optional `summary` | Core statuses are `planned`, `running`, `waiting_for_approval`, `blocked`, `completed`, `cancelled`, `rolled_back`. |
+| Task status | `workspace`, `status`, optional `summary` | Core statuses are `planned`, `running`, `waiting_for_approval`, `pending`, `in_progress`, `needs_approval`, `validating`, `blocked`, `completed`, `failed`, `cancelled`, `rolled_back`. |
+| Orchestration plan | `workspace`, `goal`, optional `source_client`, optional `context_files` | Creates a supervised local queue; no file edits are applied. |
+| Orchestration step | `workspace`, optional `task_id`, `action`, optional `approval`, `summary`, `affected_files`, `validation_command` | File edits, build/test/lint commands, package installs, and cloud context remain approval-gated. |
 | Validation | `workspace`, optional `run`, optional `command` | Core executes only safe validation commands. |
 | Continue/repair | `workspace`, optional `request` for continue | Plan-only; no file edits. |
 

@@ -40,6 +40,9 @@ Canonical schemas: `aegis-core/aegis_core/contracts.py`
 | `POST /v1/tasks` | `task.created` | stable | Not direct today | Future task mirror candidate | Direct task create | Not direct today |
 | `GET /v1/tasks` | `tasks.list` | stable | Via dashboard active/recent task counts | Not direct today | Not direct today | Not direct today |
 | `POST /v1/tasks/{task_id}/status` | `task.updated` | stable | Not direct today | Future task mirror candidate | Direct task status update | Not direct today |
+| `POST /v1/orchestration/plan` | `orchestration.plan` | experimental | Future supervised-goal UI candidate | Future bridge candidate, keep `/api` workflows intact | Future supervised agent-mode candidate | Future supervised agent-mode candidate |
+| `GET /v1/orchestration` | `orchestration.dashboard` | experimental | Future dashboard panel candidate | Future `/api/core-runtime` summary candidate | Future status panel candidate | Future tool window status candidate |
+| `POST /v1/orchestration/step` | `orchestration.step` | experimental | Future approval UI candidate | Future bridge candidate only after frontend approval UI exists | Future approval step candidate | Future approval step candidate |
 | `POST /v1/validation` | `validation` | stable | Via dashboard validation commands | Future validation bridge candidate | Direct validation run, local terminal fallback on Core connection failure | Not direct today |
 | `POST /v1/agent/continue` | `agent.continue.plan` | experimental | Not direct today | Future plan-only bridge candidate | Not direct today | Not direct today |
 | `POST /v1/agent/repair` | `agent.repair.plan` | experimental | Not direct today | Future plan-only bridge candidate | Not direct today | Not direct today |
@@ -109,6 +112,7 @@ Compatibility expectation:
 - Registration failures are logged and skipped rather than blocking IDE workflows.
 - Core health/models/settings/scan/roadmap/memory/diagnostics/validation failures degrade to existing VS Code local or direct Ollama fallbacks where available.
 - Hybrid model router endpoints are not consumed yet; when adopted, VS Code must show Core `context.included_files`, `context.blocked_files`, warnings, and require explicit approval before cloud fallback.
+- Orchestration endpoints are not consumed yet; when adopted, VS Code must keep diff preview/apply/rollback local to the extension and use Core only for staged queue state, approval metadata, validation summaries, and memory updates.
 - Proposal, apply, rollback, and workspace-specific UX remain extension-owned.
 
 ### Visual Studio Extension

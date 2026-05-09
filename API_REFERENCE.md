@@ -150,6 +150,9 @@ Endpoint families:
 | `POST /v1/tasks` | `task.created` | stable | Shared task creation |
 | `GET /v1/tasks` | `tasks.list` | stable | Shared task list |
 | `POST /v1/tasks/{task_id}/status` | `task.updated` | stable | Shared task status update |
+| `POST /v1/orchestration/plan` | `orchestration.plan` | experimental | Create supervised autonomous goal plan and local queue |
+| `GET /v1/orchestration` | `orchestration.dashboard` | experimental | Current goal, task list, active step, approvals, validation, rollback state |
+| `POST /v1/orchestration/step` | `orchestration.step` | experimental | Advance an approval-gated orchestration step |
 | `POST /v1/validation` | `validation` | stable | Shared validation summary/run |
 | `POST /v1/agent/continue` | `agent.continue.plan` | experimental | Plan-only continue from roadmap |
 | `POST /v1/agent/repair` | `agent.repair.plan` | experimental | Plan-only repair from validation log |
@@ -163,6 +166,13 @@ Hybrid model routing:
 - Optional providers are OpenAI, Anthropic, Google, OpenRouter, and local LM Studio.
 - Cloud routes require client-visible warnings, explicit approval, sanitized context metadata, and provider keys stored in OS credential storage.
 - Secret-like, ignored, and outside-workspace files are excluded from cloud context.
+
+Autonomous task orchestration:
+
+- Core stores staged goal queues in `.aegis/orchestration-queue.json`.
+- Queue statuses are `pending`, `in_progress`, `blocked`, `needs_approval`, `validating`, `completed`, and `failed`.
+- File edits, deletes, package installs, validation/build commands, and cloud context require explicit approval gates.
+- Core updates roadmap, decisions, validation log, and agent history, while clients still own diff display, patch apply, and rollback execution.
 
 Release candidate notes:
 
