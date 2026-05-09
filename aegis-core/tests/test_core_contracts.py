@@ -82,6 +82,20 @@ def test_workspace_scan_handles_malformed_package_dependency_shapes(tmp_path: Pa
     assert "Unknown" in result["frameworks"]
 
 
+def test_workspace_scan_detects_frameworks_from_bom_package_json(tmp_path: Path) -> None:
+    workspace = tmp_path / "bom-package-project"
+    workspace.mkdir()
+    (workspace / "package.json").write_text(
+        "\ufeff" + json.dumps({"dependencies": {"react": "^19.0.0", "vite": "^7.0.0"}}),
+        encoding="utf-8",
+    )
+
+    result = WorkspaceScanner(workspace).scan(persist=False)
+
+    assert "React" in result["frameworks"]
+    assert "Vite" in result["frameworks"]
+
+
 def test_workspace_scan_recent_files_survives_stat_race(tmp_path: Path, monkeypatch) -> None:
     workspace = tmp_path / "stat-race-project"
     workspace.mkdir()

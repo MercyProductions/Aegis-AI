@@ -217,7 +217,7 @@ class WorkspaceScanner:
         package_json = self.workspace / "package.json"
         if package_json.exists() and is_safe_to_read(package_json, self.workspace):
             try:
-                package = json.loads(package_json.read_text(encoding="utf-8"))
+                package = json.loads(package_json.read_text(encoding="utf-8-sig"))
                 dependencies = package.get("dependencies", {}) if isinstance(package, dict) else {}
                 dev_dependencies = package.get("devDependencies", {}) if isinstance(package, dict) else {}
                 deps = {
