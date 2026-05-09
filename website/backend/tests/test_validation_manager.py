@@ -373,6 +373,24 @@ class ValidationManagerTests(unittest.TestCase):
         self.assertEqual(pipeline[0].command, "python build.py")
         self.assertNotIn("cmake -S . -B build", [step.command for step in pipeline])
 
+    def test_powershell_build_runner_takes_precedence_for_native_projects(self) -> None:
+        (self.workspace / "CMakeLists.txt").write_text(
+            "cmake_minimum_required(VERSION 3.20)\nproject(native_tool)\n",
+            encoding="utf-8",
+        )
+        (self.workspace / "NativeTool.vcxproj").write_text("<Project></Project>", encoding="utf-8")
+        (self.workspace / "build.ps1").write_text("Write-Host 'build'\n", encoding="utf-8")
+
+        suggestions = self.manager.discover_commands(self.workspace)
+        pipeline = self.manager.verification_plan(self.workspace)
+
+        expected = "powershell -NoProfile -ExecutionPolicy Bypass -File ./build.ps1"
+        self.assertEqual(suggestions[0].command, expected)
+        self.assertEqual(suggestions[0].category, "build")
+        self.assertEqual(pipeline[0].command, expected)
+        self.assertNotIn("msbuild NativeTool.vcxproj /m /p:Configuration=Debug", [step.command for step in pipeline])
+        self.assertNotIn("cmake -S . -B build", [step.command for step in pipeline])
+
     def test_discovers_static_site_build_runner(self) -> None:
         (self.workspace / "index.html").write_text("<main></main>\n", encoding="utf-8")
         (self.workspace / "styles.css").write_text("@media (max-width: 600px) {}\n", encoding="utf-8")

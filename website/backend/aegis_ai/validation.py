@@ -21,6 +21,7 @@ class ValidationManager:
     PROFILE_PATH = ".aegis/validation_profile.json"
     PROJECT_MANIFEST_PATH = ".aegis/project.json"
     COMMAND_HISTORY_PATH = ".aegis/command_history.json"
+    POWERSHELL_BUILD_COMMAND = "powershell -NoProfile -ExecutionPolicy Bypass -File ./build.ps1"
 
     def profile_snapshot(self, workspace_root: Path) -> ValidationProfileResponse:
         profile = self.load_profile(workspace_root)
@@ -122,8 +123,10 @@ class ValidationManager:
         if history_candidate is not None:
             candidates.append(history_candidate)
 
-        has_build_runner = self._is_file(workspace_root / "build.py")
-        if has_build_runner:
+        has_python_build_runner = self._is_file(workspace_root / "build.py")
+        has_powershell_build_runner = self._is_file(workspace_root / "build.ps1")
+        has_build_runner = has_python_build_runner or has_powershell_build_runner
+        if has_python_build_runner:
             candidates.append(
                 ValidationCandidate(
                     "python build.py",
@@ -131,6 +134,16 @@ class ValidationManager:
                     "build",
                     "Runs the workspace-provided build and smoke-test script.",
                     132,
+                )
+            )
+        if has_powershell_build_runner:
+            candidates.append(
+                ValidationCandidate(
+                    self.POWERSHELL_BUILD_COMMAND,
+                    "PowerShell build runner",
+                    "build",
+                    "Runs the workspace-provided PowerShell build and packaging guard script.",
+                    131,
                 )
             )
         if self._is_file(workspace_root / "build.js"):
@@ -169,7 +182,7 @@ class ValidationManager:
                     ValidationCandidate("dotnet build", "dotnet build", "build", "Builds the .NET workspace.", 90),
                 ]
             )
-        else:
+        elif not has_build_runner:
             native_project = self._first_existing(workspace_root.glob("*.vcxproj"))
             solution = self._first_existing(workspace_root.glob("*.sln"))
             if native_project is not None:

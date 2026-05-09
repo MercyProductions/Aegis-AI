@@ -365,6 +365,25 @@ Validation completed:
 - Desktop root `build.ps1`: pass.
 - Repository whitespace check: pass.
 
+## 2026-05-09 - Website PowerShell Build Validation Planning
+
+Focus:
+
+- Align Website validation planning with Core for Desktop and Visual Studio extension workspaces.
+- Prefer project-owned PowerShell build guard scripts over lower-level native build fallbacks.
+
+Actions:
+
+- Added Website validation discovery for root `build.ps1` guard scripts.
+- Treated PowerShell build scripts as build runners so native CMake/MSBuild fallback steps do not duplicate or bypass the script guardrails.
+- Added a regression for native workspaces with both `build.ps1` and `CMakeLists.txt`.
+
+Validation completed:
+
+- Website validation manager regression suite: pass.
+- Aegis Core contract test suite: pass.
+- Repository whitespace check: pass.
+
 ## 2026-05-09 - Completion Selected Model Guard
 
 Focus:
