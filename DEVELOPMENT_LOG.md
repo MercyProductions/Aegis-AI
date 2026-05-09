@@ -1153,3 +1153,22 @@ Validation completed:
 - Core quality focused tests: pass, 7 tests.
 - Aegis Core contract tests: pass, 102 tests.
 - Git diff whitespace check: pass.
+
+## 2026-05-09 - Core Knowledge Graph Persistence Failure Handling
+
+Focus:
+
+- Avoid false successful knowledge graph recordings when graph or summary artifacts cannot be written.
+- Keep saved project-intelligence relationships trustworthy for later queries and planning.
+
+Actions:
+
+- Added `KnowledgePersistenceError` for failed graph and summary writes.
+- Verified persisted `knowledge-graph.json` and `knowledge-summary.md` after recording.
+- Updated API, CLI, troubleshooting, and regression coverage for damaged knowledge artifact paths.
+
+Validation completed:
+
+- Core knowledge graph focused tests: pass, 5 tests.
+- Aegis Core contract tests: pass, 104 tests.
+- Git diff whitespace check: pass.

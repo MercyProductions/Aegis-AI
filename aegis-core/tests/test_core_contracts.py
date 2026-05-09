@@ -809,6 +809,35 @@ def test_knowledge_graph_links_files_apis_docs_and_validation(tmp_path: Path) ->
     assert (workspace / ".aegis" / "knowledge-summary.md").is_file()
 
 
+def test_knowledge_graph_reports_graph_persistence_failure(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    aegis_dir = workspace / ".aegis"
+    aegis_dir.mkdir()
+    (aegis_dir / "knowledge-graph.json").mkdir()
+    client = TestClient(create_app())
+
+    response = client.post("/v1/knowledge/graph", json={"workspace": str(workspace)})
+
+    assert response.status_code == 503
+    assert "Could not persist knowledge graph" in response.json()["detail"]
+    assert not (aegis_dir / "knowledge-graph.json").is_file()
+    assert not (aegis_dir / "knowledge-summary.md").exists()
+
+
+def test_knowledge_graph_reports_summary_persistence_failure(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    aegis_dir = workspace / ".aegis"
+    aegis_dir.mkdir()
+    (aegis_dir / "knowledge-summary.md").mkdir()
+    client = TestClient(create_app())
+
+    response = client.post("/v1/knowledge/graph", json={"workspace": str(workspace)})
+
+    assert response.status_code == 503
+    assert "Could not persist knowledge graph" in response.json()["detail"]
+    assert not (aegis_dir / "knowledge-graph.json").exists()
+
+
 def test_knowledge_graph_get_is_read_only(tmp_path: Path) -> None:
     workspace = tmp_path / "knowledge-readonly"
     workspace.mkdir()

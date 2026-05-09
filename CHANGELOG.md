@@ -30,6 +30,7 @@
 - Hardened Core orchestration queue persistence so damaged queue or active-plan paths return explicit failures instead of silently losing staged work.
 - Hardened Core provider credential-store errors so backend read/write/delete failures redact echoed keys, tokens, and authorization details before reaching API clients.
 - Hardened Core quality snapshots so damaged health-history paths return explicit failures instead of reporting unsaved health trends.
+- Hardened Core knowledge graph persistence so damaged graph or summary paths return explicit failures instead of reporting unsaved project intelligence.
 - Added experimental Aegis Core autonomous task orchestration with supervised goal planning, local queue state, approval gates, validation state, rollback metadata, and memory updates without uncontrolled file editing.
 - Added experimental Aegis Core multi-agent specialization with Planner, Architect, Coder, Reviewer, Tester, Repair, and Documentation roles assigned to orchestration tasks.
 - Added experimental Aegis Core workflow automation with safe scheduled/triggered maintenance jobs, `/v1/jobs`, `aegis jobs`, generated project health reports, and `.aegis/jobs-log.md` history while preserving approval gates for risky actions.

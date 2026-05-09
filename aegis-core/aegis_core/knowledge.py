@@ -48,6 +48,10 @@ COMMON_WORDS = {
 }
 
 
+class KnowledgePersistenceError(RuntimeError):
+    """Raised when persisted knowledge graph artifacts cannot be written."""
+
+
 def knowledge_graph(
     workspace: str | Path,
     *,
@@ -62,8 +66,7 @@ def knowledge_graph(
     graph["graph_path"] = str(memory.root / KNOWLEDGE_GRAPH_FILE)
     graph["summary_path"] = str(memory.root / KNOWLEDGE_SUMMARY_FILE)
     if persist:
-        memory.write_json(KNOWLEDGE_GRAPH_FILE, graph)
-        memory.write_generated_markdown(KNOWLEDGE_SUMMARY_FILE, "Knowledge Summary", _render_knowledge_summary(graph))
+        _persist_knowledge_graph(memory, graph)
     return graph
 
 
@@ -533,6 +536,39 @@ def _related_by_type(
 def _load_persisted_graph(root: Path) -> dict[str, Any] | None:
     data = _read_json(ProjectMemory(root).root / KNOWLEDGE_GRAPH_FILE, default=None)
     return data if isinstance(data, dict) and isinstance(data.get("nodes"), list) and isinstance(data.get("edges"), list) else None
+
+
+def _persist_knowledge_graph(memory: ProjectMemory, graph: dict[str, Any]) -> None:
+    graph_path = memory.root / KNOWLEDGE_GRAPH_FILE
+    summary_path = memory.root / KNOWLEDGE_SUMMARY_FILE
+    _ensure_output_target(graph_path)
+    _ensure_output_target(summary_path)
+    memory.write_json(KNOWLEDGE_GRAPH_FILE, graph)
+    persisted = _load_persisted_graph(memory.workspace)
+    if persisted != graph:
+        raise KnowledgePersistenceError(
+            f"Could not persist knowledge graph at {graph_path}. "
+            "Check that the workspace .aegis path is a writable directory."
+        )
+    summary_body = _render_knowledge_summary(graph)
+    memory.write_generated_markdown(KNOWLEDGE_SUMMARY_FILE, "Knowledge Summary", summary_body)
+    try:
+        summary_text = summary_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise KnowledgePersistenceError(f"Could not persist knowledge summary at {summary_path}.") from exc
+    if summary_body.rstrip() not in summary_text:
+        raise KnowledgePersistenceError(f"Could not persist knowledge summary at {summary_path}.")
+
+
+def _ensure_output_target(path: Path) -> None:
+    if path.parent.exists() and not path.parent.is_dir():
+        raise KnowledgePersistenceError(
+            f"Could not persist knowledge graph because {path.parent} is not a directory."
+        )
+    if path.exists() and not path.is_file():
+        raise KnowledgePersistenceError(
+            f"Could not persist knowledge graph because {path} is not a writable file."
+        )
 
 
 def _load_tasks(memory: ProjectMemory) -> list[dict[str, Any]]:

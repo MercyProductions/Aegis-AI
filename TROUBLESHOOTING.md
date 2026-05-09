@@ -30,6 +30,8 @@ If orchestration planning or step advancement reports `Could not persist orchest
 
 If recording quality snapshots reports `Could not persist quality health history`, repair `.aegis/health-history.json` so it is a writable JSON file before relying on health trends, daily reports, or weekly quality summaries.
 
+If recording the knowledge graph reports `Could not persist knowledge graph` or `Could not persist knowledge summary`, repair `.aegis/knowledge-graph.json` and `.aegis/knowledge-summary.md` so they are writable files before relying on saved dependency and architecture relationships.
+
 ## Ollama
 
 Default local endpoint:
