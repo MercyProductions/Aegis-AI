@@ -172,3 +172,23 @@ Validation completed:
 - VS Code extension lint: pass.
 - VS Code VSIX package: pass.
 - VSIX archive inspection: pass; the package contains only `extension.vsixmanifest`, `[Content_Types].xml`, readme, package metadata, license, `extension.js`, and media icons.
+
+## 2026-05-09 - VS Code Release Script Hardening
+
+Focus:
+
+- Make the VS Code package and local install scripts reliable from Windows workspaces with spaces or shell metacharacters in the path.
+- Keep release automation small and testable.
+
+Actions:
+
+- Replaced shell-string package/install calls with a shared argument-array command runner.
+- Passed relative VSIX paths to `vsce` and `code` so the full repository path is not reparsed through nested Windows command layers.
+- Added a package lint guard that rejects `execSync` shell command strings in the release scripts.
+
+Validation completed:
+
+- VS Code extension lint: pass.
+- VS Code package script: pass.
+- VS Code local install script: pass.
+- VSIX archive inspection: pass; the package still contains only runtime files and package metadata.

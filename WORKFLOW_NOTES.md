@@ -58,6 +58,21 @@ Fixes applied:
 - Promoted `WORKFLOW_NOTES.md` into the long-term refinement ledger.
 - Updated the follow-up automation to perform weekly refinement reviews focused on repeated friction and small safe fixes.
 
+### 2026-05-09 - VS Code Release Script Hardening
+
+Context:
+- While validating the extension release path from this repository, VSIX packaging failed because the workspace path contains spaces and `&`.
+- The package/install scripts were building shell command strings, which let Windows command parsing split the release path before `vsce` received it.
+
+What worked:
+- The existing package lint caught release metadata/content hygiene before packaging.
+- After the fix, package creation and local VS Code installation both completed from the current workspace path.
+
+Fixes applied:
+- Added a shared command runner for VS Code release scripts.
+- Passed relative release paths to `vsce` and `code`.
+- Added a lint guard against `execSync` shell command strings in the release scripts.
+
 ### 2026-05-08 - Product Utilization Kickoff
 
 Context:
@@ -95,6 +110,7 @@ Fixes applied:
 | 2026-05-09 | VS Code packaging | VSIX archive included repository-only dogfooding notes and local detected model inventory. | Medium | Excluded those files from packaging and added a lint guard. |
 | 2026-05-09 | Extension release metadata | VS Code repository metadata used a local `file:` URL and Visual Studio MoreInfo used a localhost placeholder. | Medium | Pointed both at GitHub and added package/build guards. |
 | 2026-05-09 | VS Code package contents | VSIX archive included the source-tree `install.ps1` helper, which is only useful before packaging. | Low | Excluded it from the VSIX and added a lint guard. |
+| 2026-05-09 | VS Code release scripts | Package/install commands broke when the workspace path contained spaces and `&`. | Medium | Replaced shell command strings with a shared command runner and relative VSIX args. |
 
 ## Daily Workflow Checklist
 

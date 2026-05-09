@@ -1,11 +1,14 @@
 const cp = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const { runCommand } = require('./run-command');
 
 const root = path.resolve(__dirname, '..');
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
 const releaseDir = path.join(root, 'release');
-const outFile = path.join(releaseDir, `${manifest.name}-${manifest.version}.vsix`);
+const outName = `${manifest.name}-${manifest.version}.vsix`;
+const outFile = path.join(releaseDir, outName);
+const outArg = path.join('release', outName);
 
 cp.execFileSync(process.execPath, [path.join(root, 'scripts', 'lint-package.js')], {
   cwd: root,
@@ -20,11 +23,6 @@ for (const file of fs.readdirSync(releaseDir)) {
   }
 }
 
-cp.execSync(`npx --yes @vscode/vsce package --no-dependencies --out ${JSON.stringify(outFile)}`, {
-  cwd: root,
-  stdio: 'inherit',
-  windowsHide: true,
-  shell: true
-});
+runCommand('npx', ['--yes', '@vscode/vsce', 'package', '--no-dependencies', '--out', outArg], { cwd: root });
 
 console.log(`Packaged ${outFile}`);

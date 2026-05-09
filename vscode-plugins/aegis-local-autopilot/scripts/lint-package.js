@@ -76,6 +76,13 @@ for (const file of ['extension.js', 'README.md', 'media/aegis.svg', '.vscodeigno
   }
 }
 
+for (const scriptFile of ['scripts/package-release.js', 'scripts/install-local.js', 'scripts/run-command.js']) {
+  const scriptText = fs.readFileSync(path.join(root, scriptFile), 'utf8');
+  if (/\bexecSync\s*\(/.test(scriptText)) {
+    fail(`${scriptFile} must avoid shell command strings; use argument-array process execution.`);
+  }
+}
+
 const ignoreText = fs.readFileSync(path.join(root, '.vscodeignore'), 'utf8');
 for (const privateFile of ['.gitignore', 'DETECTED_MODELS.md', 'DOGFOODING_NOTES.md', 'install.ps1']) {
   const escaped = privateFile.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
