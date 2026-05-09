@@ -905,6 +905,17 @@ def test_validation_runner_detects_default_command_once(tmp_path: Path, monkeypa
     assert calls == 1
 
 
+def test_validation_runner_resolves_windows_package_manager_shims(monkeypatch) -> None:
+    monkeypatch.setattr(validation_module.os, "name", "nt", raising=False)
+    monkeypatch.setattr(
+        validation_module.shutil,
+        "which",
+        lambda name: "C:/tools/npm.cmd" if str(name).lower() in {"npm", "npm.cmd"} else None,
+    )
+
+    assert validation_module._resolve_validation_command(["npm", "test"]) == ["C:/tools/npm.cmd", "test"]
+
+
 def test_validation_runner_handles_safe_command_failures(tmp_path: Path) -> None:
     workspace = tmp_path / "pytest-project"
     workspace.mkdir()

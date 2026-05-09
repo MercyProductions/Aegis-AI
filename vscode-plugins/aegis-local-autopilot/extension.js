@@ -25,6 +25,8 @@ let lastFailedCommand = '';
 let activeCoreTaskId = '';
 const snapshotCache = new Map();
 
+const AEGIS_CORE_API_VERSION = 'v1';
+const AEGIS_CORE_CONTRACT_VERSION = '2026.05.09';
 const MAX_FILE_CHARS = 16000;
 const MAX_CONTEXT_CHARS = 62000;
 const MAX_PROJECT_SCAN_FILES = 900;
@@ -303,14 +305,16 @@ class LocalAutopilotViewProvider {
     };
 
     try {
-      state.models = await getOllamaModels();
-      state.status = `Connected to Ollama with ${state.models.length} models.`;
+      const target = await resolveWorkspaceTarget(undefined, { silent: true });
+      state.models = await getOllamaModels({ target, reportFallback: false });
+      const source = state.models.some((model) => model.source === 'aegis-core') ? 'Aegis Core' : 'Ollama';
+      state.status = `Connected to ${source} model inventory with ${state.models.length} model(s).`;
       if (!latestErrorInfo.message && healthCheckState.overall !== 'fail' && agentState.status === 'Idle') {
-        updateStatusBar('Ready', `Aegis connected to Ollama with ${state.models.length} model(s).`);
+        updateStatusBar('Ready', `Aegis connected to ${source} with ${state.models.length} model(s).`);
       }
     } catch (error) {
-      state.status = `Ollama scan failed: ${error.message}`;
-      updateStatusBar('Ollama Offline', state.status);
+      state.status = `Model inventory scan failed: ${error.message}`;
+      updateStatusBar('Models Offline', state.status);
     }
 
     try {
@@ -341,9 +345,11 @@ async function openPanel() {
 }
 
 async function scanModels(showPicker) {
-  const models = await getOllamaModels();
+  const target = await resolveWorkspaceTarget(undefined, { silent: true });
+  const models = await getOllamaModels({ target, reportFallback: true });
   const names = models.map((model) => model.name || model.model).filter(Boolean);
-  output.appendLine(`Detected ${names.length} Ollama models:`);
+  const source = models.some((model) => model.source === 'aegis-core') ? 'Aegis Core' : 'Ollama';
+  output.appendLine(`Detected ${names.length} local model(s) via ${source}:`);
   names.forEach((name) => output.appendLine(`- ${name}`));
   output.show(true);
   panelProvider && panelProvider.refresh();
@@ -376,11 +382,12 @@ async function runFirstRunSetup(options = {}) {
   let modelNames = [];
   let ollamaStatus = 'Ollama not checked yet.';
   try {
-    const models = await getOllamaModels();
+    const models = await getOllamaModels({ target, reportFallback: true });
     modelNames = models.map((model) => model.name || model.model).filter(Boolean);
-    ollamaStatus = `Ollama reachable. Found ${modelNames.length} model(s).`;
+    const source = models.some((model) => model.source === 'aegis-core') ? 'Aegis Core' : 'Ollama';
+    ollamaStatus = `${source} model inventory reachable. Found ${modelNames.length} model(s).`;
   } catch (error) {
-    ollamaStatus = `Ollama check failed: ${error.message}`;
+    ollamaStatus = `Model inventory check failed: ${error.message}`;
   }
 
   if (modelNames.length) {
@@ -493,9 +500,49 @@ async function runHealthCheck(options = {}) {
 
     if (target) {
       try {
-        await getAegisCoreHealth(target);
-        addCheck('Aegis Core is reachable', 'pass', `Shared runtime responded at ${config.coreUrl}.`);
+        const healthEnvelope = await getAegisCoreHealth(target);
+        addCheck(
+          'Aegis Core is reachable',
+          'pass',
+          `Shared runtime responded at ${config.coreUrl} with ${formatCoreContract(healthEnvelope)}.`
+        );
         await registerAegisCoreClient(target);
+
+        const coreChecks = [
+          {
+            name: 'Aegis Core models contract',
+            run: () => getAegisCoreModels(target),
+            detail: (result) => `Core reported ${result.models.length} installed model(s); selected ${result.selectedModel || 'none'}.`
+          },
+          {
+            name: 'Aegis Core settings contract',
+            run: () => getAegisCoreSettings(target),
+            detail: (envelope) => `Core settings available with ${formatCoreContract(envelope)}.`
+          },
+          {
+            name: 'Aegis Core memory contract',
+            run: () => getAegisCoreMemory(target),
+            detail: (envelope) => `${Object.keys(coreEnvelopeData(envelope).entries || {}).length} shared memory entries visible.`
+          },
+          {
+            name: 'Aegis Core diagnostics contract',
+            run: () => getAegisCoreDiagnostics(target),
+            detail: (envelope) => `${Object.keys(coreEnvelopeData(envelope).logs || {}).length} shared diagnostic log(s) visible.`
+          },
+          {
+            name: 'Aegis Core validation contract',
+            run: () => getAegisCoreValidationSummary(target),
+            detail: (envelope) => `${(coreEnvelopeData(envelope).commands || []).length} validation command(s) detected by Core.`
+          }
+        ];
+        for (const item of coreChecks) {
+          try {
+            const result = await item.run();
+            addCheck(item.name, 'pass', item.detail(result));
+          } catch (error) {
+            addCheck(item.name, 'warn', error.message, 'VS Code will use the existing local fallback for this workflow.');
+          }
+        }
       } catch (error) {
         addCheck(
           'Aegis Core is reachable',
@@ -508,10 +555,11 @@ async function runHealthCheck(options = {}) {
 
     try {
       const modelStart = Date.now();
-      models = await getOllamaModels();
-      addCheck('Ollama is reachable', 'pass', `Found ${models.length} installed model(s) in ${Date.now() - modelStart}ms.`);
+      models = await getOllamaModels({ target, reportFallback: true });
+      const source = models.some((model) => model.source === 'aegis-core') ? 'Aegis Core' : 'Ollama';
+      addCheck('Model inventory is reachable', 'pass', `${source} reported ${models.length} installed model(s) in ${Date.now() - modelStart}ms.`);
     } catch (error) {
-      addCheck('Ollama is reachable', 'fail', error.message, 'Start Ollama and confirm it is listening at the configured Ollama URL.');
+      addCheck('Model inventory is reachable', 'fail', error.message, 'Start Aegis Core and Ollama, or confirm Ollama is listening at the configured URL.');
     }
 
     const modelNames = models.map((model) => model.name || model.model).filter(Boolean);
@@ -613,7 +661,8 @@ async function runModelDiagnostics(options = {}) {
   };
 
   try {
-    const models = await getOllamaModels();
+    const target = await resolveWorkspaceTarget(undefined, { silent: true });
+    const models = await getOllamaModels({ target, reportFallback: true });
     diagnostics.installedModels = models.map((model) => model.name || model.model).filter(Boolean);
     diagnostics.primary = await testSingleModel(config.chatModel);
     if (options.includeFallbacks) {
@@ -878,6 +927,13 @@ async function generateProjectRoadmap(resource) {
   }
 
   await ensureWorkspaceMemory(target);
+  const coreRoadmap = await tryGenerateAegisCoreRoadmap(target);
+  if (coreRoadmap) {
+    await openMemoryDocument(target, 'roadmap.md');
+    panelProvider && panelProvider.post({ command: 'chatResult', text: coreRoadmap.markdown || 'Aegis Core updated the project roadmap.' });
+    return;
+  }
+
   const snapshot = await getProjectSnapshot(target);
   await updateWorkspaceMemoryFromSnapshot(target, snapshot);
   const memoryContext = await readWorkspaceMemoryContext(target);
@@ -1839,6 +1895,16 @@ async function collectWorkspaceContext(objective, target) {
 
 async function buildProjectSnapshot(target, options = {}) {
   const root = target.root;
+  let coreScan = null;
+  let coreScanWarning = '';
+  if (!options.localOnly) {
+    try {
+      coreScan = await getAegisCoreWorkspaceScan(target);
+    } catch (error) {
+      coreScanWarning = error.message;
+      output && output.appendLine(`Aegis Core workspace scan unavailable; using VS Code local scan fallback: ${error.message}`);
+    }
+  }
   const entries = await scanProjectEntries(root, {
     maxFiles: options.fast ? 220 : MAX_PROJECT_SCAN_FILES,
     maxDepth: options.fast ? 4 : MAX_PROJECT_SCAN_DEPTH
@@ -1884,27 +1950,36 @@ async function buildProjectSnapshot(target, options = {}) {
   const commandInfo = inferProjectCommands(importantContents, files);
   const todoChunks = await collectTodoContext(Math.min(getConfig().maxContextFiles, options.fast ? 5 : 12), getConfig().excludeGlob, root);
   const diagnostics = collectDiagnostics(target);
+  const coreData = coreScan ? coreEnvelopeData(coreScan) : null;
+  const coreLanguageNames = coreData && coreData.languages && typeof coreData.languages === 'object'
+    ? Object.keys(coreData.languages)
+    : [];
 
   return {
     target,
     generatedAt: new Date().toISOString(),
+    coreScan,
+    coreScanWarning,
     files,
     directories,
-    fileCount: files.length,
+    fileCount: coreData && Number.isFinite(Number(coreData.file_count)) ? Number(coreData.file_count) : files.length,
     directoryCount: directories.length,
     topLevel,
     fileTypes,
-    importantFiles: importantFiles.map((file) => file.relative),
-    testFiles,
+    importantFiles: mergeUniqueStrings(
+      importantFiles.map((file) => file.relative),
+      coreData ? [].concat(coreData.build_files || [], coreData.readmes || []) : []
+    ),
+    testFiles: mergeUniqueStrings(testFiles, coreData ? coreData.test_files || [] : []),
     configFiles,
-    entryPoints,
-    recentFiles,
+    entryPoints: mergeUniqueStrings(entryPoints, coreData ? coreData.entry_points || [] : []),
+    recentFiles: mergeRecentFiles(recentFiles, coreData ? coreData.recent_files || [] : []),
     importantContents,
-    languages: languageInfo.languages,
-    frameworks: languageInfo.frameworks,
+    languages: mergeUniqueStrings(languageInfo.languages, coreLanguageNames),
+    frameworks: mergeUniqueStrings(languageInfo.frameworks, coreData ? coreData.frameworks || [] : []),
     packageManagers: languageInfo.packageManagers,
     commands: commandInfo,
-    todoChunks,
+    todoChunks: mergeUniqueStrings(todoChunks, coreTodoChunks(coreData)),
     diagnostics
   };
 }
@@ -1920,6 +1995,56 @@ async function getProjectSnapshot(target, options = {}) {
   const snapshot = await buildProjectSnapshot(target, options);
   snapshotCache.set(key, { at: Date.now(), snapshot });
   return snapshot;
+}
+
+function mergeUniqueStrings(...groups) {
+  const seen = new Set();
+  const merged = [];
+  for (const group of groups) {
+    if (!Array.isArray(group)) {
+      continue;
+    }
+    for (const value of group) {
+      const text = String(value || '').trim();
+      const key = text.toLowerCase();
+      if (text && !seen.has(key)) {
+        seen.add(key);
+        merged.push(text);
+      }
+    }
+  }
+  return merged;
+}
+
+function mergeRecentFiles(localRecent, coreRecent) {
+  const normalizedCore = Array.isArray(coreRecent)
+    ? coreRecent.map((value) => ({
+        path: String(value || ''),
+        modified: '',
+        size: 0
+      }))
+    : [];
+  const byPath = new Map();
+  for (const item of [...(localRecent || []), ...normalizedCore]) {
+    const key = String(item.path || '').replace(/\\/g, '/').toLowerCase();
+    if (key && !byPath.has(key)) {
+      byPath.set(key, item);
+    }
+  }
+  return Array.from(byPath.values()).slice(0, 80);
+}
+
+function coreTodoChunks(coreData) {
+  const todos = coreData && Array.isArray(coreData.todo_comments) ? coreData.todo_comments : [];
+  return todos
+    .filter((item) => item && typeof item === 'object')
+    .map((item) => {
+      const file = String(item.file || item.path || '');
+      const line = item.line ? `:${item.line}` : '';
+      const text = String(item.text || '').trim();
+      return file && text ? `${file}${line} ${text}` : text;
+    })
+    .filter(Boolean);
 }
 
 function clearProjectSnapshotCache(root) {
@@ -2164,6 +2289,11 @@ function projectSnapshotToContext(snapshot, objective) {
   chunks.push(`# Objective\n${objective}`);
   chunks.push('Generated file edit paths must be relative to the target folder, not absolute paths.');
   chunks.push(`# Project Summary\n${projectSnapshotSummary(snapshot)}`);
+  if (snapshot.coreScan && coreEnvelopeData(snapshot.coreScan).cache_hit !== undefined) {
+    chunks.push(`# Aegis Core Workspace Scan\nContract: ${formatCoreContract(snapshot.coreScan)}\nCache hit: ${Boolean(coreEnvelopeData(snapshot.coreScan).cache_hit)}`);
+  } else if (snapshot.coreScanWarning) {
+    chunks.push(`# Aegis Core Workspace Scan\nUnavailable; VS Code local scan fallback used. ${sanitizeMemoryText(snapshot.coreScanWarning)}`);
+  }
   if (snapshot.topLevel.length) {
     chunks.push(`# Top-Level Structure\n${snapshot.topLevel.join('\n')}`);
   }
@@ -2609,18 +2739,174 @@ async function openMarkdownResult(title, content) {
   await vscode.window.showTextDocument(document, { preview: false });
 }
 
-async function getOllamaModels() {
+async function getOllamaModels(options = {}) {
+  if (!options.skipCore) {
+    const target = options.target || await resolveWorkspaceTarget(undefined, { silent: true });
+    try {
+      const coreModels = await getAegisCoreModels(target);
+      if (coreModels.reachable || coreModels.models.length) {
+        return coreModels.models;
+      }
+      throw new Error(coreModels.error || 'Aegis Core model contract reported that Ollama is unreachable.');
+    } catch (error) {
+      if (options.reportFallback !== false) {
+        output && output.appendLine(`Aegis Core model inventory unavailable; using direct Ollama fallback: ${error.message}`);
+      }
+    }
+  }
+
   const json = await requestJson(new URL('/api/tags', getConfig().ollamaUrl), undefined, 120000);
-  return Array.isArray(json.models) ? json.models : [];
+  return Array.isArray(json.models) ? json.models.map((model) => Object.assign({ source: 'ollama' }, model)) : [];
+}
+
+function coreUrl(pathname, target) {
+  const url = new URL(pathname, getConfig().coreUrl);
+  if (target && target.root) {
+    url.searchParams.set('workspace', target.root);
+  }
+  return url;
+}
+
+async function getAegisCoreEnvelope(pathname, target, expectedKind, timeoutMs = 120000) {
+  const envelope = await requestJson(coreUrl(pathname, target), undefined, timeoutMs);
+  return validateAegisCoreEnvelope(envelope, expectedKind);
+}
+
+async function postAegisCoreEnvelope(pathname, body, expectedKind, timeoutMs = 120000) {
+  const envelope = await requestJson(new URL(pathname, getConfig().coreUrl), body, timeoutMs);
+  return validateAegisCoreEnvelope(envelope, expectedKind);
+}
+
+function validateAegisCoreEnvelope(envelope, expectedKind) {
+  if (!envelope || typeof envelope !== 'object') {
+    throw new Error('Aegis Core response was not a JSON object.');
+  }
+  if (envelope.api_version !== AEGIS_CORE_API_VERSION) {
+    throw new Error(`Aegis Core response used unexpected api_version: ${envelope.api_version || 'missing'}.`);
+  }
+  if (expectedKind && envelope.kind !== expectedKind) {
+    throw new Error(`Aegis Core response kind mismatch: expected ${expectedKind}, got ${envelope.kind || 'missing'}.`);
+  }
+  return envelope;
+}
+
+function coreEnvelopeData(envelope) {
+  return envelope && envelope.data && typeof envelope.data === 'object' ? envelope.data : {};
+}
+
+function formatCoreContract(envelope) {
+  const version = envelope && envelope.contract_version ? envelope.contract_version : 'unknown contract';
+  const stability = envelope && envelope.stability ? envelope.stability : 'unknown stability';
+  const compatibility = version !== AEGIS_CORE_CONTRACT_VERSION ? `; tested ${AEGIS_CORE_CONTRACT_VERSION}` : '';
+  return `contract ${version} (${stability}${compatibility})`;
 }
 
 async function getAegisCoreHealth(target) {
-  const workspace = target && target.root ? target.root : '';
-  const url = new URL('/v1/health', getConfig().coreUrl);
-  if (workspace) {
-    url.searchParams.set('workspace', workspace);
+  return getAegisCoreEnvelope('/v1/health', target, 'health');
+}
+
+async function getAegisCoreModels(target) {
+  const envelope = await getAegisCoreEnvelope('/v1/models', target, 'models');
+  const data = coreEnvelopeData(envelope);
+  const models = Array.isArray(data.installed_models)
+    ? data.installed_models.map((name) => ({ name, model: name, source: 'aegis-core' }))
+    : [];
+  return {
+    envelope,
+    models,
+    reachable: Boolean(data.reachable),
+    selectedModel: data.selected_model || '',
+    missingModels: Array.isArray(data.missing_models) ? data.missing_models : [],
+    error: data.error || ''
+  };
+}
+
+async function getAegisCoreSettings(target) {
+  return getAegisCoreEnvelope('/v1/settings', target, 'settings');
+}
+
+async function getAegisCoreWorkspaceScan(target) {
+  return postAegisCoreEnvelope('/v1/workspaces/scan', { workspace: target.root }, 'workspace.scan', 180000);
+}
+
+async function getAegisCoreMemory(target) {
+  return getAegisCoreEnvelope('/v1/memory', target, 'memory.summary');
+}
+
+async function getAegisCoreDiagnostics(target) {
+  return getAegisCoreEnvelope('/v1/diagnostics', target, 'diagnostics.summary');
+}
+
+async function getAegisCoreValidationSummary(target) {
+  return postAegisCoreEnvelope('/v1/validation', { workspace: target.root, run: false }, 'validation');
+}
+
+async function tryGenerateAegisCoreRoadmap(target) {
+  try {
+    updateStatusBar('Indexing', 'Aegis Core is generating the shared roadmap.');
+    const envelope = await postAegisCoreEnvelope('/v1/workspaces/roadmap', { workspace: target.root }, 'workspace.roadmap', 180000);
+    const data = coreEnvelopeData(envelope);
+    output && output.appendLine(`Aegis Core updated roadmap via ${formatCoreContract(envelope)}.`);
+    return {
+      envelope,
+      roadmapPath: data.roadmap_path || '',
+      markdown: data.markdown || ''
+    };
+  } catch (error) {
+    output && output.appendLine(`Aegis Core roadmap unavailable; using VS Code local roadmap fallback: ${error.message}`);
+    vscode.window.showWarningMessage('Aegis Core roadmap generation is unavailable, so VS Code will use its local model fallback.');
+    return null;
   }
-  return requestJson(url, undefined, 120000);
+}
+
+async function runAegisCoreValidation(target) {
+  const summaryEnvelope = await getAegisCoreValidationSummary(target);
+  const summary = coreEnvelopeData(summaryEnvelope);
+  const commands = Array.isArray(summary.commands) ? summary.commands : [];
+  if (!commands.length) {
+    return {
+      success: true,
+      skipped: true,
+      commands: [],
+      output: 'Aegis Core did not detect a safe project validation command.',
+      source: 'aegis-core'
+    };
+  }
+
+  const first = commands[0];
+  const commandParts = Array.isArray(first.command) ? first.command.map(String) : String(first.command || '').split(/\s+/).filter(Boolean);
+  updateAgentState({
+    status: 'Running validation',
+    validationOutput: `$ ${commandParts.join(' ')}\nAegis Core is running shared validation.`
+  });
+
+  const runEnvelope = await postAegisCoreEnvelope(
+    '/v1/validation',
+    { workspace: target.root, run: true, command: commandParts },
+    'validation',
+    360000
+  );
+  const result = coreEnvelopeData(runEnvelope);
+  const outputText = [result.stdout, result.stderr].filter(Boolean).join('\n') || (result.ok ? 'Validation passed.' : 'Validation failed.');
+  const commandText = Array.isArray(result.command) ? result.command.join(' ') : commandParts.join(' ');
+  const commandResult = {
+    command: commandText,
+    cwd: target.root,
+    success: Boolean(result.ok),
+    exitCode: result.returncode === undefined ? null : result.returncode,
+    output: truncateMiddle(outputText, 24000),
+    source: 'aegis-core'
+  };
+  if (!commandResult.success) {
+    lastFailedCommand = commandText;
+  }
+  return {
+    success: commandResult.success,
+    skipped: false,
+    commands: [commandResult],
+    output: validationResultsToOutput([commandResult]),
+    source: 'aegis-core'
+  };
 }
 
 async function registerAegisCoreClient(target) {
@@ -2637,7 +2923,18 @@ async function registerAegisCoreClient(target) {
       version: extensionContext && extensionContext.extension && extensionContext.extension.packageJSON
         ? extensionContext.extension.packageJSON.version || 'unknown'
         : 'unknown',
-      capabilities: ['workspace-scan', 'diff-preview', 'terminal-validation', 'safe-apply']
+      capabilities: [
+        'core-contracts',
+        'core-models',
+        'core-workspace-scan',
+        'core-roadmap',
+        'core-memory',
+        'core-diagnostics',
+        'core-validation',
+        'diff-preview',
+        'safe-apply',
+        'local-fallbacks'
+      ]
     }, 120000);
     return true;
   } catch (error) {
@@ -3537,6 +3834,10 @@ async function appendMemoryFileBestEffort(filePath, content, label = 'memory fil
 async function updateWorkspaceMemoryFromSnapshot(target, snapshot) {
   await ensureWorkspaceMemory(target);
   const memoryRoot = path.join(target.workspaceRoot || target.root, '.aegis');
+  if (snapshot.coreScan) {
+    const data = coreEnvelopeData(snapshot.coreScan);
+    pushProgress('Synced with Aegis Core', `Core scan indexed ${data.file_count || snapshot.fileCount || 0} file(s).`);
+  }
   const indexSignature = snapshotSignature(snapshot);
   const existingIndex = await readJsonMemoryFile(target, 'file-index.json', null);
   let dependencyGraph = null;
@@ -4457,6 +4758,24 @@ function emptyDependencyGraphSummary() {
 }
 
 async function readWorkspaceMemoryContext(target) {
+  try {
+    const envelope = await getAegisCoreMemory(target);
+    const data = coreEnvelopeData(envelope);
+    const entries = data.entries && typeof data.entries === 'object' ? data.entries : {};
+    const pieces = [];
+    for (const name of ['project_summary', 'architecture_map', 'roadmap', 'decisions', 'known_issues']) {
+      const entry = entries[name];
+      if (entry && entry.excerpt) {
+        pieces.push(formatFileChunk(`Core memory:${name}`, sanitizeMemoryText(String(entry.excerpt))));
+      }
+    }
+    if (pieces.length) {
+      return truncateMiddle(pieces.join('\n\n'), 24000);
+    }
+  } catch (error) {
+    output && output.appendLine(`Aegis Core memory unavailable; using local .aegis memory fallback: ${error.message}`);
+  }
+
   const memoryRoot = path.join(target.workspaceRoot || target.root, '.aegis');
   const pieces = [];
   for (const name of ['project-summary.md', 'architecture-map.md', 'roadmap.md', 'decisions.md', 'known-issues.md']) {
@@ -4887,7 +5206,18 @@ function isSafeValidationCommand(command) {
 }
 
 async function runDetectedValidation(target, snapshot) {
-  const commands = detectValidationCommands(snapshot || await getProjectSnapshot(target, { fast: true }));
+  const resolvedSnapshot = snapshot || await getProjectSnapshot(target, { fast: true });
+  try {
+    const coreValidation = await runAegisCoreValidation(target);
+    if (coreValidation) {
+      updateAgentState({ validationOutput: coreValidation.output });
+      return coreValidation;
+    }
+  } catch (error) {
+    output && output.appendLine(`Aegis Core validation unavailable; using VS Code local validation fallback: ${error.message}`);
+  }
+
+  const commands = detectValidationCommands(resolvedSnapshot);
   if (!commands.length) {
     const result = {
       success: true,
