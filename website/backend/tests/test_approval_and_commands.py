@@ -105,6 +105,21 @@ class ApprovalAndCommandTests(unittest.TestCase):
         self.assertIn("could not start", gradle.reason.lower())
         self.assertIn("could not start", maven.reason.lower())
 
+    def test_destructive_git_aliases_stay_blocked_when_git_is_allowlisted(self) -> None:
+        runner = CommandRunner(Settings(_env_file=None, aegis_command_allowlist="git"))
+        commands = (
+            "git reset --hard",
+            "git.exe reset --hard",
+            '"C:\\Program Files\\Git\\cmd\\git.exe" reset --hard',
+        )
+
+        for command in commands:
+            with self.subTest(command=command):
+                result = runner.run(command, self.workspace)
+
+                self.assertFalse(result.allowed)
+                self.assertIn("destructive-command denylist", result.reason)
+
     def test_windows_path_shim_commands_resolve_before_execution(self) -> None:
         if shutil.which("npm") is None:
             self.skipTest("npm is not available")

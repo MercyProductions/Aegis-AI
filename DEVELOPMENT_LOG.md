@@ -1920,6 +1920,25 @@ Validation completed:
 - Website command-runner safety suite: pass, 21 tests.
 - Website backend compile check: pass.
 
+## 2026-05-09 - Website Command Runner Destructive Alias Blocking
+
+Focus:
+
+- Prevent destructive commands from bypassing Website execution safeguards through executable aliases.
+- Keep explicit command allowlists from turning `git.exe reset --hard` or quoted Git paths into runnable commands.
+
+Actions:
+
+- Added argv-level destructive-command detection after command parsing and executable normalization.
+- Blocked destructive Git subcommands and Windows deletion/system mutation executables by normalized executable name.
+- Added command-runner regressions for plain, `.exe`, and quoted Git reset aliases when `git` is explicitly allowlisted.
+
+Validation completed:
+
+- Website command-runner safety suite: pass, 22 tests and 3 subtests.
+- Website validation command helper tests: pass, 2 tests and 5 subtests.
+- Website backend compile check: pass.
+
 ## 2026-05-09 - Website PowerShell Guard Windows Path Compatibility
 
 Focus:

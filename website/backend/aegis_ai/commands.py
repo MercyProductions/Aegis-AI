@@ -105,6 +105,9 @@ class CommandRunner:
         if not argv:
             return self._blocked(command, cwd, "Empty command.")
 
+        if self._is_destructive_argv(argv):
+            return self._blocked(command, cwd, "Command matched the destructive-command denylist.")
+
         if self._contains_shell_metacharacters(argv):
             if self._is_safe_and_chain(argv):
                 return self._run_and_chain(
@@ -234,6 +237,29 @@ class CommandRunner:
             if first.endswith(suffix):
                 first = first[: -len(suffix)]
         return first
+
+    def _is_destructive_argv(self, argv: list[str]) -> bool:
+        if not argv:
+            return False
+        first = self._normalize_executable(argv[0])
+        args = [str(item).strip("\"'").lower() for item in argv[1:]]
+
+        if first == "git" and args and args[0] in {"clean", "reset", "checkout"}:
+            return True
+        if first in {
+            "del",
+            "erase",
+            "format",
+            "rd",
+            "rmdir",
+            "remove-item",
+            "shutdown",
+            "stop-computer",
+            "reset-computer",
+            "set-executionpolicy",
+        }:
+            return True
+        return False
 
     def _resolve_executable_path(self, value: str) -> str:
         resolved = shutil.which(value)

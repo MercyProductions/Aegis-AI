@@ -26,6 +26,8 @@ Website validation history recovery also normalizes common Windows launcher alia
 
 Website agent draft validation proposals use the same alias and PowerShell guard checks before a model-suggested command can become a one-turn validation override. If an install, shell, publish, or destructive command appears in the draft, it will stay a proposed command instead of being treated as validation.
 
+Website command execution applies destructive-command checks after parsing the executable as well as before parsing the raw string. Aliases such as `git.exe reset --hard` and quoted Git executable paths remain blocked even when `git` is explicitly added to the local command allowlist.
+
 Desktop, Website, VS Code, and Visual Studio backend/Core URL settings are normalized before use. Inputs like `127.0.0.1:8788`, pasted `/v1/ecosystem/dashboard` URLs, and legacy Core endpoints such as `/health` or `/models` are reduced to a clean Core base URL, while empty values fall back to the local defaults. All local clients preserve reverse-proxy path prefixes such as `https://proxy.local/aegis` and append Core API paths under that prefix.
 
 If saving Core settings returns `Could not persist Aegis Core settings`, inspect the project `.aegis` path. The settings file must be a writable `.aegis/config.json` file, not a directory or a blocked path.
