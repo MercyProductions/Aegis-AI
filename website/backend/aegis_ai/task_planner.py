@@ -810,7 +810,7 @@ class TaskPlanner:
                     "reason": "The user explicitly requested native C/C++/DLL/EXE style work.",
                     "preferred_roles": ["code", "debug", "security", "judge"],
                     "stack_keywords": ["native", "dll", "exe", "win32", "msvc", "cpp", "cmake", "pe"],
-                    "focus_paths": ["CMakeLists.txt", "*.sln", "*.vcxproj", "src/", "include/"],
+                    "focus_paths": ["CMakeLists.txt", "*.sln", "*.slnx", "*.vcxproj", "src/", "include/"],
                 }
             )
 
@@ -878,7 +878,7 @@ class TaskPlanner:
                     "reason": "Prompt or workspace suggests native DLL/EXE/shared-library work.",
                     "preferred_roles": ["code", "debug", "security", "judge"],
                     "stack_keywords": ["native", "dll", "exe", "win32", "msvc", "cpp", "cmake", "pe"],
-                    "focus_paths": ["CMakeLists.txt", "*.sln", "*.vcxproj", "src/", "include/"],
+                    "focus_paths": ["CMakeLists.txt", "*.sln", "*.slnx", "*.vcxproj", "src/", "include/"],
                 },
             ),
             (

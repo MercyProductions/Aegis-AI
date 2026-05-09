@@ -679,6 +679,7 @@ class PromptRoutingTests(unittest.TestCase):
                     self.assertEqual(Path(preview.workspace_root), target_workspace.resolve())
                     self.assertIn(preview.task_plan.intent, expected_intents)
                     self.assertEqual(preview.task_plan.route_profile.get("id"), "native-binary")
+                    self.assertIn("*.slnx", preview.task_plan.route_profile.get("focus_paths", []))
                     self.assertIn(preview.task_plan.routing.task_role, {"code", "debug"})
                     self.assertEqual(preview.task_plan.routing.privacy_mode, "local-first")
 
