@@ -113,6 +113,12 @@ assertDiagnosticRedaction(
   ['basic-secret-token', 'user:password', 'query-secret'],
   ['Authorization: [redacted]', 'https://[redacted]@example.test/v1?token=[redacted]']
 );
+assertDiagnosticRedaction(
+  diagnosticRedactor,
+  'OAuth failed https://provider.test/callback?access_token=access-secret&refresh_token=refresh-secret&x-api-key=query-key {"client_secret":"json-client-secret","private_key":"json-private-key"} auth_token = assignment-token',
+  ['access-secret', 'refresh-secret', 'query-key', 'json-client-secret', 'json-private-key', 'assignment-token'],
+  ['access_token=[redacted]', 'refresh_token=[redacted]', 'x-api-key=[redacted]', '"client_secret":"[redacted]"', '"private_key":"[redacted]"', 'auth_token = [redacted]']
+);
 
 const urlNormalizer = loadExtensionFunctions(
   extensionText,

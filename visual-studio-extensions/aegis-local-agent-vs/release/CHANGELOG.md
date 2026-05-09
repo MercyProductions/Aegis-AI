@@ -25,6 +25,7 @@
 - Improved solution scanning and smart context indexing for `.fsproj`, `.vbproj`, `.slnx`, F#/Visual Basic symbols/imports, Visual Basic XAML code-behind, and newer C++ source/header suffixes.
 - Fixed solution scanning so NuGet `packages.lock.json` is treated as important dependency metadata, and package validation now rejects the invalid `packages-lock.json` typo.
 - Hardened solution scanning and smart context secret filters for password, API-key, auth, SSH-key, and keystore-like filenames while preserving ordinary source names such as `tokenizer.py`.
+- Hardened diagnostic redaction and memory sanitization for OAuth/provider fields such as `access_token`, `refresh_token`, `client_secret`, `x-api-key`, and `private_key`.
 - Updated install and troubleshooting documentation to make manual rescan the expected first-run indexing workflow.
 - Kept `DOGFOODING_NOTES.md` in the source tree to track real-solution test coverage, observed issues, and remaining manual GUI gaps.
 

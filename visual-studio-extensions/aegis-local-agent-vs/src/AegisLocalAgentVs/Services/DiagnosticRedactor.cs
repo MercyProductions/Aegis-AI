@@ -10,15 +10,15 @@ namespace Aegis.LocalAgent.VisualStudio.Services
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         private static readonly Regex QuerySecretPattern = new Regex(
-            @"([?&](?:api[_-]?key|key|token|secret|password|passwd|credential)=)[^&#\s]+",
+            @"([?&](?:x-api-key|api[_-]?key|api[_-]?token|access[_-]?token|refresh[_-]?token|id[_-]?token|key|token|client[_-]?secret|secret|password|passwd|credential|authorization|private[_-]?key)=)[^&#\s]+",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         private static readonly Regex AssignmentSecretPattern = new Regex(
-            @"\b((?:api[_-]?key|token|secret|password|passwd|credential|authorization)\s*[:=]\s*)[^\s&]+",
+            @"\b((?:x-api-key|[A-Z0-9_-]*api[_-]?key|[A-Z0-9_-]*api[_-]?token|access[_-]?token|refresh[_-]?token|id[_-]?token|[A-Z0-9_-]*token|client[_-]?secret|[A-Z0-9_-]*secret|password|passwd|credential|authorization|private[_-]?key)\s*[:=]\s*)[^\s&]+",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         private static readonly Regex JsonSecretPattern = new Regex(
-            @"([""'](?:api[_-]?key|token|secret|password|passwd|credential|authorization|private[_-]?key)[""']\s*:\s*[""'])[^""']+",
+            @"([""'](?:x-api-key|api[_-]?key|api[_-]?token|access[_-]?token|refresh[_-]?token|id[_-]?token|token|client[_-]?secret|secret|password|passwd|credential|authorization|private[_-]?key)[""']\s*:\s*[""'])[^""']+",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         private static readonly Regex AuthorizationHeaderPattern = new Regex(

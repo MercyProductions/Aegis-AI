@@ -1,5 +1,25 @@
 # Development Log
 
+## 2026-05-09 - Editor OAuth Secret Redaction Parity
+
+Focus:
+
+- Keep editor diagnostics and persisted memory from leaking common OAuth/provider secrets.
+- Align VS Code and Visual Studio redaction with Core's broader secret field vocabulary.
+
+Actions:
+
+- Expanded VS Code diagnostic redaction for `access_token`, `refresh_token`, `id_token`, `client_secret`, `x-api-key`, and `private_key` across query strings, JSON, and assignment-style errors.
+- Expanded Visual Studio diagnostic redaction for the same provider/OAuth fields.
+- Updated VS Code and Visual Studio memory sanitizers so those secret-bearing lines are not persisted into local project memory.
+- Added VS Code package lint and Visual Studio package guard coverage for the expanded redaction contract.
+
+Validation completed:
+
+- VS Code package lint and extension syntax check: pass.
+- Visual Studio package validation guards: pass.
+- Visual Studio extension Release build: pass.
+
 ## 2026-05-09 - Visual Studio Scanner Secret Filter Parity
 
 Focus:

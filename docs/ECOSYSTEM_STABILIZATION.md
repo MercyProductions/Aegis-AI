@@ -29,11 +29,11 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 | Shared settings | Improved | Core config loading falls back to defaults for malformed values, unsafe memory directory names, and damaged `.aegis/config.json` paths. |
 | Desktop settings | Improved | Backend and Aegis Core URL fields normalize host:port inputs and pasted endpoint paths before config writes or runtime requests. |
 | VS Code settings | Improved | Ollama and Aegis Core URL fields normalize host:port inputs and pasted endpoint paths before model or shared-runtime requests. |
-| VS Code diagnostics | Improved | Local API HTTP failures now surface parsed, redacted details instead of raw JSON response bodies, blocked proposal warnings/errors name the first unsafe file instead of hiding the path in the output channel, validation summaries classify missing tools/dependencies before repair prompts are generated, and long local model calls update progress/status state while waiting. |
+| VS Code diagnostics | Improved | Local API HTTP failures now surface parsed, redacted details instead of raw JSON response bodies, OAuth/provider secret fields are redacted before display or memory writes, blocked proposal warnings/errors name the first unsafe file instead of hiding the path in the output channel, validation summaries classify missing tools/dependencies before repair prompts are generated, and long local model calls update progress/status state while waiting. |
 | VS Code packaging | Improved | Release lint now verifies command contribution/activation parity, release metadata, source-only helper exclusions, package hygiene, Python lockfile fallback safety, Unity metadata fallback context, generated/runtime proposal guards, and secret filename guard parity before VSIX creation. |
 | Visual Studio settings | Improved | Ollama and Aegis Core URL fields normalize host:port inputs and pasted endpoint paths before model or shared-runtime requests. |
 | Shared task API | Improved | Bad task status updates return `400`, missing task IDs return `404`, and malformed local task records are normalized on read. |
-| Visual Studio packaging | Improved | VSIX packaging now validates manifest metadata, command resources, VSCT/C# command table parity, solution scanner parity, NuGet lockfile filename handling, Unity metadata context, generated/runtime safe-edit guards, scanner/safe-edit secret filename guard parity, and release documentation/license sources before producing the release archive. |
+| Visual Studio packaging | Improved | VSIX packaging now validates manifest metadata, command resources, VSCT/C# command table parity, diagnostic redaction parity, solution scanner parity, NuGet lockfile filename handling, Unity metadata context, generated/runtime safe-edit guards, scanner/safe-edit secret filename guard parity, and release documentation/license sources before producing the release archive. |
 | Shared mutation persistence | Improved | Client registration and task creation/update now verify persistence; unwritable `.aegis` roots return clear failures or degraded plan responses instead of phantom successful writes. |
 | Memory resilience | Improved | Dashboard/task reads, agent plan reads, and generated-memory writes now tolerate unreadable or damaged `.aegis` JSON/markdown paths. |
 | VS Code memory resilience | Improved | Workspace startup and later index/history/log writes skip damaged `.aegis` paths instead of breaking scans or post-apply bookkeeping. |
@@ -104,6 +104,7 @@ Ran during this pass:
 - Visual Studio package validation guards and Release build after generated/runtime safe-edit hardening: pass
 - Visual Studio package validation guards and Release build after editor secret path guard parity: pass
 - Visual Studio package validation guards and Release build after scanner secret filter parity: pass
+- VS Code package lint, extension syntax check, Visual Studio package validation guards, and Visual Studio Release build after editor OAuth secret redaction parity: pass
 - Website focused frontend API/runtime/task tests: 40 tests passed
 - Website acceptance gate with explicit backend/frontend URLs: pass
 - Website backend tests: 739 tests and 155 subtests passed
@@ -142,6 +143,7 @@ Ran during this pass:
 - Aligned VS Code and Visual Studio safe-edit secret filename guards with Core and Website coverage for password, API-key, auth, SSH-key, and keystore-like files while preserving ordinary source names such as `tokenizer.py`.
 - Hardened VS Code proposal path safety so dot-segment paths such as `src/../README.md` are rejected before apply.
 - Aligned Visual Studio solution scanning and smart context secret filename filters with safe-edit coverage so secret-like files stay out of context without dropping ordinary names such as `tokenizer.py`.
+- Hardened VS Code and Visual Studio diagnostic redaction and memory sanitization for OAuth/provider fields such as `access_token`, `refresh_token`, `client_secret`, `x-api-key`, and `private_key`.
 - Hardened Core validation detection so ignored dependency/build folders do not trigger false `.NET` build suggestions.
 - Hardened Core validation detection so damaged root build-marker directories do not trigger false Cargo, Python, CMake, pnpm, or Yarn suggestions.
 - Reduced Core validation startup overhead by avoiding duplicate validation-command detection.

@@ -163,6 +163,7 @@ function Assert-DiagnosticRedactionGuards {
   $safeEditText = Get-Content -Raw -LiteralPath (Join-Path $ProjectDirectory "Services\SafeEditService.cs")
   $redactorText = Get-Content -Raw -LiteralPath (Join-Path $ProjectDirectory "Services\DiagnosticRedactor.cs")
   $coreClientText = Get-Content -Raw -LiteralPath (Join-Path $ProjectDirectory "Services\AegisCoreClient.cs")
+  $memoryText = Get-Content -Raw -LiteralPath (Join-Path $ProjectDirectory "Services\ProjectMemoryService.cs")
 
   $issues = @()
   if ($runtimeText -match 'result\.Lines\.Add\(\$"[^"]*\{ex\.Message\}') {
@@ -182,6 +183,14 @@ function Assert-DiagnosticRedactionGuards {
   }
   if ($redactorText -notmatch '(?s)JsonSecretPattern\.Replace\(redacted, "\$1\[redacted\]"\).*AuthorizationHeaderPattern\.Replace\(redacted, "\$1\[redacted\]"\).*BearerTokenPattern\.Replace\(redacted, "\$1\[redacted\]"\).*AssignmentSecretPattern\.Replace\(redacted, "\$1\[redacted\]"') {
     $issues += "DiagnosticRedactor must apply JSON and Authorization header redaction before bearer and assignment redaction."
+  }
+  foreach ($secretNeedle in @("x-api-key", "access[_-]?token", "refresh[_-]?token", "id[_-]?token", "client[_-]?secret", "private[_-]?key")) {
+    if ($redactorText -notmatch [regex]::Escape($secretNeedle)) {
+      $issues += "DiagnosticRedactor must redact OAuth/provider secret field '$secretNeedle'."
+    }
+    if ($memoryText -notmatch [regex]::Escape($secretNeedle)) {
+      $issues += "ProjectMemoryService must filter OAuth/provider secret line '$secretNeedle'."
+    }
   }
   if ($coreClientText -notmatch 'DiagnosticRedactor\.RedactAndTruncate\(apiVersion\)' -or $coreClientText -notmatch 'DiagnosticRedactor\.RedactAndTruncate\(kind\)') {
     $issues += "AegisCoreClient contract mismatch diagnostics must redact unexpected api_version and kind values."

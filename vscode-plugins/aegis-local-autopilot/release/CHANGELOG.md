@@ -20,6 +20,7 @@
 - Hardened proposal path safety so Unity `Library` and `Temp` folders are blocked alongside `Logs` and other generated/dependency folders.
 - Hardened secret proposal path safety for password, API-key, auth, SSH-key, and keystore-like filenames while avoiding false positives such as `tokenizer.py`.
 - Hardened proposal path safety so `.` and `..` path segments are rejected before apply.
+- Hardened diagnostic redaction and memory sanitization for OAuth/provider fields such as `access_token`, `refresh_token`, `client_secret`, `x-api-key`, and `private_key`.
 
 ## 0.1.0 - Release Candidate
 

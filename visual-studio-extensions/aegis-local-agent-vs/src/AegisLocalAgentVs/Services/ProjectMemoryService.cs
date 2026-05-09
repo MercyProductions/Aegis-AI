@@ -11,7 +11,7 @@ namespace Aegis.LocalAgent.VisualStudio.Services
 {
     internal sealed class ProjectMemoryService
     {
-        private static readonly Regex SecretLine = new Regex(@"(password|secret|token|credential|api[_-]?key|private[_-]?key)\s*[:=]", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex SecretLine = new Regex(@"(x-api-key|api[_-]?key|api[_-]?token|access[_-]?token|refresh[_-]?token|id[_-]?token|client[_-]?secret|secret|token|password|passwd|credential|authorization|auth|private[_-]?key)\s*[:=]", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private readonly string[] memoryFiles =
         {
             "solution-summary.md",
