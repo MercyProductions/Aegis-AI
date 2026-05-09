@@ -28,6 +28,7 @@ from .settings import Settings
 
 SAFE_MODEL_NAME_RE = re.compile(r"^[A-Za-z0-9._:/+-]{1,160}$")
 BYTES_PER_GB = 1024**3
+MAX_MODEL_MANAGER_JSON_BYTES = 512_000
 
 
 class ModelManager:
@@ -309,24 +310,39 @@ class ModelManager:
         return refreshed
 
     def _load_operations(self) -> list[ModelOperationInfo]:
-        if not self.operations_path.exists():
+        if not self.operations_path.exists() or not self.operations_path.is_file():
             return []
         try:
+            if self.operations_path.stat().st_size > MAX_MODEL_MANAGER_JSON_BYTES:
+                return []
             payload = json.loads(self.operations_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
+        except (OSError, json.JSONDecodeError):
             return []
         if not isinstance(payload, list):
             return []
         operations: list[ModelOperationInfo] = []
         for item in payload:
             if isinstance(item, dict):
-                operations.append(ModelOperationInfo.model_validate(item))
+                try:
+                    operations.append(ModelOperationInfo.model_validate(item))
+                except (TypeError, ValueError):
+                    continue
         return operations
 
     def _save_operations(self, operations: list[ModelOperationInfo]) -> None:
         self.log_root.mkdir(parents=True, exist_ok=True)
         payload = [operation.model_dump() for operation in operations]
-        self.operations_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
+        tmp = self.operations_path.with_name(f".{self.operations_path.name}.tmp")
+        try:
+            tmp.write_text(json.dumps(payload, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
+            tmp.replace(self.operations_path)
+        except OSError:
+            try:
+                if tmp.is_file():
+                    tmp.unlink()
+            except OSError:
+                pass
+            raise
 
     def _pull_log_summaries(self) -> list[ModelPullLogSummary]:
         summaries: list[ModelPullLogSummary] = []
@@ -334,11 +350,13 @@ class ModelManager:
             self.project_root / "logs" / "model-pulls" / "summary.json",
             self.project_root / "logs" / "model-pulls-mega" / "summary.json",
         ):
-            if not path.exists():
+            if not path.exists() or not path.is_file():
                 continue
             try:
+                if path.stat().st_size > MAX_MODEL_MANAGER_JSON_BYTES:
+                    continue
                 payload = json.loads(path.read_text(encoding="utf-8-sig"))
-            except json.JSONDecodeError:
+            except (OSError, json.JSONDecodeError):
                 continue
             records = payload if isinstance(payload, list) else []
             statuses = [str(item.get("status") or "") for item in records if isinstance(item, dict)]
