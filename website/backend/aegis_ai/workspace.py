@@ -44,6 +44,31 @@ IGNORE_NAMES = {
 }
 IGNORE_NAMES_NORMALIZED = {name.casefold() for name in IGNORE_NAMES}
 
+SECRET_FILE_NAMES = {
+    ".env",
+    ".env.local",
+    ".env.development",
+    ".env.production",
+    "id_rsa",
+    "id_dsa",
+    "id_ecdsa",
+    "id_ed25519",
+}
+SECRET_FILE_SUFFIXES = {
+    ".pem",
+    ".key",
+    ".pfx",
+    ".p12",
+    ".keystore",
+}
+SECRET_FILE_NAMES_NORMALIZED = {name.casefold() for name in SECRET_FILE_NAMES}
+SECRET_NAME_PATTERN = re.compile(
+    r"(^|[._\-\s])"
+    r"(secret|secrets|credential|credentials|password|passwd|token|tokens|private|private-key|apikey|api-key|api_key|auth)"
+    r"([._\-\s]|$)",
+    re.IGNORECASE,
+)
+
 DOTNET_PROJECT_SUFFIXES = {".csproj": "C#", ".fsproj": "F#", ".vbproj": "Visual Basic"}
 DOTNET_DEPENDENCY_METADATA_FILES = ("Directory.Packages.props", "packages.config", "packages.lock.json")
 VISUAL_STUDIO_SOLUTION_GLOBS = ("*.sln", "*.slnx")
@@ -357,6 +382,17 @@ def _is_ignored_name(name: str) -> bool:
     return name.casefold() in IGNORE_NAMES_NORMALIZED
 
 
+def _is_secret_like_name(name: str) -> bool:
+    normalized = name.casefold()
+    if normalized == ".env" or normalized.startswith(".env."):
+        return True
+    if normalized in SECRET_FILE_NAMES_NORMALIZED:
+        return True
+    if any(normalized.endswith(suffix) for suffix in SECRET_FILE_SUFFIXES):
+        return True
+    return bool(SECRET_NAME_PATTERN.search(name))
+
+
 @dataclass
 class ApplyResult:
     applied: list[str]
@@ -420,7 +456,7 @@ class WorkspaceManager:
             for name in sorted(names):
                 if len(files) >= max_files:
                     return files
-                if _is_ignored_name(name):
+                if _is_ignored_name(name) or _is_secret_like_name(name):
                     continue
 
                 path = Path(current) / name
@@ -459,6 +495,8 @@ class WorkspaceManager:
                 break
 
             path = root / item.path
+            if _is_secret_like_name(path.name):
+                continue
             if item.kind != "text":
                 continue
 
@@ -2081,6 +2119,9 @@ class WorkspaceManager:
 
         if target == workspace_root:
             raise ValueError("path must point to a file inside the workspace, not the workspace root")
+
+        if _is_secret_like_name(candidate.name):
+            raise ValueError("path points to a secret-like file")
 
         candidate_parts = candidate.parts
         if any(_is_ignored_name(part) for part in candidate_parts) or any(

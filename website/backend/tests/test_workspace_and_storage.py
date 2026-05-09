@@ -256,6 +256,28 @@ class WorkspaceAndStorageTests(unittest.TestCase):
         self.assertEqual(result.applied, ["create: .gitignore"])
         self.assertEqual((workspace / ".gitignore").read_text(encoding="utf-8"), "build/\n")
 
+    def test_apply_changes_blocks_secret_like_paths_without_blocking_tokenizer_names(self) -> None:
+        manager = WorkspaceManager(self.project_root, self.settings)
+        workspace = manager.resolve_workspace("workspace")
+
+        result = manager.apply_changes(
+            workspace,
+            [
+                FileChange(action="create", path=".env", summary="blocked", content="API_KEY=secret\n"),
+                FileChange(action="create", path="config/service-token.json", summary="blocked", content="{}"),
+                FileChange(action="create", path="certs/local.pem", summary="blocked", content="secret"),
+                FileChange(action="create", path="src/tokenizer.py", summary="allowed", content="def tokenize():\n    return []\n"),
+            ],
+        )
+
+        self.assertEqual(result.applied, ["create: src/tokenizer.py"])
+        self.assertEqual(len(result.warnings), 3)
+        self.assertTrue(all("secret-like" in warning for warning in result.warnings))
+        self.assertFalse((workspace / ".env").exists())
+        self.assertFalse((workspace / "config" / "service-token.json").exists())
+        self.assertFalse((workspace / "certs" / "local.pem").exists())
+        self.assertTrue((workspace / "src" / "tokenizer.py").exists())
+
     def test_apply_changes_does_not_delete_after_skipped_create(self) -> None:
         manager = WorkspaceManager(self.project_root, self.settings)
         workspace = manager.resolve_workspace("workspace")
@@ -514,6 +536,40 @@ class WorkspaceAndStorageTests(unittest.TestCase):
 
         self.assertEqual(scanned_paths, {"src/app.py"})
         self.assertNotIn("BUILD/Hidden.vcxproj", profile.config_files)
+
+    def test_scan_and_context_skip_secret_like_files(self) -> None:
+        manager = WorkspaceManager(self.project_root, self.settings)
+        workspace = manager.resolve_workspace("workspace")
+
+        files = {
+            "src/app.py": "print('ok')\n",
+            "src/tokenizer.py": "def tokenize(value):\n    return value.split()\n",
+            ".gitignore": "build/\n",
+            ".env": "API_KEY=secret\n",
+            ".env.example": "API_KEY=placeholder\n",
+            "service-token.json": "{}\n",
+            "prod.password.txt": "secret\n",
+            "certs/local.pem": "secret\n",
+        }
+        for relative, content in files.items():
+            path = workspace / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
+
+        scanned = manager.scan(workspace, max_files=40)
+        scanned_paths = {item.path for item in scanned}
+        context = manager.context_for_model(workspace, scanned, max_chars=10_000)
+
+        self.assertIn("src/app.py", scanned_paths)
+        self.assertIn("src/tokenizer.py", scanned_paths)
+        self.assertIn(".gitignore", scanned_paths)
+        self.assertNotIn(".env", scanned_paths)
+        self.assertNotIn(".env.example", scanned_paths)
+        self.assertNotIn("service-token.json", scanned_paths)
+        self.assertNotIn("prod.password.txt", scanned_paths)
+        self.assertNotIn("certs/local.pem", scanned_paths)
+        self.assertNotIn("API_KEY=secret", context)
+        self.assertIn("def tokenize", context)
 
     def test_large_file_scan_context_and_line_slice_support(self) -> None:
         manager = WorkspaceManager(self.project_root, self.settings)

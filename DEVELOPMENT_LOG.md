@@ -1,5 +1,24 @@
 # Development Log
 
+## 2026-05-09 - Website Secret Path Safety
+
+Focus:
+
+- Keep Website workspace context and write paths aligned with Core secret-like filename safety.
+- Prevent `.env`, token/password, private-key, and certificate-like files from entering model context or generated apply flows.
+
+Actions:
+
+- Added Website secret-like filename detection for environment files, private key names, key/certificate suffixes, and bounded secret/credential/token/password name patterns.
+- Skipped secret-like files during Website workspace scans and context assembly.
+- Blocked read/apply/restore paths that target secret-like files at the low-level `_safe_path` boundary.
+- Added regressions proving secret-like files are excluded while `.gitignore` and `tokenizer.py` remain safe normal workspace files.
+
+Validation completed:
+
+- Website workspace/storage, workspace-operations, and golden workflow tests: 84 passed.
+- Website backend compile check: pass.
+
 ## 2026-05-09 - Generated Runtime Edit Guards
 
 Focus:

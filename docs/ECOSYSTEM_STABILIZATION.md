@@ -40,7 +40,7 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 | VS Code rollback safety | Improved | Rollback validates timestamp-like backup IDs, workspace roots, and backup file paths before restoring files; incomplete backup files are skipped with visible output details. |
 | Visual Studio memory init | Improved | Solution memory reads and writes are best-effort, so damaged `.aegis` paths do not crash memory-backed workflows. |
 | Visual Studio rollback | Improved | Backup manifests now carry explicit IDs, rollback rejects cross-solution manifests, and manifest/backup paths are validated before touching solution files. |
-| Website workspace setup | Improved | Damaged `.aegis` project and validation profile paths now return warnings instead of breaking setup, and generated/dependency folder ignores are matched case-insensitively during scans. |
+| Website workspace setup | Improved | Damaged `.aegis` project and validation profile paths now return warnings instead of breaking setup, generated/dependency folder ignores are matched case-insensitively during scans, and secret-like filenames are excluded from scan/context results. |
 | Website validation discovery | Improved | Damaged project marker directories such as `package.json`, `build.py`, or `CMakeLists.txt` no longer create false validation or install suggestions, root `build.ps1` guard scripts are preferred over lower-level native build fallbacks, agent/project-builder continuation proposes the same safe PowerShell guard command, and command execution blocks broader PowerShell invocations. |
 | Website validation profiles | Improved | Manual validation profile updates now use atomic writes, clean failed temp files, and report damaged profile paths as clear API errors. |
 | Website memory notes | Improved | Memory-note files are confined to the memory directory, damaged memory paths degrade with clear API errors, writes are atomic, malformed confidence input is tolerated, rapid note IDs are collision-safe, and the memory editor uses shared API base discovery for note operations. |
@@ -50,7 +50,7 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 | Dependency lockfile safety | Improved | Core maintenance manifests, Website guided auto-apply scoring, autonomous dependency projections, watcher evidence, and VS Code local fallback proposal guards now treat JS, Python, Go, Rust, .NET/NuGet, and Unity lockfiles or package metadata as dependency-wide surfaces. |
 | Website creative assets | Improved | Generated media preview URLs use the shared API resource URL helper, so previews work through the Vite proxy and discovered backend ports instead of assuming `8787`. |
 | Website checkpoint restore | Improved | Restore now validates checkpoint IDs, damaged manifests, backup paths, and missing backup files before touching workspace files. |
-| Website safe apply | Improved | Apply refuses to edit when checkpoint creation fails, reports later write/delete failures with checkpoint context, and blocks ignored dependency/runtime or hidden folders before file writes. |
+| Website safe apply | Improved | Apply refuses to edit when checkpoint creation fails, reports later write/delete failures with checkpoint context, and blocks ignored dependency/runtime, hidden parent folders, or secret-like files before file writes. |
 | Website frontend bundle | Improved | Production builds split React, icons, API calls, app utilities, and app styles into stable chunks, removing the default Vite large-chunk warning without raising the warning limit. |
 | Validation detection | Improved | Core now lists safe JS test/lint/typecheck/build validation commands only when matching package scripts exist, preserves npm/pnpm/yarn/Bun package-manager conventions, surfaces root `build.ps1` guard scripts before lower-level fallbacks, ignores project files in dependency/build folders, ignores damaged root build-marker directories, distinguishes native Visual Studio/C++ solutions from .NET solutions, treats nested subprojects as validation boundaries, and avoids duplicate default-command detection during validation runs. |
 | Validation execution | Improved | Core blocks unsafe custom validation commands and returns structured missing-tool/start-failed/timeout failures. |
@@ -96,6 +96,7 @@ Ran during this pass:
 - Website approval/workspace/autonomous Unity metadata safety tests: 38 passed, 11 subtests passed
 - Website workspace/storage and workspace-operation scan ignore tests: 74 passed
 - Website workspace/storage and workspace-operation tests after generated/runtime edit guard hardening: 76 passed
+- Website workspace/storage, workspace-operation, and golden workflow tests after Website secret path safety hardening: 84 passed
 - VS Code package lint and extension syntax check after Unity metadata context hardening: pass
 - VS Code package lint and extension syntax check after generated/runtime proposal guard hardening: pass
 - Visual Studio package validation guards and Release build after generated/runtime safe-edit hardening: pass
@@ -133,6 +134,7 @@ Ran during this pass:
 - Improved Website workspace profiling, watcher drift, guided approval, and autonomous dependency projections so Unity package manifests, package lockfiles, project settings, and assembly-definition metadata receive dependency/config safety treatment while generated Unity runtime folders are skipped.
 - Hardened Website scan ignores so mixed-case generated/dependency directories such as `Node_Modules`, `BUILD`, `LIBRARY`, `temp`, and `LOGS` stay out of context and dependency profiling.
 - Hardened Website, VS Code, and Visual Studio safe-edit guards so generated proposals cannot write into Unity `Library`, `Temp`, or `Logs` runtime folders, and Website apply blocks ignored dependency/runtime or hidden folders before file writes.
+- Hardened Website workspace scan, context, read, and apply paths so `.env`, token/password, private-key, and certificate-like filenames stay out of model context and generated writes while safe names such as `.gitignore` and `tokenizer.py` remain usable.
 - Hardened Core validation detection so ignored dependency/build folders do not trigger false `.NET` build suggestions.
 - Hardened Core validation detection so damaged root build-marker directories do not trigger false Cargo, Python, CMake, pnpm, or Yarn suggestions.
 - Reduced Core validation startup overhead by avoiding duplicate validation-command detection.
