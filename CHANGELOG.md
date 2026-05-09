@@ -26,6 +26,7 @@
 - Hardened provider completion parsing so invalid JSON or malformed provider response shapes return clean provider failures instead of internal parser exceptions.
 - Hardened Core hybrid settings so unsupported `preferred_cloud_provider` values fall back to the default provider instead of remaining as ambiguous route configuration.
 - Hardened Core settings persistence so hybrid model routing updates write sanitized canonical values to `.aegis/config.json` instead of preserving invalid raw input.
+- Hardened Core settings saves so stale invalid known settings already on disk are normalized on the next write while unknown client-owned keys are preserved.
 - Hardened provider key storage so local providers such as LM Studio cannot receive unnecessary stored API keys.
 - Hardened hybrid provider key deletion so missing keys still return a harmless `removed: false`, while OS credential-store backend failures surface as `503` errors instead of being mistaken for absent keys.
 - Hardened Core diagnostic redaction so provider URLs containing query-string keys are scrubbed before cloud connection errors reach clients or logs.

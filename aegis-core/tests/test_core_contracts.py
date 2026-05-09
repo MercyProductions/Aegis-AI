@@ -2456,6 +2456,42 @@ def test_settings_api_persists_sanitized_hybrid_values(tmp_path: Path) -> None:
     assert persisted["cloud_cost_warnings"] is False
 
 
+def test_settings_api_normalizes_existing_known_config_values(tmp_path: Path) -> None:
+    workspace = tmp_path / "settings-stale-config-project"
+    aegis_dir = workspace / ".aegis"
+    aegis_dir.mkdir(parents=True)
+    config_path = aegis_dir / "config.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "lm_studio_url": "127.0.0.1:1234/v1/chat/completions",
+                "model_routing_mode": "cloud-allowed",
+                "preferred_cloud_provider": "not-a-provider",
+                "fallback_models": "qwen2.5-coder:7b, granite-code:8b",
+                "max_context_chars": "not-a-number",
+                "custom_client_setting": {"preserve": True},
+            }
+        ),
+        encoding="utf-8",
+    )
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/v1/settings",
+        json={"workspace": str(workspace), "settings": {"auto_scan_on_open": "true"}},
+    )
+
+    assert response.status_code == 200
+    persisted = json.loads(config_path.read_text(encoding="utf-8"))
+    assert persisted["lm_studio_url"] == "http://127.0.0.1:1234"
+    assert persisted["model_routing_mode"] == "cloud_allowed"
+    assert persisted["preferred_cloud_provider"] == AegisConfig.preferred_cloud_provider
+    assert persisted["fallback_models"] == ["qwen2.5-coder:7b", "granite-code:8b"]
+    assert persisted["max_context_chars"] == AegisConfig.max_context_chars
+    assert persisted["auto_scan_on_open"] is True
+    assert persisted["custom_client_setting"] == {"preserve": True}
+
+
 def test_config_read_write_survives_damaged_paths(tmp_path: Path) -> None:
     workspace = tmp_path / "damaged-config-project"
     aegis_dir = workspace / ".aegis"

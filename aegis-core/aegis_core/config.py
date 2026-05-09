@@ -9,6 +9,25 @@ from urllib.parse import urlparse
 
 
 SUPPORTED_CLOUD_PROVIDERS = {"openai", "anthropic", "google", "openrouter"}
+CONFIG_UPDATE_KEYS = {
+    "ollama_url",
+    "lm_studio_url",
+    "default_model",
+    "default_local_model",
+    "local_small_model",
+    "local_coder_model",
+    "local_embedding_model",
+    "preferred_cloud_provider",
+    "preferred_cloud_model",
+    "model_routing_mode",
+    "fallback_models",
+    "max_context_chars",
+    "cloud_cost_warnings",
+    "safety_mode",
+    "auto_scan_on_open",
+    "validation_preferences",
+    "memory_dir_name",
+}
 
 
 @dataclass
@@ -178,6 +197,14 @@ def _clean_config_update(key: str, value: Any) -> Any:
     return value
 
 
+def _clean_config_data_for_persistence(data: dict[str, Any]) -> dict[str, Any]:
+    cleaned = dict(data)
+    for key, value in data.items():
+        if key in CONFIG_UPDATE_KEYS:
+            cleaned[key] = _clean_config_update(key, value)
+    return cleaned
+
+
 def load_config(workspace: str | Path | None = None) -> AegisConfig:
     root = workspace_root(workspace)
     config_path = root / ".aegis" / "config.json"
@@ -217,32 +244,13 @@ def write_default_config(workspace: str | Path | None = None) -> Path:
 
 
 def update_config(workspace: str | Path | None, updates: dict[str, Any]) -> AegisConfig:
-    allowed = {
-        "ollama_url",
-        "lm_studio_url",
-        "default_model",
-        "default_local_model",
-        "local_small_model",
-        "local_coder_model",
-        "local_embedding_model",
-        "preferred_cloud_provider",
-        "preferred_cloud_model",
-        "model_routing_mode",
-        "fallback_models",
-        "max_context_chars",
-        "cloud_cost_warnings",
-        "safety_mode",
-        "auto_scan_on_open",
-        "validation_preferences",
-        "memory_dir_name",
-    }
     root = workspace_root(workspace)
     path = write_default_config(root)
     current = _read_config_data(path)
     for key, value in updates.items():
-        if key in allowed:
+        if key in CONFIG_UPDATE_KEYS:
             current[key] = _clean_config_update(key, value)
-    if not _write_json_best_effort(path, current):
+    if not _write_json_best_effort(path, _clean_config_data_for_persistence(current)):
         raise ConfigPersistenceError(f"Could not persist Aegis Core settings to {path}.")
     return load_config(root)
 

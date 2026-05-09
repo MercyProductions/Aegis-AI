@@ -196,12 +196,13 @@ Focus:
 Actions:
 
 - Normalized settings updates before persistence, including provider IDs, routing modes, local provider URLs, model lists, booleans, context limits, and workspace-local memory folder names.
+- Normalized stale known settings already present on disk whenever settings are saved, while preserving unknown client-owned keys.
 - Added regression coverage proving `/v1/settings` writes canonical hybrid settings to disk.
 
 Validation completed:
 
-- Aegis Core settings API regression slice: pass, 2 tests.
-- Aegis Core contract test suite: pass, 120 tests.
+- Aegis Core settings API regression slice: pass, 3 tests.
+- Aegis Core contract test suite: pass, 121 tests.
 - Repository whitespace check: pass.
 
 ## 2026-05-09 - Hybrid Provider Setting Sanitization
