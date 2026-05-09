@@ -17,6 +17,7 @@ Actions:
 - Added explicit Core task-status API errors for bad statuses and missing task IDs.
 - Hardened dashboard/task memory reads so corrupted or unreadable `.aegis` files do not crash shared clients.
 - Tightened Core JavaScript validation detection to avoid hallucinated npm/pnpm/yarn test/build commands.
+- Restricted Core validation execution to known safe commands and structured failure results.
 - Kept unrelated dirty worktree changes out of scope.
 - Recorded workflow friction in `WORKFLOW_NOTES.md`.
 

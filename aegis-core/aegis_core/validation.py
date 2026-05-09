@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -81,15 +82,48 @@ def run_validation(workspace: str | Path, command: list[str] | None = None, time
     selected = command or (detect_validation_commands(root)[0].command if detect_validation_commands(root) else None)
     if not selected:
         return {"ok": False, "command": None, "stdout": "", "stderr": "No validation command detected."}
+    if not is_safe_validation_command(selected):
+        result = {
+            "ok": False,
+            "command": selected,
+            "returncode": None,
+            "stdout": "",
+            "stderr": f"Blocked unsafe validation command: {' '.join(selected)}",
+            "blocked": True,
+        }
+        append_validation_log(root, result)
+        return result
 
-    completed = subprocess.run(
-        selected,
-        cwd=str(root),
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-        shell=False,
-    )
+    try:
+        completed = subprocess.run(
+            selected,
+            cwd=str(root),
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            shell=False,
+        )
+    except FileNotFoundError as exc:
+        result = {
+            "ok": False,
+            "command": selected,
+            "returncode": None,
+            "stdout": "",
+            "stderr": f"Validation executable not found: {exc.filename or selected[0]}",
+        }
+        append_validation_log(root, result)
+        return result
+    except subprocess.TimeoutExpired as exc:
+        result = {
+            "ok": False,
+            "command": selected,
+            "returncode": None,
+            "stdout": _decode_output(exc.stdout)[-12000:],
+            "stderr": f"Validation timed out after {timeout} seconds.\n{_decode_output(exc.stderr)[-12000:]}".strip(),
+            "timed_out": True,
+        }
+        append_validation_log(root, result)
+        return result
     result = {
         "ok": completed.returncode == 0,
         "command": selected,
@@ -99,6 +133,36 @@ def run_validation(workspace: str | Path, command: list[str] | None = None, time
     }
     append_validation_log(root, result)
     return result
+
+
+def is_safe_validation_command(command: list[str]) -> bool:
+    if not command:
+        return False
+    executable = Path(str(command[0])).name.lower()
+    args = [str(item) for item in command[1:]]
+    if executable == "npm":
+        return args in (["test"], ["run", "build"], ["run", "lint"], ["run", "typecheck"], ["run", "type-check"])
+    if executable in {"pnpm", "yarn"}:
+        return args in (["test"], ["build"], ["lint"], ["typecheck"], ["type-check"])
+    if executable == "dotnet":
+        return args == ["build"]
+    if executable == "cargo":
+        return args == ["check"]
+    if executable == "go":
+        return args == ["test", "./..."]
+    if executable == "cmake":
+        return args == ["--build", "build"]
+    if executable in {"python", "python.exe", "py", "py.exe"} or executable == Path(sys.executable).name.lower():
+        return args == ["-m", "pytest"]
+    return False
+
+
+def _decode_output(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return str(value)
 
 
 def append_validation_log(workspace: str | Path, result: dict[str, Any]) -> None:

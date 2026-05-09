@@ -7,10 +7,11 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+import aegis_core.validation as validation_module
 from aegis_core.config import AegisConfig, load_config
 from aegis_core.safety import is_ignored_path, is_safe_to_read, is_secret_like
 from aegis_core.server import create_app
-from aegis_core.validation import detect_validation_commands
+from aegis_core.validation import detect_validation_commands, run_validation
 
 
 def make_workspace(tmp_path: Path) -> Path:
@@ -191,3 +192,63 @@ def test_validation_detection_respects_package_scripts(tmp_path: Path) -> None:
 
     (workspace / "pnpm-lock.yaml").write_text("lockfileVersion: '9.0'\n", encoding="utf-8")
     assert [item.name for item in detect_validation_commands(workspace)] == ["pnpm test", "pnpm build"]
+
+
+def test_validation_runner_blocks_unsafe_commands(tmp_path: Path) -> None:
+    workspace = tmp_path / "validation-project"
+    workspace.mkdir()
+
+    result = run_validation(workspace, command=["python", "-c", "print('unsafe')"])
+
+    assert result["ok"] is False
+    assert result["blocked"] is True
+    assert "Blocked unsafe validation command" in result["stderr"]
+    log = workspace / ".aegis" / "validation-log.md"
+    assert log.exists()
+    assert "Blocked unsafe validation command" in log.read_text(encoding="utf-8")
+
+
+def test_validation_runner_handles_safe_command_failures(tmp_path: Path) -> None:
+    workspace = tmp_path / "pytest-project"
+    workspace.mkdir()
+    (workspace / "pyproject.toml").write_text("[project]\nname = \"pytest-project\"\nversion = \"0.0.0\"\n", encoding="utf-8")
+    (workspace / "test_failure.py").write_text("def test_failure():\n    assert False\n", encoding="utf-8")
+
+    result = run_validation(workspace, command=[sys.executable, "-m", "pytest"], timeout=30)
+
+    assert result["ok"] is False
+    assert result["returncode"] is not None
+    assert "test_failure" in (result["stdout"] + result["stderr"])
+
+
+def test_validation_runner_handles_missing_executable(tmp_path: Path, monkeypatch) -> None:
+    workspace = tmp_path / "missing-tool-project"
+    workspace.mkdir()
+
+    def raise_missing(*args, **kwargs):
+        error = FileNotFoundError("missing")
+        error.filename = "python"
+        raise error
+
+    monkeypatch.setattr(validation_module.subprocess, "run", raise_missing)
+    result = run_validation(workspace, command=[sys.executable, "-m", "pytest"])
+
+    assert result["ok"] is False
+    assert result["returncode"] is None
+    assert "Validation executable not found" in result["stderr"]
+
+
+def test_validation_runner_handles_timeout(tmp_path: Path, monkeypatch) -> None:
+    workspace = tmp_path / "timeout-project"
+    workspace.mkdir()
+
+    def raise_timeout(*args, **kwargs):
+        raise subprocess.TimeoutExpired(args[0], timeout=1, output=b"partial stdout", stderr=b"partial stderr")
+
+    monkeypatch.setattr(validation_module.subprocess, "run", raise_timeout)
+    result = run_validation(workspace, command=[sys.executable, "-m", "pytest"], timeout=1)
+
+    assert result["ok"] is False
+    assert result["timed_out"] is True
+    assert "partial stdout" in result["stdout"]
+    assert "partial stderr" in result["stderr"]

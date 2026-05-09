@@ -11,6 +11,7 @@
 - Improved `/v1/tasks/{task_id}/status` error responses for missing tasks and unsupported statuses.
 - Made Core dashboard/task memory reads resilient when `.aegis` JSON or markdown files are unreadable.
 - Improved Core JavaScript validation detection so npm/pnpm/yarn test/build commands are listed only when matching package scripts exist.
+- Restricted Core validation execution to a safe command allow-list and added structured blocked/missing/timeout failure results.
 - Added product-utilization workflow notes for daily Auralith dogfooding.
 - Documented the current stabilization and validation pass.
 

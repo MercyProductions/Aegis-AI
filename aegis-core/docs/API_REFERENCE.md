@@ -81,6 +81,8 @@ When `run` is true, runs the provided command or first detected safe command and
 
 JavaScript package managers are script-aware: `npm`/`pnpm`/`yarn` test and build commands are listed only when matching `package.json` scripts exist.
 
+Custom commands are still restricted to the built-in safe validation allow-list. Unsafe commands are logged as blocked and are not executed.
+
 ## POST /agent/continue
 
 Body:
