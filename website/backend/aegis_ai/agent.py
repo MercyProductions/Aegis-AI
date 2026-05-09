@@ -162,6 +162,7 @@ from .workspace import WorkspaceManager
 from .workspace_autopilot import (
     compact_validation_repair_brief as workspace_compact_validation_repair_brief,
     latest_history_validation as workspace_latest_history_validation,
+    remembered_validation_command as workspace_remembered_validation_command,
 )
 
 
@@ -275,17 +276,8 @@ class AgentEngine:
         signals: list[str] = []
         blockers: list[str] = []
         command_history = command_history if isinstance(command_history, dict) else {}
-        history_validation_command = str(command_history.get("validation_command") or "").strip()
-        history_commands = command_history.get("commands")
-        latest_history_validation: dict[str, Any] = {}
-        if isinstance(history_commands, list):
-            for item in reversed(history_commands):
-                if not isinstance(item, dict):
-                    continue
-                kind = str(item.get("kind") or "").strip().lower()
-                if kind == "validation" or kind.startswith("verification:"):
-                    latest_history_validation = item
-                    break
+        history_validation_command = workspace_remembered_validation_command(command_history)
+        latest_history_validation = workspace_latest_history_validation(command_history)
 
         if manifest is not None:
             project_label = manifest.title or manifest.project_name or "Aegis workspace"
@@ -369,11 +361,11 @@ class AgentEngine:
             score = min(score, 75)
             summary = "The workspace has tracked project work left for autopilot."
             next_action = instruction_status.recommendation or "Continue the next open instruction item, then rerun validation."
-        elif not validation_command and not dependency_profile.config_files:
+        elif not validation_command:
             status = "unconfigured"
             score = min(score, 35)
-            summary = "Aegis does not have enough project metadata to safely validate this workspace."
-            next_action = "Add or generate a project manifest with install and validation commands."
+            summary = "Aegis does not have a safe validation command for this workspace."
+            next_action = "Add, generate, or save a safe validation command before marking the workspace ready."
         elif validation_command and not validation_passed:
             status = "needs_validation"
             score = min(score, 65)
@@ -2323,7 +2315,7 @@ class AgentEngine:
             validation_plan.validation_command
             or (manifest.validation_command if manifest else "")
             or (dependency_profile.validation_commands[0] if dependency_profile.validation_commands else "")
-            or str(history.get("validation_command") or "").strip()
+            or workspace_remembered_validation_command(history)
         )
 
         latest_history_validation = self._latest_history_validation(history)

@@ -1431,6 +1431,29 @@ class AgentParserTests(unittest.TestCase):
         self.assertGreaterEqual(readiness.score, 85)
         self.assertTrue(any("Latest validation passed" in signal for signal in readiness.signals))
 
+    def test_workspace_readiness_ignores_unsafe_command_history_validation(self) -> None:
+        readiness = self.engine.workspace_readiness_snapshot(
+            manifest=None,
+            dependency_profile=WorkspaceDependencyProfile(config_files=["package.json"]),
+            instruction_status=WorkspaceInstructionStatusInfo(),
+            validation_plan=WorkspaceValidationPlanInfo(),
+            command_history={
+                "schema": "aegis.command_history.v1",
+                "validation_command": "npm.cmd install",
+                "commands": [
+                    {
+                        "kind": "validation",
+                        "command": "npm.cmd install",
+                        "status": "passed",
+                    }
+                ],
+            },
+        )
+
+        self.assertEqual(readiness.status, "unconfigured")
+        self.assertFalse(any("Validation command available" in signal for signal in readiness.signals))
+        self.assertTrue(any("No validation command" in blocker for blocker in readiness.blockers))
+
     def test_workspace_readiness_uses_discovered_plan_before_unconfigured_state(self) -> None:
         workspace = Path(self.tempdir.name) / "plan-before-config"
         workspace.mkdir()

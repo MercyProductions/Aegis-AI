@@ -12,6 +12,7 @@ from aegis_ai.workspace_autopilot import (
     compact_validation_repair_brief,
     first_diagnostic_brief,
     latest_history_validation,
+    remembered_validation_command,
     status_value,
 )
 from aegis_ai.schemas import (
@@ -43,6 +44,21 @@ class WorkspaceAutopilotHelperTests(unittest.TestCase):
     def test_latest_history_validation_ignores_malformed_history(self) -> None:
         self.assertEqual(latest_history_validation({"commands": "npm test"}), {})
         self.assertEqual(latest_history_validation({"commands": [None, {"kind": "shell"}]}), {})
+
+    def test_latest_history_validation_skips_unsafe_validation_commands(self) -> None:
+        history = {
+            "validation_command": "npm.cmd install",
+            "commands": [
+                {"kind": "validation", "status": "passed", "command": "npm test"},
+                {"kind": "validation", "status": "passed", "command": "cmd.exe /c npm install"},
+            ],
+        }
+
+        self.assertEqual(
+            latest_history_validation(history),
+            {"kind": "validation", "status": "passed", "command": "npm test"},
+        )
+        self.assertEqual(remembered_validation_command(history), "")
 
     def test_status_value_strips_and_truncates_long_values(self) -> None:
         self.assertEqual(status_value("  ok  "), "ok")

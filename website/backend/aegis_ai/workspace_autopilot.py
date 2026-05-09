@@ -14,6 +14,7 @@ from .validation_diagnostics import (
     failed_step_display,
     first_diagnostic_brief as validation_first_diagnostic_brief,
 )
+from .validation_commands import is_safe_remembered_validation_command
 
 
 def latest_history_validation(command_history: dict[str, Any]) -> dict[str, Any]:
@@ -25,8 +26,19 @@ def latest_history_validation(command_history: dict[str, Any]) -> dict[str, Any]
             continue
         kind = str(item.get("kind") or "").strip().lower()
         if kind == "validation" or kind.startswith("verification:"):
+            command = str(item.get("command") or "").strip()
+            status = str(item.get("status") or "").strip().lower()
+            if command and status in {"passed", "success", "succeeded"} and not is_safe_remembered_validation_command(command):
+                continue
             return item
     return {}
+
+
+def remembered_validation_command(command_history: dict[str, Any]) -> str:
+    command = str(command_history.get("validation_command") or "").strip() if isinstance(command_history, dict) else ""
+    if not command or not is_safe_remembered_validation_command(command):
+        return ""
+    return command
 
 
 def status_value(value: Any, *, limit: int = 260) -> str:
@@ -117,7 +129,7 @@ def build_workspace_autopilot_status(
         validation_plan.validation_command
         or (manifest.validation_command if manifest else "")
         or (dependency_profile.validation_commands[0] if dependency_profile.validation_commands else "")
-        or str(command_history.get("validation_command") or "").strip()
+        or remembered_validation_command(command_history)
     )
     last_run = validation_plan.last_run if isinstance(validation_plan.last_run, dict) else {}
     instruction_last_validation = (

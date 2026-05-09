@@ -22,6 +22,8 @@
 - Fixed Website validation history recovery so successful exact root PowerShell `build.ps1` guard commands can be remembered while broader PowerShell commands remain blocked.
 - Hardened Website validation history recovery so Windows launcher aliases such as `cmd.exe`, `npm.cmd`, and `git.exe` cannot bypass install/destructive-command filtering.
 - Hardened Website agent draft validation promotion so Windows launcher aliases cannot bypass the same install/destructive-command filter through validation-like command reasons.
+- Hardened Website readiness and autopilot summaries so unsafe remembered validation commands are not surfaced as runnable next actions.
+- Fixed Website readiness classification so detected projects without a safe validation command no longer fall through to a ready state.
 - Hardened VS Code Core/Ollama URL handling so reverse-proxy path prefixes are preserved while pasted `/v1`, `/health`, `/models`, and Ollama `/api/...` endpoint paths are trimmed.
 - Hardened Visual Studio Core/Ollama URL handling so reverse-proxy path prefixes are preserved while pasted `/v1`, `/health`, `/models`, and Ollama `/api/...` endpoint paths are trimmed.
 - Hardened Desktop backend/Core URL handling so reverse-proxy path prefixes are preserved while pasted `/api`, `/v1`, `/health`, or `/models` endpoint paths are trimmed.

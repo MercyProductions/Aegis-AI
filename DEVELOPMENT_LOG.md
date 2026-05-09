@@ -1875,6 +1875,28 @@ Validation completed:
 - Website command-runner safety suite: pass, 21 tests.
 - Website backend compile check: pass.
 
+## 2026-05-09 - Website Readiness Remembered Validation Safety
+
+Focus:
+
+- Keep workspace readiness and autopilot summaries from surfacing unsafe remembered validation commands as runnable next actions.
+- Share the remembered-validation safety contract across discovery, readiness scoring, and status summaries.
+
+Actions:
+
+- Added a shared `is_safe_remembered_validation_command` helper for command-history recovery and readiness consumers.
+- Filtered unsafe `command_history.validation_command` fallbacks before readiness scoring, repair briefs, and autopilot status summaries use them.
+- Fixed readiness classification so detected config files without a safe validation command no longer fall through to a ready state.
+- Added regressions proving unsafe remembered launcher aliases are skipped while earlier safe validation history can still drive status.
+
+Validation completed:
+
+- Website workspace autopilot helper tests: pass, 10 tests.
+- Website agent parser focused readiness/history/repair tests: pass, 9 tests.
+- Website agent parser regression suite: pass, 99 tests and 13 subtests.
+- Website command-runner safety suite: pass, 21 tests.
+- Website backend compile check: pass.
+
 ## 2026-05-09 - Website PowerShell Guard Windows Path Compatibility
 
 Focus:

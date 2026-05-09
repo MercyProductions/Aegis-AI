@@ -7,8 +7,7 @@ from pathlib import Path
 from .schemas import ValidationProfileResponse, ValidationRecipe, ValidationSuggestion, VerificationStep
 from .storage import utc_now
 from .validation_commands import POWERSHELL_BUILD_COMMAND as DEFAULT_POWERSHELL_BUILD_COMMAND
-from .validation_commands import is_blocked_validation_launcher_command
-from .validation_commands import is_safe_powershell_build_guard_command
+from .validation_commands import is_safe_remembered_validation_command
 
 
 @dataclass(frozen=True)
@@ -560,68 +559,7 @@ class ValidationManager:
         return self._category_for_history_command(command) != "validate"
 
     def _safe_history_validation_command(self, command: str) -> bool:
-        normalized = " ".join(command.strip().lower().split())
-        if not normalized or len(command) > 500:
-            return False
-        if any(char in command for char in ("\n", "\r", "|", ";", "<", ">")):
-            return False
-
-        index = 0
-        while index < len(command):
-            if command[index] == "&":
-                if index + 1 < len(command) and command[index + 1] == "&":
-                    index += 2
-                    continue
-                return False
-            index += 1
-
-        if normalized.startswith(("powershell ", "powershell.exe ", "pwsh ", "pwsh.exe ")):
-            return is_safe_powershell_build_guard_command(command)
-
-        if is_blocked_validation_launcher_command(command):
-            return False
-
-        blocked_prefixes = (
-            "npm install",
-            "npm i ",
-            "pnpm install",
-            "yarn install",
-            "bun install",
-            "pip install",
-            "python -m pip install",
-            "uv add",
-            "poetry add",
-            "cargo install",
-            "winget ",
-            "choco ",
-            "scoop ",
-            "curl ",
-            "wget ",
-            "irm ",
-            "iex ",
-            "powershell ",
-            "powershell.exe ",
-            "pwsh ",
-            "pwsh.exe ",
-            "cmd /c ",
-            "reg ",
-            "regedit",
-            "del ",
-            "erase ",
-            "rm ",
-            "rmdir ",
-            "remove-item",
-            "format ",
-            "shutdown",
-            "taskkill",
-            "git clean",
-            "git reset",
-            "git checkout",
-            "git push",
-            "npm publish",
-            "docker ",
-        )
-        return not any(normalized == prefix.strip() or normalized.startswith(prefix) for prefix in blocked_prefixes)
+        return is_safe_remembered_validation_command(command)
 
     def _category_for_history_command(self, command: str) -> str:
         suggestion = ValidationSuggestion(
