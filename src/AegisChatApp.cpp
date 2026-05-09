@@ -7956,25 +7956,38 @@ void AegisChatApp::RefreshCoreDashboard()
     StartTask("Loading Aegis Core dashboard...", [this, client, workspace]() mutable {
         AegisCoreDashboardInfo dashboard;
         std::string error_message;
+        std::string registration_warning;
         bool loaded = false;
         try {
-            client.RegisterCoreClient(
-                workspace,
-                "auralith-desktop",
-                "desktop-app",
-                "Auralith Desktop",
-                "0.1.0",
-                {"ecosystem-dashboard", "memory-browser", "workflow-orchestration"});
+            try {
+                client.RegisterCoreClient(
+                    workspace,
+                    "auralith-desktop",
+                    "desktop-app",
+                    "Auralith Desktop",
+                    "0.1.0",
+                    {"ecosystem-dashboard", "memory-browser", "workflow-orchestration"});
+            } catch (const std::exception& error) {
+                registration_warning = std::string("Aegis Core registration skipped: ") + error.what();
+            }
             dashboard = client.GetCoreDashboard(workspace);
             loaded = true;
         } catch (const std::exception& error) {
             error_message = error.what();
         }
-        return [this, dashboard = std::move(dashboard), error_message = std::move(error_message), loaded]() {
+        return [this,
+                dashboard = std::move(dashboard),
+                error_message = std::move(error_message),
+                registration_warning = std::move(registration_warning),
+                loaded]() {
             core_dashboard_ = dashboard;
             core_dashboard_loaded_ = loaded;
-            core_dashboard_error_ = error_message;
-            status_ = loaded ? "Loaded Aegis ecosystem dashboard." : "Aegis Core dashboard unavailable: " + error_message;
+            core_dashboard_error_ = loaded ? registration_warning : error_message;
+            if (loaded) {
+                status_ = registration_warning.empty() ? "Loaded Aegis ecosystem dashboard." : "Loaded Aegis ecosystem dashboard with degraded client registration.";
+            } else {
+                status_ = "Aegis Core dashboard unavailable: " + error_message;
+            }
         };
     });
 }

@@ -52,8 +52,46 @@ namespace Aegis.LocalAgent.VisualStudio.Services
 
             using (var content = new StringContent(body.ToString(Formatting.None), Encoding.UTF8, "application/json"))
             {
-                var response = await Http.PostAsync($"{BaseUrl}/v1/clients/register", content, cancellationToken);
-                response.EnsureSuccessStatusCode();
+                using (var response = await Http.PostAsync($"{BaseUrl}/v1/clients/register", content, cancellationToken))
+                {
+                    await EnsureSuccessAsync(response, "register Visual Studio client with Aegis Core");
+                }
+            }
+        }
+
+        private static async Task EnsureSuccessAsync(HttpResponseMessage response, string action)
+        {
+            if (response.IsSuccessStatusCode)
+            {
+                return;
+            }
+
+            var text = await response.Content.ReadAsStringAsync();
+            var detail = ExtractErrorDetail(text);
+            var message = $"Could not {action}: HTTP {(int)response.StatusCode}";
+            if (!string.IsNullOrWhiteSpace(detail))
+            {
+                message += $" - {detail}";
+            }
+
+            throw new InvalidOperationException(message);
+        }
+
+        private static string ExtractErrorDetail(string responseText)
+        {
+            if (string.IsNullOrWhiteSpace(responseText))
+            {
+                return string.Empty;
+            }
+
+            try
+            {
+                var parsed = JObject.Parse(responseText);
+                return parsed.Value<string>("detail") ?? string.Empty;
+            }
+            catch (JsonException)
+            {
+                return responseText.Trim();
             }
         }
 

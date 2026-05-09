@@ -150,7 +150,7 @@ Run `Aegis: Run Health Check` after installation or when something feels off. It
 - `.aegis/` is writable
 - `symbol-index.json` and `dependency-map.json` can be written
 - backup location can create and delete a probe file
-- Aegis Core is reachable and this Visual Studio client can register
+- Aegis Core is reachable, and whether this Visual Studio client can register for shared sync
 - Ollama is reachable
 - default and fallback models are installed
 - Visual Studio build/Error List integration can be read

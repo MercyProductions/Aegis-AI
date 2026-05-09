@@ -18,9 +18,9 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 | Shared client registration | Pass | Desktop, VS Code, and Visual Studio now have Core registration paths. |
 | Shared task visibility | Pass | VS Code creates and updates Core tasks during agent mode; Core dashboard displays active/recent tasks. |
 | Shared client registry resilience | Improved | Core normalizes malformed local client records before dashboard sorting. |
-| Desktop dashboard bridge | Pass | Desktop has `core_api_base_url` and an Auralith Ecosystem card backed by `/v1/ecosystem/dashboard`. |
+| Desktop dashboard bridge | Improved | Desktop has `core_api_base_url` and an Auralith Ecosystem card backed by `/v1/ecosystem/dashboard`; registration failures no longer block dashboard reads when Core is reachable. |
 | VS Code health check | Improved | Health check now warns when Aegis Core is offline and registers the VS Code client when Core is reachable. |
-| Visual Studio health check | Improved | Health check now verifies Aegis Core and registers the Visual Studio client. |
+| Visual Studio health check | Improved | Health check now reports Core reachability separately from shared client registration and preserves useful Core error details. |
 | Website integration | Partial | Website has its own mature local backend. For this phase it remains documented as a client and should migrate incrementally to `/v1` Core contracts. |
 | Workspace scan performance | Improved | Core scan results are cached when the workspace fingerprint is unchanged, skipping repeated expensive symbol/dependency/TODO passes. |
 | Workspace scan resilience | Improved | Core scans tolerate malformed package dependency metadata, BOM-prefixed `package.json` files, and files disappearing during scan sorting. |
@@ -114,6 +114,7 @@ Ran during this pass:
 - Hardened Desktop backend/Core URL settings so common local inputs normalize to clean base URLs before requests are sent.
 - Hardened VS Code Ollama/Core URL settings so common local inputs normalize before model scans, health checks, and shared task updates.
 - Hardened Visual Studio Ollama/Core URL settings so common local inputs normalize before model calls, health checks, and shared client registration.
+- Hardened Desktop and Visual Studio degraded-mode handling so Core registration failures do not masquerade as full Core outages.
 
 ## Daily Driver Friction To Watch
 

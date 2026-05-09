@@ -65,6 +65,8 @@ If a client is missing:
 - Confirm its Aegis Core URL is `http://127.0.0.1:8788`.
 - Confirm `.aegis/clients.json` is writable.
 
+If Core is reachable but registration is skipped, the client should keep local workflows usable and report shared sync as degraded. Repair the workspace `.aegis` path, especially if `.aegis` or `.aegis/clients.json` was accidentally replaced by a file or directory with the wrong shape.
+
 ## Safe Apply And Rollback
 
 All clients should keep approval-based edits on by default. Before applying generated edits:

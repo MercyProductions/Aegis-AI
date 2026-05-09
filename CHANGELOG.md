@@ -40,8 +40,10 @@
 - Hardened Website checkpoint restore preflight so missing backup files fail clearly before any workspace files are restored or removed.
 - Hardened Website apply changes so checkpoint creation failures stop the apply before files are touched and later write/delete failures return warnings with checkpoint context.
 - Hardened Desktop backend/Core URL settings so local host:port inputs, trailing endpoint paths, and empty values normalize before runtime requests or config writes.
+- Hardened Desktop Core dashboard loading so a shared registration failure no longer blocks dashboard reads when Core is otherwise reachable.
 - Hardened VS Code Ollama/Core URL settings so common local inputs normalize before model detection, health checks, and shared Core sync.
 - Hardened Visual Studio Ollama/Core URL settings so common local inputs normalize before model calls, health checks, and shared Core registration.
+- Hardened Visual Studio Health Check so Core reachability and client registration are reported separately with useful Core error details.
 - Added product-utilization workflow notes for daily Auralith dogfooding.
 - Documented the current stabilization and validation pass.
 

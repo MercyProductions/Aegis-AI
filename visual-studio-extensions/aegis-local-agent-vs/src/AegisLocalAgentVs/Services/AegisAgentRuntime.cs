@@ -123,8 +123,16 @@ namespace Aegis.LocalAgent.VisualStudio.Services
             try
             {
                 await core.HealthAsync(context.SolutionRoot);
-                await core.RegisterClientAsync(context);
-                result.Lines.Add("PASS - Aegis Core reachable and Visual Studio client registered.");
+                result.Lines.Add("PASS - Aegis Core reachable.");
+                try
+                {
+                    await core.RegisterClientAsync(context);
+                    result.Lines.Add("PASS - Visual Studio client registered with Aegis Core.");
+                }
+                catch (Exception ex)
+                {
+                    result.Lines.Add($"WARN - Aegis Core reachable, but client registration was skipped: {ex.Message}");
+                }
             }
             catch (Exception ex)
             {
