@@ -24,6 +24,7 @@ Actions:
 - Hardened shared Core client/task mutations so unwritable `.aegis` memory roots return clear persistence failures or degraded plan responses instead of phantom successful writes.
 - Hardened dashboard/task memory reads so corrupted or unreadable `.aegis` files do not crash shared clients.
 - Tightened Core JavaScript validation detection to avoid hallucinated npm/pnpm/yarn test/build commands.
+- Hardened Core validation detection so ignored dependency/build folders do not create false `.NET` validation suggestions.
 - Restricted Core validation execution to known safe commands and structured failure results.
 - Hardened Core validation command startup failures so OS-level launch errors are logged and returned as structured failures.
 - Redacted validation logs before disk writes and made validation log write failures non-fatal.
@@ -57,7 +58,7 @@ Actions:
 
 Validation completed:
 
-- Aegis Core contract test suite: pass, 40 tests.
+- Aegis Core contract test suite: pass, 41 tests.
 - Aegis Core compile check: pass.
 - Aegis Core BOM-prefixed package framework detection regression test: pass.
 - Aegis Core malformed client registry regression test: pass.

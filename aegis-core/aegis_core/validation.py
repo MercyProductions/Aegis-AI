@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -9,6 +10,7 @@ from typing import Any
 
 from .diagnostics import scrub
 from .memory import ProjectMemory, utc_now
+from .safety import is_ignored_path, is_safe_to_read
 
 
 @dataclass
@@ -28,7 +30,7 @@ def detect_validation_commands(workspace: str | Path) -> list[ValidationCommand]
             commands.append(_package_script_command(package_manager, "test"))
         if "build" in package_scripts:
             commands.append(_package_script_command(package_manager, "build"))
-    if any(root.glob("*.sln")) or any(root.glob("*.slnx")) or any(root.rglob("*.csproj")):
+    if _has_root_file_with_suffix(root, {".sln", ".slnx"}) or _has_project_file(root, {".csproj"}):
         commands.append(ValidationCommand("dotnet build", ["dotnet", "build"], ".NET project or solution detected"))
     if (root / "Cargo.toml").exists():
         commands.append(ValidationCommand("cargo check", ["cargo", "check"], "Cargo.toml detected"))
@@ -71,6 +73,36 @@ def _package_script_command(package_manager: str, script: str) -> ValidationComm
         [package_manager, script],
         f"package.json {script} script and {package_manager} lockfile detected",
     )
+
+
+def _has_root_file_with_suffix(root: Path, suffixes: set[str]) -> bool:
+    try:
+        children = root.iterdir()
+    except OSError:
+        return False
+    for child in children:
+        try:
+            is_file = child.is_file()
+        except OSError:
+            continue
+        if is_file and child.suffix.lower() in suffixes and is_safe_to_read(child, root):
+            return True
+    return False
+
+
+def _has_project_file(root: Path, suffixes: set[str], max_seen: int = 5000) -> bool:
+    seen = 0
+    for dirpath, dirnames, filenames in os.walk(root):
+        base = Path(dirpath)
+        dirnames[:] = [name for name in dirnames if not is_ignored_path(base / name, root)]
+        for filename in filenames:
+            seen += 1
+            if seen > max_seen:
+                return False
+            path = base / filename
+            if path.suffix.lower() in suffixes and is_safe_to_read(path, root):
+                return True
+    return False
 
 
 def validation_summary(workspace: str | Path) -> dict[str, Any]:

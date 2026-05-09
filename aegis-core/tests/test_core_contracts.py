@@ -548,6 +548,22 @@ def test_validation_detection_respects_package_scripts(tmp_path: Path) -> None:
     assert [item.name for item in detect_validation_commands(workspace)] == ["pnpm test", "pnpm build"]
 
 
+def test_validation_detection_ignores_project_files_in_ignored_folders(tmp_path: Path) -> None:
+    workspace = tmp_path / "ignored-dotnet-project"
+    workspace.mkdir()
+    dependency_project = workspace / "node_modules" / "cached-package" / "Cached.csproj"
+    dependency_project.parent.mkdir(parents=True)
+    dependency_project.write_text("<Project />\n", encoding="utf-8")
+
+    assert [item.name for item in detect_validation_commands(workspace)] == []
+
+    app_project = workspace / "src" / "App.csproj"
+    app_project.parent.mkdir()
+    app_project.write_text("<Project />\n", encoding="utf-8")
+
+    assert "dotnet build" in [item.name for item in detect_validation_commands(workspace)]
+
+
 def test_validation_runner_blocks_unsafe_commands(tmp_path: Path) -> None:
     workspace = tmp_path / "validation-project"
     workspace.mkdir()
