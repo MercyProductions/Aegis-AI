@@ -1898,6 +1898,39 @@ def test_openai_compatible_chat_rejects_non_object_provider_response(monkeypatch
     assert "OpenAI-compatible chat response was not a JSON object" in str(excinfo.value)
 
 
+def test_openai_compatible_chat_rejects_missing_completion_text(monkeypatch) -> None:
+    monkeypatch.setattr(model_router_module, "_request_json", lambda url, payload, headers, timeout: {"choices": [{"message": {}}]})
+
+    with pytest.raises(RuntimeError) as excinfo:
+        model_router_module._openai_compatible_chat(
+            "http://127.0.0.1:1234/v1",
+            "local-model",
+            [{"role": "user", "content": "hello"}],
+            None,
+            1,
+        )
+
+    assert "OpenAI-compatible chat response did not include completion text" in str(excinfo.value)
+
+
+def test_anthropic_chat_rejects_missing_completion_text(monkeypatch) -> None:
+    monkeypatch.setattr(model_router_module, "_request_json", lambda url, payload, headers, timeout: {"content": [{"type": "text"}]})
+
+    with pytest.raises(RuntimeError) as excinfo:
+        model_router_module._anthropic_chat("claude-model", [{"role": "user", "content": "hello"}], "secret", 1)
+
+    assert "Anthropic chat response did not include completion text" in str(excinfo.value)
+
+
+def test_google_chat_rejects_missing_completion_text(monkeypatch) -> None:
+    monkeypatch.setattr(model_router_module, "_request_json", lambda url, payload, headers, timeout: {"candidates": [{"content": {"parts": [{}]}}]})
+
+    with pytest.raises(RuntimeError) as excinfo:
+        model_router_module._google_chat("gemini-model", [{"role": "user", "content": "hello"}], "secret", 1)
+
+    assert "Google chat response did not include completion text" in str(excinfo.value)
+
+
 def test_invalid_config_values_fall_back_safely(tmp_path: Path) -> None:
     workspace = tmp_path / "config-project"
     aegis_dir = workspace / ".aegis"

@@ -186,6 +186,25 @@ Validation completed:
 - Aegis Core contract test suite: pass, 118 tests.
 - Repository whitespace check: pass.
 
+## 2026-05-09 - Provider Completion Shape Hardening
+
+Focus:
+
+- Prevent malformed provider responses from looking like successful empty model answers.
+- Keep local/cloud completion failures bounded and actionable for client UIs.
+
+Actions:
+
+- Made OpenAI-compatible, Anthropic, and Google completion parsers reject missing choices, candidates, content parts, or completion text with clean runtime errors.
+- Preserved the successful LM Studio OpenAI-compatible completion path while tightening malformed response handling.
+- Added regressions for missing completion text in each provider response shape.
+
+Validation completed:
+
+- Aegis Core provider parsing regression slice: pass, 6 tests.
+- Aegis Core contract test suite: pass, 127 tests.
+- Repository whitespace check: pass.
+
 ## 2026-05-09 - Token Diagnostic Precision
 
 Focus:

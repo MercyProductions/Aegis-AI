@@ -501,11 +501,14 @@ def _openai_compatible_chat(base_url: str, model: str, messages: list[dict[str, 
     data = _provider_object(data, "OpenAI-compatible chat")
     choices = data.get("choices")
     if not isinstance(choices, list) or not choices:
-        return ""
-    first = choices[0] if isinstance(choices[0], dict) else {}
+        raise RuntimeError("OpenAI-compatible chat response did not include choices.")
+    first = choices[0]
+    if not isinstance(first, dict):
+        raise RuntimeError("OpenAI-compatible chat response choice was not a JSON object.")
     message = first.get("message")
-    content = message.get("content", "") if isinstance(message, dict) else ""
-    return str(content).strip()
+    if not isinstance(message, dict):
+        raise RuntimeError("OpenAI-compatible chat response did not include a message object.")
+    return _provider_text(message.get("content"), "OpenAI-compatible chat")
 
 
 def _lm_studio_openai_base(base_url: str) -> str:
@@ -523,10 +526,10 @@ def _anthropic_chat(model: str, messages: list[dict[str, str]], api_key: str, ti
         timeout,
     )
     data = _provider_object(data, "Anthropic chat")
-    parts = data.get("content", [])
-    if not isinstance(parts, list):
-        return ""
-    return "\n".join(str(item.get("text", "")) for item in parts if isinstance(item, dict)).strip()
+    parts = data.get("content")
+    if not isinstance(parts, list) or not parts:
+        raise RuntimeError("Anthropic chat response did not include content parts.")
+    return _provider_text_parts(parts, "Anthropic chat")
 
 
 def _google_chat(model: str, messages: list[dict[str, str]], api_key: str, timeout: int) -> str:
@@ -538,16 +541,36 @@ def _google_chat(model: str, messages: list[dict[str, str]], api_key: str, timeo
         timeout,
     )
     data = _provider_object(data, "Google chat")
-    candidates = data.get("candidates", [])
+    candidates = data.get("candidates")
     if not isinstance(candidates, list) or not candidates:
-        return ""
-    first = candidates[0] if isinstance(candidates[0], dict) else {}
+        raise RuntimeError("Google chat response did not include candidates.")
+    first = candidates[0]
+    if not isinstance(first, dict):
+        raise RuntimeError("Google chat response candidate was not a JSON object.")
     content = first.get("content")
-    parts = content.get("parts", []) if isinstance(content, dict) else []
-    return "\n".join(str(item.get("text", "")) for item in parts if isinstance(item, dict)).strip()
+    if not isinstance(content, dict):
+        raise RuntimeError("Google chat response did not include a content object.")
+    parts = content.get("parts")
+    if not isinstance(parts, list) or not parts:
+        raise RuntimeError("Google chat response did not include content parts.")
+    return _provider_text_parts(parts, "Google chat")
 
 
 def _provider_object(data: Any, label: str) -> dict[str, Any]:
     if isinstance(data, dict):
         return data
     raise RuntimeError(f"{label} response was not a JSON object.")
+
+
+def _provider_text(value: Any, label: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise RuntimeError(f"{label} response did not include completion text.")
+    return value.strip()
+
+
+def _provider_text_parts(parts: list[Any], label: str) -> str:
+    text_parts = [item.get("text", "") for item in parts if isinstance(item, dict)]
+    text = "\n".join(part.strip() for part in text_parts if isinstance(part, str) and part.strip())
+    if not text:
+        raise RuntimeError(f"{label} response did not include completion text.")
+    return text

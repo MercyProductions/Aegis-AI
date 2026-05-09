@@ -24,6 +24,7 @@
 - Improved the Aegis Core route CLI so provider/model overrides, context files, and local fallback reasons can be previewed with the same sanitized route planner used by `/v1/models/route`.
 - Fixed LM Studio completion calls so normalized local server URLs use the OpenAI-compatible `/v1/chat/completions` path.
 - Hardened provider completion parsing so invalid JSON or malformed provider response shapes return clean provider failures instead of internal parser exceptions.
+- Hardened provider completion parsing so OpenAI-compatible, Anthropic, and Google responses missing completion text fail with bounded provider errors instead of returning successful empty completions.
 - Hardened Core hybrid settings so unsupported `preferred_cloud_provider` values fall back to the default provider instead of remaining as ambiguous route configuration.
 - Hardened Core settings persistence so hybrid model routing updates write sanitized canonical values to `.aegis/config.json` instead of preserving invalid raw input.
 - Hardened Core settings saves so stale invalid known settings already on disk are normalized on the next write while unknown client-owned keys are preserved.
