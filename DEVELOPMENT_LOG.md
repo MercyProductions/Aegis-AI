@@ -23,12 +23,13 @@ Actions:
 - Hardened Core generated-memory writes so damaged `.aegis` paths do not crash workspace scans.
 - Hardened Core settings read/write paths for damaged `.aegis/config.json` and `.aegis` paths.
 - Restricted shared memory directory settings to safe workspace-local folder names.
+- Hardened Core continue/repair agent endpoints against damaged roadmap and validation-log memory paths.
 - Kept unrelated dirty worktree changes out of scope.
 - Recorded workflow friction in `WORKFLOW_NOTES.md`.
 
 Validation completed:
 
-- Aegis Core pytest suite: pass.
+- Aegis Core pytest suite: pass, 25 tests.
 - Aegis Core compile check: pass.
 - VS Code extension lint and package: pass.
 - Desktop app build: pass.

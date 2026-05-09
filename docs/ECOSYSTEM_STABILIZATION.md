@@ -25,7 +25,7 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 | Path safety | Improved | Core now evaluates ignored folders relative to the workspace and blocks secret-like filenames case-insensitively. |
 | Shared settings | Improved | Core config loading falls back to defaults for malformed values, unsafe memory directory names, and damaged `.aegis/config.json` paths. |
 | Shared task API | Improved | Bad task status updates return `400`; missing task IDs return `404`. |
-| Memory resilience | Improved | Dashboard/task reads and generated-memory writes now tolerate unreadable or damaged `.aegis` JSON/markdown paths. |
+| Memory resilience | Improved | Dashboard/task reads, agent plan reads, and generated-memory writes now tolerate unreadable or damaged `.aegis` JSON/markdown paths. |
 | Validation detection | Improved | Core now lists JS test/build validation commands only when matching package scripts exist. |
 | Validation execution | Improved | Core blocks unsafe custom validation commands and returns structured missing-tool/timeout failures. |
 | Validation logging | Improved | Validation output is redacted before API responses and disk writes; log write failures do not crash validation. |
@@ -35,9 +35,9 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 
 Ran during this pass:
 
-- `python -m pytest tests -q` in Aegis Core: 21 tests passed
+- `python -m pytest tests -q` in Aegis Core: 25 tests passed
 - `python -m compileall aegis_core`: pass
-- Aegis Core `/v1` TestClient smoke for settings, memory, diagnostics, roadmap, tasks, task status: pass
+- Aegis Core `/v1` TestClient smoke for settings, memory, diagnostics, roadmap, tasks, task status, agent continue, and agent repair: pass
 - Core scan twice: second scan returned `cache_hit: true`
 - `npm run lint` in VS Code extension: pass
 - `npm run package` in VS Code extension: pass, regenerated `release/aegis-local-autopilot-0.1.1.vsix`
@@ -60,6 +60,7 @@ Ran during this pass:
 - Made generated-memory writes best-effort and atomic where possible, so damaged `.aegis` paths do not crash scans.
 - Made shared settings reads/writes best-effort, so damaged config paths do not crash health or settings APIs.
 - Restricted shared memory directory settings to one workspace-local folder name, preventing config from pointing memory outside the project.
+- Hardened agent continue/repair planning so damaged roadmap or validation-log paths degrade to safe responses instead of server errors.
 
 ## Daily Driver Friction To Watch
 

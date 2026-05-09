@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from .diagnostics import scrub
 from .memory import ProjectMemory
 from .roadmap import generate_roadmap
 from .validation import validation_summary
@@ -14,11 +15,11 @@ def continue_from_roadmap(workspace: str | Path, request: str | None = None) -> 
     memory = ProjectMemory(root)
     memory.ensure()
     roadmap_path = memory.root / "roadmap.md"
-    if not roadmap_path.exists():
+    if not roadmap_path.is_file():
         generate_roadmap(root, persist=True)
 
     scan = WorkspaceScanner(root).scan(persist=True)
-    roadmap = roadmap_path.read_text(encoding="utf-8", errors="ignore")
+    roadmap = _read_text_best_effort(roadmap_path)
     task = choose_task(roadmap, request)
     plan = {
         "task": task,
@@ -49,9 +50,11 @@ def repair_from_last_validation(workspace: str | Path) -> dict[str, Any]:
     root = Path(workspace).resolve()
     memory = ProjectMemory(root)
     log_path = memory.root / "validation-log.md"
-    if not log_path.exists():
+    if not log_path.is_file():
         return {"ok": False, "message": "No validation log exists yet.", "approval_required": True}
-    tail = log_path.read_text(encoding="utf-8", errors="ignore")[-6000:]
+    tail = _read_text_best_effort(log_path, limit=6000)
+    if not tail.strip():
+        return {"ok": False, "message": "No readable validation log exists yet.", "approval_required": True}
     plan = {
         "ok": True,
         "mode": "repair-plan-only",
@@ -72,3 +75,15 @@ def choose_task(roadmap: str, request: str | None = None) -> str:
         if stripped[:2] in {"1.", "2.", "3."}:
             return stripped
     return "Review architecture map and choose one low-risk improvement."
+
+
+def _read_text_best_effort(path: Path, limit: int | None = None) -> str:
+    try:
+        if not path.is_file():
+            return ""
+        text = path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return ""
+    if limit is not None:
+        text = text[-limit:]
+    return scrub(text)

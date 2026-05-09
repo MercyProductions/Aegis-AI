@@ -418,3 +418,64 @@ def test_project_memory_writes_are_best_effort_when_memory_root_is_file(tmp_path
     memory.write_json("file-index.json", {"ok": True})
     memory.write_generated_markdown("project-summary.md", "Project Summary", "Still returns.")
     memory.append_decision("No crash when memory root is not writable.")
+
+
+def test_continue_agent_survives_damaged_roadmap_path(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    aegis_dir = workspace / ".aegis"
+    aegis_dir.mkdir()
+    (aegis_dir / "roadmap.md").mkdir()
+
+    client = TestClient(create_app())
+    response = client.post("/v1/agent/continue", json={"workspace": str(workspace)})
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["plan"]["mode"] == "plan-only"
+    assert data["plan"]["approval_required"] is True
+    assert data["task"]["status"] == "planned"
+
+
+def test_continue_agent_survives_memory_root_file(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    (workspace / ".aegis").write_text("not a directory", encoding="utf-8")
+
+    client = TestClient(create_app())
+    response = client.post("/v1/agent/continue", json={"workspace": str(workspace)})
+
+    assert response.status_code == 200
+    assert response.json()["data"]["plan"]["mode"] == "plan-only"
+
+
+def test_repair_agent_survives_damaged_validation_log_path(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    aegis_dir = workspace / ".aegis"
+    aegis_dir.mkdir()
+    (aegis_dir / "validation-log.md").mkdir()
+
+    client = TestClient(create_app())
+    response = client.post("/v1/agent/repair", json={"workspace": str(workspace)})
+
+    assert response.status_code == 200
+    assert response.json()["ok"] is False
+    assert response.json()["data"]["plan"]["approval_required"] is True
+    assert "No validation log" in response.json()["data"]["plan"]["message"]
+
+
+def test_repair_agent_redacts_validation_excerpt(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    aegis_dir = workspace / ".aegis"
+    aegis_dir.mkdir()
+    (aegis_dir / "validation-log.md").write_text(
+        "normal failure\nAPI_TOKEN=abc123\nAuthorization: Bearer abc123\n",
+        encoding="utf-8",
+    )
+
+    client = TestClient(create_app())
+    response = client.post("/v1/agent/repair", json={"workspace": str(workspace)})
+
+    assert response.status_code == 200
+    excerpt = response.json()["data"]["plan"]["latest_validation_excerpt"]
+    assert "normal failure" in excerpt
+    assert "[redacted secret-like log line]" in excerpt
+    assert "abc123" not in excerpt

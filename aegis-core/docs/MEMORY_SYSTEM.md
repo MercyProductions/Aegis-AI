@@ -71,3 +71,5 @@ GET /v1/memory?workspace=<path>
 Clients may open the files directly for editor-native display, but Core should remain the source for summaries, diagnostics redaction, task creation, and generated-section updates.
 
 Shared tasks live in `.aegis/tasks.json`, but clients should create and update them through `/v1/tasks` so the event history stays consistent.
+
+Agent continue and repair workflows read roadmap and validation memory best-effort. If those files are missing, unreadable, or accidentally replaced by directories, Core returns a safe plan/no-context response instead of crashing a client request.

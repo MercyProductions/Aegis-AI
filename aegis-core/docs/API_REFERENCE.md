@@ -94,7 +94,7 @@ Body:
 }
 ```
 
-Creates a plan-only continuation workflow from `.aegis/roadmap.md`. It does not edit files.
+Creates a plan-only continuation workflow from `.aegis/roadmap.md`. It does not edit files. If the roadmap path is missing or damaged, Core falls back to a safe default planning task instead of failing the request.
 
 Writes:
 
@@ -110,7 +110,7 @@ Body:
 }
 ```
 
-Creates a plan-only repair workflow from the latest validation log. It does not edit files.
+Creates a plan-only repair workflow from the latest validation log. It does not edit files. If the validation log is missing, unreadable, or damaged, Core returns a no-context repair response. Validation excerpts are scrubbed before being returned.
 
 Writes:
 
@@ -284,11 +284,11 @@ Detects validation commands or runs a requested safe command, matching `/validat
 
 ## POST /v1/agent/continue
 
-Creates a plan-only continuation workflow and a shared task. It does not apply edits.
+Creates a plan-only continuation workflow and a shared task. It does not apply edits. Damaged roadmap paths degrade to a safe default plan.
 
 ## POST /v1/agent/repair
 
-Creates a plan-only repair workflow from the latest validation log and a shared task when repair context exists.
+Creates a plan-only repair workflow from the latest validation log and a shared task when repair context exists. Missing or unreadable validation logs return a safe no-context response.
 
 ## GET /v1/ecosystem/dashboard
 
