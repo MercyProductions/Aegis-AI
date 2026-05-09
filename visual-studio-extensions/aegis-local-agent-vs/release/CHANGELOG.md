@@ -13,6 +13,8 @@
 - Hardened rollback manifests with explicit backup IDs and rollback path validation so corrupted metadata cannot restore from ambiguous or escaped paths.
 - Tightened rollback for shared backup locations so manifests from another solution, hidden/dot backup IDs, ambiguous newest-backup fallback, and traversal or secret-like proposed paths are rejected.
 - Hardened Ollama/Core URL settings so host:port inputs, pasted endpoint paths, and invalid values normalize before model calls or shared Core registration.
+- Hardened Ollama/Core diagnostic details so HTTP errors redact query-string keys, bearer tokens, URL credentials, and assignment-style secrets before they are shown in Visual Studio.
+- Hardened health-check, rollback, and command error diagnostics so user-visible exception details are redacted, and packaging now fails if those paths drift back to raw exception messages.
 - Updated install and troubleshooting documentation to make manual rescan the expected first-run indexing workflow.
 - Kept `DOGFOODING_NOTES.md` in the source tree to track real-solution test coverage, observed issues, and remaining manual GUI gaps.
 

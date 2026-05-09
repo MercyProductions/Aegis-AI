@@ -118,10 +118,37 @@ function Assert-VisualStudioCommandTable {
   }
 }
 
+function Assert-DiagnosticRedactionGuards {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$ProjectDirectory
+  )
+
+  $runtimeText = Get-Content -Raw -LiteralPath (Join-Path $ProjectDirectory "Services\AegisAgentRuntime.cs")
+  $safeEditText = Get-Content -Raw -LiteralPath (Join-Path $ProjectDirectory "Services\SafeEditService.cs")
+
+  $issues = @()
+  if ($runtimeText -match 'result\.Lines\.Add\(\$"[^"]*\{ex\.Message\}') {
+    $issues += "AegisAgentRuntime health-check lines must use SafeDiagnostic(ex), not raw ex.Message."
+  }
+  if ($runtimeText -match 'SetValidationOutput\(ex\.ToString\(\)\)') {
+    $issues += "AegisAgentRuntime command error output must redact ex.ToString() before showing it."
+  }
+  if ($safeEditText -match 'return\s+new\[\]\s*\{[^}]*\+\s*ex\.Message') {
+    $issues += "SafeEditService rollback messages must redact ex.Message before returning user-visible text."
+  }
+
+  if ($issues.Count -gt 0) {
+    throw "Visual Studio diagnostic redaction validation failed:`n - $($issues -join "`n - ")"
+  }
+}
+
 Assert-VisualStudioCommandTable `
   -VsctPath (Join-Path $projectDir "AegisLocalAgentPackage.vsct") `
   -CommandIdsPath (Join-Path $projectDir "CommandIds.cs") `
   -CommandRegistrationPath (Join-Path $projectDir "Commands\AegisCommands.cs")
+
+Assert-DiagnosticRedactionGuards -ProjectDirectory $projectDir
 
 New-Item -ItemType Directory -Force -Path $release | Out-Null
 $staleDogfoodingNotes = Join-Path $release "DOGFOODING_NOTES.md"

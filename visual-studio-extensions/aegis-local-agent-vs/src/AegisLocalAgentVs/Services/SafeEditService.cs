@@ -148,7 +148,7 @@ namespace Aegis.LocalAgent.VisualStudio.Services
             }
             catch (Exception ex)
             {
-                return new[] { "The last Aegis backup manifest could not be read: " + ex.Message };
+                return new[] { "The last Aegis backup manifest could not be read: " + DiagnosticRedactor.RedactAndTruncate(ex.Message) };
             }
 
             if (manifest == null || manifest.Files == null)

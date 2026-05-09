@@ -117,7 +117,7 @@ namespace Aegis.LocalAgent.VisualStudio.Services
             }
             catch (Exception ex)
             {
-                result.Lines.Add($"FAIL - .aegis/index writable: {ex.Message}");
+                result.Lines.Add($"FAIL - .aegis/index writable: {SafeDiagnostic(ex)}");
             }
 
             try
@@ -131,12 +131,12 @@ namespace Aegis.LocalAgent.VisualStudio.Services
                 }
                 catch (Exception ex)
                 {
-                    result.Lines.Add($"WARN - Aegis Core reachable, but client registration was skipped: {ex.Message}");
+                    result.Lines.Add($"WARN - Aegis Core reachable, but client registration was skipped: {SafeDiagnostic(ex)}");
                 }
             }
             catch (Exception ex)
             {
-                result.Lines.Add($"WARN - Aegis Core unavailable: {ex.Message}");
+                result.Lines.Add($"WARN - Aegis Core unavailable: {SafeDiagnostic(ex)}");
             }
 
             try
@@ -157,7 +157,7 @@ namespace Aegis.LocalAgent.VisualStudio.Services
             }
             catch (Exception ex)
             {
-                result.Lines.Add($"FAIL - Ollama unreachable: {ex.Message}");
+                result.Lines.Add($"FAIL - Ollama unreachable: {SafeDiagnostic(ex)}");
                 control?.SetModelStatus("Ollama offline or unreachable.");
             }
 
@@ -171,7 +171,7 @@ namespace Aegis.LocalAgent.VisualStudio.Services
             }
             catch (Exception ex)
             {
-                result.Lines.Add($"FAIL - Build integration check failed: {ex.Message}");
+                result.Lines.Add($"FAIL - Build integration check failed: {SafeDiagnostic(ex)}");
             }
 
             result.Success = result.Lines.All(line => !line.StartsWith("FAIL", StringComparison.OrdinalIgnoreCase));
@@ -560,7 +560,7 @@ namespace Aegis.LocalAgent.VisualStudio.Services
         public async Task ReportErrorAsync(Exception ex)
         {
             await ShowToolWindowAsync();
-            control?.SetValidationOutput(ex.ToString());
+            control?.SetValidationOutput(DiagnosticRedactor.RedactAndTruncate(ex?.ToString(), 4000));
             SetStatus("Error");
         }
 
@@ -963,6 +963,11 @@ namespace Aegis.LocalAgent.VisualStudio.Services
         private string GetSelectedModel()
         {
             return control?.SelectedModel;
+        }
+
+        private static string SafeDiagnostic(Exception ex)
+        {
+            return DiagnosticRedactor.RedactAndTruncate(ex?.Message);
         }
 
         private void AppendChat(string speaker, string message)

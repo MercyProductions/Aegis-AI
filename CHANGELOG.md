@@ -96,6 +96,7 @@
 - Hardened Visual Studio Health Check so Core reachability and client registration are reported separately with useful Core error details.
 - Hardened Visual Studio Ollama client errors so HTTP failures, empty responses, and malformed JSON produce clear bounded diagnostics.
 - Hardened Visual Studio Ollama/Core diagnostics so secret-like HTTP error details are redacted before display.
+- Hardened Visual Studio health-check, rollback, and command error diagnostics so user-visible exception details are redacted, with a build guard to prevent regressions.
 - Hardened Visual Studio VSIX metadata and packaging so MoreInfo points to GitHub and internal dogfooding/model-inventory files are excluded.
 - Hardened Visual Studio VSIX packaging so VSCT command buttons, command symbols, C# command IDs, and registered handlers must stay synchronized.
 - Refreshed stabilization validation docs so Core test counts, Website build status, historical migration-phase caveats, VS Code packaging guards, Visual Studio command-table guards, and Desktop smoke status match the current baseline.

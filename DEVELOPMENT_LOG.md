@@ -755,3 +755,22 @@ Actions:
 Validation completed:
 
 - VS Code extension lint: pass.
+
+## 2026-05-09 - Visual Studio Health Diagnostic Guard
+
+Focus:
+
+- Keep Visual Studio health-check, rollback, and command failure diagnostics readable without exposing credential-like exception details.
+- Add a release-build guard so these user-visible paths cannot drift back to raw exception messages.
+
+Actions:
+
+- Routed Visual Studio health-check failures for `.aegis`, Core registration/reachability, Ollama reachability, and build integration through `DiagnosticRedactor`.
+- Redacted command-level exception output and rollback manifest read failures before they are shown in the tool window.
+- Extended the Visual Studio VSIX build script to fail if health-check, command error, or rollback paths reintroduce raw exception text.
+- Updated Visual Studio extension changelog and release notes.
+
+Validation completed:
+
+- Visual Studio extension Release build/package: pass, 0 warnings.
+- Aegis Core contract tests: pass, 89 tests.
