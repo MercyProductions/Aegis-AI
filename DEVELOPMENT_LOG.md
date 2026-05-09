@@ -20,6 +20,7 @@ Actions:
 - Restricted Core validation execution to known safe commands and structured failure results.
 - Redacted validation logs before disk writes and made validation log write failures non-fatal.
 - Redacted returned validation output and made Core diagnostic log writes non-fatal.
+- Hardened Core generated-memory writes so damaged `.aegis` paths do not crash workspace scans.
 - Kept unrelated dirty worktree changes out of scope.
 - Recorded workflow friction in `WORKFLOW_NOTES.md`.
 

@@ -14,6 +14,7 @@
 - Restricted Core validation execution to a safe command allow-list and added structured blocked/missing/timeout failure results.
 - Redacted secret-like validation output before writing `.aegis/validation-log.md` and made validation log write failures non-fatal.
 - Redacted validation API output before returning it to clients and made Core diagnostic log writes non-fatal.
+- Made Core memory writes best-effort and atomic where possible so damaged `.aegis` files do not crash scans or generated-memory updates.
 - Added product-utilization workflow notes for daily Auralith dogfooding.
 - Documented the current stabilization and validation pass.
 

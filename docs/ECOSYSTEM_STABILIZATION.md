@@ -25,7 +25,7 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 | Path safety | Improved | Core now evaluates ignored folders relative to the workspace and blocks secret-like filenames case-insensitively. |
 | Shared settings | Improved | Core config loading falls back to defaults for malformed numeric, boolean, string-list, and blank string settings. |
 | Shared task API | Improved | Bad task status updates return `400`; missing task IDs return `404`. |
-| Memory resilience | Improved | Dashboard and task reads now tolerate unreadable `.aegis` JSON/markdown files. |
+| Memory resilience | Improved | Dashboard/task reads and generated-memory writes now tolerate unreadable or damaged `.aegis` JSON/markdown paths. |
 | Validation detection | Improved | Core now lists JS test/build validation commands only when matching package scripts exist. |
 | Validation execution | Improved | Core blocks unsafe custom validation commands and returns structured missing-tool/timeout failures. |
 | Validation logging | Improved | Validation output is redacted before API responses and disk writes; log write failures do not crash validation. |
@@ -35,7 +35,7 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 
 Ran during this pass:
 
-- `python -m pytest tests -q` in Aegis Core: 15 tests passed
+- `python -m pytest tests -q` in Aegis Core: 17 tests passed
 - `python -m compileall aegis_core`: pass
 - Aegis Core `/v1` TestClient smoke for settings, memory, diagnostics, roadmap, tasks, task status: pass
 - Core scan twice: second scan returned `cache_hit: true`
@@ -57,6 +57,7 @@ Ran during this pass:
 - Added Core scan cache through `.aegis/scan-cache.json`.
 - Added Core dashboard stale-task detection and suggested actions.
 - Hardened Core scan safety for mixed-case ignored folders, token/password/auth-like files, and Windows workspaces under temp-style parent directories.
+- Made generated-memory writes best-effort and atomic where possible, so damaged `.aegis` paths do not crash scans.
 
 ## Daily Driver Friction To Watch
 

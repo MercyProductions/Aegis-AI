@@ -9,9 +9,11 @@ from fastapi.testclient import TestClient
 
 import aegis_core.validation as validation_module
 from aegis_core.config import AegisConfig, load_config
+from aegis_core.memory import ProjectMemory
 from aegis_core.safety import is_ignored_path, is_safe_to_read, is_secret_like
 from aegis_core.server import create_app
 from aegis_core.validation import append_validation_log, detect_validation_commands, run_validation
+from aegis_core.workspace import WorkspaceScanner
 
 
 def make_workspace(tmp_path: Path) -> Path:
@@ -318,3 +320,30 @@ def test_health_survives_unwritable_core_log_path(tmp_path: Path) -> None:
 
     assert response.status_code == 200
     assert response.json()["ok"] is True
+
+
+def test_workspace_scan_survives_damaged_memory_write_targets(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    aegis_dir = workspace / ".aegis"
+    aegis_dir.mkdir()
+    for name in ("file-index.json", "project-summary.md", "architecture-map.md"):
+        (aegis_dir / name).mkdir()
+
+    result = WorkspaceScanner(workspace).scan(persist=True)
+
+    assert result["workspace"] == str(workspace.resolve())
+    assert result["file_count"] > 0
+    assert not (aegis_dir / ".file-index.json.tmp").exists()
+    assert not (aegis_dir / ".project-summary.md.tmp").exists()
+
+
+def test_project_memory_writes_are_best_effort_when_memory_root_is_file(tmp_path: Path) -> None:
+    workspace = tmp_path / "memory-root-file-project"
+    workspace.mkdir()
+    (workspace / ".aegis").write_text("not a directory", encoding="utf-8")
+
+    memory = ProjectMemory(workspace)
+
+    memory.write_json("file-index.json", {"ok": True})
+    memory.write_generated_markdown("project-summary.md", "Project Summary", "Still returns.")
+    memory.append_decision("No crash when memory root is not writable.")
