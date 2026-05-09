@@ -204,7 +204,7 @@ Query:
 
 - `workspace`: optional workspace path
 
-Returns the hybrid provider inventory without secret values. Providers include local Ollama, local LM Studio, OpenAI, Anthropic, Google, and OpenRouter. Cloud providers report whether a key is present in OS credential storage; API keys are never returned.
+Returns the hybrid provider inventory without secret values. Providers include local Ollama, local LM Studio, OpenAI, Anthropic, Google, and OpenRouter. Cloud providers report whether a key is present in OS credential storage; API keys are never returned. Inventory responses also include `credential_store_healthy` and `credential_store_errors` so clients can distinguish "no key stored" from "the OS credential store could not be inspected."
 
 Alias:
 

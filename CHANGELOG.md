@@ -18,6 +18,7 @@
 - Hardened shared Ollama URL settings so common local URLs are normalized, API-path pastes are reduced to base URLs, credential-like endpoint text is rejected, and malformed URLs report model health failures instead of breaking diagnostics.
 - Hardened Ollama model inventory parsing so malformed `/api/tags` payloads become health diagnostics instead of client-visible exceptions.
 - Added an experimental Aegis Core hybrid model router with local-first defaults, optional OpenAI/Anthropic/Google/OpenRouter/LM Studio provider inventory, cloud approval gates, sanitized context previews, and OS credential storage for provider keys.
+- Improved hybrid provider inventory so OS credential-store inspection failures are surfaced through `credential_store_healthy` and `credential_store_errors` instead of looking like simply missing provider keys.
 - Added experimental Aegis Core autonomous task orchestration with supervised goal planning, local queue state, approval gates, validation state, rollback metadata, and memory updates without uncontrolled file editing.
 - Added experimental Aegis Core multi-agent specialization with Planner, Architect, Coder, Reviewer, Tester, Repair, and Documentation roles assigned to orchestration tasks.
 - Added experimental Aegis Core workflow automation with safe scheduled/triggered maintenance jobs, `/v1/jobs`, `aegis jobs`, generated project health reports, and `.aegis/jobs-log.md` history while preserving approval gates for risky actions.

@@ -221,6 +221,8 @@ class ProviderInventoryData(ContractModel):
     mode: str = "local_only"
     local_only: bool = True
     credential_store_available: bool = False
+    credential_store_healthy: bool = True
+    credential_store_errors: list[dict[str, str]] = Field(default_factory=list)
     providers: list[ProviderData] = Field(default_factory=list)
 
 

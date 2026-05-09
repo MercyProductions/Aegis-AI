@@ -21,7 +21,7 @@ from aegis_core.contracts import (
     validate_contract_envelope,
 )
 from aegis_core.memory import ProjectMemory
-from aegis_core.model_router import route_model
+from aegis_core.model_router import provider_inventory, route_model
 from aegis_core.ollama import OllamaClient, OllamaStatus
 from aegis_core.safety import is_ignored_path, is_safe_to_edit, is_safe_to_read, is_secret_like
 from aegis_core.server import create_app
@@ -1609,6 +1609,11 @@ class DummyCredentialStore:
         return self.keys.get(provider_id)
 
 
+class BrokenCredentialStore(DummyCredentialStore):
+    def has_provider_key(self, provider_id: str) -> bool:
+        raise RuntimeError("credential backend unavailable")
+
+
 def test_model_router_is_local_first_and_blocks_secret_context(tmp_path: Path, monkeypatch) -> None:
     workspace = tmp_path / "router-local-project"
     workspace.mkdir()
@@ -1730,6 +1735,21 @@ def test_model_router_contract_endpoint_returns_versioned_route(tmp_path: Path, 
     data = response.json()["data"]
     assert data["selected"]["provider_id"] == "ollama"
     assert data["mode"] == "local_only"
+
+
+def test_provider_inventory_reports_credential_store_read_failures(tmp_path: Path) -> None:
+    workspace = tmp_path / "provider-inventory-project"
+    workspace.mkdir()
+
+    inventory = provider_inventory(workspace, credentials=BrokenCredentialStore())
+
+    assert inventory["credential_store_available"] is True
+    assert inventory["credential_store_healthy"] is False
+    assert inventory["credential_store_errors"]
+    assert {item["provider_id"] for item in inventory["credential_store_errors"]} == {"openai", "anthropic", "google", "openrouter"}
+    assert all(item["error"] for item in inventory["credential_store_errors"])
+    assert all("secret-like" in item["error"] for item in inventory["credential_store_errors"])
+    assert all(not item["key_stored"] for item in inventory["providers"] if item["requires_key"])
 
 
 def test_provider_key_endpoint_rejects_unknown_provider() -> None:

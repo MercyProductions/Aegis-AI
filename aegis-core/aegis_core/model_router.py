@@ -42,7 +42,11 @@ class ProviderSpec:
         return asdict(self)
 
 
-def provider_catalog(config: AegisConfig, credentials: CredentialStore | None = None) -> list[ProviderSpec]:
+def provider_catalog(
+    config: AegisConfig,
+    credentials: CredentialStore | None = None,
+    credential_errors: list[dict[str, str]] | None = None,
+) -> list[ProviderSpec]:
     store = credentials or CredentialStore()
     return [
         ProviderSpec(
@@ -68,21 +72,24 @@ def provider_catalog(config: AegisConfig, credentials: CredentialStore | None = 
             requires_key=False,
             key_stored=False,
         ),
-        _cloud_provider("openai", "OpenAI", "openai", "https://api.openai.com/v1", config.preferred_cloud_model, store),
-        _cloud_provider("anthropic", "Anthropic", "anthropic", "https://api.anthropic.com/v1", "claude-3-5-sonnet-latest", store),
-        _cloud_provider("google", "Google", "google", "https://generativelanguage.googleapis.com/v1beta", "gemini-1.5-pro", store),
-        _cloud_provider("openrouter", "OpenRouter", "openai-compatible", "https://openrouter.ai/api/v1", config.preferred_cloud_model, store),
+        _cloud_provider("openai", "OpenAI", "openai", "https://api.openai.com/v1", config.preferred_cloud_model, store, credential_errors),
+        _cloud_provider("anthropic", "Anthropic", "anthropic", "https://api.anthropic.com/v1", "claude-3-5-sonnet-latest", store, credential_errors),
+        _cloud_provider("google", "Google", "google", "https://generativelanguage.googleapis.com/v1beta", "gemini-1.5-pro", store, credential_errors),
+        _cloud_provider("openrouter", "OpenRouter", "openai-compatible", "https://openrouter.ai/api/v1", config.preferred_cloud_model, store, credential_errors),
     ]
 
 
 def provider_inventory(workspace: str | Path | None = None, credentials: CredentialStore | None = None) -> dict[str, Any]:
     config = load_config(workspace)
     store = credentials or CredentialStore()
-    providers = provider_catalog(config, store)
+    credential_errors: list[dict[str, str]] = []
+    providers = provider_catalog(config, store, credential_errors)
     return {
         "mode": config.model_routing_mode,
         "local_only": config.model_routing_mode == "local_only",
         "credential_store_available": store.available,
+        "credential_store_healthy": not credential_errors,
+        "credential_store_errors": credential_errors,
         "providers": [provider.to_dict() for provider in providers],
     }
 
@@ -290,11 +297,14 @@ def _cloud_provider(
     endpoint: str,
     default_model: str,
     store: CredentialStore,
+    credential_errors: list[dict[str, str]] | None = None,
 ) -> ProviderSpec:
     key_stored = False
     try:
         key_stored = store.has_provider_key(provider_id)
-    except Exception:
+    except Exception as exc:
+        if credential_errors is not None:
+            credential_errors.append({"provider_id": provider_id, "error": scrub(str(exc))})
         key_stored = False
     return ProviderSpec(
         id=provider_id,

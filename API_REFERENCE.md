@@ -181,6 +181,7 @@ Hybrid model routing:
 - Optional providers are OpenAI, Anthropic, Google, OpenRouter, and local LM Studio.
 - Cloud routes require client-visible warnings, explicit approval, sanitized context metadata, and provider keys stored in OS credential storage.
 - Secret-like, ignored, and outside-workspace files are excluded from cloud context.
+- Provider inventory includes `credential_store_healthy` and `credential_store_errors` so clients can tell the difference between "no cloud key stored" and "the OS credential store could not be inspected."
 
 Autonomous task orchestration:
 
