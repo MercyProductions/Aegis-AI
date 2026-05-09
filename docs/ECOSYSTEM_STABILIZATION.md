@@ -29,7 +29,7 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 | Shared task API | Improved | Bad task status updates return `400`, missing task IDs return `404`, and malformed local task records are normalized on read. |
 | Memory resilience | Improved | Dashboard/task reads, agent plan reads, and generated-memory writes now tolerate unreadable or damaged `.aegis` JSON/markdown paths. |
 | VS Code memory resilience | Improved | Workspace startup and later index/history/log writes skip damaged `.aegis` paths instead of breaking scans or post-apply bookkeeping. |
-| VS Code rollback safety | Improved | Rollback validates timestamp-like backup IDs, workspace roots, and backup file paths before restoring files. |
+| VS Code rollback safety | Improved | Rollback validates timestamp-like backup IDs, workspace roots, and backup file paths before restoring files; incomplete backup files are skipped with visible output details. |
 | Visual Studio memory init | Improved | Solution memory reads and writes are best-effort, so damaged `.aegis` paths do not crash memory-backed workflows. |
 | Visual Studio rollback | Improved | Backup manifests now carry explicit IDs, rollback rejects cross-solution manifests, and manifest/backup paths are validated before touching solution files. |
 | Website workspace setup | Improved | Damaged `.aegis` project and validation profile paths now return warnings instead of breaking setup. |
@@ -58,6 +58,7 @@ Ran during this pass:
 - `npm run lint` in VS Code extension: pass
 - VS Code memory-write hardening lint: pass
 - VS Code rollback manifest hardening lint and package: pass
+- VS Code rollback incomplete-backup hardening lint and package: pass
 - `npm run package` in VS Code extension: pass, regenerated `release/aegis-local-autopilot-0.1.1.vsix`
 - Desktop `.\build.ps1`: pass, 0 warnings, 0 errors
 - Visual Studio extension `.\build.ps1`: pass, regenerated `release/AegisLocalAgentVs.vsix`
@@ -94,6 +95,7 @@ Ran during this pass:
 - Hardened VS Code index, managed-section, recovery, validation-log, decision-log, and dogfooding-note writes so damaged memory targets remain degraded instead of crashing workflows.
 - Hardened VS Code rollback manifest validation so corrupted backup IDs, mismatched workspace roots, or unsafe backup paths cannot restore outside the current workspace backup folder.
 - Tightened VS Code rollback backup ID validation to reject dot and hidden-folder aliases.
+- Hardened VS Code rollback failure handling so missing or unreadable backup files are skipped with output-channel details and manifest-level rollback errors are reported cleanly.
 - Hardened Visual Studio `.aegis` solution memory so damaged memory files are skipped and health checks surface the degraded state.
 - Hardened Visual Studio rollback so it resolves backups by explicit ID and skips unsafe or incomplete rollback manifest entries.
 - Tightened Visual Studio rollback so shared backup folders cannot restore another solution's manifest, invalid backup IDs do not fall back to the newest backup folder, and proposed edit paths cannot contain traversal or secret-like path segments.

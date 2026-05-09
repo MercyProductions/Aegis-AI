@@ -3111,7 +3111,13 @@ async function rollbackLastAgentChange(resource) {
     return;
   }
   const restored = [];
-  restored.push(...await restoreFromManifest(backupRoot, manifest, { workspaceRoot }));
+  try {
+    restored.push(...await restoreFromManifest(backupRoot, manifest, { workspaceRoot }));
+  } catch (error) {
+    reportError(error, { failedCommand: 'Aegis: Rollback Last Agent Change', retryCommand: 'rollbackLastChange' });
+    vscode.window.showErrorMessage(`Aegis rollback could not be completed: ${error.message}`);
+    return;
+  }
 
   const validation = {
     success: true,
@@ -3160,7 +3166,13 @@ async function restoreFromManifest(backupRoot, manifest, options = {}) {
         output.appendLine(`Skipped unsafe backup file path for restore: ${file.backupPath || '<missing>'}`);
         continue;
       }
-      const backupBytes = await fs.readFile(backupPath);
+      let backupBytes;
+      try {
+        backupBytes = await fs.readFile(backupPath);
+      } catch (error) {
+        output.appendLine(`Skipped missing or unreadable backup file for restore: ${file.backupPath || '<missing>'} (${error.message})`);
+        continue;
+      }
       await fs.mkdir(path.dirname(targetPath), { recursive: true });
       await fs.writeFile(targetPath, backupBytes);
       restored.push(workspaceRelative);

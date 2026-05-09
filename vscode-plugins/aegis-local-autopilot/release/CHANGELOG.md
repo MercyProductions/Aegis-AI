@@ -11,6 +11,7 @@
 - Hardened index, managed memory, recovery, validation-log, decision-log, and dogfooding-note writes so damaged `.aegis` targets do not break scans or post-apply bookkeeping.
 - Hardened rollback manifest validation so corrupted backup IDs, mismatched workspace roots, or unsafe backup file paths cannot restore outside the current workspace backup folder.
 - Tightened rollback backup ID validation to reject dot and hidden-folder aliases.
+- Hardened rollback failure handling so missing or unreadable backup files are skipped with output details and manifest-level rollback failures show a clear error.
 
 ## 0.1.0 - Release Candidate
 

@@ -372,7 +372,7 @@ Use that file to record bad plans, hallucinated files, failed edits, unsafe prop
 
 Before every approved apply, Aegis creates a snapshot in `.aegis/backups/<timestamp>/` and records the changed files in `.aegis/change-history.json`.
 
-Use `Aegis: Rollback Last Agent Change` or the sidebar **Rollback Last** button to restore the previous contents from the latest Aegis backup. If a file was newly created by the agent, rollback removes that file. Rollback only touches files recorded in a valid backup manifest for the current workspace.
+Use `Aegis: Rollback Last Agent Change` or the sidebar **Rollback Last** button to restore the previous contents from the latest Aegis backup. If a file was newly created by the agent, rollback removes that file. Rollback only touches files recorded in a valid backup manifest for the current workspace, skips missing or unreadable backup entries with output-channel details, and reports manifest-level failures clearly.
 
 ## Failure Handling And Recovery
 
