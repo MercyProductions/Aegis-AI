@@ -865,3 +865,21 @@ Validation completed:
 
 - VS Code extension lint: pass.
 - VS Code VSIX package: pass.
+
+## 2026-05-09 - Visual Studio Release Folder Hygiene
+
+Focus:
+
+- Keep the Visual Studio release folder aligned with the stricter VSIX archive hygiene checks.
+- Prevent stale internal files from surviving in `release/` after an older or manual packaging pass.
+
+Actions:
+
+- Replaced one-off `DOGFOODING_NOTES.md` cleanup with a source-only release-file cleanup list.
+- Removed stale internal dogfooding notes, local detected-model inventories, and repository-only `.gitignore` files before each build/package run.
+- Updated the root and Visual Studio changelogs with the release hygiene guard.
+
+Validation completed:
+
+- Visual Studio extension Release build/package: pass.
+- Stale release-folder cleanup smoke: pass for `DOGFOODING_NOTES.md`, `DETECTED_MODELS.md`, and `.gitignore`.

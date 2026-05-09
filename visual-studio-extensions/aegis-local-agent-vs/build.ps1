@@ -161,9 +161,16 @@ Assert-VisualStudioCommandTable `
 Assert-DiagnosticRedactionGuards -ProjectDirectory $projectDir
 
 New-Item -ItemType Directory -Force -Path $release | Out-Null
-$staleDogfoodingNotes = Join-Path $release "DOGFOODING_NOTES.md"
-if (Test-Path -LiteralPath $staleDogfoodingNotes) {
-  Remove-Item -LiteralPath $staleDogfoodingNotes -Force
+$sourceOnlyReleaseFiles = @(
+  "DOGFOODING_NOTES.md",
+  "DETECTED_MODELS.md",
+  ".gitignore"
+)
+foreach ($fileName in $sourceOnlyReleaseFiles) {
+  $staleReleaseFile = Join-Path $release $fileName
+  if (Test-Path -LiteralPath $staleReleaseFile) {
+    Remove-Item -LiteralPath $staleReleaseFile -Force
+  }
 }
 Invoke-MSBuild @($solution, "/t:Clean", "/p:Configuration=Release", "/p:DeployExtension=false")
 Invoke-MSBuild @($solution, "/t:Restore", "/p:Configuration=Release")

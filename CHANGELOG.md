@@ -103,6 +103,7 @@
 - Hardened Visual Studio Ollama/Core diagnostics so secret-like HTTP error details are redacted before display.
 - Hardened Visual Studio health-check, rollback, and command error diagnostics so user-visible exception details are redacted, with a build guard to prevent regressions.
 - Hardened Visual Studio VSIX metadata and packaging so MoreInfo points to GitHub and internal dogfooding/model-inventory files are excluded.
+- Hardened Visual Studio release-folder cleanup so stale internal dogfooding notes, detected-model inventories, and repository-only `.gitignore` files are removed before packaging.
 - Hardened Visual Studio VSIX packaging so VSCT command buttons, command symbols, C# command IDs, and registered handlers must stay synchronized.
 - Refreshed stabilization validation docs so Core test counts, Website build status, historical migration-phase caveats, VS Code packaging guards, Visual Studio command-table guards, and Desktop smoke status match the current baseline.
 - Added product-utilization workflow notes for daily Auralith dogfooding.

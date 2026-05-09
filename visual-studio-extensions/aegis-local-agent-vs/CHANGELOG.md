@@ -9,6 +9,7 @@
 - Fixed VSCT command-resource packaging so Visual Studio can load the Aegis Tools menu and command table after VSIX install.
 - Hardened `build.ps1` so MSBuild failures stop packaging and the generated VSIX is checked for matching manifest version plus embedded `Menus.ctmenu` resources.
 - Hardened `build.ps1` to reject localhost placeholder metadata and internal note/model-inventory files in packaged VSIX archives.
+- Hardened `build.ps1` release-folder cleanup so stale internal dogfooding notes, detected-model inventories, and repository-only `.gitignore` files are removed before packaging.
 - Hardened solution memory reads and writes so damaged `.aegis` paths degrade safely instead of crashing roadmap, context, build-log, or history workflows.
 - Hardened rollback manifests with explicit backup IDs and rollback path validation so corrupted metadata cannot restore from ambiguous or escaped paths.
 - Tightened rollback for shared backup locations so manifests from another solution, hidden/dot backup IDs, ambiguous newest-backup fallback, and traversal or secret-like proposed paths are rejected.
