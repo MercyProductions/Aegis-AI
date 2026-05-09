@@ -214,6 +214,75 @@ class WorkspaceOperationsTests(unittest.TestCase):
             )
         )
 
+    def test_watcher_treats_unity_metadata_as_dependency_drift(self) -> None:
+        files = self.workspace_manager.scan(self.workspace, max_files=500)
+        dependency = self.workspace_manager.inspect_dependency_profile(self.workspace)
+        first = self.engine.build_snapshot(
+            workspace_root=self.workspace,
+            files=files,
+            dependency_profile=dependency,
+            project_intelligence=None,
+            recent_tasks=[],
+            fix_memory=[],
+            project_memory=[],
+            previous_watch=None,
+            previous_recommendations=[],
+            include_git=False,
+        )
+        self.store.save_workspace_watch_snapshot(first.watcher)
+
+        (self.workspace / "Assets" / "Scripts").mkdir(parents=True, exist_ok=True)
+        (self.workspace / "Packages").mkdir(parents=True, exist_ok=True)
+        (self.workspace / "ProjectSettings").mkdir(parents=True, exist_ok=True)
+        (self.workspace / "Library").mkdir(parents=True, exist_ok=True)
+        (self.workspace / "Temp").mkdir(parents=True, exist_ok=True)
+        (self.workspace / "Logs").mkdir(parents=True, exist_ok=True)
+        (self.workspace / "Packages" / "manifest.json").write_text(
+            json.dumps({"dependencies": {"com.unity.inputsystem": "1.7.0"}}, indent=2),
+            encoding="utf-8",
+        )
+        (self.workspace / "Packages" / "packages-lock.json").write_text("{}\n", encoding="utf-8")
+        (self.workspace / "ProjectSettings" / "ProjectSettings.asset").write_text("%YAML 1.1\n", encoding="utf-8")
+        (self.workspace / "Assets" / "Scripts" / "Gameplay.asmdef").write_text("{}\n", encoding="utf-8")
+        (self.workspace / "Library" / "Generated.cs").write_text("class Generated {}\n", encoding="utf-8")
+        (self.workspace / "Temp" / "scratch.txt").write_text("temp\n", encoding="utf-8")
+        (self.workspace / "Logs" / "editor.log").write_text("log\n", encoding="utf-8")
+
+        next_files = self.workspace_manager.scan(self.workspace, max_files=500)
+        self.assertFalse(any(item.path.startswith(("Library/", "Temp/", "Logs/")) for item in next_files))
+        next_dependency = self.workspace_manager.inspect_dependency_profile(self.workspace)
+        self.assertEqual(next_dependency.project_type, "unity-project")
+        self.assertIn("Unity", next_dependency.frameworks)
+        self.assertIn("unity", next_dependency.package_managers)
+        self.assertIn("Packages/manifest.json", next_dependency.config_files)
+        self.assertIn("Packages/packages-lock.json", next_dependency.config_files)
+        self.assertIn("ProjectSettings/ProjectSettings.asset", next_dependency.config_files)
+        self.assertIn("Assets/Scripts/Gameplay.asmdef", next_dependency.config_files)
+        self.assertTrue(any(item.name == "com.unity.inputsystem" for item in next_dependency.dependencies))
+
+        second = self.engine.build_snapshot(
+            workspace_root=self.workspace,
+            files=next_files,
+            dependency_profile=next_dependency,
+            project_intelligence=None,
+            recent_tasks=[],
+            fix_memory=[],
+            project_memory=[],
+            previous_watch=self.store.workspace_watch_snapshot(project_root=self.workspace),
+            previous_recommendations=[],
+            include_git=False,
+        )
+
+        dependency_events = [event for event in second.watcher.events if event.kind == "dependency.changed"]
+        self.assertTrue(dependency_events)
+        self.assertTrue(
+            any(
+                "Packages/packages-lock.json" in event.related_files
+                or "ProjectSettings/ProjectSettings.asset" in event.related_files
+                for event in dependency_events
+            )
+        )
+
     @unittest.skipIf(shutil.which("git") is None, "git is not available")
     def test_git_event_processing(self) -> None:
         subprocess.run(["git", "init"], cwd=self.workspace, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)

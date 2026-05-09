@@ -35,6 +35,9 @@ IGNORE_NAMES = {
     ".pytest_cache",
     ".venv",
     "__pycache__",
+    "Library",
+    "Logs",
+    "Temp",
     "build",
     "dist",
     "node_modules",
@@ -43,10 +46,22 @@ IGNORE_NAMES = {
 DOTNET_PROJECT_SUFFIXES = {".csproj": "C#", ".fsproj": "F#", ".vbproj": "Visual Basic"}
 DOTNET_DEPENDENCY_METADATA_FILES = ("Directory.Packages.props", "packages.config", "packages.lock.json")
 VISUAL_STUDIO_SOLUTION_GLOBS = ("*.sln", "*.slnx")
+UNITY_METADATA_FILES = (
+    "Packages/manifest.json",
+    "Packages/packages-lock.json",
+    "ProjectSettings/ProjectVersion.txt",
+    "ProjectSettings/ProjectSettings.asset",
+    "ProjectSettings/EditorBuildSettings.asset",
+    "ProjectSettings/EditorSettings.asset",
+    "ProjectSettings/InputManager.asset",
+    "ProjectSettings/TagsManager.asset",
+)
 
 TEXT_SUFFIXES = {
     ".adoc",
     ".asm",
+    ".asmdef",
+    ".asmref",
     ".bat",
     ".c",
     ".cc",
@@ -677,6 +692,7 @@ class WorkspaceManager:
         self._inspect_cargo_manifest(workspace_root, profile)
         self._inspect_go_mod(workspace_root, profile)
         self._inspect_dotnet_projects(workspace_root, profile)
+        self._inspect_unity_project(workspace_root, profile)
         self._inspect_visual_studio_projects(workspace_root, profile)
         self._inspect_cmake(workspace_root, profile)
         self._inspect_native_code_conventions(workspace_root, profile)
@@ -1144,6 +1160,36 @@ class WorkspaceManager:
             if self._path_is_file(filters):
                 self._add_unique(profile.config_files, filters.relative_to(root).as_posix())
 
+    def _inspect_unity_project(self, root: Path, profile: WorkspaceDependencyProfile) -> None:
+        if not self._path_is_dir(root / "Assets") or not self._path_is_dir(root / "ProjectSettings"):
+            return
+
+        self._add_unique(profile.frameworks, "Unity")
+        self._add_unique(profile.package_managers, "unity")
+        self._add_unique(profile.build_systems, "Unity Editor")
+
+        for relative in UNITY_METADATA_FILES:
+            if self._path_is_file(root / relative):
+                self._add_unique(profile.config_files, relative)
+
+        for pattern in ("Assets/**/*.asmdef", "Assets/**/*.asmref"):
+            for path in self._bounded_glob(root, pattern, max_items=16):
+                self._add_unique(profile.config_files, path.relative_to(root).as_posix())
+
+        manifest = self._read_json_object(root / "Packages" / "manifest.json")
+        dependencies = manifest.get("dependencies") if manifest else None
+        if isinstance(dependencies, dict):
+            for name, version in dependencies.items():
+                if isinstance(name, str) and isinstance(version, (str, int, float)):
+                    profile.dependencies.append(
+                        WorkspaceDependency(
+                            name=name,
+                            version=str(version),
+                            source="Packages/manifest.json",
+                            group="unity-package",
+                        )
+                    )
+
     def _inspect_native_code_conventions(self, root: Path, profile: WorkspaceDependencyProfile) -> None:
         candidates: list[Path] = []
         for relative in ("CMakeLists.txt", "Makefile", "premake5.lua", "xmake.lua"):
@@ -1365,6 +1411,8 @@ class WorkspaceManager:
             return "api-service"
         if "django" in frameworks:
             return "server-rendered-web"
+        if "unity" in frameworks:
+            return "unity-project"
         if "visual studio / msbuild" in build_systems or "cmake" in build_systems:
             return "native-app"
         if "rust" in languages or "go" in languages:

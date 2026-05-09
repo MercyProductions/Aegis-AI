@@ -105,6 +105,31 @@ class ApprovalAndCommandTests(unittest.TestCase):
         )
         self.assertTrue(all(item[1].risk_level >= 5 for item in blocked))
 
+    def test_guided_auto_apply_blocks_unity_metadata_changes(self) -> None:
+        manager = ApprovalManager("guided", "standard")
+        approved, blocked = manager.partition_auto_apply_changes(
+            [
+                FileChange(action="update", path="Packages/manifest.json", content="{}\n"),
+                FileChange(action="update", path="Packages/packages-lock.json", content="{}\n"),
+                FileChange(action="update", path="ProjectSettings/ProjectSettings.asset", content="%YAML 1.1\n"),
+                FileChange(action="update", path="Assets/Scripts/Gameplay.asmdef", content="{}\n"),
+                FileChange(action="update", path="Assets/Scripts/Gameplay.asmref", content="{}\n"),
+            ]
+        )
+
+        self.assertEqual(approved, [])
+        self.assertEqual(
+            [item[0].path for item in blocked],
+            [
+                "Packages/manifest.json",
+                "Packages/packages-lock.json",
+                "ProjectSettings/ProjectSettings.asset",
+                "Assets/Scripts/Gameplay.asmdef",
+                "Assets/Scripts/Gameplay.asmref",
+            ],
+        )
+        self.assertTrue(all(item[1].risk_level >= 5 for item in blocked))
+
     def test_prompt_tier_keeps_auto_validation_manual(self) -> None:
         manager = ApprovalManager("prompt", "standard")
         allowed, reason = manager.should_auto_run_command("python -m compileall .", manual=False)

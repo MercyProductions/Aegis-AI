@@ -1,5 +1,25 @@
 # Development Log
 
+## 2026-05-09 - Website Unity Metadata Safety
+
+Focus:
+
+- Bring Website approval, workspace profiling, watcher drift, and autonomous dependency projections into alignment with Core and editor Unity metadata handling.
+- Avoid scanning generated Unity runtime folders during Website workspace indexing.
+
+Actions:
+
+- Added Website dependency-profile detection for Unity project roots, package manifests, package lockfiles, key `ProjectSettings` metadata, `.asmdef`/`.asmref` files, and package dependencies from `Packages/manifest.json`.
+- Treated Unity metadata paths as dependency drift in workspace watcher fingerprints and related-file evidence.
+- Raised guided approval risk for Unity package/settings/assembly metadata changes and added Unity metadata to autonomous dependency projections.
+- Added Unity `Library`, `Temp`, and `Logs` folders to Website workspace scan ignores.
+
+Validation completed:
+
+- Website approval/workspace/autonomous focused backend tests: 38 passed, 11 subtests passed.
+- Website backend compile check: pass.
+- Git whitespace check: pass.
+
 ## 2026-05-09 - Visual Studio Unity Metadata Context
 
 Focus:

@@ -120,6 +120,9 @@ class ApprovalManager:
             if any(fnmatch.fnmatch(path, pattern) for pattern in patterns):
                 return rule.risk_level, rule.reason
 
+        if _is_unity_metadata_path(path):
+            return 6, "Unity package, project settings, and assembly metadata can affect the whole project."
+
         suffix = PurePosixPath(path).suffix.lower()
         name = PurePosixPath(path).name.lower()
 
@@ -206,6 +209,20 @@ class ApprovalManager:
         except ValueError as exc:
             valid = ", ".join(item.value for item in ApprovalTier)
             raise ValueError(f"Unknown approval tier '{value}'. Expected one of: {valid}.") from exc
+
+
+def _is_unity_metadata_path(path: str) -> bool:
+    normalized = PurePosixPath(path.replace("\\", "/")).as_posix().lstrip("/").casefold()
+    return normalized in {
+        "packages/manifest.json",
+        "packages/packages-lock.json",
+        "projectsettings/projectversion.txt",
+        "projectsettings/projectsettings.asset",
+        "projectsettings/editorbuildsettings.asset",
+        "projectsettings/editorsettings.asset",
+        "projectsettings/inputmanager.asset",
+        "projectsettings/tagsmanager.asset",
+    } or normalized.endswith((".asmdef", ".asmref"))
 
 
 class SandboxProfileManager:

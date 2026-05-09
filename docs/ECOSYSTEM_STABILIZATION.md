@@ -46,8 +46,8 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 | Website memory notes | Improved | Memory-note files are confined to the memory directory, damaged memory paths degrade with clear API errors, writes are atomic, malformed confidence input is tolerated, rapid note IDs are collision-safe, and the memory editor uses shared API base discovery for note operations. |
 | Website model manager | Improved | Damaged model-operation and pull-log JSON paths are skipped safely, invalid operation records are ignored, and operation history writes are atomic. |
 | Website model benchmarks | Improved | Damaged benchmark result/job stores are skipped safely, blank job records are ignored, and benchmark state writes are atomic. |
-| Website dependency profiling | Improved | Damaged marker directories and lockfile paths no longer distort onboarding stack, package-manager, entry-point, or database summaries, root `build.py` / `build.ps1` guard scripts are recorded before lower-level native validation fallbacks, and Python lockfile drift is tracked by watcher snapshots. |
-| Dependency lockfile safety | Improved | Core maintenance manifests, Website guided auto-apply scoring, autonomous dependency projections, watcher evidence, and VS Code local fallback proposal guards now treat JS, Python, Go, Rust, and .NET/NuGet lockfiles or package metadata as dependency-wide surfaces. |
+| Website dependency profiling | Improved | Damaged marker directories and lockfile paths no longer distort onboarding stack, package-manager, entry-point, or database summaries, root `build.py` / `build.ps1` guard scripts are recorded before lower-level native validation fallbacks, Python lockfile drift is tracked by watcher snapshots, and Unity metadata is profiled without scanning generated runtime folders. |
+| Dependency lockfile safety | Improved | Core maintenance manifests, Website guided auto-apply scoring, autonomous dependency projections, watcher evidence, and VS Code local fallback proposal guards now treat JS, Python, Go, Rust, .NET/NuGet, and Unity lockfiles or package metadata as dependency-wide surfaces. |
 | Website creative assets | Improved | Generated media preview URLs use the shared API resource URL helper, so previews work through the Vite proxy and discovered backend ports instead of assuming `8787`. |
 | Website checkpoint restore | Improved | Restore now validates checkpoint IDs, damaged manifests, backup paths, and missing backup files before touching workspace files. |
 | Website safe apply | Improved | Apply refuses to edit when checkpoint creation fails and reports later write/delete failures with checkpoint context. |
@@ -93,6 +93,7 @@ Ran during this pass:
 - Aegis Core JS/Python/Go/Rust/.NET/Unity metadata and simulation focused tests: 9 passed
 - Aegis Core contract regression suite after Unity metadata scan hardening: 158 passed
 - Website approval/autonomous/workspace-operation lockfile safety tests: 36 passed, 11 subtests passed
+- Website approval/workspace/autonomous Unity metadata safety tests: 38 passed, 11 subtests passed
 - VS Code package lint and extension syntax check after Unity metadata context hardening: pass
 - Website focused frontend API/runtime/task tests: 40 tests passed
 - Website acceptance gate with explicit backend/frontend URLs: pass
@@ -125,6 +126,7 @@ Ran during this pass:
 - Improved Core Unity scans and change simulation so package manifests, package lockfiles, project settings, and assembly-definition metadata are available as build/context files and build-impacting risk without scanning generated Unity runtime folders.
 - Improved VS Code local fallback snapshots so Unity package manifests, package lockfiles, project settings, and assembly-definition metadata stay available as important context/build-risk files when Core scan is unavailable.
 - Improved Visual Studio solution scans and smart context so Unity package manifests, package lockfiles, project settings, and assembly-definition metadata stay available as important context/config files without treating Unity's package lockfile as the old NuGet typo.
+- Improved Website workspace profiling, watcher drift, guided approval, and autonomous dependency projections so Unity package manifests, package lockfiles, project settings, and assembly-definition metadata receive dependency/config safety treatment while generated Unity runtime folders are skipped.
 - Hardened Core validation detection so ignored dependency/build folders do not trigger false `.NET` build suggestions.
 - Hardened Core validation detection so damaged root build-marker directories do not trigger false Cargo, Python, CMake, pnpm, or Yarn suggestions.
 - Reduced Core validation startup overhead by avoiding duplicate validation-command detection.

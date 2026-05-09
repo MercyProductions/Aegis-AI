@@ -491,6 +491,10 @@ class AutonomousEngineeringEngine:
                 "packages.lock.json",
                 "packages.config",
                 "Directory.Packages.props",
+                "Packages/manifest.json",
+                "Packages/packages-lock.json",
+                "ProjectSettings/ProjectSettings.asset",
+                "Assets/Scripts/Gameplay.asmdef",
             ]
         risk = 0.25
         if _contains_any(goal, ARCHITECTURE_TERMS):

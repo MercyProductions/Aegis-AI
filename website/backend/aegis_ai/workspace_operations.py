@@ -52,10 +52,26 @@ DEPENDENCY_FILES = {
     "Directory.Packages.props",
 }
 DEPENDENCY_FILE_NAMES = {name.casefold() for name in DEPENDENCY_FILES}
+UNITY_DEPENDENCY_METADATA_PATHS = {
+    "packages/manifest.json",
+    "packages/packages-lock.json",
+    "projectsettings/projectversion.txt",
+    "projectsettings/projectsettings.asset",
+    "projectsettings/editorbuildsettings.asset",
+    "projectsettings/editorsettings.asset",
+    "projectsettings/inputmanager.asset",
+    "projectsettings/tagsmanager.asset",
+}
 
 
 def _is_dependency_file(path: str) -> bool:
-    return Path(path).name.casefold() in DEPENDENCY_FILE_NAMES
+    normalized = path.replace("\\", "/").lstrip("/").casefold()
+    return (
+        normalized in UNITY_DEPENDENCY_METADATA_PATHS
+        or normalized.endswith(".asmdef")
+        or normalized.endswith(".asmref")
+        or Path(path).name.casefold() in DEPENDENCY_FILE_NAMES
+    )
 
 
 def utc_now() -> str:
