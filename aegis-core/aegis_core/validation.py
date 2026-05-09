@@ -38,9 +38,10 @@ class ValidationCommand:
 def detect_validation_commands(workspace: str | Path) -> list[ValidationCommand]:
     root = Path(workspace).resolve()
     commands: list[ValidationCommand] = []
-    package_scripts = _package_scripts(root)
+    package = _package_json(root)
+    package_scripts = _package_scripts(package)
     if package_scripts:
-        package_manager = _detect_package_manager(root)
+        package_manager = _detect_package_manager(root, package)
         for script in PACKAGE_VALIDATION_SCRIPTS:
             if script in package_scripts:
                 commands.append(_package_script_command(package_manager, script))
@@ -57,7 +58,7 @@ def detect_validation_commands(workspace: str | Path) -> list[ValidationCommand]
     return commands
 
 
-def _package_scripts(root: Path) -> dict[str, str]:
+def _package_json(root: Path) -> dict[str, Any]:
     package_json = root / "package.json"
     if not _is_root_file(package_json, root):
         return {}
@@ -65,17 +66,32 @@ def _package_scripts(root: Path) -> dict[str, str]:
         package = json.loads(package_json.read_text(encoding="utf-8-sig"))
     except (OSError, json.JSONDecodeError):
         return {}
+    return package if isinstance(package, dict) else {}
+
+
+def _package_scripts(package: dict[str, Any]) -> dict[str, str]:
     scripts = package.get("scripts")
     if not isinstance(scripts, dict):
         return {}
     return {str(name): str(command) for name, command in scripts.items() if isinstance(command, str) and command.strip()}
 
 
-def _detect_package_manager(root: Path) -> str:
+def _detect_package_manager(root: Path, package: dict[str, Any]) -> str:
+    raw = str(package.get("packageManager") or "").strip().lower()
+    if raw.startswith("pnpm"):
+        return "pnpm"
+    if raw.startswith("yarn"):
+        return "yarn"
+    if raw.startswith("bun"):
+        return "bun"
+    if raw.startswith("npm"):
+        return "npm"
     if _has_root_file_named(root, "pnpm-lock.yaml"):
         return "pnpm"
     if _has_root_file_named(root, "yarn.lock"):
         return "yarn"
+    if _has_root_file_named(root, "bun.lock") or _has_root_file_named(root, "bun.lockb"):
+        return "bun"
     return "npm"
 
 
@@ -84,6 +100,12 @@ def _package_script_command(package_manager: str, script: str) -> ValidationComm
         if script == "test":
             return ValidationCommand("npm test", ["npm", "test"], "package.json test script detected")
         return ValidationCommand(f"npm run {script}", ["npm", "run", script], f"package.json {script} script detected")
+    if package_manager == "bun":
+        return ValidationCommand(
+            f"bun run {script}",
+            ["bun", "run", script],
+            f"package.json {script} script and Bun package manager detected",
+        )
     return ValidationCommand(
         f"{package_manager} {script}",
         [package_manager, script],

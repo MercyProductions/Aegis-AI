@@ -87,6 +87,7 @@ Actions:
 - Improved Desktop build/run follow-up validation inference so bounded nested project scans find `.slnx`, native MSBuild projects, and managed `.csproj`/`.fsproj`/`.vbproj` layouts while skipping noisy generated folders.
 - Improved VS Code fallback package-manager parity so Bun lockfiles and `packageManager` metadata are reflected in project summaries, safe validation commands, and package lint regressions.
 - Improved Website scaffold validation-plan parity so Bun build/test commands are classified and labeled as normal web build/test steps, with dependency profile and validation-manager regressions covering Bun discovery.
+- Improved Aegis Core package-manager parity so Bun `packageManager` metadata and lockfiles feed validation detection, build-file scans, dependency manifests, and simulation risk signals.
 
 Validation completed:
 
@@ -106,6 +107,7 @@ Validation completed:
 - Aegis Core malformed Ollama model inventory regression tests: pass.
 - Aegis Core provider inventory and route credential-store failure regressions: pass.
 - Aegis Core validation startup-failure regression test: pass.
+- Aegis Core Bun package-manager validation and scan regressions: pass, focused contract tests.
 - VS Code extension lint and package: pass.
 - VS Code extension memory-write hardening lint: pass.
 - VS Code rollback manifest hardening lint and package: pass.

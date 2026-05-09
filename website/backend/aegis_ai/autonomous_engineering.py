@@ -476,7 +476,14 @@ class AutonomousEngineeringEngine:
         projected_files = list(dict.fromkeys(projected_files))[:12]
         dependency_changes = []
         if _contains_any(goal, RISKY_DEPENDENCY_TERMS):
-            dependency_changes = ["package.json", "package-lock.json", "pnpm-lock.yaml", "yarn.lock"]
+            dependency_changes = [
+                "package.json",
+                "package-lock.json",
+                "pnpm-lock.yaml",
+                "yarn.lock",
+                "bun.lock",
+                "bun.lockb",
+            ]
         risk = 0.25
         if _contains_any(goal, ARCHITECTURE_TERMS):
             risk += 0.2

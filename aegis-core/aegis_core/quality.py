@@ -372,6 +372,8 @@ def _dependency_manifests(root: Path) -> list[str]:
         "package.json",
         "pnpm-lock.yaml",
         "yarn.lock",
+        "bun.lock",
+        "bun.lockb",
         "requirements.txt",
         "pyproject.toml",
         "Cargo.toml",

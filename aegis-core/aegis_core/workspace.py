@@ -100,6 +100,8 @@ BUILD_FILE_NAMES = {
     "package.json",
     "pnpm-lock.yaml",
     "yarn.lock",
+    "bun.lock",
+    "bun.lockb",
     "requirements.txt",
     "pyproject.toml",
     "Cargo.toml",

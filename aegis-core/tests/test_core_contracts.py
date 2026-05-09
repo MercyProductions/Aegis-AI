@@ -276,6 +276,18 @@ def test_workspace_scan_detects_fsharp_and_visual_basic_dotnet_projects(tmp_path
     assert result["dependency_graph"]["files"]["src/VisualBasicTool/Program.vb"] == ["System"]
 
 
+def test_workspace_scan_tracks_bun_lockfiles_as_build_files(tmp_path: Path) -> None:
+    workspace = tmp_path / "bun-lock-project"
+    workspace.mkdir()
+    (workspace / "package.json").write_text(json.dumps({"scripts": {"build": "vite build"}}), encoding="utf-8")
+    (workspace / "bun.lockb").write_text("", encoding="utf-8")
+
+    result = WorkspaceScanner(workspace).scan(persist=False)
+
+    assert "package.json" in result["build_files"]
+    assert "bun.lockb" in result["build_files"]
+
+
 def test_workspace_scan_indexes_fsharp_and_visual_basic_symbols(tmp_path: Path) -> None:
     workspace = tmp_path / "dotnet-symbol-project"
     src = workspace / "src"
@@ -3044,6 +3056,30 @@ def test_validation_detection_respects_package_scripts(tmp_path: Path) -> None:
     assert [item.name for item in detect_validation_commands(workspace)] == ["pnpm test", "pnpm build"]
 
 
+def test_validation_detection_respects_bun_package_manager_and_lockfiles(tmp_path: Path) -> None:
+    workspace = tmp_path / "bun-package-manager-project"
+    workspace.mkdir()
+    (workspace / "package.json").write_text(
+        json.dumps({"packageManager": "bun@1.1.0", "scripts": {"test": "bun test", "build": "vite build"}}),
+        encoding="utf-8",
+    )
+
+    commands = detect_validation_commands(workspace)
+
+    assert [item.name for item in commands] == ["bun run test", "bun run build"]
+    assert commands[0].command == ["bun", "run", "test"]
+
+    lock_workspace = tmp_path / "bun-lock-project"
+    lock_workspace.mkdir()
+    (lock_workspace / "package.json").write_text(
+        json.dumps({"scripts": {"test": "bun test", "build": "vite build"}}),
+        encoding="utf-8",
+    )
+    (lock_workspace / "bun.lock").write_text("", encoding="utf-8")
+
+    assert [item.name for item in detect_validation_commands(lock_workspace)] == ["bun run test", "bun run build"]
+
+
 def test_validation_detection_includes_safe_package_lint_and_typecheck_scripts(tmp_path: Path) -> None:
     workspace = tmp_path / "lint-only-node-project"
     workspace.mkdir()
@@ -3136,7 +3172,16 @@ def test_validation_detection_ignores_nested_workspace_project_files(tmp_path: P
 def test_validation_detection_ignores_damaged_root_build_markers(tmp_path: Path) -> None:
     workspace = tmp_path / "damaged-root-markers-project"
     workspace.mkdir()
-    for name in ("Cargo.toml", "pyproject.toml", "requirements.txt", "CMakeLists.txt", "pnpm-lock.yaml", "yarn.lock"):
+    for name in (
+        "Cargo.toml",
+        "pyproject.toml",
+        "requirements.txt",
+        "CMakeLists.txt",
+        "pnpm-lock.yaml",
+        "yarn.lock",
+        "bun.lock",
+        "bun.lockb",
+    ):
         (workspace / name).mkdir()
 
     assert [item.name for item in detect_validation_commands(workspace)] == []

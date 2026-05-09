@@ -66,6 +66,8 @@ class AutonomousEngineeringTests(unittest.TestCase):
         self.assertTrue(any(gate.kind == "dependency_change" for gate in detail.approval_gates))
         self.assertTrue(any(gate.kind == "architecture_change" for gate in detail.approval_gates))
         self.assertTrue(detail.simulations[0].projected_file_changes)
+        self.assertIn("bun.lock", detail.simulations[0].projected_dependency_changes)
+        self.assertIn("bun.lockb", detail.simulations[0].projected_dependency_changes)
         self.assertGreater(detail.simulations[0].predicted_validation_risk, 0.3)
         self.assertEqual(loaded.objective.id, detail.objective.id)
         self.assertTrue(loaded.explanations)

@@ -61,6 +61,7 @@
 - Hardened Aegis Core validation detection so nested subprojects with their own manifests or solution files do not leak validation commands into parent ecosystem workspaces.
 - Hardened Aegis Core custom validation safety so path-qualified shims and `.bat` aliases cannot masquerade as safe tool names.
 - Improved Aegis Core validation detection so safe JavaScript lint and typecheck scripts are surfaced alongside test/build scripts.
+- Improved Aegis Core validation and scan metadata so Bun package-manager metadata and lockfiles produce `bun run` validation commands and dependency-risk signals.
 - Improved Aegis Core validation detection so root `build.ps1` guard scripts are surfaced before lower-level CMake/.NET fallback commands and constrained to an exact safe PowerShell invocation.
 - Improved the Aegis Core CLI so `--json` works before or after the subcommand.
 - Hardened the Aegis Core CLI so shared task persistence failures return clean nonzero errors and JSON payloads instead of tracebacks.
