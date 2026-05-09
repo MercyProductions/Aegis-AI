@@ -35,7 +35,7 @@ from .model_router import complete_with_route, delete_provider_key, provider_inv
 from .multi_agent import agent_roster
 from .ollama import OllamaClient
 from .operations import engineering_operations_dashboard
-from .orchestration import advance_orchestration_step, create_orchestration_plan, orchestration_dashboard
+from .orchestration import OrchestrationPersistenceError, advance_orchestration_step, create_orchestration_plan, orchestration_dashboard
 from .personal_intelligence import adaptive_personal_intelligence, reset_personal_intelligence
 from .quality import quality_dashboard, record_quality_snapshot
 from .roadmap import generate_roadmap
@@ -248,6 +248,8 @@ def create_app():
             )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except OrchestrationPersistenceError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
         return envelope("orchestration.plan", data, request.workspace)
 
     @app.get("/v1/orchestration")
@@ -270,6 +272,8 @@ def create_app():
             raise HTTPException(status_code=403, detail=str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except OrchestrationPersistenceError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
         return envelope("orchestration.step", data, request.workspace)
 
     @app.get("/v1/jobs")

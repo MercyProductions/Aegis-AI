@@ -15,7 +15,7 @@ from .model_router import provider_inventory, route_model
 from .multi_agent import agent_roster
 from .ollama import OllamaClient
 from .operations import engineering_operations_dashboard
-from .orchestration import advance_orchestration_step, create_orchestration_plan, orchestration_dashboard
+from .orchestration import OrchestrationPersistenceError, advance_orchestration_step, create_orchestration_plan, orchestration_dashboard
 from .personal_intelligence import adaptive_personal_intelligence, reset_personal_intelligence
 from .quality import quality_dashboard, record_quality_snapshot
 from .roadmap import generate_roadmap
@@ -197,7 +197,7 @@ def main(argv: list[str] | None = None) -> int:
         else:
             parser.error(f"Unknown command {args.command}")
             return 2
-    except (JobPersistenceError, TaskStorePersistenceError, ValueError) as exc:
+    except (JobPersistenceError, OrchestrationPersistenceError, TaskStorePersistenceError, ValueError) as exc:
         print_error(str(exc), command=args.command, workspace=workspace, as_json=args.json)
         return 1
 

@@ -26,6 +26,8 @@ If saving Core settings returns `Could not persist Aegis Core settings`, inspect
 
 If a scheduled job reports `Could not persist maintenance job state` or `Could not write jobs log`, repair `.aegis/jobs-state.json` and `.aegis/jobs-log.md` so they are writable files. Safe scan/report jobs may still finish, but their history is not trustworthy until those paths are fixed.
 
+If orchestration planning or step advancement reports `Could not persist orchestration state`, repair `.aegis/orchestration-queue.json` and `.aegis/active-orchestration.json` so they are writable JSON files before continuing staged autonomous work.
+
 ## Ollama
 
 Default local endpoint:

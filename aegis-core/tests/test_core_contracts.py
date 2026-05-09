@@ -1240,6 +1240,45 @@ def test_orchestration_plan_creates_safe_queue_and_memory(tmp_path: Path) -> Non
     assert any(item.get("event") == "agent_decision" and item.get("agent_id") == "planner" for item in history)
 
 
+def test_orchestration_plan_reports_queue_persistence_failure(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    aegis_dir = workspace / ".aegis"
+    aegis_dir.mkdir()
+    (aegis_dir / "orchestration-queue.json").mkdir()
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/v1/orchestration/plan",
+        json={"workspace": str(workspace), "goal": "Stabilize queue persistence", "source_client": "pytest"},
+    )
+
+    assert response.status_code == 503
+    assert "Could not persist orchestration state" in response.json()["detail"]
+    assert not (aegis_dir / "active-orchestration.json").exists()
+
+
+def test_orchestration_step_reports_active_state_persistence_failure(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    client = TestClient(create_app())
+    plan_response = client.post(
+        "/v1/orchestration/plan",
+        json={"workspace": str(workspace), "goal": "Stabilize active queue state", "source_client": "pytest"},
+    )
+    assert plan_response.status_code == 200
+    active_path = workspace / ".aegis" / "active-orchestration.json"
+    active_path.unlink()
+    active_path.mkdir()
+    task_id = plan_response.json()["data"]["task_list"][0]["id"]
+
+    response = client.post(
+        "/v1/orchestration/step",
+        json={"workspace": str(workspace), "task_id": task_id, "action": "inspect"},
+    )
+
+    assert response.status_code == 503
+    assert "Could not persist orchestration state" in response.json()["detail"]
+
+
 def test_orchestration_step_requires_approval_before_apply_and_validation(tmp_path: Path, monkeypatch) -> None:
     workspace = make_workspace(tmp_path)
     client = TestClient(create_app())

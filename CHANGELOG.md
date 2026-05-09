@@ -27,6 +27,7 @@
 - Hardened the VS Code release package script so `extension.js` is syntax-checked before VSIX creation and install-local packaging.
 - Hardened Core settings updates so unwritable `.aegis/config.json` paths return explicit persistence failures instead of appearing to save defaults.
 - Hardened Core scheduled jobs so unwritable job state returns an explicit persistence failure and blocked jobs-log writes surface warnings.
+- Hardened Core orchestration queue persistence so damaged queue or active-plan paths return explicit failures instead of silently losing staged work.
 - Added experimental Aegis Core autonomous task orchestration with supervised goal planning, local queue state, approval gates, validation state, rollback metadata, and memory updates without uncontrolled file editing.
 - Added experimental Aegis Core multi-agent specialization with Planner, Architect, Coder, Reviewer, Tester, Repair, and Documentation roles assigned to orchestration tasks.
 - Added experimental Aegis Core workflow automation with safe scheduled/triggered maintenance jobs, `/v1/jobs`, `aegis jobs`, generated project health reports, and `.aegis/jobs-log.md` history while preserving approval gates for risky actions.

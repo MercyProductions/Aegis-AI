@@ -36,6 +36,10 @@ APPROVAL_GATE_LABELS = {
 }
 
 
+class OrchestrationPersistenceError(RuntimeError):
+    """Raised when orchestration queue state cannot be persisted."""
+
+
 def create_orchestration_plan(
     workspace: str | Path,
     goal: str,
@@ -687,8 +691,39 @@ def _load_state(memory: ProjectMemory) -> dict[str, Any] | None:
 
 
 def _write_state(memory: ProjectMemory, state: dict[str, Any]) -> None:
+    queue_path = memory.root / QUEUE_FILE
+    active_path = memory.root / ACTIVE_FILE
+    _ensure_json_target(queue_path)
+    _ensure_json_target(active_path)
     memory.write_json(QUEUE_FILE, state)
     memory.write_json(ACTIVE_FILE, state.get("plan", {}))
+    persisted = _load_state(memory)
+    if persisted != state:
+        raise OrchestrationPersistenceError(
+            f"Could not persist orchestration queue at {queue_path}. "
+            "Check that the workspace .aegis path is a writable directory."
+        )
+    try:
+        active = json.loads(active_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise OrchestrationPersistenceError(
+            f"Could not persist active orchestration state at {active_path}."
+        ) from exc
+    if active != state.get("plan", {}):
+        raise OrchestrationPersistenceError(
+            f"Could not persist active orchestration state at {active_path}."
+        )
+
+
+def _ensure_json_target(path: Path) -> None:
+    if path.parent.exists() and not path.parent.is_dir():
+        raise OrchestrationPersistenceError(
+            f"Could not persist orchestration state because {path.parent} is not a directory."
+        )
+    if path.exists() and not path.is_file():
+        raise OrchestrationPersistenceError(
+            f"Could not persist orchestration state because {path} is not a writable file."
+        )
 
 
 def _normalize_task(task: dict[str, Any]) -> dict[str, Any]:

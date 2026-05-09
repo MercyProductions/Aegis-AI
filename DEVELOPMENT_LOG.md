@@ -1096,3 +1096,22 @@ Validation completed:
 - Core job focused tests: pass, 9 tests.
 - Aegis Core contract tests: pass, 95 tests.
 - Git diff whitespace check: pass.
+
+## 2026-05-09 - Core Orchestration Persistence Failure Handling
+
+Focus:
+
+- Avoid silently losing staged autonomous task queues when orchestration state paths are damaged.
+- Keep plan creation and step advancement honest if queue or active-plan JSON cannot persist.
+
+Actions:
+
+- Added `OrchestrationPersistenceError` for failed queue and active-plan writes.
+- Verified `.aegis/orchestration-queue.json` and `.aegis/active-orchestration.json` after writes.
+- Updated API, CLI, troubleshooting, and regression coverage for damaged orchestration state paths.
+
+Validation completed:
+
+- Core orchestration focused tests: pass, 6 tests.
+- Aegis Core contract tests: pass, 97 tests.
+- Git diff whitespace check: pass.
