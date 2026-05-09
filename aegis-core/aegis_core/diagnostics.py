@@ -31,6 +31,15 @@ SENSITIVE_ASSIGNMENT_RE = re.compile(
     r"\b((?:api[_-]?key|token|secret|password|passwd|credential)\s*=\s*)[^\s&]+",
     re.IGNORECASE,
 )
+SENSITIVE_JSON_RE = re.compile(
+    r"""(["'](?:api[_-]?key|token|secret|password|passwd|credential|authorization)["']\s*:\s*["'])[^"']+""",
+    re.IGNORECASE,
+)
+AUTHORIZATION_HEADER_RE = re.compile(
+    r"\b(Authorization\s*[:=]\s*)(?:Bearer|Basic|Digest)?\s*[A-Za-z0-9._~+/\-=]+",
+    re.IGNORECASE,
+)
+URL_CREDENTIAL_RE = re.compile(r"\b([a-z][a-z0-9+.-]*://)[^:/@\s]+:[^/@\s]+@", re.IGNORECASE)
 BEARER_TOKEN_RE = re.compile(r"\b(Bearer\s+)[A-Za-z0-9._~+/\-=]+", re.IGNORECASE)
 
 
@@ -46,8 +55,16 @@ def scrub(text: str) -> str:
     return "\n".join(cleaned_lines)
 
 
+def redact_inline(text: str) -> str:
+    """Redact secret values while preserving non-secret diagnostic context."""
+    return "\n".join(_redact_inline_secrets(line) for line in str(text).splitlines())
+
+
 def _redact_inline_secrets(line: str) -> str:
+    line = URL_CREDENTIAL_RE.sub(r"\1[redacted]@", line)
     line = SENSITIVE_QUERY_RE.sub(r"\1[redacted]", line)
+    line = SENSITIVE_JSON_RE.sub(r"\1[redacted]", line)
+    line = AUTHORIZATION_HEADER_RE.sub(r"\1[redacted]", line)
     line = SENSITIVE_ASSIGNMENT_RE.sub(r"\1[redacted]", line)
     return BEARER_TOKEN_RE.sub(r"\1[redacted]", line)
 

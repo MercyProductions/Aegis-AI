@@ -24,7 +24,7 @@ from aegis_core.contracts import (
     validate_contract_envelope,
 )
 from aegis_core.credentials import CredentialStore, CredentialStoreError
-from aegis_core.diagnostics import scrub
+from aegis_core.diagnostics import redact_inline, scrub
 from aegis_core.memory import ProjectMemory
 from aegis_core.model_router import provider_inventory, route_model
 from aegis_core.ollama import OllamaClient, OllamaStatus
@@ -1494,6 +1494,33 @@ def test_diagnostics_scrub_redacts_provider_query_keys_without_losing_context() 
     assert "Provider connection failed" in cleaned
 
 
+def test_diagnostics_redact_inline_preserves_provider_auth_context() -> None:
+    secret = "basic-secret-token"
+    message = f"Provider rejected Authorization: Basic {secret}"
+
+    cleaned = redact_inline(message)
+
+    assert secret not in cleaned
+    assert "Authorization: [redacted]" in cleaned
+    assert "Provider rejected" in cleaned
+
+
+def test_diagnostics_redact_inline_handles_json_keys_and_url_credentials() -> None:
+    secret = "secret-token-value"
+    message = (
+        f'Provider HTTP 401: {{"api_key":"{secret}","error":"invalid_api_key"}} '
+        "via https://user:password@example.test/v1"
+    )
+
+    cleaned = redact_inline(message)
+
+    assert secret not in cleaned
+    assert "user:password" not in cleaned
+    assert '"api_key":"[redacted]"' in cleaned
+    assert "invalid_api_key" in cleaned
+    assert "https://[redacted]@example.test/v1" in cleaned
+
+
 def test_provider_connection_errors_redact_query_api_keys(monkeypatch) -> None:
     secret = "AIzaSyVerySecretProviderKey"
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini:generateContent?key={secret}"
@@ -1509,6 +1536,24 @@ def test_provider_connection_errors_redact_query_api_keys(monkeypatch) -> None:
     message = str(excinfo.value)
     assert secret not in message
     assert "key=[redacted]" in message
+
+
+def test_provider_connection_errors_redact_authorization_without_losing_context(monkeypatch) -> None:
+    secret = "basic-secret-token"
+
+    def failing_urlopen(request, timeout=0):
+        raise urllib.error.URLError(f"Provider rejected Authorization: Basic {secret}")
+
+    monkeypatch.setattr(model_router_module.urllib.request, "urlopen", failing_urlopen)
+
+    with pytest.raises(RuntimeError) as excinfo:
+        model_router_module._request_json("https://provider.example/v1/chat", {"messages": []}, {"Content-Type": "application/json"}, 1)
+
+    message = str(excinfo.value)
+    assert secret not in message
+    assert "Provider rejected" in message
+    assert "Authorization: [redacted]" in message
+    assert "[redacted secret-like log line]" not in message
 
 
 def test_invalid_config_values_fall_back_safely(tmp_path: Path) -> None:

@@ -794,3 +794,20 @@ Validation completed:
 - Website Core bridge tests: pass, 13 tests.
 - Visual Studio extension Release build/package: pass, 0 warnings.
 - Aegis Core contract tests: pass, 89 tests.
+
+## 2026-05-09 - Aegis Core Provider Error Redaction Parity
+
+Focus:
+
+- Preserve useful hybrid-provider diagnostics without leaking authorization headers, JSON key fields, URL credentials, or provider query keys.
+- Keep validation and memory logs on the stricter whole-line scrubber so secret-like command output stays hidden.
+
+Actions:
+
+- Added a Core inline diagnostic redactor for provider-facing error messages.
+- Routed hybrid model router HTTP and connection failures through inline redaction while keeping shared `scrub()` behavior conservative.
+- Added regressions for authorization headers, JSON API key fields, URL credentials, provider query keys, and strict validation-log redaction.
+
+Validation completed:
+
+- Aegis Core contract tests: pass, 92 tests.

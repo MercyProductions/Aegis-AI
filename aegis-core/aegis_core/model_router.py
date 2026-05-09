@@ -10,7 +10,7 @@ from typing import Any
 
 from .config import AegisConfig, load_config, workspace_root
 from .credentials import CredentialStore, CredentialStoreError
-from .diagnostics import scrub
+from .diagnostics import redact_inline, scrub
 from .ollama import OllamaClient
 from .safety import is_safe_to_read
 
@@ -445,9 +445,9 @@ def _request_json(url: str, payload: dict[str, Any], headers: dict[str, str], ti
             return json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         body = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"Provider HTTP {exc.code}: {scrub(body)[:240]}") from exc
+        raise RuntimeError(f"Provider HTTP {exc.code}: {redact_inline(body)[:240]}") from exc
     except urllib.error.URLError as exc:
-        reason = scrub(str(exc.reason if hasattr(exc, "reason") else exc))
+        reason = redact_inline(str(exc.reason if hasattr(exc, "reason") else exc))
         raise RuntimeError(f"Provider connection failed: {reason}") from exc
     except TimeoutError as exc:
         raise RuntimeError("Provider request timed out.") from exc
