@@ -474,6 +474,8 @@ def _request_json(url: str, payload: dict[str, Any], headers: dict[str, str], ti
     except urllib.error.URLError as exc:
         reason = redact_inline(str(exc.reason if hasattr(exc, "reason") else exc))
         raise RuntimeError(f"Provider connection failed: {reason}") from exc
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise RuntimeError("Provider returned invalid JSON.") from exc
     except TimeoutError as exc:
         raise RuntimeError("Provider request timed out.") from exc
 
@@ -488,7 +490,14 @@ def _openai_compatible_chat(base_url: str, model: str, messages: list[dict[str, 
         headers,
         timeout,
     )
-    return str(data.get("choices", [{}])[0].get("message", {}).get("content", "")).strip()
+    data = _provider_object(data, "OpenAI-compatible chat")
+    choices = data.get("choices")
+    if not isinstance(choices, list) or not choices:
+        return ""
+    first = choices[0] if isinstance(choices[0], dict) else {}
+    message = first.get("message")
+    content = message.get("content", "") if isinstance(message, dict) else ""
+    return str(content).strip()
 
 
 def _lm_studio_openai_base(base_url: str) -> str:
@@ -505,7 +514,10 @@ def _anthropic_chat(model: str, messages: list[dict[str, str]], api_key: str, ti
         {"Content-Type": "application/json", "x-api-key": api_key, "anthropic-version": "2023-06-01"},
         timeout,
     )
+    data = _provider_object(data, "Anthropic chat")
     parts = data.get("content", [])
+    if not isinstance(parts, list):
+        return ""
     return "\n".join(str(item.get("text", "")) for item in parts if isinstance(item, dict)).strip()
 
 
@@ -517,8 +529,17 @@ def _google_chat(model: str, messages: list[dict[str, str]], api_key: str, timeo
         {"Content-Type": "application/json"},
         timeout,
     )
+    data = _provider_object(data, "Google chat")
     candidates = data.get("candidates", [])
-    if not candidates:
+    if not isinstance(candidates, list) or not candidates:
         return ""
-    parts = candidates[0].get("content", {}).get("parts", [])
+    first = candidates[0] if isinstance(candidates[0], dict) else {}
+    content = first.get("content")
+    parts = content.get("parts", []) if isinstance(content, dict) else []
     return "\n".join(str(item.get("text", "")) for item in parts if isinstance(item, dict)).strip()
+
+
+def _provider_object(data: Any, label: str) -> dict[str, Any]:
+    if isinstance(data, dict):
+        return data
+    raise RuntimeError(f"{label} response was not a JSON object.")

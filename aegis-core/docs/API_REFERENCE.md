@@ -260,6 +260,8 @@ Experimental gated completion endpoint. It uses the same route request fields pl
 
 Cloud calls return `403` unless `allow_cloud` and `cloud_approved` are true, the Core routing mode allows cloud, and the provider has a key in OS credential storage. `local_only` mode blocks cloud calls even if the request asks for them.
 
+Malformed provider responses, including invalid JSON or non-object OpenAI-compatible payloads, return bounded provider failures instead of leaking internal parser exceptions to clients.
+
 ## POST /v1/providers/{provider_id}/key
 
 Body:

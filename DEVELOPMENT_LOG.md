@@ -166,6 +166,26 @@ Validation completed:
 - Aegis Core contract test suite: pass, 116 tests.
 - Repository whitespace check: pass.
 
+## 2026-05-09 - Provider Response Failure Hardening
+
+Focus:
+
+- Keep malformed local/cloud provider responses from surfacing as internal parser exceptions.
+- Preserve actionable provider diagnostics without exposing secrets or stack traces.
+
+Actions:
+
+- Converted invalid provider JSON into a clean runtime failure.
+- Added shared object-shape validation before parsing OpenAI-compatible, Anthropic, or Google response payloads.
+- Made provider content parsing tolerant of missing or oddly-shaped completion arrays.
+- Added regressions for invalid JSON and non-object OpenAI-compatible responses.
+
+Validation completed:
+
+- Aegis Core provider failure regression slice: pass, 4 tests.
+- Aegis Core contract test suite: pass, 118 tests.
+- Repository whitespace check: pass.
+
 ## 2026-05-09 - Autonomous Stabilization Tranche
 
 Focus:

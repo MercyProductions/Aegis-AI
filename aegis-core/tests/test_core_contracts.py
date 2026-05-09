@@ -1804,6 +1804,40 @@ def test_provider_connection_errors_redact_authorization_without_losing_context(
     assert "[redacted secret-like log line]" not in message
 
 
+def test_provider_invalid_json_returns_clean_runtime_error(monkeypatch) -> None:
+    class InvalidJsonResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def read(self) -> bytes:
+            return b"{not-json"
+
+    monkeypatch.setattr(model_router_module.urllib.request, "urlopen", lambda request, timeout=0: InvalidJsonResponse())
+
+    with pytest.raises(RuntimeError) as excinfo:
+        model_router_module._request_json("https://provider.example/v1/chat", {"messages": []}, {"Content-Type": "application/json"}, 1)
+
+    assert str(excinfo.value) == "Provider returned invalid JSON."
+
+
+def test_openai_compatible_chat_rejects_non_object_provider_response(monkeypatch) -> None:
+    monkeypatch.setattr(model_router_module, "_request_json", lambda url, payload, headers, timeout: ["not", "an", "object"])
+
+    with pytest.raises(RuntimeError) as excinfo:
+        model_router_module._openai_compatible_chat(
+            "http://127.0.0.1:1234/v1",
+            "local-model",
+            [{"role": "user", "content": "hello"}],
+            None,
+            1,
+        )
+
+    assert "OpenAI-compatible chat response was not a JSON object" in str(excinfo.value)
+
+
 def test_invalid_config_values_fall_back_safely(tmp_path: Path) -> None:
     workspace = tmp_path / "config-project"
     aegis_dir = workspace / ".aegis"
