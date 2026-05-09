@@ -25,7 +25,7 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 | Workspace scan resilience | Improved | Core scans tolerate malformed package dependency metadata and files disappearing during scan sorting. |
 | Path safety | Improved | Core now evaluates ignored folders relative to the workspace, blocks secret-like filenames case-insensitively, and rejects paths resolving outside the workspace. |
 | Shared settings | Improved | Core config loading falls back to defaults for malformed values, unsafe memory directory names, and damaged `.aegis/config.json` paths. |
-| Shared task API | Improved | Bad task status updates return `400`; missing task IDs return `404`. |
+| Shared task API | Improved | Bad task status updates return `400`, missing task IDs return `404`, and malformed local task records are normalized on read. |
 | Memory resilience | Improved | Dashboard/task reads, agent plan reads, and generated-memory writes now tolerate unreadable or damaged `.aegis` JSON/markdown paths. |
 | VS Code memory resilience | Improved | Workspace startup and later index/history/log writes skip damaged `.aegis` paths instead of breaking scans or post-apply bookkeeping. |
 | Visual Studio memory init | Improved | Solution memory reads and writes are best-effort, so damaged `.aegis` paths do not crash memory-backed workflows. |
@@ -42,8 +42,9 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 
 Ran during this pass:
 
-- `python -m pytest tests/test_core_contracts.py -q` in Aegis Core: 34 tests passed
+- `python -m pytest tests/test_core_contracts.py -q` in Aegis Core: 36 tests passed
 - `python -m compileall aegis_core`: pass
+- Core malformed task record regression tests: pass
 - Core outside-workspace path and symlink scan safety regression tests: pass
 - Core workspace scan malformed package/stat-race regression tests: pass
 - Core validation startup-failure regression test: pass
@@ -72,6 +73,7 @@ Ran during this pass:
 - Added Visual Studio Core health/registration check to the native health command.
 - Added Core scan cache through `.aegis/scan-cache.json`.
 - Added Core dashboard stale-task detection and suggested actions.
+- Hardened shared task loading so malformed local task metadata and timestamps do not break dashboard or status workflows.
 - Hardened Core scan safety for mixed-case ignored folders, token/password/auth-like files, and Windows workspaces under temp-style parent directories.
 - Hardened Core read/edit safety so files resolving outside the workspace, including symlinked files, are excluded from scans.
 - Hardened Core workspace scans against malformed `package.json` dependency shapes and file stat races during recent-file sorting.

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import uuid
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -74,7 +75,7 @@ def list_tasks(workspace: str | Path, include_completed: bool = True) -> list[di
     tasks = _load_tasks(memory)
     if not include_completed:
         tasks = [task for task in tasks if task.get("status") in ACTIVE_STATUSES]
-    return sorted(tasks, key=lambda task: task.get("updated_at", ""), reverse=True)
+    return sorted(tasks, key=_task_sort_key, reverse=True)
 
 
 def update_task_status(
@@ -93,7 +94,9 @@ def update_task_status(
             task["status"] = status
             task["updated_at"] = utc_now()
             if summary:
-                task.setdefault("metadata", {})["summary"] = summary
+                if not isinstance(task.get("metadata"), dict):
+                    task["metadata"] = {}
+                task["metadata"]["summary"] = summary
             _write_tasks(memory, tasks)
             _append_history(memory, {"event": "task_updated", "task": task})
             return task
@@ -109,8 +112,43 @@ def _load_tasks(memory: ProjectMemory) -> list[dict[str, Any]]:
     except (OSError, json.JSONDecodeError):
         return []
     if isinstance(data, list):
-        return [task for task in data if isinstance(task, dict)]
+        return [task for task in (_normalize_task(item) for item in data) if task is not None]
     return []
+
+
+def _normalize_task(task: Any) -> dict[str, Any] | None:
+    if not isinstance(task, dict):
+        return None
+    task_id = str(task.get("id") or "").strip()
+    if not task_id:
+        return None
+    now = utc_now()
+    metadata = task.get("metadata")
+    return {
+        "id": task_id,
+        "title": str(task.get("title") or "Untitled task"),
+        "kind": str(task.get("kind") or "general"),
+        "source_client": str(task.get("source_client") or "unknown"),
+        "status": str(task.get("status") or "planned"),
+        "created_at": str(task.get("created_at") or task.get("updated_at") or now),
+        "updated_at": str(task.get("updated_at") or task.get("created_at") or now),
+        "request": str(task["request"]) if task.get("request") is not None else None,
+        "metadata": metadata if isinstance(metadata, dict) else {},
+    }
+
+
+def _task_sort_key(task: dict[str, Any]) -> float:
+    stamp = str(task.get("updated_at") or task.get("created_at") or "")
+    if not stamp:
+        return 0.0
+    try:
+        return datetime.fromisoformat(stamp.replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        pass
+    try:
+        return float(stamp)
+    except ValueError:
+        return 0.0
 
 
 def _write_tasks(memory: ProjectMemory, tasks: list[dict[str, Any]]) -> None:

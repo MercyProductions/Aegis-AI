@@ -13,6 +13,7 @@ from aegis_core.memory import ProjectMemory
 from aegis_core.ollama import OllamaClient
 from aegis_core.safety import is_ignored_path, is_safe_to_edit, is_safe_to_read, is_secret_like
 from aegis_core.server import create_app
+from aegis_core.tasks import list_tasks, update_task_status
 from aegis_core.validation import append_validation_log, detect_validation_commands, run_validation
 from aegis_core.workspace import WorkspaceScanner
 
@@ -157,6 +158,45 @@ def test_v1_client_task_dashboard_contract(tmp_path: Path) -> None:
         json={"workspace": str(workspace), "status": "completed"},
     )
     assert missing_task.status_code == 404
+
+
+def test_task_listing_normalizes_malformed_task_records(tmp_path: Path) -> None:
+    workspace = tmp_path / "malformed-task-project"
+    aegis_dir = workspace / ".aegis"
+    aegis_dir.mkdir(parents=True)
+    (aegis_dir / "tasks.json").write_text(
+        json.dumps(
+            [
+                {"id": "task-good", "title": "Good", "status": "running", "updated_at": 2, "metadata": "bad"},
+                "not-a-task",
+                {"title": "missing id"},
+                {"id": "task-old", "updated_at": "2020-01-01T00:00:00Z"},
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    tasks = list_tasks(workspace)
+
+    assert [task["id"] for task in tasks] == ["task-old", "task-good"]
+    by_id = {task["id"]: task for task in tasks}
+    assert by_id["task-good"]["updated_at"] == "2"
+    assert by_id["task-good"]["metadata"] == {}
+
+
+def test_task_status_update_repairs_non_dict_metadata(tmp_path: Path) -> None:
+    workspace = tmp_path / "task-metadata-project"
+    aegis_dir = workspace / ".aegis"
+    aegis_dir.mkdir(parents=True)
+    (aegis_dir / "tasks.json").write_text(
+        json.dumps([{"id": "task-1", "status": "running", "metadata": "bad"}]),
+        encoding="utf-8",
+    )
+
+    task = update_task_status(workspace, "task-1", "completed", "fixed")
+
+    assert task["status"] == "completed"
+    assert task["metadata"]["summary"] == "fixed"
 
 
 def test_safety_rules_are_case_insensitive_and_secret_aware(tmp_path: Path) -> None:
