@@ -6,6 +6,7 @@ from pathlib import Path
 
 from .schemas import ValidationProfileResponse, ValidationRecipe, ValidationSuggestion, VerificationStep
 from .storage import utc_now
+from .validation_commands import POWERSHELL_BUILD_COMMAND as DEFAULT_POWERSHELL_BUILD_COMMAND
 
 
 @dataclass(frozen=True)
@@ -21,7 +22,7 @@ class ValidationManager:
     PROFILE_PATH = ".aegis/validation_profile.json"
     PROJECT_MANIFEST_PATH = ".aegis/project.json"
     COMMAND_HISTORY_PATH = ".aegis/command_history.json"
-    POWERSHELL_BUILD_COMMAND = "powershell -NoProfile -ExecutionPolicy Bypass -File ./build.ps1"
+    POWERSHELL_BUILD_COMMAND = DEFAULT_POWERSHELL_BUILD_COMMAND
 
     def profile_snapshot(self, workspace_root: Path) -> ValidationProfileResponse:
         profile = self.load_profile(workspace_root)

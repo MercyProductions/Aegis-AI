@@ -13,6 +13,7 @@ from pathlib import Path
 
 from .approval_sandbox import SandboxProfileManager
 from .settings import Settings
+from .validation_commands import is_safe_powershell_build_guard_argv
 
 
 DANGEROUS_COMMAND_PARTS = {
@@ -120,7 +121,7 @@ class CommandRunner:
         if not first:
             return self._blocked(command, cwd, "Empty command.")
 
-        if first in {"powershell", "pwsh"} and not self._is_safe_powershell_build_guard(argv):
+        if first in {"powershell", "pwsh"} and not is_safe_powershell_build_guard_argv(argv):
             return self._blocked(
                 command,
                 cwd,
@@ -227,16 +228,6 @@ class CommandRunner:
             if first.endswith(suffix):
                 first = first[: -len(suffix)]
         return first
-
-    def _is_safe_powershell_build_guard(self, argv: list[str]) -> bool:
-        if len(argv) != 6:
-            return False
-        args = [item.strip("\"'").lower() for item in argv[1:]]
-        script = args[4].replace("\\", "/").rstrip("/")
-        return args[:4] == ["-noprofile", "-executionpolicy", "bypass", "-file"] and script in {
-            "./build.ps1",
-            "build.ps1",
-        }
 
     def _resolve_executable_path(self, value: str) -> str:
         resolved = shutil.which(value)

@@ -127,6 +127,7 @@ from .storage import EventStore, utc_now
 from .structured_streaming import StructuredReplyDeltaExtractor
 from .task_planner import TaskPlan, TaskPlanner
 from .validation import ValidationManager
+from .validation_commands import POWERSHELL_BUILD_COMMAND_MARKERS
 from .validation_diagnostics import (
     diagnostic_brief as validation_diagnostic_brief,
     diagnostic_display as validation_diagnostic_display,
@@ -5708,10 +5709,7 @@ Large-file behavior:
         command_markers = (
             "python build.py",
             "py build.py",
-            "powershell -noprofile -executionpolicy bypass -file ./build.ps1",
-            "powershell -noprofile -executionpolicy bypass -file .\\build.ps1",
-            "pwsh -noprofile -executionpolicy bypass -file ./build.ps1",
-            "pwsh -noprofile -executionpolicy bypass -file .\\build.ps1",
+            *POWERSHELL_BUILD_COMMAND_MARKERS,
             "python -m pytest",
             "py -m pytest",
             "pytest",

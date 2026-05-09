@@ -5,9 +5,7 @@ from pathlib import Path
 
 from .prompt_intent import prompt_has_explanation_prefix, prompt_requests_execution_validation
 from .schemas import WorkspaceDependencyProfile, WorkspaceProjectManifest
-
-
-POWERSHELL_BUILD_COMMAND = "powershell -NoProfile -ExecutionPolicy Bypass -File ./build.ps1"
+from .validation_commands import POWERSHELL_BUILD_COMMAND, is_root_powershell_build_command
 
 
 def should_validate_existing_project_only(
@@ -82,7 +80,7 @@ def existing_project_validation_command(
     command = preferred_command.strip()
     if command == "python build.py" and not (target / "build.py").exists():
         command = ""
-    if _is_root_powershell_build_command(command) and not (target / "build.ps1").exists():
+    if is_root_powershell_build_command(command) and not (target / "build.ps1").exists():
         command = ""
     if "cmake --build build" in command.lower() and not (target / "build").exists():
         return "cmake -S . -B build && cmake --build build --config Release"
@@ -102,17 +100,6 @@ def existing_project_validation_command(
     if profile.validation_commands:
         return profile.validation_commands[0]
     return ""
-
-
-def _is_root_powershell_build_command(command: str) -> bool:
-    normalized = " ".join(command.strip().lower().split())
-    if not normalized.startswith(("powershell ", "pwsh ")):
-        return False
-    return any(
-        marker in f" {normalized} "
-        for marker in (" -file ./build.ps1 ", " -file .\\build.ps1 ", " -file build.ps1 ")
-    )
-
 
 def continuity_preset_id(
     *,

@@ -25,6 +25,7 @@ from .schemas import (
     WorkspaceScript,
 )
 from .settings import Settings
+from .validation_commands import POWERSHELL_BUILD_COMMAND
 
 
 IGNORE_NAMES = {
@@ -133,7 +134,6 @@ HUGE_TEXT_FILE_BYTES = 8_000_000
 LARGE_FILE_LINE_EXACT_BYTES = 4_000_000
 LARGE_FILE_CONTEXT_SAMPLE_CHARS = 12_000
 LARGE_FILE_SLICE_MAX_LINES = 2_000
-POWERSHELL_BUILD_COMMAND = "powershell -NoProfile -ExecutionPolicy Bypass -File ./build.ps1"
 
 PRIORITY_NAMES = {
     "README.md",

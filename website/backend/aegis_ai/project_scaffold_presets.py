@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .schemas import ProjectScaffoldPreset
+from .validation_commands import POWERSHELL_BUILD_COMMAND
 
 
 def scaffold_presets() -> list[ProjectScaffoldPreset]:
@@ -100,7 +101,7 @@ def scaffold_presets() -> list[ProjectScaffoldPreset]:
             language="PowerShell",
             package_manager="powershell",
             install_command="",
-            validation_command="powershell -NoProfile -ExecutionPolicy Bypass -File ./build.ps1",
+            validation_command=POWERSHELL_BUILD_COMMAND,
             description="Dependency-free PowerShell module scaffold with manifest, exported functions, CLI script, parser validation, and smoke tests.",
             tags=["powershell", "automation", "windows", "module", "scripts"],
         ),

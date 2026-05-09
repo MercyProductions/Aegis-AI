@@ -1841,3 +1841,28 @@ Validation completed:
 - Website agent parser focused validation tests: pass, 12 tests.
 - Aegis Core contract tests: pass, 138 tests.
 - Git diff whitespace check: pass.
+
+## 2026-05-09 - Website PowerShell Guard Contract Consolidation
+
+Focus:
+
+- Reduce drift risk across Website validation discovery, dependency profiling, agent continuation, project-builder planning, and command execution.
+- Keep the root `build.ps1` contract represented in one small shared helper module.
+
+Actions:
+
+- Added `aegis_ai.validation_commands` with the canonical PowerShell guard command and safe matcher helpers.
+- Reused the shared command constant in validation discovery, dependency profiling, project presets, project-builder existing validation, and agent draft validation promotion.
+- Reused the shared argv matcher in command execution safety checks.
+
+Validation completed:
+
+- Website command-runner safety suite: pass, 20 tests.
+- Website validation manager regression suite: pass, 22 tests and 4 subtests.
+- Website dependency-profile focused tests: pass, 6 tests.
+- Project-builder focused PowerShell guard tests: pass, 3 tests.
+- Website agent parser focused validation tests: pass, 12 tests.
+- Website backend compile check: pass.
+- Website project-scaffolder regression suite: pass, 120 tests and 46 subtests.
+- Aegis Core contract tests: pass, 138 tests.
+- Git diff whitespace check: pass.
