@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const vm = require('vm');
 
 const root = path.resolve(__dirname, '..');
 const manifestPath = path.join(root, 'package.json');
@@ -98,6 +99,20 @@ if (/\burl\.href\b/.test(extensionText)) {
   fail('extension.js must not log full request URLs; use formatRequestTarget so workspace query strings stay out of diagnostics.');
 }
 
+const diagnosticRedactor = loadExtensionFunction(extensionText, 'redactDiagnosticText');
+assertDiagnosticRedaction(
+  diagnosticRedactor,
+  'HTTP 401 {"api_key":"json-secret-token","message":"invalid"}',
+  ['json-secret-token'],
+  ['"api_key":"[redacted]"', 'invalid']
+);
+assertDiagnosticRedaction(
+  diagnosticRedactor,
+  'Provider rejected Authorization: Basic basic-secret-token via https://user:password@example.test/v1?token=query-secret',
+  ['basic-secret-token', 'user:password', 'query-secret'],
+  ['Authorization: [redacted]', 'https://[redacted]@example.test/v1?token=[redacted]']
+);
+
 const unsafeErrorMessagePatterns = [
   {
     pattern: /appendLine\s*\([^)]*error\.message/s,
@@ -143,3 +158,43 @@ for (const privateFile of ['.gitignore', 'DETECTED_MODELS.md', 'DOGFOODING_NOTES
 }
 
 console.log(`Aegis package lint passed for ${manifest.name}@${manifest.version}.`);
+
+function loadExtensionFunction(source, name) {
+  const signature = `function ${name}`;
+  const start = source.indexOf(signature);
+  if (start === -1) {
+    fail(`extension.js is missing ${name}.`);
+  }
+  const open = source.indexOf('{', start);
+  if (open === -1) {
+    fail(`extension.js has an invalid ${name} declaration.`);
+  }
+  let depth = 0;
+  for (let index = open; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === '{') {
+      depth += 1;
+    } else if (char === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        const functionSource = source.slice(start, index + 1);
+        return vm.runInNewContext(`${functionSource}\n${name};`, {});
+      }
+    }
+  }
+  fail(`extension.js has an unterminated ${name} declaration.`);
+}
+
+function assertDiagnosticRedaction(redactor, sample, disallowed, required) {
+  const redacted = redactor(sample, 1000);
+  for (const value of disallowed) {
+    if (redacted.includes(value)) {
+      fail(`redactDiagnosticText leaked sensitive diagnostic value: ${value}`);
+    }
+  }
+  for (const value of required) {
+    if (!redacted.includes(value)) {
+      fail(`redactDiagnosticText lost expected diagnostic context: ${value}`);
+    }
+  }
+}

@@ -3164,6 +3164,7 @@ function redactDiagnosticText(text, maxChars = 700) {
   cleaned = cleaned
     .replace(/\b(https?:\/\/)[^/\s:@]+:[^@\s/]+@/gi, '$1[redacted]@')
     .replace(/([?&](?:api[_-]?key|key|token|secret|password|passwd|credential)=)[^&#\s]+/gi, '$1[redacted]')
+    .replace(/(["'](?:api[_-]?key|token|secret|password|passwd|credential|authorization|private[_-]?key)["']\s*:\s*["'])[^"']+/gi, '$1[redacted]')
     .replace(/\b(Authorization\s*[:=]\s*)(?:Bearer|Basic|Digest)?\s*[A-Za-z0-9._~+/\-=]+/gi, '$1[redacted]')
     .replace(/\b(Bearer\s+)[A-Za-z0-9._~+/\-=]+/gi, '$1[redacted]')
     .replace(/\b((?:[A-Z0-9_]*api[_-]?key|[A-Z0-9_]*token|[A-Z0-9_]*secret|password|passwd|credential|private[_-]?key)\s*[:=]\s*)[^\s&]+/gi, '$1[redacted]');

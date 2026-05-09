@@ -811,3 +811,20 @@ Actions:
 Validation completed:
 
 - Aegis Core contract tests: pass, 92 tests.
+
+## 2026-05-09 - VS Code JSON Diagnostic Redaction Guard
+
+Focus:
+
+- Prevent VS Code Core/Ollama error bodies from leaking JSON-shaped provider secrets such as `"api_key":"..."`.
+- Keep the extension packaging lint tied to the actual redaction function so release checks catch future drift.
+
+Actions:
+
+- Extended VS Code diagnostic redaction to cover quoted JSON secret fields while preserving non-secret error details.
+- Added package-lint redaction smoke checks for JSON key fields, authorization headers, URL credentials, and query-string tokens.
+
+Validation completed:
+
+- VS Code extension lint: pass.
+- VS Code VSIX package: pass.

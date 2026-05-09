@@ -88,6 +88,7 @@
 - Hardened VS Code request diagnostics so invalid JSON and timeout errors report endpoint paths without leaking workspace query strings.
 - Hardened VS Code fallback, rollback, model, and memory diagnostics so output-channel errors redact credential-like values without suppressing normal `token` parser messages.
 - Hardened VS Code health-check/status diagnostics and package lint so raw `error.message` does not re-enter user-visible output paths.
+- Hardened VS Code diagnostic redaction and package lint so JSON-shaped secret fields in Core/Ollama error bodies are redacted before display.
 - Hardened VS Code VSIX packaging so local dogfooding notes, detected model inventories, and repository-only files are excluded from release archives.
 - Hardened VS Code release metadata so packaged extensions point at the GitHub repository instead of a local filesystem path.
 - Hardened VS Code VSIX contents so the source-tree install helper is excluded from the shipped extension archive.
