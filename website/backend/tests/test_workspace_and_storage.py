@@ -950,6 +950,8 @@ int main() {
         self.assertIn("HLSL", profile.languages)
         self.assertIn("CMake", profile.build_systems)
         self.assertIn("python build.py", profile.validation_commands)
+        self.assertNotIn("cmake --build build", profile.validation_commands)
+        self.assertNotIn("ctest --test-dir build", profile.validation_commands)
         self.assertIn("Dear ImGui", profile.frameworks)
         self.assertIn("Win32 API", profile.frameworks)
         self.assertIn("DirectX", profile.frameworks)
@@ -957,6 +959,38 @@ int main() {
         self.assertIn("Capstone", profile.frameworks)
         self.assertIn("PE/COFF analysis", profile.frameworks)
         self.assertTrue(any(item.name == "MinHook" for item in profile.dependencies))
+
+    def test_inspect_dependency_profile_prefers_root_powershell_build_runner_for_native_validation(self) -> None:
+        manager = WorkspaceManager(self.project_root, self.settings)
+        workspace = manager.resolve_workspace("workspace")
+        (workspace / "CMakeLists.txt").write_text(
+            "cmake_minimum_required(VERSION 3.20)\nproject(NativeInspector LANGUAGES CXX)\n",
+            encoding="utf-8",
+        )
+        (workspace / "NativeInspector.sln").write_text(
+            "Microsoft Visual Studio Solution File, Format Version 12.00\n",
+            encoding="utf-8",
+        )
+        (workspace / "NativeInspector.vcxproj").write_text("<Project></Project>", encoding="utf-8")
+        (workspace / "build.ps1").write_text("Write-Host 'build'\n", encoding="utf-8")
+
+        profile = manager.inspect_dependency_profile(workspace)
+
+        expected = "powershell -NoProfile -ExecutionPolicy Bypass -File ./build.ps1"
+        self.assertEqual(profile.validation_commands[0], expected)
+        self.assertIn("build.ps1", profile.config_files)
+        self.assertIn("CMake", profile.build_systems)
+        self.assertIn("Visual Studio / MSBuild", profile.build_systems)
+        self.assertNotIn("cmake --build build", profile.validation_commands)
+        self.assertNotIn("ctest --test-dir build", profile.validation_commands)
+        self.assertNotIn(
+            "msbuild NativeInspector.sln /m /p:Configuration=Release",
+            profile.validation_commands,
+        )
+        self.assertNotIn(
+            "msbuild NativeInspector.vcxproj /m /p:Configuration=Release",
+            profile.validation_commands,
+        )
 
     def test_fix_history_retrieval_preserves_category(self) -> None:
         store = EventStore(self.project_root, self.settings)

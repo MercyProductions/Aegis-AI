@@ -133,6 +133,7 @@ HUGE_TEXT_FILE_BYTES = 8_000_000
 LARGE_FILE_LINE_EXACT_BYTES = 4_000_000
 LARGE_FILE_CONTEXT_SAMPLE_CHARS = 12_000
 LARGE_FILE_SLICE_MAX_LINES = 2_000
+POWERSHELL_BUILD_COMMAND = "powershell -NoProfile -ExecutionPolicy Bypass -File ./build.ps1"
 
 PRIORITY_NAMES = {
     "README.md",
@@ -663,6 +664,7 @@ class WorkspaceManager:
             profile.warnings.append("Workspace does not exist or is not a directory.")
             return profile
 
+        self._inspect_workspace_build_runners(workspace_root, profile)
         self._inspect_package_json(workspace_root, profile)
         self._inspect_python_manifests(workspace_root, profile)
         self._inspect_cargo_manifest(workspace_root, profile)
@@ -1065,6 +1067,17 @@ class WorkspaceManager:
                         WorkspaceDependency(name=name, version=version, source=relative, group="runtime")
                     )
 
+    def _inspect_workspace_build_runners(self, root: Path, profile: WorkspaceDependencyProfile) -> None:
+        if self._path_is_file(root / "build.py"):
+            self._add_unique(profile.config_files, "build.py")
+            self._add_unique(profile.validation_commands, "python build.py")
+        if self._path_is_file(root / "build.ps1"):
+            self._add_unique(profile.config_files, "build.ps1")
+            self._add_unique(profile.validation_commands, POWERSHELL_BUILD_COMMAND)
+
+    def _has_workspace_build_runner(self, root: Path) -> bool:
+        return self._path_is_file(root / "build.py") or self._path_is_file(root / "build.ps1")
+
     def _inspect_cmake(self, root: Path, profile: WorkspaceDependencyProfile) -> None:
         path = root / "CMakeLists.txt"
         if not self._path_is_file(path):
@@ -1074,8 +1087,8 @@ class WorkspaceManager:
         self._add_unique(profile.languages, "C++")
         self._add_unique(profile.package_managers, "cmake")
         self._add_unique(profile.build_systems, "CMake")
-        if self._path_is_file(root / "build.py"):
-            self._add_unique(profile.validation_commands, "python build.py")
+        if self._has_workspace_build_runner(root):
+            return
         self._add_unique(profile.validation_commands, "cmake --build build")
         self._add_unique(profile.validation_commands, "ctest --test-dir build")
 
@@ -1088,16 +1101,19 @@ class WorkspaceManager:
         self._add_unique(profile.languages, "C++")
         self._add_unique(profile.package_managers, "msbuild")
         self._add_unique(profile.build_systems, "Visual Studio / MSBuild")
+        has_build_runner = self._has_workspace_build_runner(root)
 
         for solution in solutions:
             relative = solution.relative_to(root).as_posix()
             self._add_unique(profile.config_files, relative)
-            self._add_unique(profile.validation_commands, f"msbuild {relative} /m /p:Configuration=Release")
+            if not has_build_runner:
+                self._add_unique(profile.validation_commands, f"msbuild {relative} /m /p:Configuration=Release")
 
         for project in native_projects:
             relative = project.relative_to(root).as_posix()
             self._add_unique(profile.config_files, relative)
-            self._add_unique(profile.validation_commands, f"msbuild {relative} /m /p:Configuration=Release")
+            if not has_build_runner:
+                self._add_unique(profile.validation_commands, f"msbuild {relative} /m /p:Configuration=Release")
             filters = project.with_suffix(project.suffix + ".filters")
             if self._path_is_file(filters):
                 self._add_unique(profile.config_files, filters.relative_to(root).as_posix())

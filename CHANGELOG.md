@@ -13,6 +13,7 @@
 - Hardened the Aegis Core start script so occupied but non-responsive `8788` listeners are reported as port conflicts instead of falling through to a server bind failure.
 - Hardened Website-to-Core URL normalization so pasted legacy Core endpoint URLs such as `/health` or `/models` are reduced to the Core base URL while reverse-proxy path prefixes are preserved.
 - Improved Website validation planning so root `build.ps1` guard scripts are preferred over lower-level CMake/MSBuild suggestions for Desktop and extension workspaces.
+- Improved Website dependency profiling so root `build.py` and `build.ps1` guard scripts are recorded as validation commands before lower-level CMake/MSBuild native fallbacks.
 - Hardened VS Code Core/Ollama URL handling so reverse-proxy path prefixes are preserved while pasted `/v1`, `/health`, `/models`, and Ollama `/api/...` endpoint paths are trimmed.
 - Hardened Visual Studio Core/Ollama URL handling so reverse-proxy path prefixes are preserved while pasted `/v1`, `/health`, `/models`, and Ollama `/api/...` endpoint paths are trimmed.
 - Hardened Desktop backend/Core URL handling so reverse-proxy path prefixes are preserved while pasted `/api`, `/v1`, `/health`, or `/models` endpoint paths are trimmed.

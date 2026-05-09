@@ -1752,3 +1752,24 @@ Validation completed:
 - Core workspace scan focused tests: pass, 7 tests.
 - Aegis Core contract tests: pass, 111 tests.
 - Git diff whitespace check: pass.
+
+## 2026-05-09 - Website Dependency Profile Build Guard Parity
+
+Focus:
+
+- Keep Website dependency profiles aligned with validation planning for native Desktop and extension workspaces.
+- Prefer project-owned root build guard scripts over lower-level native fallback commands in project intelligence.
+
+Actions:
+
+- Added root `build.py` and `build.ps1` detection to Website dependency-profile validation commands.
+- Suppressed CMake and MSBuild native fallback validation commands when a root build guard script is present while preserving CMake/MSBuild metadata.
+- Added regression coverage for root PowerShell build guard parity in native dependency profiles.
+
+Validation completed:
+
+- Website dependency-profile focused tests: pass, 6 tests.
+- Website validation manager regression suite: pass, 22 tests and 4 subtests.
+- Website workspace/storage regression suite: pass, 62 tests.
+- Aegis Core contract tests: pass, 138 tests.
+- Git diff whitespace check: pass.

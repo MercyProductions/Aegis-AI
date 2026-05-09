@@ -46,7 +46,7 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 | Website memory notes | Improved | Memory-note files are confined to the memory directory, damaged memory paths degrade with clear API errors, writes are atomic, malformed confidence input is tolerated, and rapid note IDs are collision-safe. |
 | Website model manager | Improved | Damaged model-operation and pull-log JSON paths are skipped safely, invalid operation records are ignored, and operation history writes are atomic. |
 | Website model benchmarks | Improved | Damaged benchmark result/job stores are skipped safely, blank job records are ignored, and benchmark state writes are atomic. |
-| Website dependency profiling | Improved | Damaged marker directories and lockfile paths no longer distort onboarding stack, package-manager, entry-point, or database summaries. |
+| Website dependency profiling | Improved | Damaged marker directories and lockfile paths no longer distort onboarding stack, package-manager, entry-point, or database summaries, and root `build.py` / `build.ps1` guard scripts are recorded before lower-level native validation fallbacks. |
 | Website checkpoint restore | Improved | Restore now validates checkpoint IDs, damaged manifests, backup paths, and missing backup files before touching workspace files. |
 | Website safe apply | Improved | Apply refuses to edit when checkpoint creation fails and reports later write/delete failures with checkpoint context. |
 | Website frontend bundle | Improved | Production builds split React, icons, API calls, app utilities, and app styles into stable chunks, removing the default Vite large-chunk warning without raising the warning limit. |
@@ -135,7 +135,7 @@ Ran during this pass:
 - Hardened Website memory note persistence so category-derived filenames cannot escape the memory directory, damaged memory paths degrade with clear API errors, note writes are atomic, malformed confidence input is tolerated, and same-millisecond creations get unique IDs.
 - Hardened Website model-manager snapshot reads so damaged `logs/model-manager/operations.json` and model-pull summary paths cannot break the local model dashboard.
 - Hardened Website model-benchmark persistence so damaged benchmark result/job JSON paths cannot break snapshots, blank job records are ignored, and failed state writes return clear API errors.
-- Hardened Website dependency profiling so damaged marker directories and lockfile paths do not distort onboarding stack summaries.
+- Hardened Website dependency profiling so damaged marker directories and lockfile paths do not distort onboarding stack summaries and root build guard scripts stay aligned with validation planning.
 - Hardened Website checkpoint restore so invalid checkpoint IDs, non-file manifests, and escaped backup paths fail safely before workspace files are restored or removed.
 - Hardened Website checkpoint restore preflight so missing backup files fail clearly before any workspace files are restored or removed.
 - Hardened Website apply changes so failed checkpoint creation stops the apply before file writes and file write/delete failures are reported as warnings tied to the checkpoint.
