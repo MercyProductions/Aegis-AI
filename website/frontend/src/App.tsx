@@ -3659,12 +3659,13 @@ function App() {
   ) {
     if (file.kind !== 'text' || (loading && !options.allowWhileLoading)) return;
 
+    const targetRoot = options.workspaceRootOverride ?? workspaceRootRef.current ?? workspaceRoot;
     setSelectedFilePath(file.path);
-    saveSelectedWorkspaceFile(options.workspaceRootOverride ?? workspaceRoot, file.path);
+    saveSelectedWorkspaceFile(targetRoot, file.path);
     setFileStatus('Loading file...');
 
     try {
-      const result = await readFile(options.workspaceRootOverride ?? workspaceRoot, file.path);
+      const result = await readFile(targetRoot, file.path);
       setSelectedFileContent(result.content);
       setFileStatus('');
     } catch (error) {

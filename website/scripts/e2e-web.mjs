@@ -10,6 +10,8 @@ const backendUrl = stripTrailingSlash(process.env.AEGIS_E2E_BACKEND_URL || 'http
 const frontendUrl = stripTrailingSlash(process.env.AEGIS_E2E_FRONTEND_URL || 'http://127.0.0.1:5173');
 const keepWorkspace = process.env.AEGIS_E2E_KEEP_WORKSPACE === '1';
 const headed = process.env.AEGIS_E2E_HEADED === '1';
+const apiTimeoutMs = readPositiveIntegerEnv('AEGIS_E2E_API_TIMEOUT_MS', 90_000);
+const readinessFetchTimeoutMs = readPositiveIntegerEnv('AEGIS_E2E_READY_FETCH_TIMEOUT_MS', 5_000);
 const workspaceRoot = path.join(root, '.tmp', `e2e-web-${timestamp()}-${process.pid}`);
 const alternateProjectRoot = path.join(workspaceRoot, 'project-switch-fixture');
 const conversationStorageKey = 'aegis.web.conversations.v1';
@@ -553,14 +555,18 @@ async function waitForChatScrollAtBottom(page, label, timeout = 10_000) {
 }
 
 async function apiJson(method, pathname, body) {
-  const response = await fetch(`${backendUrl}${pathname}`, {
-    method,
-    headers: {
-      Accept: 'application/json',
-      ...(body === undefined ? {} : { 'Content-Type': 'application/json' })
+  const response = await fetchWithTimeout(
+    `${backendUrl}${pathname}`,
+    {
+      method,
+      headers: {
+        Accept: 'application/json',
+        ...(body === undefined ? {} : { 'Content-Type': 'application/json' })
+      },
+      body: body === undefined ? undefined : JSON.stringify(body)
     },
-    body: body === undefined ? undefined : JSON.stringify(body)
-  });
+    apiTimeoutMs
+  );
   const text = await response.text();
   if (!response.ok) {
     throw new Error(`${method} ${pathname} failed with ${response.status}: ${text}`);
@@ -577,9 +583,10 @@ async function expectWorkspaceFile(relativePath, expectedContent) {
 }
 
 async function expectWorkspaceFileMissing(relativePath) {
-  const response = await fetch(
+  const response = await fetchWithTimeout(
     `${backendUrl}/api/file?workspace_root=${encodeURIComponent(workspaceRoot)}&path=${encodeURIComponent(relativePath)}`,
-    { headers: { Accept: 'application/json' } }
+    { headers: { Accept: 'application/json' } },
+    apiTimeoutMs
   );
   assert(response.status === 404, `${relativePath} should have been removed by checkpoint restore, got ${response.status}.`);
 }
@@ -2886,7 +2893,7 @@ async function waitForJson(url, predicate, label) {
   let lastError = '';
   while (Date.now() < deadline) {
     try {
-      const response = await fetch(url, { headers: { Accept: 'application/json' } });
+      const response = await fetchWithTimeout(url, { headers: { Accept: 'application/json' } }, readinessFetchTimeoutMs);
       const payload = await response.json();
       if (predicate(payload)) return payload;
       lastError = JSON.stringify(payload);
@@ -2903,7 +2910,7 @@ async function waitForHttpOk(url, label) {
   let lastStatus = '';
   while (Date.now() < deadline) {
     try {
-      const response = await fetch(url);
+      const response = await fetchWithTimeout(url, {}, readinessFetchTimeoutMs);
       if (response.ok) return;
       lastStatus = String(response.status);
     } catch (error) {
@@ -2912,6 +2919,21 @@ async function waitForHttpOk(url, label) {
     await delay(500);
   }
   throw new Error(`Timed out waiting for ${label}: ${lastStatus}`);
+}
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = apiTimeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`Timed out after ${timeoutMs}ms fetching ${url}`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function findBrowserExecutable() {
@@ -2953,6 +2975,13 @@ function delay(ms) {
 
 function stripTrailingSlash(value) {
   return value.replace(/\/+$/, '');
+}
+
+function readPositiveIntegerEnv(name, fallback) {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 function timestamp() {

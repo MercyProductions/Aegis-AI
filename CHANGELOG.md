@@ -58,6 +58,8 @@
 - Hardened Website launcher probes with explicit local HTTP timeouts so half-responsive backend, frontend, or Ollama endpoints do not make startup appear frozen.
 - Hardened Website launch port handling so occupied backend/frontend ports produce clear warnings instead of launching duplicate doomed processes.
 - Hardened Website smoke and e2e validation probes with explicit HTTP timeouts so validation fails clearly when local services stop responding.
+- Hardened Website browser e2e backend calls with bounded fetch timeouts so stalled API requests fail with actionable errors.
+- Fixed Website project-switch file previews so file reads use the current workspace root instead of stale React state after switching projects.
 - Hardened Desktop backend/Core URL settings so local host:port inputs, trailing endpoint paths, and empty values normalize before runtime requests or config writes.
 - Hardened Desktop Core dashboard loading so a shared registration failure no longer blocks dashboard reads when Core is otherwise reachable.
 - Hardened VS Code Ollama/Core URL settings so common local inputs normalize before model detection, health checks, and shared Core sync.
@@ -92,4 +94,5 @@
 - Website launch script and smoke workflow pass from the current Windows workspace path.
 - Website launch blocked-port probes validate occupied backend/frontend port handling.
 - Website smoke workflow passes with explicit request timeouts.
+- Website full browser e2e passes after project-switch file preview hardening.
 - Full validation notes are tracked in `docs/ECOSYSTEM_STABILIZATION.md`.

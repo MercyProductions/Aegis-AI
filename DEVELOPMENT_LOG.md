@@ -313,3 +313,24 @@ Validation completed:
 - Mocked malformed JSON probe: pass; reported `invalid_json` while keeping the port marked reachable.
 - Aegis Core contract tests: pass, 51 tests.
 - Aegis Core compile check: pass.
+
+## 2026-05-09 - Website Browser E2E Project Switch Hardening
+
+Focus:
+
+- Turn the full browser e2e timeout into actionable validation output.
+- Fix the project-switch file preview race found by the browser e2e flow.
+
+Actions:
+
+- Added configurable Node-side fetch timeouts to `website/scripts/e2e-web.mjs` for backend API calls and readiness probes.
+- Changed website file preview loading to read from the latest workspace root reference when a project switch has just updated the active root.
+- Cleaned the failed e2e debug workspace after the project-switch fix was validated.
+
+Validation completed:
+
+- Website e2e script syntax check: pass.
+- Website focused frontend tests: pass, 32 tests.
+- Website smoke test without chat and with explicit request timeout: pass.
+- Website full browser e2e: pass; temporary workspace cleaned up.
+- Website frontend production build: pass with the existing large-chunk warning.

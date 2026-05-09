@@ -162,6 +162,20 @@ Fixes applied:
 - Split HTTP probe success from JSON parsing in the Core starter.
 - Added probe reason details to the wrong-service startup error.
 
+### 2026-05-09 - Website Browser E2E Project Switch Hardening
+
+Context:
+- The full browser e2e had previously exceeded the command budget after smoke/readiness probes passed.
+- A rerun with bounded backend fetches exposed a real project-switch file preview failure instead of timing out vaguely.
+
+What worked:
+- The e2e debug artifacts made the stale workspace root visible: the UI selected the alternate project file but read preview content from the prior root.
+- After the fix, full browser e2e passed and cleaned up its temporary workspace.
+
+Fixes applied:
+- Added bounded Node-side fetches for e2e backend API and readiness calls.
+- Updated file preview loading to use the latest workspace root reference immediately after project switches.
+
 ### 2026-05-08 - Product Utilization Kickoff
 
 Context:
@@ -204,7 +218,8 @@ Fixes applied:
 | 2026-05-09 | Website launcher | HTTP readiness probes had no explicit timeout, so half-responsive local services could stall startup. | Medium | Added short launch probe timeouts and validated launch/smoke. |
 | 2026-05-09 | Website launcher | Occupied backend/frontend ports could still lead to duplicate startup attempts after a warning. | Medium | Added blocked-port guards and validated mocked/live launch paths. |
 | 2026-05-09 | Website validation | Smoke/e2e wrapper HTTP probes could hang without explicit request timeouts. | Medium | Added bounded HTTP timeouts and validated smoke/readiness probes. |
-| 2026-05-09 | Website e2e | Full browser e2e exceeded the 180 second command budget during validation. | Medium | Record as separate follow-up; smoke and readiness probes passed. |
+| 2026-05-09 | Website e2e | Full browser e2e exceeded the 180 second command budget during validation. | Medium | Investigated with bounded backend fetches; full e2e now passes. |
+| 2026-05-09 | Website project switching | File preview could read from stale workspace root state immediately after switching projects. | High | Fixed with latest-root reads and validated through full browser e2e. |
 | 2026-05-09 | Aegis Core startup | Core starter accepted any HTTP 200 at `/v1/health` and did not prefer a project virtualenv. | Medium | Verify the Core health envelope, report contract version, and resolve Python predictably. |
 | 2026-05-09 | Aegis Core startup | A non-Core service returning HTTP 200 with invalid JSON could be treated as unreachable. | Medium | Mark malformed responses reachable and report `invalid_json` as the startup blocker. |
 
