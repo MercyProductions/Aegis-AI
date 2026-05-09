@@ -290,6 +290,22 @@ def test_workspace_scan_tracks_bun_lockfiles_as_build_files(tmp_path: Path) -> N
     assert "bun.lockb" in result["build_files"]
 
 
+def test_workspace_scan_tracks_python_lockfiles_as_build_files(tmp_path: Path) -> None:
+    workspace = tmp_path / "python-lock-project"
+    workspace.mkdir()
+    (workspace / "pyproject.toml").write_text("[project]\nname = 'demo'\n", encoding="utf-8")
+    (workspace / "uv.lock").write_text("", encoding="utf-8")
+    (workspace / "poetry.lock").write_text("", encoding="utf-8")
+    (workspace / "pdm.lock").write_text("", encoding="utf-8")
+
+    result = WorkspaceScanner(workspace).scan(persist=False)
+
+    assert "pyproject.toml" in result["build_files"]
+    assert "uv.lock" in result["build_files"]
+    assert "poetry.lock" in result["build_files"]
+    assert "pdm.lock" in result["build_files"]
+
+
 def test_workspace_scan_indexes_fsharp_and_visual_basic_symbols(tmp_path: Path) -> None:
     workspace = tmp_path / "dotnet-symbol-project"
     src = workspace / "src"
@@ -824,6 +840,29 @@ def test_quality_and_jobs_track_package_lock_dependency_manifest(tmp_path: Path)
     assert_core_contract(job.json(), "jobs.run")
     manifests = job.json()["data"]["results"][0]["metrics"]["manifests"]
     assert "package-lock.json" in manifests
+
+
+def test_quality_and_jobs_track_python_lock_dependency_manifests(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    (workspace / "pyproject.toml").write_text("[project]\nname = 'demo'\n", encoding="utf-8")
+    (workspace / "uv.lock").write_text("", encoding="utf-8")
+    (workspace / "poetry.lock").write_text("", encoding="utf-8")
+    (workspace / "pdm.lock").write_text("", encoding="utf-8")
+    client = TestClient(create_app())
+
+    quality = client.get("/v1/quality", params={"workspace": str(workspace)})
+    job = client.post(
+        "/v1/jobs/run",
+        json={"workspace": str(workspace), "job_id": "dependency-review"},
+    )
+
+    assert quality.status_code == 200
+    assert_core_contract(quality.json(), "quality.dashboard")
+    assert quality.json()["data"]["current_snapshot"]["dependency_manifest_count"] >= 5
+    assert job.status_code == 200
+    assert_core_contract(job.json(), "jobs.run")
+    manifests = set(job.json()["data"]["results"][0]["metrics"]["manifests"])
+    assert {"pyproject.toml", "uv.lock", "poetry.lock", "pdm.lock"}.issubset(manifests)
 
 
 def test_quality_dashboard_reports_score_risks_and_statuses(tmp_path: Path) -> None:

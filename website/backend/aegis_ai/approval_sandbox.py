@@ -136,6 +136,9 @@ class ApprovalManager:
             "yarn.lock",
             "bun.lock",
             "bun.lockb",
+            "uv.lock",
+            "poetry.lock",
+            "pdm.lock",
             "cargo.lock",
         }:
             return 6, "Environment and lockfile changes can affect the whole workspace."

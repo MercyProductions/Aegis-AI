@@ -74,11 +74,17 @@ class ApprovalAndCommandTests(unittest.TestCase):
                 FileChange(action="update", path="yarn.lock", content="# lock\n"),
                 FileChange(action="update", path="bun.lock", content="# lock\n"),
                 FileChange(action="update", path="bun.lockb", content=""),
+                FileChange(action="update", path="uv.lock", content=""),
+                FileChange(action="update", path="poetry.lock", content=""),
+                FileChange(action="update", path="pdm.lock", content=""),
             ]
         )
 
         self.assertEqual(approved, [])
-        self.assertEqual([item[0].path for item in blocked], ["package-lock.json", "yarn.lock", "bun.lock", "bun.lockb"])
+        self.assertEqual(
+            [item[0].path for item in blocked],
+            ["package-lock.json", "yarn.lock", "bun.lock", "bun.lockb", "uv.lock", "poetry.lock", "pdm.lock"],
+        )
         self.assertTrue(all(item[1].risk_level >= 5 for item in blocked))
 
     def test_prompt_tier_keeps_auto_validation_manual(self) -> None:

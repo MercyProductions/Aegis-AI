@@ -1,5 +1,27 @@
 # Development Log
 
+## 2026-05-09 - Python Lockfile Metadata Safety
+
+Focus:
+
+- Keep dependency drift, maintenance manifests, and guided auto-apply safety aligned for Python package managers.
+- Treat lockfile-only Python dependency changes with the same caution already used for JavaScript, Bun, Cargo, and Go metadata.
+
+Actions:
+
+- Added `uv.lock`, `poetry.lock`, and `pdm.lock` to Core workspace scan build-file metadata and dependency-review/quality manifest detection.
+- Added `uv.lock` and `pdm.lock` to Core simulation dependency-risk detection alongside the existing Poetry lockfile coverage.
+- Added Python lockfiles to Website workspace dependency fingerprints so watcher snapshots emit `dependency.changed` when they drift.
+- Raised Website guided auto-apply scoring for Python lockfile edits so they require manual review.
+
+Validation completed:
+
+- Core focused lockfile regression suite: pass, 3 tests.
+- Aegis Core contract suite: pass, 152 tests.
+- Website workspace operations and approval/command suite: pass, 31 tests.
+- Backend compile check for touched Core and Website modules: pass.
+- Git diff whitespace check: pass.
+
 ## 2026-05-08 - Autonomous Stabilization Start
 
 Focus:
