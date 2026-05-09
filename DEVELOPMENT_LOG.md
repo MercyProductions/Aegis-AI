@@ -210,3 +210,21 @@ Validation completed:
 - VS Code extension lint: pass.
 - VS Code PowerShell installer: pass; it packages and installs the VSIX through the hardened local install path.
 - VSIX archive inspection: pass; packaged contents remain limited to runtime files and package metadata.
+
+## 2026-05-09 - Website Launcher Probe Hardening
+
+Focus:
+
+- Keep daily website startup responsive when a local backend, frontend, or Ollama endpoint is half-responsive.
+- Preserve the existing launch flow while tightening readiness probes.
+
+Actions:
+
+- Added explicit short timeouts to `website/launch.ps1` HTTP readiness and JSON probes.
+- Added an `Accept: application/json` header to launcher JSON probes.
+
+Validation completed:
+
+- Website launcher PowerShell syntax check: pass.
+- Website launch script: pass; Auralith OS reported ready at `http://127.0.0.1:5173`.
+- Website smoke test without chat: pass; frontend/backend identity, partial config, workspace setup, diff/apply/readback, validation, and readiness checks completed.

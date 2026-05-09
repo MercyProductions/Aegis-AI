@@ -87,6 +87,20 @@ Fixes applied:
 - Replaced duplicate PowerShell package/discovery/install logic with a thin npm delegation.
 - Added a clearer npm-missing error.
 
+### 2026-05-09 - Website Launcher Probe Hardening
+
+Context:
+- Daily startup should fail or recover quickly when a local service is wedged.
+- The website launcher readiness probes used `Invoke-WebRequest` without explicit timeouts.
+
+What worked:
+- The launcher started successfully and reported Auralith OS ready.
+- The website smoke flow passed without the chat leg.
+
+Fixes applied:
+- Added short HTTP timeouts to launcher readiness and JSON probes.
+- Kept the existing service ownership and route-contract checks intact.
+
 ### 2026-05-08 - Product Utilization Kickoff
 
 Context:
@@ -126,6 +140,7 @@ Fixes applied:
 | 2026-05-09 | VS Code package contents | VSIX archive included the source-tree `install.ps1` helper, which is only useful before packaging. | Low | Excluded it from the VSIX and added a lint guard. |
 | 2026-05-09 | VS Code release scripts | Package/install commands broke when the workspace path contained spaces and `&`. | Medium | Replaced shell command strings with a shared command runner and relative VSIX args. |
 | 2026-05-09 | VS Code installer | PowerShell installer duplicated the npm/Node install path. | Low | Made it delegate to `npm run install-local` and validated the wrapper. |
+| 2026-05-09 | Website launcher | HTTP readiness probes had no explicit timeout, so half-responsive local services could stall startup. | Medium | Added short launch probe timeouts and validated launch/smoke. |
 
 ## Daily Workflow Checklist
 

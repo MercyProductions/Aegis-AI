@@ -23,10 +23,13 @@ $RequirePartialConfigUpdate = $true
 $FrontendUrl = "http://127.0.0.1:5173"
 
 function Test-HttpReady {
-    param([string]$Url)
+    param(
+        [string]$Url,
+        [int]$TimeoutSeconds = 4
+    )
 
     try {
-        Invoke-WebRequest -UseBasicParsing $Url | Out-Null
+        Invoke-WebRequest -UseBasicParsing $Url -TimeoutSec $TimeoutSeconds | Out-Null
         return $true
     } catch {
         return $false
@@ -34,10 +37,13 @@ function Test-HttpReady {
 }
 
 function Get-HttpJson {
-    param([string]$Url)
+    param(
+        [string]$Url,
+        [int]$TimeoutSeconds = 4
+    )
 
     try {
-        $response = Invoke-WebRequest -UseBasicParsing $Url
+        $response = Invoke-WebRequest -UseBasicParsing $Url -Headers @{ Accept = "application/json" } -TimeoutSec $TimeoutSeconds
         if (-not $response.Content) {
             return $null
         }
