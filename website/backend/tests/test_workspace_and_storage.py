@@ -6,9 +6,13 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import sys
+from unittest.mock import patch
+
+from fastapi.testclient import TestClient
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from aegis_ai import main
 from aegis_ai.schemas import (
     ContextBudgetInfo,
     ContextBudgetItemInfo,
@@ -1023,6 +1027,82 @@ int main() {
         self.assertEqual(len(manager.search_notes("green")), 1)
         self.assertTrue(manager.delete_note(note.id))
         self.assertEqual(manager.search_notes("green"), [])
+
+    def test_memory_manager_confines_user_controlled_category_to_memory_dir(self) -> None:
+        workspace = (self.project_root / "workspace").resolve()
+        manager = MemoryManager(workspace)
+
+        note = manager.create_note(
+            title="Scoped note",
+            content="Keep memory files inside the memory directory.",
+            category="../.aegis/project memory",
+            tags="safety",
+            related_files="PROJECT_TODO.md",
+        )
+
+        self.assertNotIn("/", note.id)
+        self.assertNotIn("\\", note.id)
+        self.assertNotIn("..", note.id)
+        self.assertEqual(note.category, "../.aegis/project memory")
+        self.assertEqual(note.tags, ["safety"])
+        self.assertEqual(note.related_files, ["PROJECT_TODO.md"])
+        self.assertTrue((workspace / "memory" / f"{note.id}.json").is_file())
+        self.assertFalse((workspace / ".aegis").exists())
+
+    def test_memory_manager_generates_unique_ids_for_same_millisecond(self) -> None:
+        workspace = (self.project_root / "workspace").resolve()
+        manager = MemoryManager(workspace)
+        fixed_now = datetime(2026, 5, 8, 12, 0, 0, 123000, tzinfo=timezone.utc)
+
+        with patch("aegis_ai.memory_manager.datetime") as mocked_datetime:
+            mocked_datetime.now.return_value = fixed_now
+            first = manager.create_note("First", "One", "insight")
+            second = manager.create_note("Second", "Two", "insight")
+
+        self.assertNotEqual(first.id, second.id)
+        self.assertTrue((workspace / "memory" / f"{first.id}.json").is_file())
+        self.assertTrue((workspace / "memory" / f"{second.id}.json").is_file())
+
+    def test_memory_manager_ignores_update_attempts_to_mutate_note_identity(self) -> None:
+        workspace = (self.project_root / "workspace").resolve()
+        manager = MemoryManager(workspace)
+        note = manager.create_note("Stable", "Keep the id stable.", "insight")
+
+        updated = manager.update_note(note.id, id="../escaped", created_at="changed", confidence=9)
+
+        self.assertIsNotNone(updated)
+        self.assertEqual(updated.id, note.id)
+        self.assertEqual(updated.created_at, note.created_at)
+        self.assertEqual(updated.confidence, 1.0)
+        self.assertTrue((workspace / "memory" / f"{note.id}.json").is_file())
+        self.assertFalse((workspace / "escaped.json").exists())
+
+    def test_memory_api_coerces_bad_confidence_without_escaping_memory_dir(self) -> None:
+        workspace = (self.project_root / "workspace").resolve()
+        workspace_manager = WorkspaceManager(self.project_root, self.settings)
+
+        with (
+            patch.object(main, "workspace_manager", workspace_manager),
+            TestClient(main.app) as client,
+        ):
+            response = client.post(
+                "/api/memory",
+                params={"workspace_root": str(workspace)},
+                json={
+                    "title": "API note",
+                    "content": "Invalid confidence should not break the endpoint.",
+                    "category": "../.aegis/api note",
+                    "confidence": "not-a-number",
+                    "tags": "api",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["confidence"], 0.8)
+        self.assertEqual(payload["tags"], ["api"])
+        self.assertTrue((workspace / "memory" / f"{payload['id']}.json").is_file())
+        self.assertFalse((workspace / ".aegis").exists())
 
     def test_repair_attempts_round_trip(self) -> None:
         store = EventStore(self.project_root, self.settings)

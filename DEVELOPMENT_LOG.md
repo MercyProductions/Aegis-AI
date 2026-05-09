@@ -49,6 +49,7 @@ Actions:
 - Hardened Website workspace setup so damaged `.aegis` project and validation profile paths return setup warnings instead of endpoint failures.
 - Hardened Website validation discovery so damaged project marker directories do not create false validation or install suggestions.
 - Hardened Website validation profile updates so damaged profile paths return clear API errors and failed writes clean up temporary files.
+- Hardened Website memory note persistence so category-derived note IDs stay inside the memory directory, write atomically, tolerate malformed confidence input, and avoid same-millisecond collisions.
 - Hardened Website dependency profiling so damaged marker directories and lockfile paths do not distort onboarding stack summaries.
 - Hardened Website checkpoint restore against path traversal IDs, damaged manifests, and backup paths outside the checkpoint files folder.
 - Hardened Website checkpoint restore preflight so missing backup files stop the restore before any workspace files are touched.
@@ -85,7 +86,7 @@ Validation completed:
 - Website frontend tests/build and backend tests: pass.
 - Website workspace setup regression tests for damaged `.aegis` paths: pass.
 - Website validation manager damaged-marker/profile-persistence regression tests: pass, 21 tests and 4 subtests.
-- Website checkpoint restore, apply safety, and dependency-profile regression tests: pass, 54 workspace/storage tests.
+- Website checkpoint restore, apply safety, memory-note persistence, and dependency-profile regression tests: pass, 58 workspace/storage tests.
 - Website backend compile check: pass.
 
 Known next checks:

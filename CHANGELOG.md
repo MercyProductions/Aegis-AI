@@ -43,6 +43,7 @@
 - Hardened Website workspace setup so damaged `.aegis` project and validation profile paths return warnings instead of breaking setup.
 - Hardened Website validation discovery so damaged project marker directories no longer create false validation or install suggestions.
 - Hardened Website validation profile updates so damaged profile paths return clear API errors and failed writes do not leave temporary files behind.
+- Hardened Website memory note persistence so user-controlled categories cannot escape the memory directory, malformed confidence input degrades safely, and rapid note creation cannot overwrite same-millisecond notes.
 - Hardened Website dependency profiling so damaged marker directories and lockfile paths no longer distort onboarding stack summaries.
 - Hardened Website checkpoint restore so checkpoint IDs stay folder-local and damaged manifests or backup paths return clean errors instead of unsafe restores or server failures.
 - Hardened Website checkpoint restore preflight so missing backup files fail clearly before any workspace files are restored or removed.

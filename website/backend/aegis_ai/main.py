@@ -3763,7 +3763,7 @@ async def create_memory_note(request: dict, workspace_root: str | None = Query(d
     note = memory.update_note(
         note.id,
         pinned=bool(request.get("pinned", False)),
-        confidence=float(request.get("confidence", note.confidence) or note.confidence),
+        confidence=request.get("confidence", note.confidence),
     ) or note
     _invalidate_workspace_caches(root)
 
