@@ -98,6 +98,34 @@ if (/\burl\.href\b/.test(extensionText)) {
   fail('extension.js must not log full request URLs; use formatRequestTarget so workspace query strings stay out of diagnostics.');
 }
 
+const unsafeErrorMessagePatterns = [
+  {
+    pattern: /appendLine\s*\([^)]*error\.message/s,
+    message: 'output.appendLine diagnostics must use safeErrorMessage(error) instead of raw error.message.'
+  },
+  {
+    pattern: /showErrorMessage\s*\([^)]*error\.message/s,
+    message: 'VS Code error notifications must use safeErrorMessage(error) instead of raw error.message.'
+  },
+  {
+    pattern: /\bstate\.(?:status|project)\s*=\s*`[^`]*\$\{error\.message\}/s,
+    message: 'webview status/project errors must use safeErrorMessage(error) instead of raw error.message.'
+  },
+  {
+    pattern: /\baddCheck\s*\([^)]*error\.message/s,
+    message: 'health-check details must use safeErrorMessage(error) instead of raw error.message.'
+  },
+  {
+    pattern: /\boutput\s*:\s*[^,\n]*error\.message/s,
+    message: 'structured diagnostic output must use safeErrorMessage(error) instead of raw error.message.'
+  }
+];
+for (const guard of unsafeErrorMessagePatterns) {
+  if (guard.pattern.test(extensionText)) {
+    fail(guard.message);
+  }
+}
+
 for (const scriptFile of ['scripts/package-release.js', 'scripts/install-local.js', 'scripts/run-command.js']) {
   const scriptText = fs.readFileSync(path.join(root, scriptFile), 'utf8');
   if (/\bexecSync\s*\(/.test(scriptText)) {

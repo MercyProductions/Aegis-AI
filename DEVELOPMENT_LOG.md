@@ -164,6 +164,7 @@ Actions:
 Validation completed:
 
 - VS Code extension lint: pass.
+- Aegis Core contract tests: pass, 89 tests.
 - VS Code VSIX package: pass; repository metadata points to GitHub.
 - Visual Studio extension build/package: pass.
 - Visual Studio VSIX archive inspection: pass; MoreInfo points to GitHub and internal notes/model inventory/repository-only files are absent.
@@ -737,3 +738,20 @@ Validation completed:
 
 - VS Code extension lint: pass.
 - Aegis Core contract tests: pass, 89 tests.
+
+## 2026-05-09 - VS Code Diagnostic Lint Guard
+
+Focus:
+
+- Prevent user-visible VS Code diagnostics from drifting back to raw exception text.
+- Keep health-check and status-panel errors both readable and redacted.
+
+Actions:
+
+- Routed VS Code health-check, setup checklist, status-panel, shell-probe, and validation fallback errors through `safeErrorMessage`.
+- Switched health-check detail cleanup from the memory-context sanitizer to the diagnostic redactor so normal parser wording remains visible.
+- Extended VS Code package lint to fail if raw `error.message` is interpolated into output-channel, notification, status, health-check, or structured diagnostic output paths.
+
+Validation completed:
+
+- VS Code extension lint: pass.

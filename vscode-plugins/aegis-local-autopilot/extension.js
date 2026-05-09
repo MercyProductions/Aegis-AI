@@ -313,7 +313,7 @@ class LocalAutopilotViewProvider {
         updateStatusBar('Ready', `Aegis connected to ${source} with ${state.models.length} model(s).`);
       }
     } catch (error) {
-      state.status = `Model inventory scan failed: ${error.message}`;
+      state.status = `Model inventory scan failed: ${safeErrorMessage(error)}`;
       updateStatusBar('Models Offline', state.status);
     }
 
@@ -333,7 +333,7 @@ class LocalAutopilotViewProvider {
         updateStatusBar('No Workspace', 'Open a VS Code folder to use Aegis project context.');
       }
     } catch (error) {
-      state.project = `Project scan failed: ${error.message}`;
+      state.project = `Project scan failed: ${safeErrorMessage(error)}`;
     }
 
     this.post({ command: 'state', state });
@@ -387,7 +387,7 @@ async function runFirstRunSetup(options = {}) {
     const source = models.some((model) => model.source === 'aegis-core') ? 'Aegis Core' : 'Ollama';
     ollamaStatus = `${source} model inventory reachable. Found ${modelNames.length} model(s).`;
   } catch (error) {
-    ollamaStatus = `Model inventory check failed: ${error.message}`;
+    ollamaStatus = `Model inventory check failed: ${safeErrorMessage(error)}`;
   }
 
   if (modelNames.length) {
@@ -468,7 +468,7 @@ async function runHealthCheck(options = {}) {
     checks.push({
       name,
       status,
-      detail: sanitizeMemoryText(String(detail || '')),
+      detail: redactDiagnosticText(detail),
       fix: sanitizeMemoryText(String(fix || ''))
     });
   };
@@ -494,7 +494,7 @@ async function runHealthCheck(options = {}) {
         await fs.rm(probePath, { force: true });
         addCheck('.aegis folder is writable', 'pass', '.aegis accepted a write/read/delete probe.');
       } catch (error) {
-        addCheck('.aegis folder is writable', 'fail', error.message, 'Check project folder permissions and make sure antivirus is not blocking writes.');
+        addCheck('.aegis folder is writable', 'fail', safeErrorMessage(error), 'Check project folder permissions and make sure antivirus is not blocking writes.');
       }
     }
 
@@ -540,14 +540,14 @@ async function runHealthCheck(options = {}) {
             const result = await item.run();
             addCheck(item.name, 'pass', item.detail(result));
           } catch (error) {
-            addCheck(item.name, 'warn', error.message, 'VS Code will use the existing local fallback for this workflow.');
+            addCheck(item.name, 'warn', safeErrorMessage(error), 'VS Code will use the existing local fallback for this workflow.');
           }
         }
       } catch (error) {
         addCheck(
           'Aegis Core is reachable',
           'warn',
-          error.message,
+          safeErrorMessage(error),
           'Start Aegis Core on the configured local URL to enable shared tasks, settings, diagnostics, and dashboard sync.'
         );
       }
@@ -559,7 +559,7 @@ async function runHealthCheck(options = {}) {
       const source = models.some((model) => model.source === 'aegis-core') ? 'Aegis Core' : 'Ollama';
       addCheck('Model inventory is reachable', 'pass', `${source} reported ${models.length} installed model(s) in ${Date.now() - modelStart}ms.`);
     } catch (error) {
-      addCheck('Model inventory is reachable', 'fail', error.message, 'Start Aegis Core and Ollama, or confirm Ollama is listening at the configured URL.');
+      addCheck('Model inventory is reachable', 'fail', safeErrorMessage(error), 'Start Aegis Core and Ollama, or confirm Ollama is listening at the configured URL.');
     }
 
     const modelNames = models.map((model) => model.name || model.model).filter(Boolean);
@@ -587,14 +587,14 @@ async function runHealthCheck(options = {}) {
       const stored = extensionContext.workspaceState.get('aegis.healthCheck');
       addCheck('VS Code extension storage works', stored === value ? 'pass' : 'fail', stored === value ? 'Workspace storage round-trip succeeded.' : 'Workspace storage did not return the expected value.');
     } catch (error) {
-      addCheck('VS Code extension storage works', 'fail', error.message, 'Reload VS Code or check whether extension storage is writable.');
+      addCheck('VS Code extension storage works', 'fail', safeErrorMessage(error), 'Reload VS Code or check whether extension storage is writable.');
     }
 
     try {
       const probe = await runShellProbe();
       addCheck('Terminal commands can run', probe.success ? 'pass' : 'fail', probe.output, probe.success ? '' : 'Check shell availability and VS Code permissions.');
     } catch (error) {
-      addCheck('Terminal commands can run', 'fail', error.message, 'Check shell availability and VS Code permissions.');
+      addCheck('Terminal commands can run', 'fail', safeErrorMessage(error), 'Check shell availability and VS Code permissions.');
     }
 
     if (target) {
@@ -605,7 +605,7 @@ async function runHealthCheck(options = {}) {
         await fs.rm(backupRoot, { recursive: true, force: true });
         addCheck('Backups can be created', 'pass', '.aegis/backups accepted a create/delete probe.');
       } catch (error) {
-        addCheck('Backups can be created', 'fail', error.message, 'Check project folder permissions for .aegis/backups.');
+        addCheck('Backups can be created', 'fail', safeErrorMessage(error), 'Check project folder permissions for .aegis/backups.');
       }
 
       try {
@@ -618,11 +618,11 @@ async function runHealthCheck(options = {}) {
         await fs.writeFile(path.join(memoryRoot, 'symbol-index.json'), JSON.stringify(symbolIndex, null, 2), 'utf8');
         addCheck('Dependency and symbol indexes can be written', 'pass', `Wrote ${dependencyGraph.nodes.length} graph node(s), ${dependencyGraph.edges.length} edge(s), and ${symbolIndex.symbols.length} symbol(s).`);
       } catch (error) {
-        addCheck('Dependency and symbol indexes can be written', 'fail', error.message, 'Check .aegis write permissions and whether scanned files are readable.');
+        addCheck('Dependency and symbol indexes can be written', 'fail', safeErrorMessage(error), 'Check .aegis write permissions and whether scanned files are readable.');
       }
     }
   } catch (error) {
-    addCheck('Health check runner', 'fail', error.message, 'Open the Aegis output panel for details, then retry.');
+    addCheck('Health check runner', 'fail', safeErrorMessage(error), 'Open the Aegis output panel for details, then retry.');
     reportError(error, { failedCommand: 'Aegis: Run Health Check', retryCommand: 'healthCheck' });
   }
 
@@ -734,7 +734,7 @@ function runShellProbe() {
     }, (error, stdout, stderr) => {
       resolve({
         success: !error && /aegis-health/.test(stdout || ''),
-        output: truncateMiddle([stdout, stderr, error ? error.message : ''].filter(Boolean).join('\n') || 'Shell probe completed.', 2000)
+        output: truncateMiddle([stdout, stderr, error ? safeErrorMessage(error) : ''].filter(Boolean).join('\n') || 'Shell probe completed.', 2000)
       });
     });
   });
@@ -5332,7 +5332,7 @@ function runValidationCommand(item) {
         cwd: item.cwd,
         success: !error,
         exitCode: error && typeof error.code === 'number' ? error.code : (error ? null : 0),
-        output: truncateMiddle(outputText || (error ? error.message : 'No output.'), 24000)
+        output: truncateMiddle(outputText || (error ? safeErrorMessage(error) : 'No output.'), 24000)
       });
       if (error) {
         lastFailedCommand = item.command;
