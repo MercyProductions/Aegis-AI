@@ -4742,8 +4742,8 @@ async function openMemoryFromPanel(name) {
 async function saveSettingsFromPanel(settings) {
   const config = vscode.workspace.getConfiguration('aegisLocalAutopilot');
   const updates = [
-    ['ollamaUrl', settings.ollamaUrl],
-    ['coreUrl', settings.coreUrl],
+    ['ollamaUrl', normalizeHttpBaseUrl(settings.ollamaUrl, 'http://127.0.0.1:11434')],
+    ['coreUrl', normalizeHttpBaseUrl(settings.coreUrl, 'http://127.0.0.1:8788')],
     ['chatModel', settings.chatModel],
     ['fallbackModels', typeof settings.fallbackModels === 'string' ? settings.fallbackModels.split(',').map((item) => item.trim()).filter(Boolean) : settings.fallbackModels],
     ['maxContextChars', Number(settings.maxContextChars) || undefined],
@@ -5038,8 +5038,8 @@ function isPathInside(root, candidate) {
 function getConfig() {
   const config = vscode.workspace.getConfiguration('aegisLocalAutopilot');
   return {
-    ollamaUrl: config.get('ollamaUrl', 'http://127.0.0.1:11434'),
-    coreUrl: config.get('coreUrl', 'http://127.0.0.1:8788'),
+    ollamaUrl: normalizeHttpBaseUrl(config.get('ollamaUrl', 'http://127.0.0.1:11434'), 'http://127.0.0.1:11434'),
+    coreUrl: normalizeHttpBaseUrl(config.get('coreUrl', 'http://127.0.0.1:8788'), 'http://127.0.0.1:8788'),
     chatModel: config.get('chatModel', 'qwen3-coder:30b'),
     fastModel: config.get('fastModel', 'qwen2.5-coder:7b'),
     fallbackModels: config.get('fallbackModels', ['qwen2.5-coder:7b', 'granite-code:8b']),
@@ -5053,6 +5053,33 @@ function getConfig() {
     safetyMode: config.get('safetyMode', 'standard'),
     excludeGlob: config.get('excludeGlob', '{**/node_modules/**,**/.git/**,**/.venv/**,**/x64/**,**/build/**,**/dist/**,**/.tmp/**,**/smoke-artifacts/**,**/stress-artifacts/**}')
   };
+}
+
+function normalizeHttpBaseUrl(value, fallback) {
+  const defaultBase = String(fallback || '').trim();
+  const raw = String(value || '').trim();
+  if (!raw || /\s/.test(raw)) {
+    return defaultBase;
+  }
+
+  let candidate = raw;
+  const lowered = candidate.toLowerCase();
+  if (!lowered.startsWith('http://') && !lowered.startsWith('https://')) {
+    if (candidate.includes('://')) {
+      return defaultBase;
+    }
+    candidate = `http://${candidate}`;
+  }
+
+  try {
+    const url = new URL(candidate);
+    if (!url.hostname || url.username || url.password) {
+      return defaultBase;
+    }
+    return `${url.protocol}//${url.host}`;
+  } catch (error) {
+    return defaultBase;
+  }
 }
 
 function getConfigSnapshot() {
@@ -5933,7 +5960,8 @@ if (process.env.AEGIS_EXTENSION_DEVTOOLS === '1') {
     buildSymbolIndex,
     buildImpactAnalysis,
     buildFocusedProjectContext,
-    projectSnapshotSummary
+    projectSnapshotSummary,
+    normalizeHttpBaseUrl
   };
 }
 

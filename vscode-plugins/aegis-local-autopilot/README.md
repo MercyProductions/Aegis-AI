@@ -74,7 +74,7 @@ Run `Aegis: Run First-Run Setup` to repeat this flow.
 
 When Aegis Core is running, the VS Code extension registers itself through `/v1/clients/register`, includes Core in health checks, and creates shared task records during Agent Mode. Those tasks are visible to the Desktop App ecosystem dashboard and other Auralith clients that point at the same workspace.
 
-Set `aegisLocalAutopilot.coreUrl` if Core is not running on `http://127.0.0.1:8788`. If Core is offline, VS Code stays usable in degraded local mode.
+Set `aegisLocalAutopilot.coreUrl` if Core is not running on `http://127.0.0.1:8788`. The extension normalizes common local inputs such as `127.0.0.1:8788` or pasted `/v1/...` endpoint URLs back to the Core base URL. If Core is offline, VS Code stays usable in degraded local mode.
 
 Project-local `.aegis/` memory writes are best-effort. If a memory target is damaged, Aegis reports it in the output channel and keeps scans, recovery state, validation logs, decisions, and approved-change bookkeeping from crashing the workflow.
 
