@@ -86,6 +86,23 @@ class WorkspaceAndStorageTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "outside the checkpoint files folder"):
             manager.restore_checkpoint(workspace, "bad-backup-path")
 
+    def test_apply_changes_does_not_write_when_checkpoint_cannot_be_created(self) -> None:
+        manager = WorkspaceManager(self.project_root, self.settings)
+        workspace = manager.resolve_workspace("workspace")
+        (workspace / ".aegis").write_text("not a directory", encoding="utf-8")
+
+        result = manager.apply_changes(
+            workspace,
+            [
+                FileChange(action="create", path="app.py", summary="create", content="print('new')\n"),
+            ],
+        )
+
+        self.assertEqual(result.applied, [])
+        self.assertIsNone(result.checkpoint)
+        self.assertFalse((workspace / "app.py").exists())
+        self.assertTrue(any("checkpoint could not be created" in warning for warning in result.warnings))
+
     def test_apply_changes_can_append_large_generated_file_chunks(self) -> None:
         manager = WorkspaceManager(self.project_root, self.settings)
         workspace = manager.resolve_workspace("workspace")

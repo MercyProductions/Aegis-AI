@@ -72,6 +72,8 @@ If an apply fails, use the client's rollback command first, then inspect `.aegis
 
 Website checkpoint restore accepts only checkpoint folder names and validates manifest/backup paths before touching workspace files. If restore fails with a checkpoint safety error, inspect `.aegis/checkpoints/<id>/manifest.json` and preserve the checkpoint before repairing or removing damaged metadata.
 
+Website apply requires checkpoint creation before file edits. If apply returns a checkpoint warning and no files changed, repair `.aegis/checkpoints/` or the selected workspace permissions before retrying.
+
 ## Website
 
 The Website currently uses its own mature `/api` backend. Do not force it onto standalone Core `/v1` APIs during stabilization unless a specific workflow proves the migration is needed.

@@ -678,7 +678,14 @@ class WorkspaceManager:
         applied: list[str] = []
         warnings: list[str] = []
         skipped_create_paths: set[str] = set()
-        checkpoint = self._create_checkpoint(root, changes) if changes else None
+        try:
+            checkpoint = self._create_checkpoint(root, changes) if changes else None
+        except OSError as exc:
+            return ApplyResult(
+                applied=[],
+                warnings=[f"checkpoint could not be created; no files were changed: {exc}"],
+                checkpoint=None,
+            )
 
         for change in changes:
             try:
@@ -728,12 +735,16 @@ class WorkspaceManager:
                         skipped_create_paths.add(target_key)
                     continue
 
-                target.parent.mkdir(parents=True, exist_ok=True)
-                if change.action == "append":
-                    with target.open("a", encoding="utf-8", newline="") as handle:
-                        handle.write(change.content)
-                else:
-                    target.write_text(change.content, encoding="utf-8")
+                try:
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    if change.action == "append":
+                        with target.open("a", encoding="utf-8", newline="") as handle:
+                            handle.write(change.content)
+                    else:
+                        target.write_text(change.content, encoding="utf-8")
+                except OSError as exc:
+                    warnings.append(f"{change.path}: file write failed after checkpoint {checkpoint or 'not created'}: {exc}")
+                    continue
                 applied.append(f"{change.action}: {change.path}")
                 continue
 
@@ -745,7 +756,11 @@ class WorkspaceManager:
                     continue
 
                 if target.exists() and target.is_file():
-                    target.unlink()
+                    try:
+                        target.unlink()
+                    except OSError as exc:
+                        warnings.append(f"{change.path}: file delete failed after checkpoint {checkpoint or 'not created'}: {exc}")
+                        continue
                     applied.append(f"delete: {change.path}")
                 else:
                     warnings.append(f"{change.path}: file does not exist")

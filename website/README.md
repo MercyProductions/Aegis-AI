@@ -166,6 +166,8 @@ Workspace setup stores project and validation metadata under `.aegis/` in the se
 
 Checkpoint restore validates checkpoint folder names, manifests, and backup paths before touching workspace files. Damaged checkpoint metadata returns a clear restore error instead of attempting an unsafe rollback.
 
+Approved Website file edits require a checkpoint first. If checkpoint creation fails, Aegis reports a warning and leaves project files unchanged.
+
 ## Project Layout
 
 ```text
