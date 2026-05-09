@@ -6,14 +6,14 @@ Last updated: 2026-05-09
 
 Aegis Core should become the reusable shared runtime for all clients. The Website backend should remain the product/application orchestration layer. Consolidation must happen gradually through stable contracts, adapters, and tests.
 
-This phase does not move chat, apply, project-builder, model routing, Creative Studio, auth, or advanced product surfaces out of Website `/api`.
+This phase does not move Website chat, apply, project-builder, Creative Studio, auth, or advanced product surfaces out of Website `/api`. Aegis Core now owns a small local-first hybrid model router contract for shared provider selection, but Website still owns its mature product routing and telemetry until a later adapter phase.
 
 ## Current Overlap
 
 | Subsystem | Website backend today | Aegis Core today | Consolidation target |
 | --- | --- | --- | --- |
 | Health | `/api/health` reports Website readiness, model/provider status, database paths, router state | `/v1/health` reports Core config, workspace, Ollama health | Keep both. Website health is app health; Core health is shared runtime health. Website can surface Core status through bridge. |
-| Models | Full model registry, manager, benchmarks, routing, providers, telemetry | Ollama model inventory and selected/fallback status | Core owns shared local model visibility. Website owns advanced provider registry/routing until stable enough to extract. |
+| Models | Full model registry, manager, benchmarks, routing, providers, telemetry | Ollama inventory plus local-first hybrid route planning and provider inventory | Core owns shared model visibility and privacy-gated routing contracts. Website owns advanced provider registry, benchmarks, telemetry, and product routing until stable enough to extract. |
 | Settings | `.env` and Website settings model | `.aegis/config.json` shared Core settings | Core owns cross-client shared settings. Website owns product/app settings and can read Core settings through bridge. |
 | Workspace scan/indexing | `WorkspaceManager`, Project Intelligence, Workspace Operations, unified context | `WorkspaceScanner`, file/dependency/symbol indexes, scan cache | Core owns shared lightweight indexing. Website owns rich app intelligence and should consume Core indexes before adding duplicate scan logic. |
 | Roadmap | Website project/autopilot flows and richer task planning | `.aegis/roadmap.md` generation | Core owns shared roadmap file and plan-only continuation source. Website may orchestrate richer plans from it. |
@@ -33,7 +33,8 @@ This phase does not move chat, apply, project-builder, model routing, Creative S
 | Core health envelope | Aegis Core | Aegis Core | API-only |
 | Website app health | Website backend | Website backend | API-only |
 | Core status inside Website | new bridge | Website consumes Core | adapter/shim |
-| Local Ollama inventory | Aegis Core and Website provider stack | Aegis Core for shared status, Website for routing | adapter first |
+| Local Ollama inventory | Aegis Core and Website provider stack | Aegis Core for shared status and route planning, Website for advanced product routing | adapter first |
+| Hybrid provider selection | Aegis Core | Aegis Core | experimental API-only |
 | Shared settings | Aegis Core | Aegis Core | API-only |
 | App settings | Website backend | Website backend | no migration |
 | Shared indexing | Aegis Core | Aegis Core | shared runtime |
@@ -53,7 +54,7 @@ This phase does not move chat, apply, project-builder, model routing, Creative S
 
 | Area | Core-owned | Website-owned | Client-owned | Deprecated adapter/shim status |
 | --- | --- | --- | --- | --- |
-| Models | Shared local model inventory and selected/fallback model status | Provider registry, model manager, benchmarks, routing policy | UI selection and direct fallback only where needed | Website `/api/models` is adapter-backed but remains stable. VS Code direct Ollama fallback stays for offline use. |
+| Models | Shared local model inventory, selected/fallback model status, hybrid provider inventory, cloud-approval route plans | Provider registry, model manager, benchmarks, advanced routing policy | UI selection and direct fallback only where needed | Website `/api/models` is adapter-backed but remains stable. VS Code direct Ollama fallback stays for offline use. |
 | Settings | Cross-client `.aegis/config.json` settings | Website `.env` app/product settings | IDE/desktop UI preferences | Website model settings sync to Core is best-effort; no removal. |
 | Diagnostics | Shared `.aegis` log summaries | Website observability, telemetry, product diagnostics | IDE build/output diagnostics | Core diagnostics are read adapters only. |
 | Memory | Shared file-backed memory summaries | Website memory CRUD, SQLite telemetry, memory UX | IDE-local context selection and notes | No memory write deprecation yet. |
@@ -85,9 +86,9 @@ Website `/api` responses remain product-specific Pydantic response models. When 
 
 The canonical contract package is `aegis-core/aegis_core/contracts.py`. It defines:
 
-- shared request models for workspace, settings, client registration, tasks, validation, continue, and repair;
+- shared request models for workspace, settings, model routing/completion, provider key status, client registration, tasks, validation, continue, and repair;
 - stable response data models for health, models, settings, workspace scan, roadmap, memory, diagnostics, tasks, validation, and dashboard;
-- experimental response data models for agent continue/repair;
+- experimental response data models for hybrid model providers/routes/completions and agent continue/repair;
 - schema-only experimental patch proposal and rollback models for future migration.
 
 Compatibility rules:
@@ -104,6 +105,9 @@ Shared request bodies should follow these names:
 | --- | --- | --- |
 | Workspace request | `workspace` | Core name. Website may accept `workspace_root` at `/api`, then map to Core `workspace`. |
 | Settings update | `workspace`, `settings` | Unknown/unsafe settings are ignored by Core config loading. |
+| Model route | `workspace`, `task_type`, optional `difficulty`, `context_files`, `allow_cloud`, `cloud_approved`, `local_failure_reason`, `provider_id`, `model` | Cloud routes are never selected for calls unless approval and provider credentials are present. |
+| Model completion | Model route fields plus `prompt`, optional `timeout_seconds` | Experimental. Cloud calls are rejected unless routing mode, approval, sanitized context, and OS credential state allow them. |
+| Provider key | `api_key` | Stored only in OS credential storage; never written to workspace config. |
 | Client registration | `workspace`, `client_id`, `client_type`, `name`, optional `version`, `capabilities` | Used by Desktop, VS Code, Visual Studio, Website later. |
 | Task create | `workspace`, `title`, optional `kind`, `source_client`, `request`, `metadata` | Cross-client task record only. |
 | Task status | `workspace`, `status`, optional `summary` | Core statuses are `planned`, `running`, `waiting_for_approval`, `blocked`, `completed`, `cancelled`, `rolled_back`. |

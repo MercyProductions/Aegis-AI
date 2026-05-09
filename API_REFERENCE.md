@@ -132,6 +132,12 @@ Endpoint families:
 | --- | --- | --- | --- |
 | `GET /v1/health` | `health` | stable | Shared Core, workspace, config, and Ollama health |
 | `GET /v1/models` | `models` | stable | Shared local model inventory |
+| `GET /v1/providers` | `model.providers` | experimental | Hybrid provider inventory without secret values |
+| `GET /v1/models/providers` | `model.providers` | experimental | Alias for hybrid provider inventory |
+| `POST /v1/models/route` | `model.route` | experimental | Local-first model route plan with cloud approval state and sanitized context metadata |
+| `POST /v1/models/completions` | `model.completion` | experimental | Gated local/cloud completion call; cloud requires explicit approval and stored OS credential |
+| `POST /v1/providers/{provider_id}/key` | `provider.key.status` | experimental | Store provider API key in OS credential storage, never in `.aegis/config.json` |
+| `DELETE /v1/providers/{provider_id}/key` | `provider.key.status` | experimental | Remove provider API key from OS credential storage |
 | `GET /v1/settings` | `settings` | stable | Shared Core settings |
 | `POST /v1/settings` | `settings.updated` | stable | Update shared Core settings |
 | `POST /v1/workspaces/scan` | `workspace.scan` | stable | Shared workspace scan/index |
@@ -150,6 +156,13 @@ Endpoint families:
 | `GET /v1/ecosystem/dashboard` | `ecosystem.dashboard` | stable | Shared clients/tasks/model/diagnostics dashboard |
 
 Schema-only experimental contracts are defined in `aegis-core/aegis_core/contracts.py` for `patch.proposal`, `rollback.entry`, and `rollback.result`. They are intentionally not active write endpoints yet.
+
+Hybrid model routing:
+
+- Core defaults to `model_routing_mode: local_only` and routes normal work to Ollama at `http://127.0.0.1:11434`.
+- Optional providers are OpenAI, Anthropic, Google, OpenRouter, and local LM Studio.
+- Cloud routes require client-visible warnings, explicit approval, sanitized context metadata, and provider keys stored in OS credential storage.
+- Secret-like, ignored, and outside-workspace files are excluded from cloud context.
 
 Release candidate notes:
 

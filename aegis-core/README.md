@@ -13,7 +13,7 @@ This first pass is intentionally small. It consolidates common backend responsib
 
 ## What Core Owns
 
-- Ollama model detection, health checks, routing defaults, and fallback metadata
+- Ollama model detection, health checks, routing defaults, fallback metadata, and local-first hybrid model route planning
 - Workspace scanning, language/framework detection, file index, dependency graph, and symbol index
 - Project memory files in `.aegis/`
 - Roadmap generation from local scan data
@@ -29,6 +29,8 @@ This first pass is intentionally small. It consolidates common backend responsib
 
 - It does not replace the existing clients in one jump.
 - It does not auto-edit files.
+- It does not send data to cloud models unless a client explicitly approves a sanitized context plan.
+- It does not store provider API keys in plaintext config files; optional provider keys must live in OS credential storage.
 - It does not implement cloud accounts, licensing, or update infrastructure.
 - It does not run destructive commands.
 
@@ -45,6 +47,8 @@ python -m aegis_core.cli continue --workspace ..
 python -m aegis_core.cli repair --workspace ..
 python -m aegis_core.cli dashboard --workspace ..
 python -m aegis_core.cli tasks --workspace ..
+python -m aegis_core.cli providers --workspace ..
+python -m aegis_core.cli route --workspace .. --task-type hard_debugging
 ```
 
 After installing the package, the same commands are available through:
@@ -57,6 +61,8 @@ aegis continue --workspace <path>
 aegis repair --workspace <path>
 aegis dashboard --workspace <path>
 aegis tasks --workspace <path>
+aegis providers --workspace <path>
+aegis route --workspace <path> --task-type code_completion
 ```
 
 Validation is conservative. `aegis validate` detects commands. Add `--run` to execute the first safe detected command.
@@ -87,6 +93,9 @@ Use the versioned client contract for new integrations:
 ```text
 GET  /v1/health
 GET  /v1/models
+GET  /v1/providers
+POST /v1/models/route
+POST /v1/models/completions
 GET  /v1/settings
 POST /v1/workspaces/scan
 POST /v1/workspaces/roadmap
@@ -99,6 +108,27 @@ GET  /v1/ecosystem/dashboard
 ```
 
 See `docs/API_REFERENCE.md`.
+
+## Hybrid Model Router
+
+Aegis Core is local-first. The default routing mode is `local_only`, so normal chat, explanations, code completion, code review, roadmap generation, and smaller fixes stay on Ollama at `http://127.0.0.1:11434`.
+
+Optional providers are exposed as route candidates only:
+
+- OpenAI
+- Anthropic
+- Google
+- OpenRouter
+- LM Studio local server at `http://127.0.0.1:1234`
+
+Cloud providers require all of the following before Core will call them:
+
+- `model_routing_mode` set to `hybrid` or `cloud_allowed`
+- the client requests cloud consideration
+- the client confirms user approval after showing sanitized files/context
+- a provider API key stored in OS credential storage
+
+Core excludes secret-like, ignored, and outside-workspace files from cloud context and redacts secret-like lines before context is sent.
 
 ## Memory
 

@@ -21,7 +21,8 @@ from aegis_core.contracts import (
     validate_contract_envelope,
 )
 from aegis_core.memory import ProjectMemory
-from aegis_core.ollama import OllamaClient
+from aegis_core.model_router import route_model
+from aegis_core.ollama import OllamaClient, OllamaStatus
 from aegis_core.safety import is_ignored_path, is_safe_to_edit, is_safe_to_read, is_secret_like
 from aegis_core.server import create_app
 from aegis_core.tasks import list_tasks, update_task_status
@@ -660,9 +661,46 @@ def test_invalid_config_values_fall_back_safely(tmp_path: Path) -> None:
     assert config.default_model == AegisConfig.default_model
     assert config.fallback_models == AegisConfig.fallback_models
     assert config.max_context_chars == AegisConfig.max_context_chars
+    assert config.model_routing_mode == "local_only"
+    assert config.lm_studio_url == AegisConfig.lm_studio_url
+    assert config.cloud_cost_warnings is True
     assert config.auto_scan_on_open is False
     assert config.validation_preferences == ("npm test", "npm run build")
     assert config.memory_dir_name == AegisConfig.memory_dir_name
+
+
+def test_hybrid_model_settings_are_sanitized(tmp_path: Path) -> None:
+    workspace = tmp_path / "hybrid-settings-project"
+    aegis_dir = workspace / ".aegis"
+    aegis_dir.mkdir(parents=True)
+    (aegis_dir / "config.json").write_text(
+        json.dumps(
+            {
+                "lm_studio_url": "127.0.0.1:1234/v1/chat/completions",
+                "model_routing_mode": "cloud-allowed",
+                "default_local_model": "local-default",
+                "local_small_model": "local-small",
+                "local_coder_model": "local-coder",
+                "local_embedding_model": "local-embed",
+                "preferred_cloud_provider": "OpenRouter",
+                "preferred_cloud_model": "openrouter-model",
+                "cloud_cost_warnings": "false",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    config = load_config(workspace)
+
+    assert config.lm_studio_url == "http://127.0.0.1:1234"
+    assert config.model_routing_mode == "cloud_allowed"
+    assert config.default_local_model == "local-default"
+    assert config.local_small_model == "local-small"
+    assert config.local_coder_model == "local-coder"
+    assert config.local_embedding_model == "local-embed"
+    assert config.preferred_cloud_provider == "openrouter"
+    assert config.preferred_cloud_model == "openrouter-model"
+    assert config.cloud_cost_warnings is False
 
 
 def test_ollama_url_config_normalizes_common_local_values(tmp_path: Path) -> None:
@@ -717,6 +755,151 @@ def test_ollama_model_listing_ignores_malformed_entries(monkeypatch) -> None:
 
     assert client.list_models() == ["granite-code:8b", "qwen3-coder:30b"]
     assert client.health().selected_model == "qwen3-coder:30b"
+
+
+class DummyCredentialStore:
+    available = True
+
+    def __init__(self, keys: dict[str, str] | None = None):
+        self.keys = keys or {}
+
+    def has_provider_key(self, provider_id: str) -> bool:
+        return provider_id in self.keys
+
+    def read_provider_key(self, provider_id: str) -> str | None:
+        return self.keys.get(provider_id)
+
+
+def test_model_router_is_local_first_and_blocks_secret_context(tmp_path: Path, monkeypatch) -> None:
+    workspace = tmp_path / "router-local-project"
+    workspace.mkdir()
+    (workspace / "src.py").write_text("print('ok')\n", encoding="utf-8")
+    (workspace / ".env").write_text("API_KEY=secret\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "aegis_core.model_router.OllamaClient.health",
+        lambda self: OllamaStatus(True, 3, ["qwen3-coder:30b", "qwen2.5-coder:7b"], "qwen3-coder:30b", []),
+    )
+
+    route = route_model(workspace, "code_completion", context_files=["src.py", ".env"], credentials=DummyCredentialStore())
+
+    assert route["selected"]["provider_id"] == "ollama"
+    assert route["selected"]["model"] == "qwen3-coder:30b"
+    assert route["approval_required"] is False
+    assert route["context"]["included_files"] == ["src.py"]
+    assert route["context"]["blocked_files"][0]["path"] == ".env"
+    assert "Secret-like" in route["warnings"][0]
+
+
+def test_model_router_requires_cloud_approval_in_hybrid_mode(tmp_path: Path, monkeypatch) -> None:
+    workspace = tmp_path / "router-hybrid-project"
+    aegis_dir = workspace / ".aegis"
+    aegis_dir.mkdir(parents=True)
+    (aegis_dir / "config.json").write_text(
+        json.dumps({"model_routing_mode": "hybrid", "preferred_cloud_provider": "openai"}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "aegis_core.model_router.OllamaClient.health",
+        lambda self: OllamaStatus(True, 4, ["qwen3-coder:30b"], "qwen3-coder:30b", []),
+    )
+
+    route = route_model(workspace, "hard_debugging", credentials=DummyCredentialStore({"openai": "stored"}))
+
+    assert route["selected"]["provider_id"] == "ollama"
+    assert route["approval_required"] is True
+    assert route["fallback_order"][1]["provider_id"] == "openai"
+    assert route["fallback_order"][1]["status"] == "approval_required"
+    assert route["cloud_reason"] == "client_approval_required"
+
+
+def test_model_router_selects_approved_cloud_when_allowed(tmp_path: Path, monkeypatch) -> None:
+    workspace = tmp_path / "router-cloud-project"
+    aegis_dir = workspace / ".aegis"
+    aegis_dir.mkdir(parents=True)
+    (aegis_dir / "config.json").write_text(
+        json.dumps(
+            {
+                "model_routing_mode": "cloud_allowed",
+                "preferred_cloud_provider": "openrouter",
+                "preferred_cloud_model": "anthropic/claude-sonnet",
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "aegis_core.model_router.OllamaClient.health",
+        lambda self: OllamaStatus(True, 4, ["qwen3-coder:30b"], "qwen3-coder:30b", []),
+    )
+
+    route = route_model(
+        workspace,
+        "hard_debugging",
+        allow_cloud=True,
+        cloud_approved=True,
+        local_failure_reason="local model could not explain the failing trace",
+        credentials=DummyCredentialStore({"openrouter": "stored"}),
+    )
+
+    assert route["selected"]["provider_id"] == "openrouter"
+    assert route["selected"]["model"] == "anthropic/claude-sonnet"
+    assert route["cloud_ready"] is True
+    assert route["approval_required"] is False
+    assert any("Cost warning" in warning for warning in route["warnings"])
+
+
+def test_model_router_selects_approved_cloud_for_repo_planning(tmp_path: Path, monkeypatch) -> None:
+    workspace = tmp_path / "router-planning-project"
+    aegis_dir = workspace / ".aegis"
+    aegis_dir.mkdir(parents=True)
+    (aegis_dir / "config.json").write_text(
+        json.dumps({"model_routing_mode": "hybrid", "preferred_cloud_provider": "openai", "preferred_cloud_model": "gpt-4.1"}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "aegis_core.model_router.OllamaClient.health",
+        lambda self: OllamaStatus(True, 4, ["qwen3-coder:30b"], "qwen3-coder:30b", []),
+    )
+
+    route = route_model(
+        workspace,
+        "repo_wide_planning",
+        allow_cloud=True,
+        cloud_approved=True,
+        credentials=DummyCredentialStore({"openai": "stored"}),
+    )
+
+    assert route["selected"]["provider_id"] == "openai"
+    assert route["task_type"] == "repo_wide_planning"
+    assert route["cloud_ready"] is True
+    assert route["approval_required"] is False
+
+
+def test_model_router_contract_endpoint_returns_versioned_route(tmp_path: Path, monkeypatch) -> None:
+    workspace = tmp_path / "router-api-project"
+    workspace.mkdir()
+    monkeypatch.setattr(
+        "aegis_core.model_router.OllamaClient.health",
+        lambda self: OllamaStatus(True, 5, ["qwen3-coder:30b"], "qwen3-coder:30b", []),
+    )
+    client = TestClient(create_app())
+
+    response = client.post("/v1/models/route", json={"workspace": str(workspace), "task_type": "simple_explanation"})
+
+    assert response.status_code == 200
+    assert_core_contract(response.json(), "model.route")
+    data = response.json()["data"]
+    assert data["selected"]["provider_id"] == "ollama"
+    assert data["mode"] == "local_only"
+
+
+def test_provider_key_endpoint_rejects_unknown_provider() -> None:
+    client = TestClient(create_app())
+
+    response = client.post("/v1/providers/not-a-provider/key", json={"api_key": "dummy"})
+
+    assert response.status_code == 400
+    assert "Unsupported provider" in response.json()["detail"]
 
 
 def test_ollama_health_handles_malformed_model_payload(monkeypatch) -> None:

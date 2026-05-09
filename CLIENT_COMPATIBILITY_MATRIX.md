@@ -24,6 +24,10 @@ Canonical schemas: `aegis-core/aegis_core/contracts.py`
 | --- | --- | --- | --- | --- | --- | --- |
 | `GET /v1/health` | `health` | stable | Not direct today | `/api/core-runtime` and `/api/health` adapter | Direct health check | Direct health check |
 | `GET /v1/models` | `models` | stable | Via dashboard model status | `/api/core-runtime` and `/api/models` adapter | Direct model inventory, Ollama fallback | Not direct today |
+| `GET /v1/providers` | `model.providers` | experimental | Not direct today | Future adapter candidate | Not direct today | Not direct today |
+| `POST /v1/models/route` | `model.route` | experimental | Not direct today | Future routing bridge candidate | Future route preview candidate | Future health/route preview candidate |
+| `POST /v1/models/completions` | `model.completion` | experimental | Not direct today | Future gated provider candidate | Not direct today | Not direct today |
+| `POST/DELETE /v1/providers/{provider_id}/key` | `provider.key.status` | experimental | Not direct today | Future settings bridge candidate | Not direct today | Not direct today |
 | `GET /v1/settings` | `settings` | stable | Not direct today | `/api/core-runtime` and `/api/config` adapter | Direct health/settings check | Not direct today |
 | `POST /v1/settings` | `settings.updated` | stable | Not direct today | Best-effort sync after `POST /api/config` | Not direct today | Not direct today |
 | `POST /v1/workspaces/scan` | `workspace.scan` | stable | Not direct today | Future bridge candidate | Direct scan metadata, local scan fallback | Not direct today |
@@ -104,6 +108,7 @@ Compatibility expectation:
 - Registration and task-sync responses must match the expected Core envelope and `ok` state.
 - Registration failures are logged and skipped rather than blocking IDE workflows.
 - Core health/models/settings/scan/roadmap/memory/diagnostics/validation failures degrade to existing VS Code local or direct Ollama fallbacks where available.
+- Hybrid model router endpoints are not consumed yet; when adopted, VS Code must show Core `context.included_files`, `context.blocked_files`, warnings, and require explicit approval before cloud fallback.
 - Proposal, apply, rollback, and workspace-specific UX remain extension-owned.
 
 ### Visual Studio Extension

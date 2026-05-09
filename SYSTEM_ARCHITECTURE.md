@@ -20,7 +20,9 @@ flowchart LR
   Api["Website Backend /api\nFastAPI on 8787"]
   Bridge["Core Bridge\n/api/core-runtime"]
   Core["Aegis Core /v1\nFastAPI on 8788"]
+  Creds["OS Credential Store\nprovider keys"]
   Ollama["Ollama\nLocal models on 11434"]
+  Providers["Optional Cloud Providers\napproval required"]
   Workspace["Workspace files\n.aegis local memory"]
   Store["Website SQLite\nwebsite/data/aegis.sqlite3"]
 
@@ -35,6 +37,8 @@ flowchart LR
   Api --> Store
   Api --> Workspace
   Core --> Ollama
+  Core --> Creds
+  Core -. approved sanitized context .-> Providers
   Core --> Workspace
 ```
 
@@ -61,6 +65,7 @@ Default port: `http://127.0.0.1:8787`.
 Aegis Core is the shared local runtime contract. It must stay small, stable, local-first, and safe for Desktop, Website, VS Code, and Visual Studio to call:
 
 - Core health and local model status.
+- Local-first hybrid model routing, provider inventory, and gated completion contracts.
 - Shared settings stored in workspace-local `.aegis/config.json`.
 - Workspace scan and roadmap generation.
 - Shared memory summaries and diagnostics.
@@ -69,6 +74,13 @@ Aegis Core is the shared local runtime contract. It must stay small, stable, loc
 - Validation summary/run.
 - Plan-only continue and repair flows.
 - Branding tokens shared by clients.
+
+Hybrid routing is privacy-first:
+
+- Default mode is `local_only`.
+- Normal chat, code completion, code review, roadmap generation, and smaller fixes stay local on Ollama unless clients explicitly request a route plan that considers cloud.
+- Cloud providers require visible warnings, user approval, sanitized context metadata, and API keys in OS credential storage.
+- Core rejects secret-like, ignored, or outside-workspace files from cloud context.
 
 Core `/v1` responses use the shared envelope from `aegis-core/aegis_core/contracts.py`:
 
@@ -182,7 +194,7 @@ Duplicate logic is now tracked in `DEPRECATION_PLAN.md`. Removal is allowed only
 
 The current daily dogfooding release candidate keeps the established runtime split:
 
-- Core owns shared `/v1` contracts for health, models, settings, workspace scan, roadmap, memory summary, diagnostics, clients, tasks, validation, and plan-only continue/repair.
+- Core owns shared `/v1` contracts for health, models, hybrid model routing, settings, workspace scan, roadmap, memory summary, diagnostics, clients, tasks, validation, and plan-only continue/repair.
 - Website `/api` owns rich product workflows, chat, generated changes, apply, checkpoint restore, Website memory CRUD, task UX, auth/session, and advanced product surfaces.
 - Desktop and Website can continue using `/api` when Core is offline.
 - VS Code and Visual Studio keep local IDE-specific apply/rollback behavior while gradually reading shared state from Core.

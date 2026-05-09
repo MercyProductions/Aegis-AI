@@ -489,3 +489,24 @@ Actions:
 Validation completed:
 
 - Desktop Release build: pass, 0 warnings.
+
+## 2026-05-09 - Aegis Core Hybrid Model Router
+
+Focus:
+
+- Add local-first hybrid model routing to Aegis Core without migrating existing Website or IDE workflows.
+- Keep cloud providers optional, approval-gated, and unable to receive secret-like workspace context.
+
+Actions:
+
+- Added shared Core settings for `local_only`, `hybrid`, and `cloud_allowed` routing modes, local model roles, LM Studio URL, preferred cloud provider/model, max context, and cost warnings.
+- Added provider inventory and route contracts for Ollama, LM Studio, OpenAI, Anthropic, Google, and OpenRouter.
+- Added OS credential storage hooks for provider API keys; keys are not stored in `.aegis/config.json`.
+- Added route planning that keeps normal tasks local and marks hard debugging/repo-wide planning cloud routes as approval-required until clients show sanitized context and receive approval.
+- Added an experimental gated completion endpoint that rejects cloud calls without routing mode permission, approval, sanitized context, and stored credentials.
+- Documented the new router contracts in Core and ecosystem API/architecture docs.
+
+Validation completed:
+
+- Aegis Core contract tests: pass, 56 tests.
+- Aegis Core compile check: pass.

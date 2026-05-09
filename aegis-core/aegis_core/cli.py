@@ -9,6 +9,7 @@ from typing import Any
 from .agent import continue_from_roadmap, repair_from_last_validation
 from .config import load_config, write_default_config
 from .ecosystem import dashboard_summary, diagnostics_summary, shared_memory_summary
+from .model_router import provider_inventory, route_model
 from .ollama import OllamaClient
 from .roadmap import generate_roadmap
 from .tasks import TaskStorePersistenceError, create_task, list_tasks
@@ -26,7 +27,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--json", action="store_true", help="Print JSON output.")
     subcommands = parser.add_subparsers(dest="command", required=True)
 
-    for name in ("health", "scan", "roadmap", "validate", "continue", "repair", "config", "dashboard", "memory", "diagnostics", "tasks"):
+    for name in ("health", "scan", "roadmap", "validate", "continue", "repair", "config", "dashboard", "memory", "diagnostics", "tasks", "providers", "route"):
         sub = subcommands.add_parser(name)
         sub.add_argument("--workspace", default=".", help="Workspace/project root.")
         if name == "validate":
@@ -37,6 +38,11 @@ def main(argv: list[str] | None = None) -> int:
             sub.add_argument("--create", help="Create a shared task visible to every Aegis client.")
             sub.add_argument("--kind", default="general", help="Task kind.")
             sub.add_argument("--source-client", default="cli", help="Client that created the task.")
+        if name == "route":
+            sub.add_argument("--task-type", default="chat", help="Task role such as simple_explanation, code_completion, repo_wide_planning, hard_debugging, or embeddings_search.")
+            sub.add_argument("--difficulty", default=None, help="Optional difficulty label: simple, medium, or hard.")
+            sub.add_argument("--allow-cloud", action="store_true", help="Allow a cloud route to be considered after visible approval.")
+            sub.add_argument("--cloud-approved", action="store_true", help="Confirm the user approved sending sanitized context to cloud.")
 
     args = parser.parse_args(raw_args)
     args.json = args.json or json_requested
@@ -69,6 +75,16 @@ def main(argv: list[str] | None = None) -> int:
                 result = create_task(workspace, args.create, kind=args.kind, source_client=args.source_client)
             else:
                 result = {"tasks": list_tasks(workspace)}
+        elif args.command == "providers":
+            result = provider_inventory(workspace)
+        elif args.command == "route":
+            result = route_model(
+                workspace,
+                args.task_type,
+                args.difficulty,
+                allow_cloud=args.allow_cloud,
+                cloud_approved=args.cloud_approved,
+            )
         else:
             parser.error(f"Unknown command {args.command}")
             return 2

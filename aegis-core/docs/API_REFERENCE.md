@@ -149,6 +149,7 @@ Contract stability:
 | Contract kind | Stability | Notes |
 | --- | --- | --- |
 | `health`, `models`, `settings`, `settings.updated` | stable | Shared runtime status and configuration. |
+| `model.providers`, `model.route`, `model.completion`, `provider.key.status` | experimental | Local-first hybrid model routing, provider inventory, gated completions, and OS credential status. |
 | `workspace.scan`, `workspace.roadmap` | stable | Shared indexing and roadmap outputs. |
 | `memory.summary`, `diagnostics.summary` | stable | Shared memory and diagnostics summaries. |
 | `client.registered`, `clients.list` | stable | Cross-client registry. |
@@ -179,6 +180,85 @@ Returns the same health data as `/health` inside the standard envelope.
 
 Returns installed Ollama models, selected model, missing configured models, and latency.
 
+## GET /v1/providers
+
+Query:
+
+- `workspace`: optional workspace path
+
+Returns the hybrid provider inventory without secret values. Providers include local Ollama, local LM Studio, OpenAI, Anthropic, Google, and OpenRouter. Cloud providers report whether a key is present in OS credential storage; API keys are never returned.
+
+Alias:
+
+- `GET /v1/models/providers`
+
+## POST /v1/models/route
+
+Body:
+
+```json
+{
+  "workspace": "C:/path/to/project",
+  "task_type": "hard_debugging",
+  "difficulty": "hard",
+  "allow_cloud": false,
+  "cloud_approved": false,
+  "context_files": ["src/App.tsx", ".env"],
+  "local_failure_reason": null,
+  "provider_id": null,
+  "model": null
+}
+```
+
+Returns a route plan. Core selects Ollama/local models by default and marks cloud routes as `approval_required` until the client has shown warnings, visible sanitized context, and received explicit approval. Secret-like files, ignored directories, and outside-workspace paths are listed under `context.blocked_files` and are never sent to a provider by Core.
+
+Task routing defaults:
+
+| Task type | Default route |
+| --- | --- |
+| `simple_explanation` | small local model |
+| `code_completion` | local coder model |
+| `code_review`, `smaller_fix`, `chat` | default local model |
+| `repo_wide_planning` | strongest configured local model; optional approved cloud fallback |
+| `hard_debugging` | strongest configured local model; optional approved cloud fallback |
+| `embeddings_search` | local embedding model |
+
+## POST /v1/models/completions
+
+Experimental gated completion endpoint. It uses the same route request fields plus:
+
+```json
+{
+  "prompt": "Explain the failing test.",
+  "timeout_seconds": 120
+}
+```
+
+Cloud calls return `403` unless `allow_cloud` and `cloud_approved` are true, the Core routing mode allows cloud, and the provider has a key in OS credential storage. `local_only` mode blocks cloud calls even if the request asks for them.
+
+## POST /v1/providers/{provider_id}/key
+
+Body:
+
+```json
+{
+  "api_key": "provider-secret"
+}
+```
+
+Stores a provider API key in OS credential storage and returns only key status. Core does not write provider secrets to `.aegis/config.json`.
+
+Supported cloud provider ids:
+
+- `openai`
+- `anthropic`
+- `google`
+- `openrouter`
+
+## DELETE /v1/providers/{provider_id}/key
+
+Deletes the provider API key from OS credential storage when available.
+
 ## GET /v1/settings
 
 Query:
@@ -195,14 +275,24 @@ Body:
 {
   "workspace": "C:/path/to/project",
   "settings": {
+    "model_routing_mode": "local_only",
     "default_model": "qwen3-coder:30b",
+    "default_local_model": "qwen3-coder:30b",
+    "local_small_model": "qwen2.5-coder:7b",
+    "local_coder_model": "qwen3-coder:30b",
+    "local_embedding_model": "nomic-embed-text",
+    "preferred_cloud_provider": "openai",
+    "preferred_cloud_model": "gpt-4.1",
+    "lm_studio_url": "http://127.0.0.1:1234",
     "fallback_models": ["qwen2.5-coder:7b", "granite-code:8b"],
+    "max_context_chars": 62000,
+    "cloud_cost_warnings": true,
     "safety_mode": "strict"
   }
 }
 ```
 
-Only known safe configuration keys are applied. The file written is `.aegis/config.json`. `memory_dir_name` is restricted to one workspace-local folder name; absolute paths, nested paths, and parent traversal fall back to `.aegis`.
+Only known safe configuration keys are applied. The file written is `.aegis/config.json`. `model_routing_mode` is restricted to `local_only`, `hybrid`, or `cloud_allowed`. URL settings are normalized to base HTTP(S) origins and reject credentials. `memory_dir_name` is restricted to one workspace-local folder name; absolute paths, nested paths, and parent traversal fall back to `.aegis`.
 
 ## POST /v1/workspaces/scan
 

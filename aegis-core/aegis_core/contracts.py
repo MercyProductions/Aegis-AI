@@ -51,6 +51,27 @@ class SettingsRequest(ContractModel):
     settings: dict[str, Any] = Field(default_factory=dict)
 
 
+class ModelRouteRequest(ContractModel):
+    workspace: str
+    task_type: str = "chat"
+    difficulty: str | None = None
+    allow_cloud: bool = False
+    cloud_approved: bool = False
+    context_files: list[str] = Field(default_factory=list)
+    local_failure_reason: str | None = None
+    provider_id: str | None = None
+    model: str | None = None
+
+
+class ModelCompletionRequest(ModelRouteRequest):
+    prompt: str
+    timeout_seconds: int = 120
+
+
+class ProviderKeyRequest(ContractModel):
+    api_key: str
+
+
 class ClientRegistrationRequest(ContractModel):
     workspace: str
     client_id: str
@@ -105,13 +126,97 @@ class ModelsData(ContractModel):
 
 class SettingsData(ContractModel):
     ollama_url: str | None = None
+    lm_studio_url: str | None = None
     default_model: str | None = None
+    default_local_model: str | None = None
+    local_small_model: str | None = None
+    local_coder_model: str | None = None
+    local_embedding_model: str | None = None
+    preferred_cloud_provider: str | None = None
+    preferred_cloud_model: str | None = None
+    model_routing_mode: str | None = None
     fallback_models: list[str] = Field(default_factory=list)
     max_context_chars: int | None = None
+    cloud_cost_warnings: bool | None = None
     safety_mode: str | None = None
     auto_scan_on_open: bool | None = None
     validation_preferences: list[str] = Field(default_factory=list)
     memory_dir_name: str | None = None
+
+
+class ProviderData(ContractModel):
+    id: str
+    label: str = ""
+    api: str = ""
+    local: bool = True
+    endpoint: str = ""
+    default_model: str = ""
+    configured: bool = False
+    enabled: bool = True
+    requires_key: bool = False
+    key_stored: bool = False
+    supports_chat: bool = True
+    supports_embeddings: bool = False
+    cost_warning: str | None = None
+
+
+class ProviderInventoryData(ContractModel):
+    mode: str = "local_only"
+    local_only: bool = True
+    credential_store_available: bool = False
+    providers: list[ProviderData] = Field(default_factory=list)
+
+
+class ProviderKeyStatusData(ContractModel):
+    provider_id: str
+    key_stored: bool | None = None
+    removed: bool | None = None
+    credential_store: str = "os"
+
+
+class ModelRouteCandidateData(ContractModel):
+    provider_id: str
+    provider_label: str = ""
+    api: str = ""
+    local: bool = True
+    model: str = ""
+    status: str = "available"
+    reason: str = ""
+    cost_warning: str | None = None
+
+
+class ModelRouteContextData(ContractModel):
+    max_context_chars: int = 0
+    included_files: list[str] = Field(default_factory=list)
+    blocked_files: list[dict[str, str]] = Field(default_factory=list)
+    included: list[dict[str, str]] = Field(default_factory=list)
+
+
+class ModelRouteData(ContractModel):
+    workspace: str | None = None
+    task_type: str = "chat"
+    difficulty: str = "simple"
+    mode: str = "local_only"
+    local_only: bool = True
+    selected: ModelRouteCandidateData | dict[str, Any] = Field(default_factory=dict)
+    fallback_order: list[ModelRouteCandidateData | dict[str, Any]] = Field(default_factory=list)
+    approval_required: bool = False
+    cloud_ready: bool = False
+    cloud_reason: str = ""
+    warnings: list[str] = Field(default_factory=list)
+    context: ModelRouteContextData | dict[str, Any] = Field(default_factory=dict)
+    ollama: ModelsData | dict[str, Any] = Field(default_factory=dict)
+    providers: list[ProviderData | dict[str, Any]] = Field(default_factory=list)
+
+
+class ModelCompletionData(ContractModel):
+    workspace: str | None = None
+    provider_id: str = ""
+    model: str = ""
+    local: bool = True
+    latency_ms: int | None = None
+    response: str = ""
+    route: ModelRouteData | dict[str, Any] = Field(default_factory=dict)
 
 
 class WorkspaceScanData(ContractModel):
@@ -295,6 +400,10 @@ DataModel = TypeVar("DataModel", bound=ContractModel)
 CONTRACTS: dict[str, ContractDescriptor] = {
     "health": ContractDescriptor(kind="health", stability="stable", notes="Core runtime health and Ollama health snapshot."),
     "models": ContractDescriptor(kind="models", stability="stable", notes="Shared local model discovery and selected model status."),
+    "model.providers": ContractDescriptor(kind="model.providers", stability="experimental", notes="Hybrid model provider inventory without plaintext secrets."),
+    "model.route": ContractDescriptor(kind="model.route", stability="experimental", notes="Local-first route plan with cloud approval and sanitized context metadata."),
+    "model.completion": ContractDescriptor(kind="model.completion", stability="experimental", notes="Gated local/cloud completion response; cloud calls require explicit approval."),
+    "provider.key.status": ContractDescriptor(kind="provider.key.status", stability="experimental", notes="OS credential-store key mutation result without exposing secret values."),
     "settings": ContractDescriptor(kind="settings", stability="stable", notes="Shared Core runtime settings."),
     "settings.updated": ContractDescriptor(kind="settings.updated", stability="stable", notes="Shared Core runtime settings after update."),
     "workspace.scan": ContractDescriptor(kind="workspace.scan", stability="stable", notes="Shared workspace index and framework scan."),
@@ -320,6 +429,10 @@ CONTRACTS: dict[str, ContractDescriptor] = {
 CONTRACT_DATA_MODELS: dict[str, type[BaseModel] | tuple[type[BaseModel], bool]] = {
     "health": HealthData,
     "models": ModelsData,
+    "model.providers": ProviderInventoryData,
+    "model.route": ModelRouteData,
+    "model.completion": ModelCompletionData,
+    "provider.key.status": ProviderKeyStatusData,
     "settings": SettingsData,
     "settings.updated": SettingsData,
     "workspace.scan": WorkspaceScanData,

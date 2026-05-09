@@ -9,14 +9,19 @@ from .contracts import (
     ClientRegistrationRequest,
     ContinueRequest,
     CreateTaskRequest,
+    ModelCompletionRequest,
+    ModelRouteRequest,
+    ProviderKeyRequest,
     SettingsRequest,
     TaskStatusRequest,
     ValidateRequest,
     WorkspaceRequest,
     make_envelope,
 )
+from .credentials import CredentialStoreError
 from .diagnostics import CoreLogger
 from .ecosystem import dashboard_summary, diagnostics_summary, shared_memory_summary
+from .model_router import complete_with_route, delete_provider_key, provider_inventory, route_model, store_provider_key
 from .ollama import OllamaClient
 from .roadmap import generate_roadmap
 from .tasks import TaskStorePersistenceError, create_task, list_tasks, update_task_status
@@ -90,6 +95,75 @@ def create_app():
     def v1_models(workspace: str | None = None) -> dict[str, Any]:
         root = Path(workspace or ".").resolve()
         return envelope("models", models(str(root)), str(root))
+
+    @app.get("/v1/providers")
+    def v1_providers(workspace: str | None = None) -> dict[str, Any]:
+        root = Path(workspace or ".").resolve()
+        return envelope("model.providers", provider_inventory(str(root)), str(root))
+
+    @app.get("/v1/models/providers")
+    def v1_model_providers(workspace: str | None = None) -> dict[str, Any]:
+        root = Path(workspace or ".").resolve()
+        return envelope("model.providers", provider_inventory(str(root)), str(root))
+
+    @app.post("/v1/models/route")
+    def v1_model_route(request: ModelRouteRequest) -> dict[str, Any]:
+        data = route_model(
+            request.workspace,
+            request.task_type,
+            request.difficulty,
+            allow_cloud=request.allow_cloud,
+            cloud_approved=request.cloud_approved,
+            context_files=request.context_files,
+            local_failure_reason=request.local_failure_reason,
+            preferred_provider=request.provider_id,
+            preferred_model=request.model,
+        )
+        return envelope("model.route", data, request.workspace)
+
+    @app.post("/v1/models/completions")
+    def v1_model_completion(request: ModelCompletionRequest) -> dict[str, Any]:
+        try:
+            data = complete_with_route(
+                request.workspace,
+                request.prompt,
+                request.task_type,
+                request.difficulty,
+                allow_cloud=request.allow_cloud,
+                cloud_approved=request.cloud_approved,
+                context_files=request.context_files,
+                local_failure_reason=request.local_failure_reason,
+                provider_id=request.provider_id,
+                model=request.model,
+                timeout=max(1, min(900, request.timeout_seconds)),
+            )
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except (CredentialStoreError, RuntimeError) as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return envelope("model.completion", data, request.workspace)
+
+    @app.post("/v1/providers/{provider_id}/key")
+    def v1_store_provider_key(provider_id: str, request: ProviderKeyRequest) -> dict[str, Any]:
+        try:
+            data = store_provider_key(provider_id, request.api_key)
+        except CredentialStoreError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return envelope("provider.key.status", data)
+
+    @app.delete("/v1/providers/{provider_id}/key")
+    def v1_delete_provider_key(provider_id: str) -> dict[str, Any]:
+        try:
+            data = delete_provider_key(provider_id)
+        except CredentialStoreError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return envelope("provider.key.status", data)
 
     @app.get("/v1/settings")
     def v1_settings(workspace: str | None = None) -> dict[str, Any]:
