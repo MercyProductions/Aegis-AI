@@ -62,9 +62,7 @@ namespace Aegis.LocalAgent.VisualStudio.Services
             get
             {
                 var settings = settingsProvider?.Invoke() ?? AegisSettingsSnapshot.Default;
-                return string.IsNullOrWhiteSpace(settings.AegisCoreUrl)
-                    ? "http://127.0.0.1:8788"
-                    : settings.AegisCoreUrl.Trim().TrimEnd('/');
+                return AegisSettingsSnapshot.NormalizeHttpBaseUrl(settings.AegisCoreUrl, "http://127.0.0.1:8788");
             }
         }
     }

@@ -128,10 +128,7 @@ namespace Aegis.LocalAgent.VisualStudio.Services
 
         private static string NormalizeBaseUrl(AegisSettingsSnapshot settings)
         {
-            var url = settings?.OllamaUrl;
-            return string.IsNullOrWhiteSpace(url)
-                ? "http://127.0.0.1:11434"
-                : url.Trim().TrimEnd('/');
+            return AegisSettingsSnapshot.NormalizeHttpBaseUrl(settings?.OllamaUrl, "http://127.0.0.1:11434");
         }
     }
 }

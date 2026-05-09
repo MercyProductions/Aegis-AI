@@ -134,6 +134,8 @@ Validate after apply: true
 Backup location: .aegis/backups
 ```
 
+The Ollama and Aegis Core URL fields normalize common local inputs. Values such as `127.0.0.1:11434` or pasted endpoint URLs like `http://127.0.0.1:8788/v1/health` are reduced to a clean `http://host:port` base URL before health checks, model calls, or Core registration.
+
 Changing settings affects new model calls and new agent workflows. Existing pending proposals should be reviewed or rejected before changing safety-related settings.
 
 Relative backup paths are kept inside the current solution. Use an absolute path only when you intentionally want backups outside the solution folder.

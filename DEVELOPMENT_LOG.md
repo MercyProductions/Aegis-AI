@@ -46,6 +46,7 @@ Actions:
 - Hardened Website apply changes so failed checkpoint creation prevents edits and write/delete failures return warnings instead of raw endpoint failures.
 - Hardened Desktop backend and Aegis Core URL handling so settings UI/config values are normalized before saving and before runtime requests.
 - Hardened VS Code Ollama and Aegis Core URL handling so settings panel/config values are normalized before health checks, model scans, and shared task sync.
+- Hardened Visual Studio Ollama and Aegis Core URL handling so option-page values are normalized before health checks, model calls, and shared client registration.
 - Kept unrelated dirty worktree changes out of scope.
 - Recorded workflow friction in `WORKFLOW_NOTES.md`.
 

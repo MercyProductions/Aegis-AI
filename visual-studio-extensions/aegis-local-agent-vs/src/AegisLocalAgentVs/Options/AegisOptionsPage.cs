@@ -23,12 +23,12 @@ namespace Aegis.LocalAgent.VisualStudio.Options
     {
         [Category("Ollama")]
         [DisplayName("Ollama URL")]
-        [Description("Base URL for the local Ollama server.")]
+        [Description("Base URL for the local Ollama server. Host:port and pasted API URLs are normalized before use.")]
         public string OllamaUrl { get; set; } = "http://127.0.0.1:11434";
 
         [Category("Aegis Core")]
         [DisplayName("Aegis Core URL")]
-        [Description("Base URL for the shared local Aegis Core runtime.")]
+        [Description("Base URL for the shared local Aegis Core runtime. Host:port and pasted API URLs are normalized before use.")]
         public string AegisCoreUrl { get; set; } = "http://127.0.0.1:8788";
 
         [Category("Ollama")]
@@ -82,8 +82,8 @@ namespace Aegis.LocalAgent.VisualStudio.Options
 
             return new AegisSettingsSnapshot
             {
-                OllamaUrl = string.IsNullOrWhiteSpace(OllamaUrl) ? "http://127.0.0.1:11434" : OllamaUrl.Trim(),
-                AegisCoreUrl = string.IsNullOrWhiteSpace(AegisCoreUrl) ? "http://127.0.0.1:8788" : AegisCoreUrl.Trim(),
+                OllamaUrl = AegisSettingsSnapshot.NormalizeHttpBaseUrl(OllamaUrl, "http://127.0.0.1:11434"),
+                AegisCoreUrl = AegisSettingsSnapshot.NormalizeHttpBaseUrl(AegisCoreUrl, "http://127.0.0.1:8788"),
                 DefaultModel = string.IsNullOrWhiteSpace(DefaultModel) ? "qwen3-coder:30b" : DefaultModel.Trim(),
                 FallbackModels = fallbacks.Length == 0 ? new[] { "qwen2.5-coder:7b", "granite-code:8b" } : fallbacks,
                 MaxContextSize = Math.Max(8000, Math.Min(MaxContextSize, 160000)),
@@ -110,5 +110,38 @@ namespace Aegis.LocalAgent.VisualStudio.Options
         public string BackupLocation { get; set; } = ".aegis/backups";
 
         public static AegisSettingsSnapshot Default { get; } = new AegisSettingsSnapshot();
+
+        internal static string NormalizeHttpBaseUrl(string value, string fallback)
+        {
+            var defaultBase = (fallback ?? string.Empty).Trim().TrimEnd('/');
+            var raw = (value ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(raw) || raw.Any(char.IsWhiteSpace))
+            {
+                return defaultBase;
+            }
+
+            var candidate = raw;
+            if (!candidate.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
+                !candidate.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            {
+                if (candidate.Contains("://"))
+                {
+                    return defaultBase;
+                }
+
+                candidate = "http://" + candidate;
+            }
+
+            if (!Uri.TryCreate(candidate, UriKind.Absolute, out var uri) ||
+                (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps) ||
+                string.IsNullOrWhiteSpace(uri.Host) ||
+                !string.IsNullOrEmpty(uri.UserInfo))
+            {
+                return defaultBase;
+            }
+
+            var builder = new UriBuilder(uri.Scheme, uri.Host, uri.IsDefaultPort ? -1 : uri.Port);
+            return builder.Uri.GetLeftPart(UriPartial.Authority).TrimEnd('/');
+        }
     }
 }
