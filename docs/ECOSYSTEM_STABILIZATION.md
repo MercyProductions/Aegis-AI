@@ -41,7 +41,7 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 | Website workspace setup | Improved | Damaged `.aegis` project and validation profile paths now return warnings instead of breaking setup. |
 | Website checkpoint restore | Improved | Restore now validates checkpoint IDs, damaged manifests, backup paths, and missing backup files before touching workspace files. |
 | Website safe apply | Improved | Apply refuses to edit when checkpoint creation fails and reports later write/delete failures with checkpoint context. |
-| Validation detection | Improved | Core now lists JS test/build validation commands only when matching package scripts exist and ignores project files in dependency/build folders. |
+| Validation detection | Improved | Core now lists JS test/build validation commands only when matching package scripts exist, ignores project files in dependency/build folders, and avoids duplicate default-command detection during validation runs. |
 | Validation execution | Improved | Core blocks unsafe custom validation commands and returns structured missing-tool/start-failed/timeout failures. |
 | Validation logging | Improved | Validation output is redacted before API responses and disk writes; log write failures do not crash validation. |
 | Diagnostics | Improved | Core dashboard now surfaces stale tasks and suggested actions; diagnostic log write failures do not crash health checks. |
@@ -50,7 +50,7 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 
 Ran during this pass:
 
-- `python -m pytest tests/test_core_contracts.py -q` in Aegis Core: 41 tests passed
+- `python -m pytest tests/test_core_contracts.py -q` in Aegis Core: 42 tests passed
 - `python -m compileall aegis_core`: pass
 - Core BOM-prefixed package framework detection regression test: pass
 - Core malformed client registry regression test: pass
@@ -96,6 +96,7 @@ Ran during this pass:
 - Hardened Core workspace scans against malformed `package.json` dependency shapes and file stat races during recent-file sorting.
 - Hardened Core framework detection so UTF-8 BOM-prefixed `package.json` files still detect React/Vite/Next dependencies.
 - Hardened Core validation detection so ignored dependency/build folders do not trigger false `.NET` build suggestions.
+- Reduced Core validation startup overhead by avoiding duplicate validation-command detection.
 - Hardened shared Ollama URL settings so common local inputs are normalized, pasted API paths are trimmed, credential-like URLs are rejected, and malformed URLs surface as health diagnostics.
 - Hardened Ollama model inventory parsing so malformed `/api/tags` payloads surface as health diagnostics.
 - Made generated-memory writes best-effort and atomic where possible, so damaged `.aegis` paths do not crash scans.

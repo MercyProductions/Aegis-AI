@@ -578,6 +578,28 @@ def test_validation_runner_blocks_unsafe_commands(tmp_path: Path) -> None:
     assert "Blocked unsafe validation command" in log.read_text(encoding="utf-8")
 
 
+def test_validation_runner_detects_default_command_once(tmp_path: Path, monkeypatch) -> None:
+    workspace = tmp_path / "single-detect-validation-project"
+    workspace.mkdir()
+    calls = 0
+
+    def detect_once(root):
+        nonlocal calls
+        calls += 1
+        return [validation_module.ValidationCommand("python -m pytest", [sys.executable, "-m", "pytest"], "test")]
+
+    def return_success(*args, **kwargs):
+        return subprocess.CompletedProcess(args[0], 0, stdout="ok", stderr="")
+
+    monkeypatch.setattr(validation_module, "detect_validation_commands", detect_once)
+    monkeypatch.setattr(validation_module.subprocess, "run", return_success)
+
+    result = run_validation(workspace)
+
+    assert result["ok"] is True
+    assert calls == 1
+
+
 def test_validation_runner_handles_safe_command_failures(tmp_path: Path) -> None:
     workspace = tmp_path / "pytest-project"
     workspace.mkdir()

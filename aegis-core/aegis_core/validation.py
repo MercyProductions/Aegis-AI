@@ -112,7 +112,8 @@ def validation_summary(workspace: str | Path) -> dict[str, Any]:
 
 def run_validation(workspace: str | Path, command: list[str] | None = None, timeout: int = 120) -> dict[str, Any]:
     root = Path(workspace).resolve()
-    selected = command or (detect_validation_commands(root)[0].command if detect_validation_commands(root) else None)
+    detected_commands = [] if command else detect_validation_commands(root)
+    selected = command or (detected_commands[0].command if detected_commands else None)
     if not selected:
         return {"ok": False, "command": None, "stdout": "", "stderr": "No validation command detected."}
     if not is_safe_validation_command(selected):
