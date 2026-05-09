@@ -700,7 +700,7 @@ async function testSingleModel(model) {
       model,
       status: 'fail',
       latencyMs: Date.now() - started,
-      detail: error.message
+      detail: safeErrorMessage(error, 400)
     };
   }
 }
@@ -1839,10 +1839,10 @@ async function applyProposal(proposal, options = {}) {
   } catch (error) {
     await fs.writeFile(path.join(backupRoot, 'manifest.partial.json'), JSON.stringify(manifest, null, 2), 'utf8').catch(() => {});
     await restoreFromManifest(backupRoot, manifest, { workspaceRoot: stateRoot }).catch((restoreError) => {
-      output.appendLine(`Aegis partial apply restore failed: ${restoreError.message}`);
+      output.appendLine(`Aegis partial apply restore failed: ${safeErrorMessage(restoreError)}`);
     });
     await logExtensionEvent('apply-error', 'Apply failed; attempted to restore partial edits from backup.', {
-      error: error.message,
+      error: safeErrorMessage(error),
       backupId,
       restoredFiles: manifest.files.map((file) => file.workspaceRelativePath || file.path)
     }, { workspaceRoot: stateRoot, root });
@@ -1901,8 +1901,8 @@ async function buildProjectSnapshot(target, options = {}) {
     try {
       coreScan = await getAegisCoreWorkspaceScan(target);
     } catch (error) {
-      coreScanWarning = error.message;
-      output && output.appendLine(`Aegis Core workspace scan unavailable; using VS Code local scan fallback: ${error.message}`);
+      coreScanWarning = safeErrorMessage(error);
+      output && output.appendLine(`Aegis Core workspace scan unavailable; using VS Code local scan fallback: ${coreScanWarning}`);
     }
   }
   const entries = await scanProjectEntries(root, {
@@ -2592,7 +2592,7 @@ async function collectTodoContext(maxFiles, excludeGlob, root) {
         }
       }
     } catch (error) {
-      output.appendLine(`Skipped TODO scan for ${uri.fsPath}: ${error.message}`);
+      output.appendLine(`Skipped TODO scan for ${uri.fsPath}: ${safeErrorMessage(error)}`);
     }
   }
 
@@ -2750,7 +2750,7 @@ async function getOllamaModels(options = {}) {
       throw new Error(coreModels.error || 'Aegis Core model contract reported that Ollama is unreachable.');
     } catch (error) {
       if (options.reportFallback !== false) {
-        output && output.appendLine(`Aegis Core model inventory unavailable; using direct Ollama fallback: ${error.message}`);
+        output && output.appendLine(`Aegis Core model inventory unavailable; using direct Ollama fallback: ${safeErrorMessage(error)}`);
       }
     }
   }
@@ -2865,7 +2865,7 @@ async function tryGenerateAegisCoreRoadmap(target) {
       markdown: data.markdown || ''
     };
   } catch (error) {
-    output && output.appendLine(`Aegis Core roadmap unavailable; using VS Code local roadmap fallback: ${error.message}`);
+    output && output.appendLine(`Aegis Core roadmap unavailable; using VS Code local roadmap fallback: ${safeErrorMessage(error)}`);
     vscode.window.showWarningMessage('Aegis Core roadmap generation is unavailable, so VS Code will use its local model fallback.');
     return null;
   }
@@ -2951,7 +2951,7 @@ async function registerAegisCoreClient(target) {
     requireAegisCoreOk(validateAegisCoreEnvelope(envelope, 'client.registered'), 'register the VS Code client');
     return true;
   } catch (error) {
-    output && output.appendLine(`Aegis Core registration skipped: ${error.message}`);
+    output && output.appendLine(`Aegis Core registration skipped: ${safeErrorMessage(error)}`);
     return false;
   }
 }
@@ -2969,7 +2969,7 @@ async function createAegisCoreTask(target, title, kind, request, metadata = {}) 
     const response = requireAegisCoreOk(validateAegisCoreEnvelope(envelope, 'task.created'), 'create a shared task');
     return response && response.data && response.data.id ? response.data.id : '';
   } catch (error) {
-    output && output.appendLine(`Aegis Core task creation skipped: ${error.message}`);
+    output && output.appendLine(`Aegis Core task creation skipped: ${safeErrorMessage(error)}`);
     return '';
   }
 }
@@ -2987,7 +2987,7 @@ async function updateAegisCoreTaskStatus(target, taskId, status, summary = '') {
     requireAegisCoreOk(validateAegisCoreEnvelope(envelope, 'task.updated'), 'update a shared task');
     return true;
   } catch (error) {
-    output && output.appendLine(`Aegis Core task update skipped: ${error.message}`);
+    output && output.appendLine(`Aegis Core task update skipped: ${safeErrorMessage(error)}`);
     return false;
   }
 }
@@ -3003,8 +3003,8 @@ async function askOllamaWithFallback(model, prompt, options = {}) {
       return await askOllama(candidate, prompt, options);
     } catch (error) {
       lastError = error;
-      output.appendLine(`Ollama model ${candidate} failed: ${error.message}`);
-      logExtensionEvent('model-call', `Ollama model ${candidate} failed.`, { error: error.message }).catch(() => {});
+      output.appendLine(`Ollama model ${candidate} failed: ${safeErrorMessage(error)}`);
+      logExtensionEvent('model-call', `Ollama model ${candidate} failed.`, { error: safeErrorMessage(error) }).catch(() => {});
     }
   }
 
@@ -3143,10 +3143,35 @@ function extractHttpErrorDetail(responseText) {
 }
 
 function sanitizeHttpErrorText(text) {
-  const cleaned = sanitizeMemoryText(String(text || '').trim())
+  const cleaned = redactDiagnosticText(text);
+  return cleaned.length > 700 ? `${cleaned.slice(0, 697)}...` : cleaned;
+}
+
+function safeErrorMessage(error, maxChars = 700) {
+  const raw = error && error.message ? error.message : String(error || '');
+  return redactDiagnosticText(raw || 'Unknown error.', maxChars) || 'Error detail was redacted.';
+}
+
+function redactDiagnosticText(text, maxChars = 700) {
+  let cleaned = String(text || '')
+    .replace(/[\r\n\t]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
-  return cleaned.length > 700 ? `${cleaned.slice(0, 697)}...` : cleaned;
+  if (!cleaned) {
+    return '';
+  }
+
+  cleaned = cleaned
+    .replace(/\b(https?:\/\/)[^/\s:@]+:[^@\s/]+@/gi, '$1[redacted]@')
+    .replace(/([?&](?:api[_-]?key|key|token|secret|password|passwd|credential)=)[^&#\s]+/gi, '$1[redacted]')
+    .replace(/\b(Authorization\s*[:=]\s*)(?:Bearer|Basic|Digest)?\s*[A-Za-z0-9._~+/\-=]+/gi, '$1[redacted]')
+    .replace(/\b(Bearer\s+)[A-Za-z0-9._~+/\-=]+/gi, '$1[redacted]')
+    .replace(/\b((?:[A-Z0-9_]*api[_-]?key|[A-Z0-9_]*token|[A-Z0-9_]*secret|password|passwd|credential|private[_-]?key)\s*[:=]\s*)[^\s&]+/gi, '$1[redacted]');
+
+  if (maxChars > 0 && cleaned.length > maxChars) {
+    return `${cleaned.slice(0, Math.max(0, maxChars - 3))}...`;
+  }
+  return cleaned;
 }
 
 function activeEditorContext(editor) {
@@ -3379,7 +3404,7 @@ async function clearAgentRecovery(target) {
   try {
     await fs.rm(recoveryPath, { force: true });
   } catch (error) {
-    output.appendLine(`Could not clear Aegis recovery state: ${error.message}`);
+    output.appendLine(`Could not clear Aegis recovery state: ${safeErrorMessage(error)}`);
   }
 }
 
@@ -3479,7 +3504,7 @@ async function rollbackLastAgentChange(resource) {
     restored.push(...await restoreFromManifest(backupRoot, manifest, { workspaceRoot }));
   } catch (error) {
     reportError(error, { failedCommand: 'Aegis: Rollback Last Agent Change', retryCommand: 'rollbackLastChange' });
-    vscode.window.showErrorMessage(`Aegis rollback could not be completed: ${error.message}`);
+    vscode.window.showErrorMessage(`Aegis rollback could not be completed: ${safeErrorMessage(error)}`);
     return;
   }
 
@@ -3534,7 +3559,7 @@ async function restoreFromManifest(backupRoot, manifest, options = {}) {
       try {
         backupBytes = await fs.readFile(backupPath);
       } catch (error) {
-        output.appendLine(`Skipped missing or unreadable backup file for restore: ${file.backupPath || '<missing>'} (${error.message})`);
+        output.appendLine(`Skipped missing or unreadable backup file for restore: ${file.backupPath || '<missing>'} (${safeErrorMessage(error)})`);
         continue;
       }
       await fs.mkdir(path.dirname(targetPath), { recursive: true });
@@ -3759,7 +3784,7 @@ async function ensureWorkspaceMemory(target) {
   try {
     await fs.mkdir(memoryRoot, { recursive: true });
   } catch (error) {
-    output && output.appendLine(`Aegis memory folder is not writable: ${memoryRoot} (${error.message})`);
+    output && output.appendLine(`Aegis memory folder is not writable: ${memoryRoot} (${safeErrorMessage(error)})`);
     return memoryRoot;
   }
   const files = {
@@ -3794,7 +3819,7 @@ async function ensureMemoryFile(memoryRoot, name, content) {
     return;
   } catch (error) {
     if (error.code !== 'ENOENT') {
-      output && output.appendLine(`Aegis memory file check failed: ${targetPath} (${error.message})`);
+      output && output.appendLine(`Aegis memory file check failed: ${targetPath} (${safeErrorMessage(error)})`);
       return;
     }
   }
@@ -3814,7 +3839,7 @@ async function writeMemoryFileBestEffort(filePath, content, label = 'memory file
       }
     } catch (error) {
       if (error.code !== 'ENOENT') {
-        output && output.appendLine(`Aegis ${label} check failed: ${filePath} (${error.message})`);
+        output && output.appendLine(`Aegis ${label} check failed: ${filePath} (${safeErrorMessage(error)})`);
         return false;
       }
     }
@@ -3823,7 +3848,7 @@ async function writeMemoryFileBestEffort(filePath, content, label = 'memory file
     await fs.rename(tempPath, filePath);
     return true;
   } catch (error) {
-    output && output.appendLine(`Aegis ${label} write skipped: ${filePath} (${error.message})`);
+    output && output.appendLine(`Aegis ${label} write skipped: ${filePath} (${safeErrorMessage(error)})`);
     if (tempPath) {
       await fs.rm(tempPath, { force: true }).catch(() => {});
     }
@@ -3842,14 +3867,14 @@ async function appendMemoryFileBestEffort(filePath, content, label = 'memory fil
       }
     } catch (error) {
       if (error.code !== 'ENOENT') {
-        output && output.appendLine(`Aegis ${label} check failed: ${filePath} (${error.message})`);
+        output && output.appendLine(`Aegis ${label} check failed: ${filePath} (${safeErrorMessage(error)})`);
         return false;
       }
     }
     await fs.appendFile(filePath, content, 'utf8');
     return true;
   } catch (error) {
-    output && output.appendLine(`Aegis ${label} append skipped: ${filePath} (${error.message})`);
+    output && output.appendLine(`Aegis ${label} append skipped: ${filePath} (${safeErrorMessage(error)})`);
     return false;
   }
 }
@@ -4796,7 +4821,7 @@ async function readWorkspaceMemoryContext(target) {
       return truncateMiddle(pieces.join('\n\n'), 24000);
     }
   } catch (error) {
-    output && output.appendLine(`Aegis Core memory unavailable; using local .aegis memory fallback: ${error.message}`);
+    output && output.appendLine(`Aegis Core memory unavailable; using local .aegis memory fallback: ${safeErrorMessage(error)}`);
   }
 
   const memoryRoot = path.join(target.workspaceRoot || target.root, '.aegis');
@@ -5237,7 +5262,7 @@ async function runDetectedValidation(target, snapshot) {
       return coreValidation;
     }
   } catch (error) {
-    output && output.appendLine(`Aegis Core validation unavailable; using VS Code local validation fallback: ${error.message}`);
+    output && output.appendLine(`Aegis Core validation unavailable; using VS Code local validation fallback: ${safeErrorMessage(error)}`);
   }
 
   const commands = detectValidationCommands(resolvedSnapshot);
@@ -5558,7 +5583,7 @@ async function logExtensionEvent(kind, message, details = {}, target) {
     ].join('\n');
     await fs.appendFile(path.join(memoryRoot, 'extension-log.md'), entry, 'utf8');
   } catch (error) {
-    output && output.appendLine(`Aegis log write failed: ${error.message}`);
+    output && output.appendLine(`Aegis log write failed: ${safeErrorMessage(error)}`);
   }
 }
 
@@ -5624,13 +5649,13 @@ function sanitizeLogValue(value) {
 }
 
 function reportError(error, context = {}) {
-  const message = error && error.message ? error.message : String(error);
+  const message = safeErrorMessage(error);
   const diagnosis = diagnoseError(error, context);
   latestErrorInfo = {
     at: new Date().toISOString(),
     message,
     failedCommand: context.failedCommand || lastFailedCommand || '',
-    stack: error && error.stack ? sanitizeMemoryText(error.stack) : '',
+    stack: error && error.stack ? redactDiagnosticText(error.stack, 4000) : '',
     likelyCause: diagnosis.likelyCause,
     suggestedFix: diagnosis.suggestedFix,
     retryCommand: context.retryCommand || ''

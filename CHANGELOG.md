@@ -84,6 +84,7 @@
 - Hardened VS Code Ollama/Core URL settings so common local inputs normalize before model detection, health checks, and shared Core sync.
 - Hardened VS Code local API error reporting so Core/Ollama HTTP failures surface parsed, redacted detail text instead of raw JSON bodies.
 - Hardened VS Code request diagnostics so invalid JSON and timeout errors report endpoint paths without leaking workspace query strings.
+- Hardened VS Code fallback, rollback, model, and memory diagnostics so output-channel errors redact credential-like values without suppressing normal `token` parser messages.
 - Hardened VS Code VSIX packaging so local dogfooding notes, detected model inventories, and repository-only files are excluded from release archives.
 - Hardened VS Code release metadata so packaged extensions point at the GitHub repository instead of a local filesystem path.
 - Hardened VS Code VSIX contents so the source-tree install helper is excluded from the shipped extension archive.

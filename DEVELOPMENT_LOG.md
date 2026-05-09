@@ -719,3 +719,21 @@ Validation completed:
 - Visual Studio extension Release build: pass, 0 warnings.
 - Aegis Core contract tests: pass, 89 tests.
 - VS Code extension compile smoke: pass.
+
+## 2026-05-09 - VS Code Output Diagnostic Redaction
+
+Focus:
+
+- Keep VS Code degraded-mode, rollback, model, and memory diagnostics useful without leaking credential-like values.
+- Avoid hiding legitimate parser/model messages such as `unexpected token` while still redacting actual key, token, password, and authorization values.
+
+Actions:
+
+- Added a diagnostic redactor separate from the conservative memory-context sanitizer.
+- Routed VS Code output-channel fallback messages, rollback failures, model failures, memory-write failures, and extension error state through the redactor.
+- Kept Core/Ollama HTTP error details bounded while preserving non-secret diagnostic wording.
+
+Validation completed:
+
+- VS Code extension lint: pass.
+- Aegis Core contract tests: pass, 89 tests.
