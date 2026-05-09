@@ -41,7 +41,7 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 | Visual Studio memory init | Improved | Solution memory reads and writes are best-effort, so damaged `.aegis` paths do not crash memory-backed workflows. |
 | Visual Studio rollback | Improved | Backup manifests now carry explicit IDs, rollback rejects cross-solution manifests, and manifest/backup paths are validated before touching solution files. |
 | Website workspace setup | Improved | Damaged `.aegis` project and validation profile paths now return warnings instead of breaking setup. |
-| Website validation discovery | Improved | Damaged project marker directories such as `package.json`, `build.py`, or `CMakeLists.txt` no longer create false validation or install suggestions, and root `build.ps1` guard scripts are preferred over lower-level native build fallbacks. |
+| Website validation discovery | Improved | Damaged project marker directories such as `package.json`, `build.py`, or `CMakeLists.txt` no longer create false validation or install suggestions, root `build.ps1` guard scripts are preferred over lower-level native build fallbacks, and agent continuation proposes the same safe PowerShell guard command. |
 | Website validation profiles | Improved | Manual validation profile updates now use atomic writes, clean failed temp files, and report damaged profile paths as clear API errors. |
 | Website memory notes | Improved | Memory-note files are confined to the memory directory, damaged memory paths degrade with clear API errors, writes are atomic, malformed confidence input is tolerated, and rapid note IDs are collision-safe. |
 | Website model manager | Improved | Damaged model-operation and pull-log JSON paths are skipped safely, invalid operation records are ignored, and operation history writes are atomic. |
@@ -130,7 +130,7 @@ Ran during this pass:
 - Hardened Visual Studio rollback so it resolves backups by explicit ID and skips unsafe or incomplete rollback manifest entries.
 - Tightened Visual Studio rollback so shared backup folders cannot restore another solution's manifest, invalid backup IDs do not fall back to the newest backup folder, and proposed edit paths cannot contain traversal or secret-like path segments.
 - Hardened Website workspace setup so damaged `.aegis/project.json` and `.aegis/validation_profile.json` paths return warnings instead of crashing setup.
-- Hardened Website validation discovery so damaged project marker directories do not produce false validation or install suggestions.
+- Hardened Website validation discovery so damaged project marker directories do not produce false validation or install suggestions and agent continuation keeps root PowerShell build guards aligned with detected validation.
 - Hardened Website validation profile updates so damaged profile paths return clear API errors and failed writes do not leave temporary files behind.
 - Hardened Website memory note persistence so category-derived filenames cannot escape the memory directory, damaged memory paths degrade with clear API errors, note writes are atomic, malformed confidence input is tolerated, and same-millisecond creations get unique IDs.
 - Hardened Website model-manager snapshot reads so damaged `logs/model-manager/operations.json` and model-pull summary paths cannot break the local model dashboard.

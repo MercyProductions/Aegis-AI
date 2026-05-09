@@ -1773,3 +1773,25 @@ Validation completed:
 - Website workspace/storage regression suite: pass, 62 tests.
 - Aegis Core contract tests: pass, 138 tests.
 - Git diff whitespace check: pass.
+
+## 2026-05-09 - Website Agent PowerShell Build Guard Parity
+
+Focus:
+
+- Keep Website agent continuation aligned with Website validation discovery for existing projects.
+- Avoid falling back to CMake/MSBuild suggestions when an existing workspace already owns a root PowerShell build guard.
+
+Actions:
+
+- Taught existing-project no-change continuation to recognize PowerShell module surfaces and propose the safe root `build.ps1` validation command.
+- Treated `build.ps1` as a native build surface during draft stack-adherence checks.
+- Allowed exact no-profile `powershell` / `pwsh` root `build.ps1` commands to be promoted as draft validation commands even when the command reason is blank.
+- Added agent parser regressions for root PowerShell continuation and draft validation promotion.
+
+Validation completed:
+
+- Website agent parser focused PowerShell continuation/draft-validation tests: pass, 11 tests.
+- Website validation manager regression suite: pass, 22 tests and 4 subtests.
+- Website agent parser regression suite: pass, 96 tests and 10 subtests.
+- Aegis Core contract tests: pass, 138 tests.
+- Git diff whitespace check: pass.

@@ -2541,6 +2541,8 @@ class AgentEngine:
         paths = {item.path.replace("\\", "/").lower().strip("/") for item in workspace_files}
         if "build.py" in paths or (workspace_root / "build.py").exists():
             return "python build.py"
+        if "build.ps1" in paths or (workspace_root / "build.ps1").exists():
+            return self.validation.POWERSHELL_BUILD_COMMAND
         if "package.json" in paths or (workspace_root / "package.json").exists():
             return "npm run build"
         if "pyproject.toml" in paths or "pytest.ini" in paths or (workspace_root / "pyproject.toml").exists():
@@ -2856,6 +2858,7 @@ class AgentEngine:
             "cmakelists.txt",
             "makefile",
             "build.py",
+            "build.ps1",
             "tsconfig.json",
             "vite.config.ts",
             "vite.config.js",
@@ -2865,7 +2868,7 @@ class AgentEngine:
         }
         if paths.intersection(project_markers):
             return True
-        if any(path.endswith((".sln", ".vcxproj", ".csproj", ".fsproj", ".vbproj")) for path in paths):
+        if any(path.endswith((".sln", ".vcxproj", ".csproj", ".fsproj", ".vbproj", ".psm1", ".psd1")) for path in paths):
             return True
         source_prefixes = ("src/", "app/", "pages/", "components/", "driver/", "controller/", "host/", "library/")
         source_count = sum(1 for path in paths if path.startswith(source_prefixes))
@@ -3099,7 +3102,10 @@ class AgentEngine:
             or path.endswith((".tsx", ".jsx", ".html", ".css"))
         )
         has_native_source = any_path(lambda path: path.endswith((".cpp", ".cxx", ".cc", ".c", ".h", ".hpp", ".asm", ".rc")))
-        has_native_build = any_path(lambda path: path in {"cmakelists.txt", "build.py"} or path.endswith((".sln", ".vcxproj", ".vcxproj.filters")))
+        has_native_build = any_path(
+            lambda path: path in {"cmakelists.txt", "build.py", "build.ps1"}
+            or path.endswith((".sln", ".vcxproj", ".vcxproj.filters"))
+        )
         has_python = any_path(lambda path: path.endswith(".py") or path in {"pyproject.toml", "requirements.txt", "setup.py", "setup.cfg"})
         has_dotnet = any_path(lambda path: path.endswith((".csproj", ".sln", ".cs", ".xaml")))
         has_rust = any_path(lambda path: path == "cargo.toml" or path.endswith(".rs"))
@@ -5702,6 +5708,10 @@ Large-file behavior:
         command_markers = (
             "python build.py",
             "py build.py",
+            "powershell -noprofile -executionpolicy bypass -file ./build.ps1",
+            "powershell -noprofile -executionpolicy bypass -file .\\build.ps1",
+            "pwsh -noprofile -executionpolicy bypass -file ./build.ps1",
+            "pwsh -noprofile -executionpolicy bypass -file .\\build.ps1",
             "python -m pytest",
             "py -m pytest",
             "pytest",

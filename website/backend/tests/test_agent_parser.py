@@ -634,6 +634,29 @@ class AgentParserTests(unittest.TestCase):
         self.assertEqual(draft.proposed_commands[0]["command"], "python build.py")
         self.assertTrue(any("prepared a strict existing-project continuation pass" in warning for warning in draft.warnings))
 
+    def test_existing_project_no_change_continuation_prefers_powershell_build_guard(self) -> None:
+        workspace = Path(self.tempdir.name) / "existing-powershell-continuation"
+        workspace.mkdir()
+        (workspace / "build.ps1").write_text("Write-Host 'ok'\n", encoding="utf-8")
+        files = [
+            WorkspaceFile(path="AegisModule.psm1", kind="text", size=120),
+            WorkspaceFile(path="build.ps1", kind="text", size=80),
+        ]
+
+        draft = self.engine._existing_project_no_change_continuation_draft(
+            original_draft=AgentDraft(reply="No changes."),
+            fallback=AgentDraft(reply="Preserved existing project.", changes=[]),
+            message="continue improving this existing PowerShell module and build it",
+            mode="build",
+            workspace_root=workspace,
+            workspace_files=files,
+        )
+
+        self.assertIsNotNone(draft)
+        assert draft is not None
+        self.assertEqual(draft.proposed_commands[0]["command"], self.engine.validation.POWERSHELL_BUILD_COMMAND)
+        self.assertTrue(any(self.engine.validation.POWERSHELL_BUILD_COMMAND in item for item in draft.plan))
+
     def test_existing_project_no_change_continuation_uses_manifest_validation_command(self) -> None:
         workspace = Path(self.tempdir.name) / "manifest-continuation"
         workspace.mkdir()
@@ -2490,6 +2513,19 @@ class AgentParserTests(unittest.TestCase):
         )
 
         self.assertIsNone(self.engine._draft_validation_override_recipe(draft))
+
+    def test_powershell_build_guard_is_promoted_as_draft_validation_without_reason(self) -> None:
+        draft = AgentDraft(
+            reply="Run the module guard.",
+            changes=[],
+            proposed_commands=[{"command": self.engine.validation.POWERSHELL_BUILD_COMMAND, "reason": ""}],
+        )
+
+        recipe = self.engine._draft_validation_override_recipe(draft)
+
+        self.assertIsNotNone(recipe)
+        assert recipe is not None
+        self.assertEqual(recipe.command, self.engine.validation.POWERSHELL_BUILD_COMMAND)
 
     def test_failed_draft_validation_command_is_not_learned(self) -> None:
         workspace = Path(self.tempdir.name) / "failed-draft-validation-command"

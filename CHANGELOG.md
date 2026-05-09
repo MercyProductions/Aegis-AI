@@ -14,6 +14,7 @@
 - Hardened Website-to-Core URL normalization so pasted legacy Core endpoint URLs such as `/health` or `/models` are reduced to the Core base URL while reverse-proxy path prefixes are preserved.
 - Improved Website validation planning so root `build.ps1` guard scripts are preferred over lower-level CMake/MSBuild suggestions for Desktop and extension workspaces.
 - Improved Website dependency profiling so root `build.py` and `build.ps1` guard scripts are recorded as validation commands before lower-level CMake/MSBuild native fallbacks.
+- Improved Website agent continuation so existing projects with root `build.ps1` guard scripts propose the same safe PowerShell validation command used by validation discovery.
 - Hardened VS Code Core/Ollama URL handling so reverse-proxy path prefixes are preserved while pasted `/v1`, `/health`, `/models`, and Ollama `/api/...` endpoint paths are trimmed.
 - Hardened Visual Studio Core/Ollama URL handling so reverse-proxy path prefixes are preserved while pasted `/v1`, `/health`, `/models`, and Ollama `/api/...` endpoint paths are trimmed.
 - Hardened Desktop backend/Core URL handling so reverse-proxy path prefixes are preserved while pasted `/api`, `/v1`, `/health`, or `/models` endpoint paths are trimmed.
