@@ -1752,6 +1752,30 @@ def test_provider_inventory_reports_credential_store_read_failures(tmp_path: Pat
     assert all(not item["key_stored"] for item in inventory["providers"] if item["requires_key"])
 
 
+def test_model_route_reports_credential_store_read_failures(tmp_path: Path, monkeypatch) -> None:
+    workspace = tmp_path / "route-credential-failure-project"
+    workspace.mkdir()
+    monkeypatch.setattr(
+        "aegis_core.model_router.OllamaClient.health",
+        lambda self: OllamaStatus(True, 4, ["qwen3-coder:30b"], "qwen3-coder:30b", []),
+    )
+
+    route = route_model(
+        workspace,
+        "hard_debugging",
+        allow_cloud=True,
+        cloud_approved=True,
+        credentials=BrokenCredentialStore(),
+    )
+
+    assert route["selected"]["provider_id"] == "ollama"
+    assert route["cloud_ready"] is False
+    assert route["credential_store_healthy"] is False
+    assert route["credential_store_errors"]
+    assert any("credential store could not be inspected" in warning.lower() for warning in route["warnings"])
+    assert route["cloud_reason"] == "local_only"
+
+
 def test_provider_key_endpoint_rejects_unknown_provider() -> None:
     client = TestClient(create_app())
 

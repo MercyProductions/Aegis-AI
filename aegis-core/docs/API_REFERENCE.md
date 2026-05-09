@@ -228,7 +228,7 @@ Body:
 }
 ```
 
-Returns a route plan. Core selects Ollama/local models by default and marks cloud routes as `approval_required` until the client has shown warnings, visible sanitized context, and received explicit approval. Secret-like files, ignored directories, and outside-workspace paths are listed under `context.blocked_files` and are never sent to a provider by Core.
+Returns a route plan. Core selects Ollama/local models by default and marks cloud routes as `approval_required` until the client has shown warnings, visible sanitized context, and received explicit approval. Secret-like files, ignored directories, and outside-workspace paths are listed under `context.blocked_files` and are never sent to a provider by Core. Route responses also include `credential_store_healthy` and `credential_store_errors` when Core cannot inspect OS credential storage while considering cloud fallbacks.
 
 Task routing defaults:
 

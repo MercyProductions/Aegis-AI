@@ -264,6 +264,8 @@ class ModelRouteData(ContractModel):
     cloud_reason: str = ""
     warnings: list[str] = Field(default_factory=list)
     context: ModelRouteContextData | dict[str, Any] = Field(default_factory=dict)
+    credential_store_healthy: bool = True
+    credential_store_errors: list[dict[str, str]] = Field(default_factory=list)
     ollama: ModelsData | dict[str, Any] = Field(default_factory=dict)
     providers: list[ProviderData | dict[str, Any]] = Field(default_factory=list)
 

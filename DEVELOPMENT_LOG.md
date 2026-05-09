@@ -18,7 +18,7 @@ Actions:
 - Hardened shared Core config parsing so malformed settings degrade to defaults.
 - Hardened shared Ollama URL parsing and model health diagnostics for malformed local endpoint settings, pasted API paths, and credential-like URL text.
 - Hardened Ollama model inventory parsing so malformed `/api/tags` payloads do not break shared health/model endpoints.
-- Hardened hybrid provider inventory so credential-store read failures are visible to clients instead of being flattened into missing cloud keys.
+- Hardened hybrid provider inventory and route planning so credential-store read failures are visible to clients instead of being flattened into missing cloud keys.
 - Added explicit Core task-status API errors for bad statuses and missing task IDs.
 - Hardened shared task record loading so malformed local task metadata and timestamps do not break dashboards or status updates.
 - Hardened shared client registry loading so malformed local client records and mixed timestamp types do not break dashboard client lists.
@@ -86,7 +86,7 @@ Validation completed:
 - Aegis Core workspace scan malformed package/stat-race regression tests: pass.
 - Aegis Core Ollama URL normalization and malformed-health regression tests: pass.
 - Aegis Core malformed Ollama model inventory regression tests: pass.
-- Aegis Core provider inventory credential-store failure regression: pass.
+- Aegis Core provider inventory and route credential-store failure regressions: pass.
 - Aegis Core validation startup-failure regression test: pass.
 - VS Code extension lint and package: pass.
 - VS Code extension memory-write hardening lint: pass.

@@ -110,7 +110,8 @@ def route_model(
     root = workspace_root(workspace)
     config = load_config(root)
     ollama_status = OllamaClient(config).health()
-    providers = {provider.id: provider for provider in provider_catalog(config, credentials)}
+    credential_errors: list[dict[str, str]] = []
+    providers = {provider.id: provider for provider in provider_catalog(config, credentials, credential_errors)}
     role = _normalize_task_type(task_type)
     difficulty_label = _normalize_difficulty(difficulty, role)
     local_model = _local_model_for_role(config, role, ollama_status.installed_models)
@@ -123,6 +124,8 @@ def route_model(
 
     if context["blocked_files"]:
         warnings.append(SECRET_CONTEXT_WARNING)
+    if credential_errors:
+        warnings.append("OS credential store could not be inspected for one or more cloud providers.")
 
     should_consider_cloud = cloud_candidate is not None and (role in {"hard_debugging", "repo_wide_planning"} or difficulty_label == "hard")
     if cloud_candidate is not None and should_consider_cloud:
@@ -176,6 +179,8 @@ def route_model(
         "cloud_reason": cloud_reason,
         "warnings": warnings,
         "context": context,
+        "credential_store_healthy": not credential_errors,
+        "credential_store_errors": credential_errors,
         "ollama": ollama_status.__dict__,
         "providers": [provider.to_dict() for provider in providers.values()],
     }
