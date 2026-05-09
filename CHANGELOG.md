@@ -21,6 +21,7 @@
 - Improved Aegis Core symbol indexing so F# modules/functions/types and Visual Basic modules/functions are included in scan, graph, and intelligence metadata.
 - Improved Core, Website, and VS Code planning guardrails so F#, Visual Basic, XAML, and C++ path/language hints stay aligned with shared .NET/source suffix support.
 - Improved Visual Studio solution scanning and smart context indexing for F#/Visual Basic projects, `.slnx` files, Visual Basic XAML code-behind, and newer C++ source/header suffixes.
+- Fixed Visual Studio solution scanning so NuGet `packages.lock.json` files are treated as important project metadata, and added a package validation guard against the previous `packages-lock.json` typo.
 - Improved Website scaffold install preflight so `.fsproj`, `.vbproj`, and `.slnx` projects receive the same missing-restore detection as `.csproj` projects.
 - Improved Website workspace profiling and validation planning so existing `.slnx` Visual Studio solutions are treated like `.sln` workspaces.
 - Improved Website agent and fallback continuation so existing `.slnx` workspaces keep Visual Studio stack guardrails and receive runnable MSBuild validation helpers.

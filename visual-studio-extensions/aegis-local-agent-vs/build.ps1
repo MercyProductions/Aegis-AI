@@ -279,6 +279,12 @@ function Assert-SolutionScannerParityGuards {
   if ($intelligenceText -notmatch 'xaml \+ "\.vb"') {
     $issues += "SolutionIntelligenceService must preserve Visual Basic XAML code-behind relationships."
   }
+  if ($scannerText -notmatch 'packages\.lock\.json') {
+    $issues += "SolutionScanner must treat NuGet packages.lock.json as an important dependency metadata file."
+  }
+  if ($scannerText -match 'packages-lock\.json') {
+    $issues += "SolutionScanner must not use the invalid NuGet lockfile name packages-lock.json."
+  }
 
   if ($issues.Count -gt 0) {
     throw "Visual Studio solution scanner parity validation failed:`n - $($issues -join "`n - ")"

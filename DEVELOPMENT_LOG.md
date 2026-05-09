@@ -1,5 +1,22 @@
 # Development Log
 
+## 2026-05-09 - Visual Studio NuGet Lockfile Scanner Guard
+
+Focus:
+
+- Keep Visual Studio solution scans aligned with NuGet's real `packages.lock.json` filename.
+- Prevent a scanner typo from hiding lockfile metadata from important-file context.
+
+Actions:
+
+- Fixed the Visual Studio scanner important-file rule from `packages-lock.json` to `packages.lock.json`.
+- Added a `build.ps1 -ValidateOnly` guard so the invalid filename cannot be reintroduced silently.
+
+Validation completed:
+
+- Visual Studio package validation guards: pass.
+- Git whitespace check: pass.
+
 ## 2026-05-09 - .NET NuGet Metadata Safety
 
 Focus:

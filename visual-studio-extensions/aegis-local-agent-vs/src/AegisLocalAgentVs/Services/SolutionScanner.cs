@@ -497,7 +497,7 @@ namespace Aegis.LocalAgent.VisualStudio.Services
                 || name.Equals("packages.config", StringComparison.OrdinalIgnoreCase)
                 || name.Equals("appsettings.json", StringComparison.OrdinalIgnoreCase)
                 || name.Equals("manifest.json", StringComparison.OrdinalIgnoreCase)
-                || name.Equals("packages-lock.json", StringComparison.OrdinalIgnoreCase)
+                || name.Equals("packages.lock.json", StringComparison.OrdinalIgnoreCase)
                 || relativePath.IndexOf("ProjectSettings", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 

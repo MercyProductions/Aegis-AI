@@ -33,7 +33,7 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 | VS Code packaging | Improved | Release lint now verifies command contribution/activation parity, release metadata, source-only helper exclusions, package hygiene, and Python lockfile fallback safety before VSIX creation. |
 | Visual Studio settings | Improved | Ollama and Aegis Core URL fields normalize host:port inputs and pasted endpoint paths before model or shared-runtime requests. |
 | Shared task API | Improved | Bad task status updates return `400`, missing task IDs return `404`, and malformed local task records are normalized on read. |
-| Visual Studio packaging | Improved | VSIX packaging now validates manifest metadata, command resources, VSCT/C# command table parity, and release documentation/license sources before producing the release archive. |
+| Visual Studio packaging | Improved | VSIX packaging now validates manifest metadata, command resources, VSCT/C# command table parity, solution scanner parity, NuGet lockfile filename handling, and release documentation/license sources before producing the release archive. |
 | Shared mutation persistence | Improved | Client registration and task creation/update now verify persistence; unwritable `.aegis` roots return clear failures or degraded plan responses instead of phantom successful writes. |
 | Memory resilience | Improved | Dashboard/task reads, agent plan reads, and generated-memory writes now tolerate unreadable or damaged `.aegis` JSON/markdown paths. |
 | VS Code memory resilience | Improved | Workspace startup and later index/history/log writes skip damaged `.aegis` paths instead of breaking scans or post-apply bookkeeping. |
@@ -79,6 +79,7 @@ Ran during this pass:
 - VS Code rollback incomplete-backup hardening lint and package: pass
 - `npm run package` in VS Code extension: pass, regenerated `release/aegis-local-autopilot-0.1.1.vsix` with only runtime/package metadata files
 - Visual Studio package validation guards: pass, including release documentation/license source checks
+- Visual Studio package validation guards: pass, including NuGet lockfile scanner parity
 - Desktop `.\build.ps1`: pass, 0 warnings, 0 errors
 - Desktop quick smoke: pass, nonblank login capture with backend reachable before and after launch
 - Visual Studio extension `.\build.ps1`: pass, command table parity checked, regenerated `release/AegisLocalAgentVs.vsix`
@@ -152,6 +153,7 @@ Ran during this pass:
 - Hardened VS Code local API error messages so degraded Core/Ollama calls are easier to act on.
 - Hardened Visual Studio Ollama/Core URL settings so common local inputs normalize before model calls, health checks, and shared client registration.
 - Hardened Desktop and Visual Studio degraded-mode handling so Core registration failures do not masquerade as full Core outages.
+- Hardened Visual Studio solution scanning so NuGet `packages.lock.json` is preserved as important dependency metadata and the package validation guard catches filename drift.
 
 ## Daily Driver Friction To Watch
 
