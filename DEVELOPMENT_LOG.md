@@ -110,6 +110,25 @@ Known next checks:
 
 - Perform manual live UI click-through in Desktop, VS Code, and Visual Studio when an interactive session is available.
 
+## 2026-05-09 - Hybrid Router Local Provider Hardening
+
+Focus:
+
+- Keep explicit local-provider routing local even when cloud mode is enabled.
+- Preserve the local-first privacy boundary for LM Studio users.
+
+Actions:
+
+- Audited the Aegis Core hybrid model router local/cloud provider boundary.
+- Fixed explicit local provider routing so `lm_studio` selects the local OpenAI-compatible server instead of being ignored or reinterpreted as a cloud fallback candidate.
+- Added regressions covering local LM Studio routing, the actual completion provider call, and unsupported provider override fallback.
+
+Validation completed:
+
+- Aegis Core model router regression slice: pass, 8 tests.
+- Aegis Core contract test suite: pass, 114 tests.
+- Repository whitespace check: pass.
+
 ## 2026-05-09 - Autonomous Stabilization Tranche
 
 Focus:

@@ -114,16 +114,17 @@ def route_model(
     providers = {provider.id: provider for provider in provider_catalog(config, credentials, credential_errors)}
     role = _normalize_task_type(task_type)
     difficulty_label = _normalize_difficulty(difficulty, role)
-    local_model = _local_model_for_role(config, role, ollama_status.installed_models)
-    local_provider = providers["ollama"]
-    local_candidate = _candidate(local_provider, local_model, "selected", f"Local-first route for {role}.")
+    requested_provider = _normalize_provider_id(preferred_provider)
+    local_candidate = _local_candidate(config, providers, role, ollama_status.installed_models, requested_provider, preferred_model)
     context = collect_cloud_context(root, context_files or [], max_chars=config.max_context_chars)
-    cloud_candidate = _cloud_candidate(config, providers, role, difficulty_label, preferred_provider, preferred_model)
+    cloud_candidate = _cloud_candidate(config, providers, role, difficulty_label, requested_provider, preferred_model)
     warnings: list[str] = []
     fallback_order = [local_candidate]
 
     if context["blocked_files"]:
         warnings.append(SECRET_CONTEXT_WARNING)
+    if requested_provider and requested_provider not in SUPPORTED_PROVIDER_IDS:
+        warnings.append(f"Requested provider '{scrub(requested_provider)}' is unsupported; using local Ollama.")
     if credential_errors:
         warnings.append("OS credential store could not be inspected for one or more cloud providers.")
 
@@ -346,6 +347,8 @@ def _cloud_candidate(
     preferred_provider: str | None,
     preferred_model: str | None,
 ) -> dict[str, Any] | None:
+    if preferred_provider in LOCAL_PROVIDER_IDS or (preferred_provider is not None and preferred_provider not in CLOUD_PROVIDER_IDS):
+        return None
     provider_id = (preferred_provider or config.preferred_cloud_provider or "openai").strip().lower()
     if provider_id not in CLOUD_PROVIDER_IDS:
         provider_id = "openai"
@@ -355,6 +358,28 @@ def _cloud_candidate(
     model = preferred_model or config.preferred_cloud_model or provider.default_model
     reason = f"Optional cloud fallback for {role} ({difficulty}) after approval."
     return _candidate(provider, model, "available", reason)
+
+
+def _local_candidate(
+    config: AegisConfig,
+    providers: dict[str, ProviderSpec],
+    role: str,
+    installed: list[str],
+    preferred_provider: str | None,
+    preferred_model: str | None,
+) -> dict[str, Any]:
+    provider_id = preferred_provider if preferred_provider in LOCAL_PROVIDER_IDS else "ollama"
+    provider = providers.get(provider_id) or providers["ollama"]
+    if provider_id == "lm_studio":
+        model = preferred_model or config.default_local_model or config.default_model
+        return _candidate(provider, model, "selected", f"Preferred local LM Studio route for {role}.")
+    model = preferred_model or _local_model_for_role(config, role, installed)
+    return _candidate(provider, model, "selected", f"Local-first route for {role}.")
+
+
+def _normalize_provider_id(provider_id: str | None) -> str | None:
+    text = (provider_id or "").strip().lower()
+    return text or None
 
 
 def _local_model_for_role(config: AegisConfig, role: str, installed: list[str]) -> str:

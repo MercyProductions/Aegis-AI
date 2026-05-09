@@ -1989,6 +1989,107 @@ def test_model_router_is_local_first_and_blocks_secret_context(tmp_path: Path, m
     assert "Secret-like" in route["warnings"][0]
 
 
+def test_model_router_honors_lm_studio_as_local_provider(tmp_path: Path, monkeypatch) -> None:
+    workspace = tmp_path / "router-lm-studio-project"
+    aegis_dir = workspace / ".aegis"
+    aegis_dir.mkdir(parents=True)
+    (aegis_dir / "config.json").write_text(
+        json.dumps({"model_routing_mode": "cloud_allowed", "preferred_cloud_provider": "openai"}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "aegis_core.model_router.OllamaClient.health",
+        lambda self: OllamaStatus(True, 4, ["qwen3-coder:30b"], "qwen3-coder:30b", []),
+    )
+
+    route = route_model(
+        workspace,
+        "hard_debugging",
+        allow_cloud=True,
+        cloud_approved=True,
+        preferred_provider="lm_studio",
+        preferred_model="local-lmstudio-model",
+        local_failure_reason="prefer the local OpenAI-compatible server",
+        credentials=DummyCredentialStore({"openai": "stored"}),
+    )
+
+    assert route["selected"]["provider_id"] == "lm_studio"
+    assert route["selected"]["local"] is True
+    assert route["selected"]["model"] == "local-lmstudio-model"
+    assert route["approval_required"] is False
+    assert route["cloud_ready"] is False
+    assert [candidate["provider_id"] for candidate in route["fallback_order"]] == ["lm_studio"]
+
+
+def test_model_completion_lm_studio_request_is_not_reinterpreted_as_cloud(tmp_path: Path, monkeypatch) -> None:
+    workspace = tmp_path / "completion-lm-studio-project"
+    aegis_dir = workspace / ".aegis"
+    aegis_dir.mkdir(parents=True)
+    (aegis_dir / "config.json").write_text(
+        json.dumps({"model_routing_mode": "cloud_allowed", "preferred_cloud_provider": "openai"}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "aegis_core.model_router.OllamaClient.health",
+        lambda self: OllamaStatus(True, 4, ["qwen3-coder:30b"], "qwen3-coder:30b", []),
+    )
+    called: dict[str, str] = {}
+
+    def fake_complete(provider_id, model, messages, config, credentials, timeout):
+        called["provider_id"] = provider_id
+        called["model"] = model
+        return "local response"
+
+    monkeypatch.setattr(model_router_module, "_complete", fake_complete)
+
+    result = model_router_module.complete_with_route(
+        workspace,
+        "Debug this failure locally",
+        "hard_debugging",
+        allow_cloud=True,
+        cloud_approved=True,
+        provider_id="lm_studio",
+        model="local-lmstudio-model",
+        local_failure_reason="prefer the local OpenAI-compatible server",
+        credentials=DummyCredentialStore({"openai": "stored"}),
+    )
+
+    assert called == {"provider_id": "lm_studio", "model": "local-lmstudio-model"}
+    assert result["provider_id"] == "lm_studio"
+    assert result["local"] is True
+    assert result["route"]["selected"]["provider_id"] == "lm_studio"
+
+
+def test_model_router_unsupported_provider_override_stays_local(tmp_path: Path, monkeypatch) -> None:
+    workspace = tmp_path / "router-unsupported-provider-project"
+    aegis_dir = workspace / ".aegis"
+    aegis_dir.mkdir(parents=True)
+    (aegis_dir / "config.json").write_text(
+        json.dumps({"model_routing_mode": "cloud_allowed", "preferred_cloud_provider": "openai"}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "aegis_core.model_router.OllamaClient.health",
+        lambda self: OllamaStatus(True, 4, ["qwen3-coder:30b"], "qwen3-coder:30b", []),
+    )
+
+    route = route_model(
+        workspace,
+        "hard_debugging",
+        allow_cloud=True,
+        cloud_approved=True,
+        preferred_provider="not-a-provider",
+        local_failure_reason="provider override typo",
+        credentials=DummyCredentialStore({"openai": "stored"}),
+    )
+
+    assert route["selected"]["provider_id"] == "ollama"
+    assert route["approval_required"] is False
+    assert route["cloud_ready"] is False
+    assert [candidate["provider_id"] for candidate in route["fallback_order"]] == ["ollama"]
+    assert any("unsupported" in warning.lower() for warning in route["warnings"])
+
+
 def test_model_router_requires_cloud_approval_in_hybrid_mode(tmp_path: Path, monkeypatch) -> None:
     workspace = tmp_path / "router-hybrid-project"
     aegis_dir = workspace / ".aegis"
