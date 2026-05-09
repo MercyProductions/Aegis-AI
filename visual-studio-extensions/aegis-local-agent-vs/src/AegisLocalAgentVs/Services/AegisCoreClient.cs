@@ -121,13 +121,15 @@ namespace Aegis.LocalAgent.VisualStudio.Services
             var apiVersion = parsed.Value<string>("api_version");
             if (!string.Equals(apiVersion, "v1", StringComparison.OrdinalIgnoreCase))
             {
-                throw new InvalidOperationException($"Could not {action}: Aegis Core response used unexpected api_version: {apiVersion ?? "missing"}.");
+                var safeApiVersion = string.IsNullOrWhiteSpace(apiVersion) ? "missing" : DiagnosticRedactor.RedactAndTruncate(apiVersion);
+                throw new InvalidOperationException($"Could not {action}: Aegis Core response used unexpected api_version: {safeApiVersion}.");
             }
 
             var kind = parsed.Value<string>("kind");
             if (!string.Equals(kind, expectedKind, StringComparison.OrdinalIgnoreCase))
             {
-                throw new InvalidOperationException($"Could not {action}: Aegis Core response kind mismatch: expected {expectedKind}, got {kind ?? "missing"}.");
+                var safeKind = string.IsNullOrWhiteSpace(kind) ? "missing" : DiagnosticRedactor.RedactAndTruncate(kind);
+                throw new InvalidOperationException($"Could not {action}: Aegis Core response kind mismatch: expected {expectedKind}, got {safeKind}.");
             }
 
             JToken okToken;

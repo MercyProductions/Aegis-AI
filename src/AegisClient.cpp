@@ -92,12 +92,14 @@ void ValidateCoreEnvelope(const JsonValue& envelope, const std::string& expected
 
     const std::string api_version = envelope["api_version"].AsString();
     if (api_version != "v1") {
-        throw std::runtime_error("Aegis Core response used unexpected api_version: " + (api_version.empty() ? std::string("missing") : api_version) + ".");
+        const std::string safe_api_version = api_version.empty() ? std::string("missing") : RedactDiagnosticText(api_version);
+        throw std::runtime_error("Aegis Core response used unexpected api_version: " + safe_api_version + ".");
     }
 
     const std::string kind = envelope["kind"].AsString();
     if (kind != expected_kind) {
-        throw std::runtime_error("Aegis Core response kind mismatch: expected " + expected_kind + ", got " + (kind.empty() ? std::string("missing") : kind) + ".");
+        const std::string safe_kind = kind.empty() ? std::string("missing") : RedactDiagnosticText(kind);
+        throw std::runtime_error("Aegis Core response kind mismatch: expected " + expected_kind + ", got " + safe_kind + ".");
     }
 
     if (require_ok && envelope.Has("ok") && !envelope["ok"].AsBool(true)) {

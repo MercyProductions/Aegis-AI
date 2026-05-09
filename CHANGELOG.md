@@ -88,6 +88,7 @@
 - Hardened Desktop Core dashboard loading so a shared registration failure no longer blocks dashboard reads when Core is otherwise reachable.
 - Hardened Desktop HTTP diagnostics so backend/Core error envelopes using `error`, `message`, or nested `data` details surface as bounded user-facing messages.
 - Hardened Desktop backend/Core diagnostics so secret-like HTTP error details are redacted before display.
+- Hardened Desktop Aegis Core contract mismatch diagnostics so unexpected `api_version` and `kind` values are redacted before display.
 - Hardened VS Code Ollama/Core URL settings so common local inputs normalize before model detection, health checks, and shared Core sync.
 - Hardened VS Code local API error reporting so Core/Ollama HTTP failures surface parsed, redacted detail text instead of raw JSON bodies.
 - Hardened VS Code request diagnostics so invalid JSON and timeout errors report endpoint paths without leaking workspace query strings.
@@ -106,6 +107,7 @@
 - Hardened Visual Studio Ollama client errors so HTTP failures, empty responses, and malformed JSON produce clear bounded diagnostics.
 - Hardened Visual Studio Ollama/Core diagnostics so secret-like HTTP error details are redacted before display.
 - Hardened Visual Studio health-check, rollback, and command error diagnostics so user-visible exception details are redacted, with a build guard to prevent regressions.
+- Hardened Visual Studio Aegis Core contract mismatch diagnostics so unexpected `api_version` and `kind` values are redacted, with a packaging guard to prevent regressions.
 - Hardened Visual Studio VSIX metadata and packaging so MoreInfo points to GitHub and internal dogfooding/model-inventory files are excluded.
 - Hardened Visual Studio release-folder cleanup so stale internal dogfooding notes, detected-model inventories, and repository-only `.gitignore` files are removed before packaging.
 - Hardened Visual Studio VSIX packaging so VSCT command buttons, command symbols, C# command IDs, and registered handlers must stay synchronized.

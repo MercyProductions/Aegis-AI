@@ -951,3 +951,21 @@ Actions:
 Validation completed:
 
 - Website Core bridge tests: pass, 15 tests.
+
+## 2026-05-09 - Native Core Contract Field Redaction
+
+Focus:
+
+- Keep Desktop and Visual Studio degraded-mode Core contract errors aligned with Website adapter redaction.
+- Prevent malformed local Core responses from echoing secret-like `api_version` or `kind` values into native client diagnostics.
+
+Actions:
+
+- Redacted unexpected Desktop Core `api_version` and `kind` mismatch values through the existing C++ diagnostic redactor.
+- Redacted unexpected Visual Studio Core `api_version` and `kind` mismatch values through `DiagnosticRedactor`.
+- Extended the Visual Studio packaging guard so AegisCoreClient contract mismatch diagnostics must remain redacted.
+
+Validation completed:
+
+- Visual Studio extension Release build/package: pass.
+- Desktop C++ Release build: pass, 0 warnings.
