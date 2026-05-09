@@ -23,6 +23,10 @@ CODE_SUFFIXES = {".py", ".js", ".jsx", ".ts", ".tsx", ".cs", ".cpp", ".c", ".h",
 SECRET_PREF_TERMS = {"key", "token", "secret", "password", "credential", "apikey", "api_key", "bearer", "private_key"}
 
 
+class PersonalIntelligencePersistenceError(RuntimeError):
+    """Raised when local personal engineering profile memory cannot be persisted."""
+
+
 def adaptive_personal_intelligence(
     workspace: str | Path,
     *,
@@ -58,18 +62,15 @@ def adaptive_personal_intelligence(
     profile_path = memory.root / PERSONAL_PROFILE_FILE
     updated_profile = False
     if persist or explicit_preferences:
-        memory.write_json(
-            PERSONAL_PROFILE_FILE,
-            {
-                "version": PROFILE_VERSION,
-                "workspace": str(root),
-                "updated_at": utc_now(),
-                "preferences": merged_preferences,
-                "learned_snapshot": _compact_learned_snapshot(learned_signals, coding_style, project_patterns, habits, context),
-                "privacy": _privacy_controls(profile_path),
-            },
-        )
-        stored_profile = _load_profile(memory)
+        profile = {
+            "version": PROFILE_VERSION,
+            "workspace": str(root),
+            "updated_at": utc_now(),
+            "preferences": merged_preferences,
+            "learned_snapshot": _compact_learned_snapshot(learned_signals, coding_style, project_patterns, habits, context),
+            "privacy": _privacy_controls(profile_path),
+        }
+        stored_profile = _persist_profile(memory, profile)
         updated_profile = True
 
     persisted = profile_path.is_file()
@@ -107,6 +108,16 @@ def adaptive_personal_intelligence(
 def reset_personal_intelligence(workspace: str | Path) -> dict[str, Any]:
     root = Path(workspace).resolve()
     profile_path = ProjectMemory(root).root / PERSONAL_PROFILE_FILE
+    exists = profile_path.exists()
+    if exists and not profile_path.is_file():
+        return {
+            "workspace": str(root),
+            "reset": False,
+            "profile_path": str(profile_path),
+            "existed": True,
+            "error": scrub(f"Could not reset personal engineering profile because {profile_path} is not a file."),
+            "privacy": _privacy_controls(profile_path),
+        }
     existed = profile_path.is_file()
     if existed:
         try:
@@ -680,6 +691,30 @@ def _load_profile(memory: ProjectMemory) -> dict[str, Any]:
     except (OSError, json.JSONDecodeError):
         return {}
     return data if isinstance(data, dict) else {}
+
+
+def _persist_profile(memory: ProjectMemory, profile: dict[str, Any]) -> dict[str, Any]:
+    path = memory.root / PERSONAL_PROFILE_FILE
+    _ensure_profile_target(path)
+    memory.write_json(PERSONAL_PROFILE_FILE, profile)
+    persisted = _load_profile(memory)
+    if persisted != profile:
+        raise PersonalIntelligencePersistenceError(
+            f"Could not persist personal engineering profile at {path}. "
+            "Check that the workspace .aegis path is a writable directory."
+        )
+    return persisted
+
+
+def _ensure_profile_target(path: Path) -> None:
+    if path.parent.exists() and not path.parent.is_dir():
+        raise PersonalIntelligencePersistenceError(
+            f"Could not persist personal engineering profile because {path.parent} is not a directory."
+        )
+    if path.exists() and not path.is_file():
+        raise PersonalIntelligencePersistenceError(
+            f"Could not persist personal engineering profile because {path} is not a writable file."
+        )
 
 
 def _sanitize_preferences(value: Any, key_path: str = "") -> Any:

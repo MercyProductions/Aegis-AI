@@ -1172,3 +1172,23 @@ Validation completed:
 - Core knowledge graph focused tests: pass, 5 tests.
 - Aegis Core contract tests: pass, 104 tests.
 - Git diff whitespace check: pass.
+
+## 2026-05-09 - Core Personal Intelligence Profile Persistence Handling
+
+Focus:
+
+- Avoid false successful personal profile saves when `.aegis/personal-engineering-profile.json` cannot be written.
+- Keep personal workflow memory transparent, local, inspectable, and resettable.
+
+Actions:
+
+- Added `PersonalIntelligencePersistenceError` for failed profile writes.
+- Verified the persisted personal profile after explicit save requests before reporting success.
+- Made reset report a structured failure when the profile path is damaged instead of claiming reset success.
+- Updated API, CLI, troubleshooting, and regression coverage for damaged personal profile paths.
+
+Validation completed:
+
+- Core personal intelligence focused tests: pass, 4 tests.
+- Aegis Core contract tests: pass, 106 tests.
+- Git diff whitespace check: pass.

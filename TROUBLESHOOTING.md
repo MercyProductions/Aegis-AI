@@ -32,6 +32,8 @@ If recording quality snapshots reports `Could not persist quality health history
 
 If recording the knowledge graph reports `Could not persist knowledge graph` or `Could not persist knowledge summary`, repair `.aegis/knowledge-graph.json` and `.aegis/knowledge-summary.md` so they are writable files before relying on saved dependency and architecture relationships.
 
+If saving or resetting personal intelligence reports `Could not persist personal engineering profile` or `Could not reset personal engineering profile`, repair `.aegis/personal-engineering-profile.json` so it is a writable JSON file. Personal workflow preferences remain local, explicit, and user-controlled, but the profile is not trustworthy until that path is fixed.
+
 ## Ollama
 
 Default local endpoint:

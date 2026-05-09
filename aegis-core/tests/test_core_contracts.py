@@ -1105,6 +1105,41 @@ def test_personal_intelligence_learns_style_preferences_and_resets_profile(tmp_p
     assert not profile_path.exists()
 
 
+def test_personal_intelligence_reports_profile_persistence_failure(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    aegis_dir = workspace / ".aegis"
+    aegis_dir.mkdir()
+    (aegis_dir / "personal-engineering-profile.json").mkdir()
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/v1/personal-intelligence/profile",
+        json={"workspace": str(workspace), "preferences": {"planning_depth": "deep"}, "persist": True},
+    )
+
+    assert response.status_code == 503
+    assert "Could not persist personal engineering profile" in response.json()["detail"]
+    assert not (aegis_dir / "personal-engineering-profile.json").is_file()
+
+
+def test_personal_intelligence_reset_reports_damaged_profile_path(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    aegis_dir = workspace / ".aegis"
+    aegis_dir.mkdir()
+    profile_path = aegis_dir / "personal-engineering-profile.json"
+    profile_path.mkdir()
+    client = TestClient(create_app())
+
+    response = client.post("/v1/personal-intelligence/reset", json={"workspace": str(workspace)})
+
+    assert response.status_code == 200
+    assert_core_contract(response.json(), "personal.intelligence.reset")
+    assert response.json()["ok"] is False
+    assert response.json()["data"]["reset"] is False
+    assert "Could not reset personal engineering profile" in response.json()["data"]["error"]
+    assert profile_path.is_dir()
+
+
 def test_personal_intelligence_surfaces_cross_project_patterns(tmp_path: Path) -> None:
     workspace = make_workspace(tmp_path)
     other = tmp_path / "other-pattern-project"

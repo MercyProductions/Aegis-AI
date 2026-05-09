@@ -36,7 +36,7 @@ from .multi_agent import agent_roster
 from .ollama import OllamaClient
 from .operations import engineering_operations_dashboard
 from .orchestration import OrchestrationPersistenceError, advance_orchestration_step, create_orchestration_plan, orchestration_dashboard
-from .personal_intelligence import adaptive_personal_intelligence, reset_personal_intelligence
+from .personal_intelligence import PersonalIntelligencePersistenceError, adaptive_personal_intelligence, reset_personal_intelligence
 from .quality import QualityPersistenceError, quality_dashboard, record_quality_snapshot
 from .roadmap import generate_roadmap
 from .simulation import compare_scenarios, simulate_change
@@ -368,14 +368,18 @@ def create_app():
 
     @app.post("/v1/personal-intelligence/profile")
     def v1_personal_intelligence_profile(request: PersonalIntelligenceRequest) -> dict[str, Any]:
-        return envelope(
-            "personal.intelligence",
-            adaptive_personal_intelligence(
+        try:
+            data = adaptive_personal_intelligence(
                 request.workspace,
                 project_roots=request.project_roots,
                 preferences=request.preferences,
                 persist=request.persist,
-            ),
+            )
+        except PersonalIntelligencePersistenceError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        return envelope(
+            "personal.intelligence",
+            data,
             request.workspace,
         )
 
