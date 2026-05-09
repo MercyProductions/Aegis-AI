@@ -51,6 +51,10 @@ ollama pull granite-code:8b
 - Auto-scan is disabled by default in 0.1.1 to keep large solutions responsive at startup. Enable it in **Tools > Options > Aegis Local Agent > General** only if you want background indexing on solution open.
 - Aegis intentionally skips `.vs/`, `bin/`, `obj/`, `packages/`, generated folders, Unity `Library/`, Unity `Temp/`, and vendor folders.
 
+## Damaged `.aegis` Memory
+
+If `.aegis` or a memory file is accidentally replaced by a directory or blocked by permissions, Aegis skips that path and keeps the tool window usable where possible. Run Health Check to identify the failed memory/index probe, then rename or remove only the damaged `.aegis` path after confirming backups and logs are no longer needed.
+
 ## Settings Do Not Seem Applied
 
 - Close any pending proposal before changing safety or backup settings.

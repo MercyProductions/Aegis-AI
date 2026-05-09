@@ -277,6 +277,8 @@ The extension writes local memory at the solution root:
 
 Secret-looking lines are filtered before writing generated memory.
 
+If `.aegis` or one of its memory files is damaged, blocked, or accidentally replaced by a directory, Aegis skips that path and keeps the tool window usable where possible. Run Health Check to surface the degraded memory/index state before resetting or repairing `.aegis`.
+
 ## Current Limitations
 
 - First release focuses on Visual Studio 2022 Community and classic VSSDK.

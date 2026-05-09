@@ -25,6 +25,7 @@ Actions:
 - Restricted shared memory directory settings to safe workspace-local folder names.
 - Hardened Core continue/repair agent endpoints against damaged roadmap and validation-log memory paths.
 - Hardened VS Code workspace memory initialization so damaged `.aegis` paths are logged and skipped without startup crashes.
+- Hardened Visual Studio solution memory reads/writes so damaged `.aegis` paths no longer crash memory-backed workflows.
 - Kept unrelated dirty worktree changes out of scope.
 - Recorded workflow friction in `WORKFLOW_NOTES.md`.
 

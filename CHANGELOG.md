@@ -19,6 +19,7 @@
 - Restricted Core memory directory settings to a single workspace-local folder name so shared config cannot point memory outside the project.
 - Hardened Core agent continue/repair planning so damaged roadmap or validation-log paths return safe responses instead of server errors.
 - Hardened VS Code workspace memory initialization so damaged `.aegis` files are reported and skipped instead of breaking startup scans.
+- Hardened Visual Studio solution memory reads and writes so damaged `.aegis` paths degrade safely and Health Check can report them.
 - Added product-utilization workflow notes for daily Auralith dogfooding.
 - Documented the current stabilization and validation pass.
 

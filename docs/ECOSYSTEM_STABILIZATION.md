@@ -27,6 +27,7 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 | Shared task API | Improved | Bad task status updates return `400`; missing task IDs return `404`. |
 | Memory resilience | Improved | Dashboard/task reads, agent plan reads, and generated-memory writes now tolerate unreadable or damaged `.aegis` JSON/markdown paths. |
 | VS Code memory init | Improved | Workspace startup memory initialization logs damaged `.aegis` paths and continues in degraded mode. |
+| Visual Studio memory init | Improved | Solution memory reads and writes are best-effort, so damaged `.aegis` paths do not crash memory-backed workflows. |
 | Validation detection | Improved | Core now lists JS test/build validation commands only when matching package scripts exist. |
 | Validation execution | Improved | Core blocks unsafe custom validation commands and returns structured missing-tool/timeout failures. |
 | Validation logging | Improved | Validation output is redacted before API responses and disk writes; log write failures do not crash validation. |
@@ -63,6 +64,7 @@ Ran during this pass:
 - Restricted shared memory directory settings to one workspace-local folder name, preventing config from pointing memory outside the project.
 - Hardened agent continue/repair planning so damaged roadmap or validation-log paths degrade to safe responses instead of server errors.
 - Hardened VS Code `.aegis` initialization so damaged memory files are left untouched and reported in the output channel.
+- Hardened Visual Studio `.aegis` solution memory so damaged memory files are skipped and health checks surface the degraded state.
 
 ## Daily Driver Friction To Watch
 

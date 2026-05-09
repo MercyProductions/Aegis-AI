@@ -33,19 +33,20 @@ namespace Aegis.LocalAgent.VisualStudio.Services
                 return string.Empty;
             }
 
-            Directory.CreateDirectory(root);
+            if (!TryEnsureDirectory(root))
+            {
+                return string.Empty;
+            }
+
             foreach (var file in memoryFiles)
             {
                 var path = Path.Combine(root, file);
-                if (!File.Exists(path))
-                {
-                    var content = file.Equals("agent-history.json", StringComparison.OrdinalIgnoreCase)
-                        ? "[]" + Environment.NewLine
-                        : file.EndsWith(".json", StringComparison.OrdinalIgnoreCase)
-                            ? JsonConvert.SerializeObject(new { createdAt = DateTime.UtcNow, items = new object[0] }, Formatting.Indented) + Environment.NewLine
-                            : $"# {Path.GetFileNameWithoutExtension(file)}{Environment.NewLine}";
-                    File.WriteAllText(path, content);
-                }
+                var content = file.Equals("agent-history.json", StringComparison.OrdinalIgnoreCase)
+                    ? "[]" + Environment.NewLine
+                    : file.EndsWith(".json", StringComparison.OrdinalIgnoreCase)
+                        ? JsonConvert.SerializeObject(new { createdAt = DateTime.UtcNow, items = new object[0] }, Formatting.Indented) + Environment.NewLine
+                        : $"# {Path.GetFileNameWithoutExtension(file)}{Environment.NewLine}";
+                TryEnsureMemoryFile(path, content);
             }
 
             await Task.Yield();
@@ -157,9 +158,10 @@ namespace Aegis.LocalAgent.VisualStudio.Services
             foreach (var file in memoryFiles.Where(file => file.EndsWith(".md", StringComparison.OrdinalIgnoreCase)))
             {
                 var path = Path.Combine(root, file);
-                if (File.Exists(path))
+                var text = SafeReadText(path);
+                if (!string.IsNullOrWhiteSpace(text))
                 {
-                    chunks.Add($"# Memory: {file}{Environment.NewLine}{Sanitize(File.ReadAllText(path))}");
+                    chunks.Add($"# Memory: {file}{Environment.NewLine}{Sanitize(text)}");
                 }
             }
 
@@ -169,33 +171,58 @@ namespace Aegis.LocalAgent.VisualStudio.Services
         public async Task<string> ReadArchitectureAsync(SolutionContext context)
         {
             var root = await EnsureMemoryAsync(context);
+            if (string.IsNullOrWhiteSpace(root))
+            {
+                return string.Empty;
+            }
+
             var path = Path.Combine(root, "architecture-map.md");
-            return File.Exists(path) ? Sanitize(File.ReadAllText(path)) : string.Empty;
+            return Sanitize(SafeReadText(path));
         }
 
         public async Task WriteRoadmapAsync(SolutionContext context, string roadmap)
         {
             var root = await EnsureMemoryAsync(context);
+            if (string.IsNullOrWhiteSpace(root))
+            {
+                return;
+            }
+
             await WriteManagedSectionAsync(Path.Combine(root, "roadmap.md"), "Aegis Generated Roadmap", Sanitize(roadmap).Split(new[] { "\r\n", "\n" }, StringSplitOptions.None));
         }
 
         public async Task<string> ReadRoadmapAsync(SolutionContext context)
         {
             var root = await EnsureMemoryAsync(context);
+            if (string.IsNullOrWhiteSpace(root))
+            {
+                return string.Empty;
+            }
+
             var path = Path.Combine(root, "roadmap.md");
-            return File.Exists(path) ? Sanitize(File.ReadAllText(path)) : string.Empty;
+            return Sanitize(SafeReadText(path));
         }
 
         public async Task AppendDecisionAsync(SolutionContext context, string text)
         {
             var root = await EnsureMemoryAsync(context);
-            File.AppendAllText(Path.Combine(root, "decisions.md"), Environment.NewLine + $"## {DateTime.UtcNow:o}{Environment.NewLine}{Sanitize(text)}{Environment.NewLine}");
+            if (string.IsNullOrWhiteSpace(root))
+            {
+                return;
+            }
+
+            SafeAppendAllText(Path.Combine(root, "decisions.md"), Environment.NewLine + $"## {DateTime.UtcNow:o}{Environment.NewLine}{Sanitize(text)}{Environment.NewLine}");
         }
 
         public async Task AppendValidationAsync(SolutionContext context, BuildResult result)
         {
             var root = await EnsureMemoryAsync(context);
-            File.AppendAllText(Path.Combine(root, "build-log.md"),
+            if (string.IsNullOrWhiteSpace(root))
+            {
+                return;
+            }
+
+            SafeAppendAllText(Path.Combine(root, "build-log.md"),
                 Environment.NewLine +
                 $"## {DateTime.UtcNow:o} - {(result.Success ? "PASS" : "FAIL")}{Environment.NewLine}" +
                 "```text" + Environment.NewLine +
@@ -206,11 +233,16 @@ namespace Aegis.LocalAgent.VisualStudio.Services
         public async Task AppendHistoryAsync(SolutionContext context, object entry)
         {
             var root = await EnsureMemoryAsync(context);
+            if (string.IsNullOrWhiteSpace(root))
+            {
+                return;
+            }
+
             var path = Path.Combine(root, "agent-history.json");
             var history = new List<object>();
             try
             {
-                history = JsonConvert.DeserializeObject<List<object>>(File.ReadAllText(path)) ?? history;
+                history = JsonConvert.DeserializeObject<List<object>>(SafeReadText(path)) ?? history;
             }
             catch
             {
@@ -218,7 +250,7 @@ namespace Aegis.LocalAgent.VisualStudio.Services
             }
 
             history.Insert(0, entry);
-            File.WriteAllText(path, JsonConvert.SerializeObject(history.Take(100).ToList(), Formatting.Indented));
+            SafeWriteAllText(path, JsonConvert.SerializeObject(history.Take(100).ToList(), Formatting.Indented));
         }
 
         public string GetMemoryRoot(SolutionContext context)
@@ -231,7 +263,12 @@ namespace Aegis.LocalAgent.VisualStudio.Services
             var start = $"<!-- BEGIN {title} -->";
             var end = $"<!-- END {title} -->";
             var section = start + Environment.NewLine + string.Join(Environment.NewLine, lines.Select(Sanitize)) + Environment.NewLine + end;
-            var existing = File.Exists(path) ? File.ReadAllText(path) : $"# {Path.GetFileNameWithoutExtension(path)}{Environment.NewLine}";
+            var existing = SafeReadText(path);
+            if (string.IsNullOrWhiteSpace(existing))
+            {
+                existing = $"# {Path.GetFileNameWithoutExtension(path)}{Environment.NewLine}";
+            }
+
             var startIndex = existing.IndexOf(start, StringComparison.Ordinal);
             var endIndex = existing.IndexOf(end, StringComparison.Ordinal);
             string next;
@@ -244,14 +281,77 @@ namespace Aegis.LocalAgent.VisualStudio.Services
                 next = existing.TrimEnd() + Environment.NewLine + Environment.NewLine + section + Environment.NewLine;
             }
 
-            File.WriteAllText(path, next);
+            SafeWriteAllText(path, next);
             await Task.Yield();
         }
 
         private static async Task WriteJsonAsync(string path, object value)
         {
-            File.WriteAllText(path, JsonConvert.SerializeObject(value, Formatting.Indented));
+            SafeWriteAllText(path, JsonConvert.SerializeObject(value, Formatting.Indented));
             await Task.Yield();
+        }
+
+        private static bool TryEnsureDirectory(string root)
+        {
+            try
+            {
+                Directory.CreateDirectory(root);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static void TryEnsureMemoryFile(string path, string content)
+        {
+            try
+            {
+                if (File.Exists(path) || Directory.Exists(path))
+                {
+                    return;
+                }
+
+                File.WriteAllText(path, content);
+            }
+            catch
+            {
+            }
+        }
+
+        private static string SafeReadText(string path)
+        {
+            try
+            {
+                return File.Exists(path) ? File.ReadAllText(path) : string.Empty;
+            }
+            catch
+            {
+                return string.Empty;
+            }
+        }
+
+        private static void SafeWriteAllText(string path, string content)
+        {
+            try
+            {
+                File.WriteAllText(path, content);
+            }
+            catch
+            {
+            }
+        }
+
+        private static void SafeAppendAllText(string path, string content)
+        {
+            try
+            {
+                File.AppendAllText(path, content);
+            }
+            catch
+            {
+            }
         }
 
         private static string Sanitize(string text)

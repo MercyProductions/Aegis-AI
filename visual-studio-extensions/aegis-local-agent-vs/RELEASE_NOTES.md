@@ -8,6 +8,7 @@ This dogfooding build keeps the 0.1.0 feature set frozen and focuses on real-use
 - Disabled automatic scan on solution open by default for new installs, after dogfooding showed startup/open automation can be fragile on larger C++ and Unity-shaped solutions.
 - Fixed command-table packaging so the Aegis menu commands have an embedded `Menus.ctmenu` resource.
 - Hardened the release build script to stop on MSBuild errors and validate packaged manifest/resource consistency.
+- Hardened solution memory reads and writes so damaged `.aegis` paths are skipped and reported through Health Check instead of crashing memory-backed workflows.
 - Updated setup guidance so first-run indexing happens through health check, roadmap generation, or manual rescan.
 
 ## What Is Included
