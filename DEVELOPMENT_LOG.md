@@ -207,6 +207,28 @@ Validation completed:
 - Website backend test suite: pass, 783 tests and 155 subtests.
 - Repository whitespace check: pass.
 
+## 2026-05-09 - VS Code Core URL Prefix Preservation
+
+Focus:
+
+- Align VS Code Core/Ollama URL handling with Website Core bridge normalization.
+- Preserve reverse-proxy path prefixes while still tolerating pasted endpoint URLs.
+
+Actions:
+
+- Added VS Code URL helpers that strip known Core and Ollama endpoint suffixes without discarding proxy prefixes.
+- Updated Core and Ollama request builders to append API paths beneath the normalized base prefix.
+- Added package-lint coverage for URL normalization and service URL joining.
+- Updated VS Code and root troubleshooting docs.
+
+Validation completed:
+
+- VS Code extension compile check: pass.
+- VS Code extension package lint: pass.
+- VS Code extension lint: pass.
+- VS Code extension package build: pass.
+- Repository whitespace check: pass.
+
 ## 2026-05-09 - Completion Selected Model Guard
 
 Focus:

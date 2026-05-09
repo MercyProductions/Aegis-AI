@@ -27,6 +27,10 @@ http://127.0.0.1:11434
 
 Change `aegisLocalAutopilot.ollamaUrl` in VS Code settings if your local server is elsewhere.
 
+## URL Settings
+
+Core and Ollama URL settings accept local `host:port` values and pasted endpoint URLs. Aegis trims known Core endpoint suffixes such as `/v1/...`, `/health`, and `/models`, trims known Ollama `/api/...` suffixes, and preserves reverse-proxy prefixes such as `https://proxy.local/aegis` or `https://proxy.local/ollama`.
+
 ## Missing Model
 
 Install the default model:

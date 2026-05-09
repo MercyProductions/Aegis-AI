@@ -2755,12 +2755,12 @@ async function getOllamaModels(options = {}) {
     }
   }
 
-  const json = await requestJson(new URL('/api/tags', getConfig().ollamaUrl), undefined, 120000);
+  const json = await requestJson(serviceUrl(getConfig().ollamaUrl, '/api/tags'), undefined, 120000);
   return Array.isArray(json.models) ? json.models.map((model) => Object.assign({ source: 'ollama' }, model)) : [];
 }
 
 function coreUrl(pathname, target) {
-  const url = new URL(pathname, getConfig().coreUrl);
+  const url = serviceUrl(getConfig().coreUrl, pathname);
   if (target && target.root) {
     url.searchParams.set('workspace', target.root);
   }
@@ -2773,7 +2773,7 @@ async function getAegisCoreEnvelope(pathname, target, expectedKind, timeoutMs = 
 }
 
 async function postAegisCoreEnvelope(pathname, body, expectedKind, timeoutMs = 120000) {
-  const envelope = await requestJson(new URL(pathname, getConfig().coreUrl), body, timeoutMs);
+  const envelope = await requestJson(coreUrl(pathname), body, timeoutMs);
   return validateAegisCoreEnvelope(envelope, expectedKind);
 }
 
@@ -2930,7 +2930,7 @@ async function registerAegisCoreClient(target) {
     return false;
   }
   try {
-    const envelope = await requestJson(new URL('/v1/clients/register', getConfig().coreUrl), {
+    const envelope = await requestJson(coreUrl('/v1/clients/register'), {
       workspace: resolvedTarget.root,
       client_id: 'aegis-vscode',
       client_type: 'vscode-extension',
@@ -2961,7 +2961,7 @@ async function registerAegisCoreClient(target) {
 
 async function createAegisCoreTask(target, title, kind, request, metadata = {}) {
   try {
-    const envelope = await requestJson(new URL('/v1/tasks', getConfig().coreUrl), {
+    const envelope = await requestJson(coreUrl('/v1/tasks'), {
       workspace: target.root,
       title,
       kind,
@@ -2982,7 +2982,7 @@ async function updateAegisCoreTaskStatus(target, taskId, status, summary = '') {
     return false;
   }
   try {
-    const envelope = await requestJson(new URL(`/v1/tasks/${encodeURIComponent(taskId)}/status`, getConfig().coreUrl), {
+    const envelope = await requestJson(coreUrl(`/v1/tasks/${encodeURIComponent(taskId)}/status`), {
       workspace: target.root,
       status,
       summary
@@ -3044,7 +3044,7 @@ async function askOllama(model, prompt, options = {}) {
     json: Boolean(options.json),
     promptChars: typeof prompt === 'string' ? prompt.length : 0
   }).catch(() => {});
-  const json = await requestJson(new URL('/api/chat', getConfig().ollamaUrl), body, options.timeoutMs || 600000);
+  const json = await requestJson(serviceUrl(getConfig().ollamaUrl, '/api/chat'), body, options.timeoutMs || 600000);
   const elapsed = ((Date.now() - started) / 1000).toFixed(1);
   const content = json && json.message && typeof json.message.content === 'string' ? json.message.content : JSON.stringify(json);
   output.appendLine(`Ollama ${selectedModel} completed in ${elapsed}s.`);
@@ -5502,10 +5502,48 @@ function normalizeHttpBaseUrl(value, fallback) {
     if (!url.hostname || url.username || url.password) {
       return defaultBase;
     }
-    return `${url.protocol}//${url.host}`;
+    return `${url.protocol}//${url.host}${stripKnownServiceEndpointPath(url.pathname)}`;
   } catch (error) {
     return defaultBase;
   }
+}
+
+function stripKnownServiceEndpointPath(pathname) {
+  const cleaned = String(pathname || '').replace(/\/+$/, '');
+  if (!cleaned || cleaned === '/') {
+    return '';
+  }
+
+  const segments = cleaned.split('/').filter(Boolean);
+  const lowered = segments.map((segment) => segment.toLowerCase());
+  const v1Index = lowered.indexOf('v1');
+  if (v1Index !== -1) {
+    return v1Index ? `/${segments.slice(0, v1Index).join('/')}` : '';
+  }
+
+  const apiIndex = lowered.indexOf('api');
+  const ollamaEndpoint = apiIndex === -1 ? '' : lowered[apiIndex + 1] || '';
+  const ollamaEndpointPaths = ['chat', 'embeddings', 'generate', 'ps', 'show', 'tags', 'version'];
+  if (apiIndex !== -1 && ollamaEndpointPaths.includes(ollamaEndpoint)) {
+    return apiIndex ? `/${segments.slice(0, apiIndex).join('/')}` : '';
+  }
+
+  const lastSegment = lowered[lowered.length - 1];
+  if (lastSegment === 'health' || lastSegment === 'models') {
+    return segments.length > 1 ? `/${segments.slice(0, -1).join('/')}` : '';
+  }
+
+  return cleaned;
+}
+
+function serviceUrl(baseUrl, pathname) {
+  const url = new URL(baseUrl);
+  const basePath = url.pathname.replace(/\/+$/, '');
+  const suffix = String(pathname || '').replace(/^\/+/, '');
+  url.pathname = `${basePath}/${suffix}`.replace(/\/+/g, '/');
+  url.search = '';
+  url.hash = '';
+  return url;
 }
 
 function getConfigSnapshot() {

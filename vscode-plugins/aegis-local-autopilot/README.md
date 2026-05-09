@@ -85,7 +85,7 @@ When Aegis Core is running, the VS Code extension now treats `/v1` as the prefer
 
 Those task records are visible to the Desktop App ecosystem dashboard and other Auralith clients that point at the same workspace.
 
-Set `aegisLocalAutopilot.coreUrl` if Core is not running on `http://127.0.0.1:8788`. The extension normalizes common local inputs such as `127.0.0.1:8788` or pasted `/v1/...` endpoint URLs back to the Core base URL. If Core is offline, VS Code stays usable in degraded local mode.
+Set `aegisLocalAutopilot.coreUrl` if Core is not running on `http://127.0.0.1:8788`. The extension normalizes common local inputs such as `127.0.0.1:8788`, pasted `/v1/...` endpoint URLs, and legacy `/health` or `/models` endpoints. Reverse-proxy prefixes such as `https://proxy.local/aegis` are preserved. If Core is offline, VS Code stays usable in degraded local mode.
 
 Project-local `.aegis/` memory writes are best-effort. If a memory target is damaged, Aegis reports it in the output channel and keeps scans, recovery state, validation logs, decisions, and approved-change bookkeeping from crashing the workflow.
 

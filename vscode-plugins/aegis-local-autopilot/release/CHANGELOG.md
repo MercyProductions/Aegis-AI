@@ -13,6 +13,7 @@
 - Tightened rollback backup ID validation to reject dot and hidden-folder aliases.
 - Hardened rollback failure handling so missing or unreadable backup files are skipped with output details and manifest-level rollback failures show a clear error.
 - Hardened Ollama/Core URL settings so host:port inputs, pasted endpoint paths, and invalid values normalize before model or shared-runtime requests.
+- Hardened Core/Ollama URL normalization to preserve reverse-proxy path prefixes while trimming pasted endpoint paths.
 
 ## 0.1.0 - Release Candidate
 

@@ -114,6 +114,26 @@ assertDiagnosticRedaction(
   ['Authorization: [redacted]', 'https://[redacted]@example.test/v1?token=[redacted]']
 );
 
+const urlNormalizer = loadExtensionFunctions(
+  extensionText,
+  ['stripKnownServiceEndpointPath', 'normalizeHttpBaseUrl'],
+  'normalizeHttpBaseUrl',
+  { URL }
+);
+assertUrlNormalization(urlNormalizer, '127.0.0.1:8788', 'http://127.0.0.1:8788');
+assertUrlNormalization(urlNormalizer, 'http://127.0.0.1:8788/v1/health', 'http://127.0.0.1:8788');
+assertUrlNormalization(urlNormalizer, 'http://127.0.0.1:8788/health', 'http://127.0.0.1:8788');
+assertUrlNormalization(urlNormalizer, 'https://proxy.local/aegis/v1/health', 'https://proxy.local/aegis');
+assertUrlNormalization(urlNormalizer, 'https://proxy.local/aegis/models', 'https://proxy.local/aegis');
+assertUrlNormalization(urlNormalizer, 'https://proxy.local/aegis-v1-proxy', 'https://proxy.local/aegis-v1-proxy');
+assertUrlNormalization(urlNormalizer, 'https://proxy.local/ollama/api/tags', 'https://proxy.local/ollama');
+assertUrlNormalization(urlNormalizer, 'http://user:secret@127.0.0.1:8788', 'http://127.0.0.1:8788');
+
+const serviceUrlBuilder = loadExtensionFunction(extensionText, 'serviceUrl', { URL });
+assertServiceUrl(serviceUrlBuilder, 'https://proxy.local/aegis', '/v1/health', 'https://proxy.local/aegis/v1/health');
+assertServiceUrl(serviceUrlBuilder, 'https://proxy.local/ollama', '/api/tags', 'https://proxy.local/ollama/api/tags');
+assertServiceUrl(serviceUrlBuilder, 'http://127.0.0.1:8788', '/v1/models', 'http://127.0.0.1:8788/v1/models');
+
 const unsafeErrorMessagePatterns = [
   {
     pattern: /appendLine\s*\([^)]*error\.message/s,
@@ -176,7 +196,16 @@ for (const privateFile of ['.gitignore', 'DETECTED_MODELS.md', 'DOGFOODING_NOTES
 
 console.log(`Aegis package lint passed for ${manifest.name}@${manifest.version}.`);
 
-function loadExtensionFunction(source, name) {
+function loadExtensionFunction(source, name, context = {}) {
+  return vm.runInNewContext(`${extractExtensionFunctionSource(source, name)}\n${name};`, context);
+}
+
+function loadExtensionFunctions(source, names, exportedName, context = {}) {
+  const functionSources = names.map((name) => extractExtensionFunctionSource(source, name)).join('\n');
+  return vm.runInNewContext(`${functionSources}\n${exportedName};`, context);
+}
+
+function extractExtensionFunctionSource(source, name) {
   const signature = `function ${name}`;
   const start = source.indexOf(signature);
   if (start === -1) {
@@ -194,8 +223,7 @@ function loadExtensionFunction(source, name) {
     } else if (char === '}') {
       depth -= 1;
       if (depth === 0) {
-        const functionSource = source.slice(start, index + 1);
-        return vm.runInNewContext(`${functionSource}\n${name};`, {});
+        return source.slice(start, index + 1);
       }
     }
   }
@@ -213,6 +241,20 @@ function assertDiagnosticRedaction(redactor, sample, disallowed, required) {
     if (!redacted.includes(value)) {
       fail(`redactDiagnosticText lost expected diagnostic context: ${value}`);
     }
+  }
+}
+
+function assertUrlNormalization(normalizer, input, expected) {
+  const normalized = normalizer(input, 'http://127.0.0.1:8788');
+  if (normalized !== expected) {
+    fail(`URL normalization mismatch for "${input}": expected "${expected}", got "${normalized}".`);
+  }
+}
+
+function assertServiceUrl(builder, baseUrl, pathname, expected) {
+  const built = builder(baseUrl, pathname).toString();
+  if (built !== expected) {
+    fail(`service URL mismatch for "${baseUrl}" + "${pathname}": expected "${expected}", got "${built}".`);
   }
 }
 
