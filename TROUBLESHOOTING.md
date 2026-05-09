@@ -32,6 +32,8 @@ Website command execution applies destructive-command checks after parsing the e
 
 Website command execution also blocks arbitrary path-qualified tool aliases even when their basename is allowlisted. Use `npm test`, `python -m pytest`, or `dotnet build` through `PATH`; only local project wrappers `./gradlew` and `./mvnw` are accepted with an explicit path. If `.\npm.cmd test` or `"C:\Tools\npm.cmd" test` is blocked, remove the path prefix or fix `PATH`.
 
+Website .NET detection treats `.csproj`, `.fsproj`, and `.vbproj` as managed project files for `dotnet restore`, `dotnet build`, and `dotnet test`. Native-only Visual Studio projects continue to use MSBuild/CMake/build-runner validation instead of the .NET path.
+
 VS Code local fallback validation only runs exact known-safe commands such as `npm test`, `npm run build`, `python -m pytest`, `go test ./...`, and `cmake --build build`. Shell launchers, install commands, chained commands, and destructive Git aliases should be blocked before execution; run `npm run lint:package` in `vscode-plugins/aegis-local-autopilot/` if packaging or install-local validation reports drift.
 
 VS Code suggests `dotnet build` only when a `.csproj`, `.fsproj`, or `.vbproj` is present. Native-only Visual Studio solutions should use Visual Studio/MSBuild validation instead of the VS Code fallback runner treating every `.sln` as a .NET workspace.

@@ -40,6 +40,8 @@ IGNORE_NAMES = {
     "node_modules",
 }
 
+DOTNET_PROJECT_SUFFIXES = {".csproj": "C#", ".fsproj": "F#", ".vbproj": "Visual Basic"}
+
 TEXT_SUFFIXES = {
     ".adoc",
     ".asm",
@@ -59,6 +61,7 @@ TEXT_SUFFIXES = {
     ".env",
     ".filters",
     ".fs",
+    ".fsproj",
     ".glsl",
     ".go",
     ".gql",
@@ -110,6 +113,7 @@ TEXT_SUFFIXES = {
     ".ts",
     ".tsx",
     ".txt",
+    ".vbproj",
     ".vcxproj",
     ".vue",
     ".xaml",
@@ -1045,10 +1049,16 @@ class WorkspaceManager:
                 )
 
     def _inspect_dotnet_projects(self, root: Path, profile: WorkspaceDependencyProfile) -> None:
-        for path in self._bounded_glob(root, "*.csproj", max_items=6):
+        dotnet_projects = [
+            path
+            for suffix in DOTNET_PROJECT_SUFFIXES
+            for path in self._bounded_glob(root, f"*{suffix}", max_items=6)
+        ][:12]
+        for path in dotnet_projects:
             relative = path.relative_to(root).as_posix()
+            language = DOTNET_PROJECT_SUFFIXES.get(path.suffix.lower(), ".NET")
             self._add_unique(profile.config_files, relative)
-            self._add_unique(profile.languages, "C#")
+            self._add_unique(profile.languages, language)
             self._add_unique(profile.package_managers, "dotnet")
             self._add_unique(profile.build_systems, ".NET")
             self._add_unique(profile.install_commands, "dotnet restore")

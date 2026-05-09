@@ -88,6 +88,22 @@ class ValidationManagerTests(unittest.TestCase):
         self.assertEqual(pipeline[0].command, "pnpm install")
         self.assertIn("pnpm typecheck", [step.command for step in pipeline])
 
+    def test_discovers_dotnet_validation_for_supported_project_files(self) -> None:
+        for suffix in (".csproj", ".fsproj", ".vbproj"):
+            workspace = self.workspace / suffix.strip(".")
+            workspace.mkdir(parents=True, exist_ok=True)
+            (workspace / f"Demo{suffix}").write_text("<Project></Project>\n", encoding="utf-8")
+
+            with self.subTest(suffix=suffix):
+                suggestions = self.manager.discover_commands(workspace)
+                pipeline = self.manager.verification_plan(workspace, include_install=True)
+                commands = [item.command for item in suggestions]
+
+                self.assertIn("dotnet build", commands)
+                self.assertIn("dotnet test", commands)
+                self.assertEqual(pipeline[0].phase, "install")
+                self.assertEqual(pipeline[0].command, "dotnet restore")
+
     def test_validation_discovery_ignores_damaged_marker_directories(self) -> None:
         marker_dirs = (
             "build.py",
@@ -96,6 +112,8 @@ class ValidationManagerTests(unittest.TestCase):
             "Cargo.toml",
             "go.mod",
             "Project.csproj",
+            "Project.fsproj",
+            "Project.vbproj",
             "Native.vcxproj",
             "Demo.sln",
             "CMakeLists.txt",

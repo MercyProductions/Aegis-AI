@@ -2058,6 +2058,26 @@ Validation completed:
 - VS Code extension lint: pass.
 - Repository whitespace check: pass.
 
+## 2026-05-09 - Website .NET Project Detection Parity
+
+Focus:
+
+- Keep Website validation discovery and dependency profiling aligned with Core and VS Code for supported .NET project files.
+- Avoid missing F# and Visual Basic workspaces during validation planning, install inference, and project summaries.
+
+Actions:
+
+- Extended Website validation discovery and install inference from `.csproj` only to `.csproj`, `.fsproj`, and `.vbproj`.
+- Extended Website dependency profiling to record F# and Visual Basic project files, languages, `dotnet restore`, `dotnet build`, and `dotnet test`.
+- Added regression coverage for F#/VB validation suggestions, install steps, dependency profile language detection, and package references.
+- Updated Website README, root troubleshooting, and root changelog notes.
+
+Validation completed:
+
+- Website validation manager suite: pass, 24 tests and 7 subtests.
+- Website workspace/storage suite: pass, 63 tests.
+- Repository whitespace check: pass.
+
 ## 2026-05-09 - Website PowerShell Guard Windows Path Compatibility
 
 Focus:

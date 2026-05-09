@@ -133,6 +133,7 @@ When `Run validation` is enabled in the UI and changes are applied, Aegis tries 
 - `Cargo.toml`
 - `go.mod`
 - `pyproject.toml` or `requirements.txt`
+- `.csproj`, `.fsproj`, or `.vbproj`
 - Vite/TypeScript config files
 
 Commands are constrained by:

@@ -10,6 +10,9 @@ from .validation_commands import POWERSHELL_BUILD_COMMAND as DEFAULT_POWERSHELL_
 from .validation_commands import is_safe_remembered_validation_command
 
 
+DOTNET_PROJECT_GLOBS = ("*.csproj", "*.fsproj", "*.vbproj")
+
+
 @dataclass(frozen=True)
 class ValidationCandidate:
     command: str
@@ -176,8 +179,8 @@ class ValidationManager:
                 ValidationCandidate("go test ./...", "Go test suite", "test", "Runs Go tests across all packages.", 120)
             )
 
-        csproj = self._first_existing(workspace_root.glob("*.csproj"))
-        if csproj is not None:
+        dotnet_project = self._first_dotnet_project(workspace_root)
+        if dotnet_project is not None:
             candidates.extend(
                 [
                     ValidationCandidate("dotnet test", "dotnet test", "test", "Runs the .NET test suite.", 120),
@@ -626,7 +629,7 @@ class ValidationManager:
             return "cargo fetch"
         if self._is_file(workspace_root / "go.mod"):
             return "go mod download"
-        if self._first_existing(workspace_root.glob("*.csproj")) is not None:
+        if self._first_dotnet_project(workspace_root) is not None:
             return "dotnet restore"
         if self._is_file(workspace_root / "pom.xml"):
             return "mvn dependency:resolve"
@@ -777,6 +780,13 @@ class ValidationManager:
         for path in paths:
             if self._is_file(path):
                 return path
+        return None
+
+    def _first_dotnet_project(self, workspace_root: Path) -> Path | None:
+        for pattern in DOTNET_PROJECT_GLOBS:
+            project = self._first_existing(workspace_root.glob(pattern))
+            if project is not None:
+                return project
         return None
 
     def _is_file(self, path: Path) -> bool:

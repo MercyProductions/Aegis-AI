@@ -833,6 +833,8 @@ Project completion list
             "CMakeLists.txt",
             "build.py",
             "Demo.csproj",
+            "Demo.fsproj",
+            "Demo.vbproj",
             "Demo.vcxproj",
             "Demo.sln",
             "Demo.vcxproj.filters",
@@ -879,6 +881,29 @@ Project completion list
         self.assertIn("pip", profile.package_managers)
         self.assertNotIn("uv", profile.package_managers)
         self.assertNotIn("poetry", profile.package_managers)
+
+    def test_inspect_dependency_profile_detects_supported_dotnet_projects(self) -> None:
+        manager = WorkspaceManager(self.project_root, self.settings)
+        workspace = manager.resolve_workspace("workspace")
+        (workspace / "src" / "FSharpApp").mkdir(parents=True, exist_ok=True)
+        (workspace / "src" / "VbTool").mkdir(parents=True, exist_ok=True)
+        (workspace / "src" / "FSharpApp" / "FSharpApp.fsproj").write_text(
+            '<Project><ItemGroup><PackageReference Include="FsToolkit.ErrorHandling" Version="4.18.0" /></ItemGroup></Project>\n',
+            encoding="utf-8",
+        )
+        (workspace / "src" / "VbTool" / "VbTool.vbproj").write_text("<Project></Project>\n", encoding="utf-8")
+
+        profile = manager.inspect_dependency_profile(workspace)
+
+        self.assertIn("src/FSharpApp/FSharpApp.fsproj", profile.config_files)
+        self.assertIn("src/VbTool/VbTool.vbproj", profile.config_files)
+        self.assertIn("F#", profile.languages)
+        self.assertIn("Visual Basic", profile.languages)
+        self.assertIn("dotnet", profile.package_managers)
+        self.assertIn("dotnet restore", profile.install_commands)
+        self.assertIn("dotnet build", profile.validation_commands)
+        self.assertIn("dotnet test", profile.validation_commands)
+        self.assertTrue(any(item.name == "FsToolkit.ErrorHandling" for item in profile.dependencies))
 
     def test_inspect_dependency_profile_detects_python_stack(self) -> None:
         manager = WorkspaceManager(self.project_root, self.settings)
