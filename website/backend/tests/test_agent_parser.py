@@ -735,6 +735,29 @@ class AgentParserTests(unittest.TestCase):
         self.assertEqual(draft.proposed_commands[0]["command"], "cmake -S . -B build && cmake --build build --config Release")
         self.assertIn("strict existing-project continuation pass", draft.reply)
 
+    def test_existing_project_no_change_continuation_accepts_slnx_solution(self) -> None:
+        workspace = Path(self.tempdir.name) / "existing-slnx-continuation"
+        workspace.mkdir()
+        (workspace / "Modern.slnx").write_text("<Solution></Solution>\n", encoding="utf-8")
+        files = [
+            WorkspaceFile(path="Modern.slnx", kind="text", size=160),
+            WorkspaceFile(path="src/main.cpp", kind="text", size=240),
+        ]
+
+        draft = self.engine._existing_project_no_change_continuation_draft(
+            original_draft=AgentDraft(reply="No changes."),
+            fallback=AgentDraft(reply="Preserved existing project.", changes=[]),
+            message="continue improving this existing Visual Studio solution and build it",
+            mode="build",
+            workspace_root=workspace,
+            workspace_files=files,
+        )
+
+        self.assertIsNotNone(draft)
+        assert draft is not None
+        self.assertEqual(draft.proposed_commands[0]["command"], 'msbuild "Modern.slnx" /m /p:Configuration=Release')
+        self.assertTrue(any("native-cpp" in item for item in draft.plan))
+
     def test_existing_project_no_change_continuation_skips_plain_chat_and_empty_workspace(self) -> None:
         workspace = Path(self.tempdir.name) / "empty-continuation"
         workspace.mkdir()

@@ -176,6 +176,9 @@ MODE_OPTIONS: list[tuple[ModeName, str, str]] = [
 
 EmitEvent = Callable[[str, str], None]
 StreamDeltaCallback = Callable[[dict[str, Any]], None]
+VISUAL_STUDIO_SOLUTION_GLOBS = ("*.sln", "*.slnx")
+VISUAL_STUDIO_SOLUTION_SUFFIXES = (".sln", ".slnx")
+VISUAL_STUDIO_NATIVE_BUILD_SUFFIXES = VISUAL_STUDIO_SOLUTION_SUFFIXES + (".vcxproj", ".vcxproj.filters")
 
 
 class AgentEngine:
@@ -2551,10 +2554,13 @@ class AgentEngine:
         if "cmakelists.txt" in paths or (workspace_root / "CMakeLists.txt").exists():
             return "cmake -S . -B build && cmake --build build --config Release"
 
-        solution = next((item.path for item in workspace_files if item.path.lower().endswith(".sln")), "")
+        solution = next((item.path for item in workspace_files if item.path.lower().endswith(VISUAL_STUDIO_SOLUTION_SUFFIXES)), "")
         if not solution:
             try:
-                solution_path = next(workspace_root.glob("*.sln"), None)
+                solution_path = next(
+                    (path for pattern in VISUAL_STUDIO_SOLUTION_GLOBS for path in workspace_root.glob(pattern)),
+                    None,
+                )
             except OSError:
                 solution_path = None
             if solution_path is not None:
@@ -2865,7 +2871,12 @@ class AgentEngine:
         }
         if paths.intersection(project_markers):
             return True
-        if any(path.endswith((".sln", ".vcxproj", ".csproj", ".fsproj", ".vbproj", ".psm1", ".psd1")) for path in paths):
+        if any(
+            path.endswith(
+                VISUAL_STUDIO_SOLUTION_SUFFIXES + (".vcxproj", ".csproj", ".fsproj", ".vbproj", ".psm1", ".psd1")
+            )
+            for path in paths
+        ):
             return True
         source_prefixes = ("src/", "app/", "pages/", "components/", "driver/", "controller/", "host/", "library/")
         source_count = sum(1 for path in paths if path.startswith(source_prefixes))
@@ -3100,11 +3111,10 @@ class AgentEngine:
         )
         has_native_source = any_path(lambda path: path.endswith((".cpp", ".cxx", ".cc", ".c", ".h", ".hpp", ".asm", ".rc")))
         has_native_build = any_path(
-            lambda path: path in {"cmakelists.txt", "build.py", "build.ps1"}
-            or path.endswith((".sln", ".vcxproj", ".vcxproj.filters"))
+            lambda path: path in {"cmakelists.txt", "build.py", "build.ps1"} or path.endswith(VISUAL_STUDIO_NATIVE_BUILD_SUFFIXES)
         )
         has_python = any_path(lambda path: path.endswith(".py") or path in {"pyproject.toml", "requirements.txt", "setup.py", "setup.cfg"})
-        has_dotnet = any_path(lambda path: path.endswith(RUNTIME_DOTNET_SUFFIXES) or path.endswith(".sln"))
+        has_dotnet = any_path(lambda path: path.endswith(RUNTIME_DOTNET_SUFFIXES) or path.endswith(VISUAL_STUDIO_SOLUTION_SUFFIXES))
         has_rust = any_path(lambda path: path == "cargo.toml" or path.endswith(".rs"))
         has_go = any_path(lambda path: path == "go.mod" or path.endswith(".go"))
 
@@ -3239,7 +3249,10 @@ class AgentEngine:
 
         if self._request_mentions_cpp_project(message):
             has_entry = any(path.endswith("main.cpp") or path.endswith("main.cxx") for path in paths)
-            has_build_file = any(path == "cmakelists.txt" or path.endswith(".sln") or path.endswith(".vcxproj") for path in paths)
+            has_build_file = any(
+                path == "cmakelists.txt" or path.endswith(VISUAL_STUDIO_SOLUTION_SUFFIXES + (".vcxproj",))
+                for path in paths
+            )
             return not (has_entry and has_build_file)
 
         if self._request_mentions_extension_project(message):
@@ -3379,7 +3392,7 @@ class AgentEngine:
             if preset_id == "dotnet-wpf-csharp" and not any_path(lambda path: path.endswith("mainwindow.xaml")):
                 return True
             if preset_id == "dotnet-webapi-csharp":
-                has_solution = any_path(lambda path: path.endswith(".sln"))
+                has_solution = any_path(lambda path: path.endswith(VISUAL_STUDIO_SOLUTION_SUFFIXES))
                 has_api_program = any_path(lambda path: path.endswith("/program.cs") and ".api/" in path)
                 has_test_project = any_path(lambda path: path.startswith("tests/") and path.endswith(".csproj"))
                 if not (has_solution and has_api_program and has_test_project):

@@ -75,6 +75,7 @@ Actions:
 - Improved Visual Studio extension scan/intelligence parity so `.fsproj`, `.vbproj`, `.slnx`, F#/Visual Basic source symbols/imports, Visual Basic XAML code-behind, and newer C++ suffixes are represented in local solution context.
 - Improved Website scaffold install preflight parity so supported non-C# .NET manifests and `.slnx` files trigger `dotnet restore` before validation when assets are missing.
 - Improved Website `.slnx` continuity parity so workspace profiling, validation suggestions, and existing-project scaffold routing recognize modern Visual Studio solution files.
+- Improved Website agent continuation and deterministic fallback parity so `.slnx` workspaces keep Visual Studio/native stack classification and generated validation helpers search both `.sln` and `.slnx` files.
 
 Validation completed:
 

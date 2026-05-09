@@ -7,6 +7,10 @@ from .schemas import ChangeAction, FileChange, ModeName, WorkspaceFile
 from .settings import Settings
 
 
+VISUAL_STUDIO_SOLUTION_SUFFIXES = (".sln", ".slnx")
+VISUAL_STUDIO_NATIVE_BUILD_SUFFIXES = VISUAL_STUDIO_SOLUTION_SUFFIXES + (".vcxproj",)
+
+
 class FallbackEngine:
     def __init__(self, settings: Settings):
         self.settings = settings
@@ -379,7 +383,7 @@ def main() -> int:
             return configure_rc
         return run(["cmake", "--build", "build", "--config", "Release"])
 
-    solutions = sorted(ROOT.glob("*.sln"))
+    solutions = sorted(path for pattern in ("*.sln", "*.slnx") for path in ROOT.glob(pattern))
     if solutions:
         msbuild = find_msbuild()
         if msbuild is None:
@@ -387,7 +391,7 @@ def main() -> int:
             return 2
         return run([str(msbuild), solutions[0].name, "/m", "/p:Configuration=Release"])
 
-    print("No CMakeLists.txt or .sln file was found for native validation.", file=sys.stderr)
+    print("No CMakeLists.txt or .sln/.slnx file was found for native validation.", file=sys.stderr)
     return 3
 
 
@@ -395,7 +399,7 @@ if __name__ == "__main__":
     raise SystemExit(main())
 '''
         summary = "Add a stack-preserving C++ validation helper without recreating source files."
-        if any(item.path.replace("\\", "/").lower().endswith(".sln") for item in files):
+        if any(item.path.replace("\\", "/").lower().endswith(VISUAL_STUDIO_SOLUTION_SUFFIXES) for item in files):
             summary = "Add a stack-preserving MSBuild validation helper without recreating source files."
         return FileChange(action="create", path="build.py", summary=summary, content=build_py)
 
@@ -916,13 +920,13 @@ Which language would you like to use?"""
         paths = {item.path.replace("\\", "/").lower().strip("/") for item in files}
         return (
             "cmakelists.txt" in paths
-            or any(path.endswith(".sln") or path.endswith(".vcxproj") for path in paths)
+            or any(path.endswith(VISUAL_STUDIO_NATIVE_BUILD_SUFFIXES) for path in paths)
             or any(path.endswith((".cpp", ".cc", ".cxx", ".hpp", ".h")) for path in paths)
         )
 
     def _looks_like_msvc_cpp_request(self, message: str, files: list[WorkspaceFile]) -> bool:
         paths = {item.path.replace("\\", "/").lower().strip("/") for item in files}
-        has_msvc_workspace = any(path.endswith(".sln") or path.endswith(".vcxproj") for path in paths)
+        has_msvc_workspace = any(path.endswith(VISUAL_STUDIO_NATIVE_BUILD_SUFFIXES) for path in paths)
         has_msvc_prompt = any(term in message for term in ("sln", "solution", "visual studio", "vcxproj", "msbuild"))
         has_cpp_prompt = any(term in message for term in ("c++", "cpp", "console app", "console project"))
         return has_msvc_workspace or (has_msvc_prompt and has_cpp_prompt)

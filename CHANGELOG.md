@@ -23,6 +23,7 @@
 - Improved Visual Studio solution scanning and smart context indexing for F#/Visual Basic projects, `.slnx` files, Visual Basic XAML code-behind, and newer C++ source/header suffixes.
 - Improved Website scaffold install preflight so `.fsproj`, `.vbproj`, and `.slnx` projects receive the same missing-restore detection as `.csproj` projects.
 - Improved Website workspace profiling and validation planning so existing `.slnx` Visual Studio solutions are treated like `.sln` workspaces.
+- Improved Website agent and fallback continuation so existing `.slnx` workspaces keep Visual Studio stack guardrails and receive runnable MSBuild validation helpers.
 - Improved Website dependency profiling so root `build.py` and `build.ps1` guard scripts are recorded as validation commands before lower-level CMake/MSBuild native fallbacks.
 - Improved Website agent continuation so existing projects with root `build.ps1` guard scripts propose the same safe PowerShell validation command used by validation discovery.
 - Improved Website project-builder existing-project validation so root `build.ps1` guard scripts are selected before CMake/MSBuild fallback commands.

@@ -342,6 +342,24 @@ class FallbackEngineTests(unittest.TestCase):
         self.assertEqual(changes, [])
         self.assertTrue(any("preserved the existing workspace stack" in warning for warning in warnings))
 
+    def test_existing_slnx_workspace_gets_msbuild_validation_helper(self) -> None:
+        files = [
+            WorkspaceFile(path="Modern.slnx", kind="text", size=500),
+            WorkspaceFile(path="src/main.cpp", kind="text", size=900),
+        ]
+
+        _reply, _plan, changes, warnings = self.engine.respond(
+            "continue improving this existing Visual Studio solution and build it",
+            "build",
+            self.workspace,
+            files,
+        )
+
+        self.assertEqual([change.path for change in changes], ["build.py"])
+        self.assertIn("*.slnx", changes[0].content or "")
+        self.assertIn(".sln/.slnx", changes[0].content or "")
+        self.assertTrue(any("preserved the existing workspace stack" in warning for warning in warnings))
+
     def test_existing_native_project_allows_explicit_fresh_rebuild_request(self) -> None:
         files = [
             WorkspaceFile(path="CMakeLists.txt", kind="text", size=100),

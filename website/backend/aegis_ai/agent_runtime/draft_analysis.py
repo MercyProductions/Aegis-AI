@@ -9,6 +9,8 @@ from .contracts import AgentDraft
 DOTNET_PROJECT_SUFFIXES = (".csproj", ".fsproj", ".vbproj")
 DOTNET_SOURCE_SUFFIXES = (".cs", ".fs", ".fsi", ".fsx", ".vb", ".xaml")
 DOTNET_SUFFIXES = DOTNET_PROJECT_SUFFIXES + DOTNET_SOURCE_SUFFIXES
+VISUAL_STUDIO_SOLUTION_SUFFIXES = (".sln", ".slnx")
+VISUAL_STUDIO_NATIVE_BUILD_SUFFIXES = VISUAL_STUDIO_SOLUTION_SUFFIXES + (".vcxproj", ".vcxproj.filters")
 
 
 def draft_change_paths(draft: AgentDraft) -> set[str]:
@@ -165,7 +167,7 @@ def draft_stack_families(draft: AgentDraft) -> set[str]:
     ):
         families.add("web")
     if any(path.endswith((".cpp", ".cxx", ".cc", ".c", ".h", ".hpp", ".asm", ".rc")) for path in paths) or any(
-        path == "cmakelists.txt" or path.endswith((".sln", ".vcxproj", ".vcxproj.filters"))
+        path == "cmakelists.txt" or path.endswith(VISUAL_STUDIO_NATIVE_BUILD_SUFFIXES)
         for path in paths
     ):
         families.add("native-cpp")
@@ -175,7 +177,7 @@ def draft_stack_families(draft: AgentDraft) -> set[str]:
         for path in paths
     ):
         families.add("python")
-    if any(path.endswith(DOTNET_SUFFIXES) or path.endswith(".sln") for path in paths):
+    if any(path.endswith(DOTNET_SUFFIXES) or path.endswith(VISUAL_STUDIO_SOLUTION_SUFFIXES) for path in paths):
         families.add("dotnet")
     if any(path == "cargo.toml" or path.endswith(".rs") for path in paths):
         families.add("rust")
@@ -204,7 +206,7 @@ def workspace_stack_family(files: list[WorkspaceFile]) -> str:
     if has_electron_host or has_tauri_host or has_wpf_host:
         return "desktop"
 
-    has_native = any(path.endswith((".sln", ".vcxproj", ".vcxproj.filters")) for path in paths) or any(
+    has_native = any(path.endswith(VISUAL_STUDIO_NATIVE_BUILD_SUFFIXES) for path in paths) or any(
         path in {"cmakelists.txt", "cmakepresets.json", "makefile"}
         for path in paths
     ) or any(path.endswith((".cpp", ".cxx", ".cc", ".c", ".h", ".hpp", ".asm", ".rc", ".inf")) for path in paths)
@@ -302,9 +304,7 @@ def important_project_path(path: str) -> bool:
         return True
 
     important_suffixes = (
-        ".sln",
-        ".vcxproj",
-        ".vcxproj.filters",
+        *VISUAL_STUDIO_NATIVE_BUILD_SUFFIXES,
         *DOTNET_PROJECT_SUFFIXES,
         ".props",
         ".targets",

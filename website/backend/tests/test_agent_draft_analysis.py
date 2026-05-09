@@ -126,6 +126,22 @@ class AgentDraftAnalysisTests(unittest.TestCase):
         )
         self.assertTrue(important_project_path("Program.vb"))
 
+    def test_slnx_surfaces_match_visual_studio_solution_guardrails(self) -> None:
+        draft = AgentDraft(
+            reply="Prepared Visual Studio solution.",
+            changes=[FileChange(action="create", path="Modern.slnx", content="<Solution></Solution>\n")],
+        )
+
+        families = draft_stack_families(draft)
+
+        self.assertIn("native-cpp", families)
+        self.assertIn("dotnet", families)
+        self.assertEqual(
+            workspace_stack_family([WorkspaceFile(path="Modern.slnx", kind="text", size=160)]),
+            "native-cpp",
+        )
+        self.assertTrue(important_project_path("Modern.slnx"))
+
     def test_workspace_stack_family_prioritizes_real_project_markers(self) -> None:
         self.assertEqual(
             workspace_stack_family(
