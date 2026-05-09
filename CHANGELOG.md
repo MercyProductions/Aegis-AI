@@ -61,6 +61,7 @@
 - Hardened Website browser e2e backend calls with bounded fetch timeouts so stalled API requests fail with actionable errors.
 - Fixed Website project-switch file previews so file reads use the current workspace root instead of stale React state after switching projects.
 - Split Website frontend API, utility, style, React, and icon code into explicit Vite chunks so production builds stay under the default chunk warning budget without raising the warning limit.
+- Fixed the Website acceptance gate so custom backend/frontend URLs are passed through to doctor, smoke, and browser e2e scripts instead of falling back to default ports.
 - Hardened Desktop backend/Core URL settings so local host:port inputs, trailing endpoint paths, and empty values normalize before runtime requests or config writes.
 - Hardened Desktop Core dashboard loading so a shared registration failure no longer blocks dashboard reads when Core is otherwise reachable.
 - Hardened VS Code Ollama/Core URL settings so common local inputs normalize before model detection, health checks, and shared Core sync.
@@ -97,4 +98,5 @@
 - Website smoke workflow passes with explicit request timeouts.
 - Website full browser e2e passes after project-switch file preview hardening.
 - Website frontend production build passes without the prior Vite chunk-size warning.
+- Website acceptance gate passes with explicit backend/frontend URL parameters.
 - Full validation notes are tracked in `docs/ECOSYSTEM_STABILIZATION.md`.

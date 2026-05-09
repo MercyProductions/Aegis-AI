@@ -190,6 +190,21 @@ Fixes applied:
 - Split React, icon, API, app utility, and app style modules into explicit chunks.
 - Updated the living stabilization docs so current validation matches the actual build baseline.
 
+### 2026-05-09 - Website Acceptance URL Propagation Hardening
+
+Context:
+- The acceptance gate accepted `-BackendUrl` and `-FrontendUrl`, checked those live URLs, then called npm child scripts that used their own default ports.
+- That made alternate-port validation fragile after docs and older roadmap notes used `5177/8793` style live runs.
+
+What worked:
+- Direct child script calls keep the same root and URLs through doctor, smoke, and e2e.
+- Running the gate with explicit trailing-slash default URLs passed validate, doctor, real-chat smoke, and browser e2e.
+
+Fixes applied:
+- Normalized acceptance root and URLs once before the gate starts.
+- Passed the normalized root/backend/frontend values into all live child validation scripts.
+- Documented the direct alternate-port acceptance command.
+
 ### 2026-05-08 - Product Utilization Kickoff
 
 Context:
@@ -235,6 +250,7 @@ Fixes applied:
 | 2026-05-09 | Website e2e | Full browser e2e exceeded the 180 second command budget during validation. | Medium | Investigated with bounded backend fetches; full e2e now passes. |
 | 2026-05-09 | Website project switching | File preview could read from stale workspace root state immediately after switching projects. | High | Fixed with latest-root reads and validated through full browser e2e. |
 | 2026-05-09 | Website build | Production build passed but still emitted the default Vite large-chunk warning. | Medium | Split stable internal chunks; build now passes without the warning. |
+| 2026-05-09 | Website acceptance | `acceptance-web.ps1` accepted custom live URLs but child doctor/smoke/e2e npm scripts reverted to default ports. | Medium | Pass root/backend/frontend directly to child scripts and document alternate-port usage. |
 | 2026-05-09 | Aegis Core startup | Core starter accepted any HTTP 200 at `/v1/health` and did not prefer a project virtualenv. | Medium | Verify the Core health envelope, report contract version, and resolve Python predictably. |
 | 2026-05-09 | Aegis Core startup | A non-Core service returning HTTP 200 with invalid JSON could be treated as unreachable. | Medium | Mark malformed responses reachable and report `invalid_json` as the startup blocker. |
 

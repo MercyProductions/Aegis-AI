@@ -96,7 +96,7 @@ Current bundle baseline:
 - Add a focused visual regression pass for the public site, protected workspace shell, right observability panel, and auth pages.
 - Add auth-session cleanup or database isolation for repeated E2E account registration runs.
 - Add one shared persisted-storage helper for optional local UI state once `App.tsx` extraction begins, so malformed storage cleanup is consistent without coupling unrelated utilities.
-- Standardize script default ports or document the live validation port strategy to avoid confusion between `5173/8787` defaults and active `5177/8793` runs.
+- Keep alternate-port acceptance validation documented and aligned with child script URL propagation.
 
 ## High-Priority Refinements
 

@@ -352,3 +352,21 @@ Validation completed:
 
 - Website frontend production build: pass, no Vite chunk-size warning.
 - Website focused frontend tests: pass, 38 tests.
+
+## 2026-05-09 - Website Acceptance URL Propagation Hardening
+
+Focus:
+
+- Keep alternate-port web validation reliable when `acceptance-web.ps1` is run directly.
+- Remove drift between the acceptance gate's initial live URL checks and the child doctor, smoke, and e2e scripts.
+
+Actions:
+
+- Updated `website/scripts/acceptance-web.ps1` to resolve and trim its `Root`, `BackendUrl`, and `FrontendUrl` parameters once.
+- Changed acceptance child steps to call `doctor-web.ps1`, `smoke-web.ps1`, and `e2e-web.ps1` directly with the same root and URL parameters instead of invoking npm scripts that fall back to default ports.
+- Documented the direct alternate-port acceptance command in `website/README.md`.
+
+Validation completed:
+
+- Website acceptance script syntax check: pass.
+- Website acceptance gate with explicit trailing-slash URLs: pass; validate, doctor, real-chat smoke, and full browser e2e completed.

@@ -63,6 +63,7 @@ Packaging/build:
 - Website frontend build: passed without the prior Vite chunk-size warning.
 - Website smoke script: passed.
 - Website UI E2E script: passed.
+- Website acceptance gate with explicit backend/frontend URL parameters: passed.
 - VS Code extension lint/package: passed.
 - VS Code VSIX install through `code --install-extension --force`: passed; installed id `aegis.aegis-local-autopilot`.
 - Visual Studio extension build/package: passed; VSIX copied to `visual-studio-extensions/aegis-local-agent-vs/release/AegisLocalAgentVs.vsix`.
