@@ -27,6 +27,7 @@ Aegis Core owns reusable intelligence and workflow services:
 - Safe workflow automation and scheduled maintenance jobs
 - Project quality intelligence, health trends, and risk reports
 - Knowledge graph and semantic project relationship queries
+- Predictive planning, change simulation, architecture drift warnings, and scenario comparison
 - Validation command detection and safe execution
 - Agent planning, repair planning, rollback metadata, and approval contracts
 - Diagnostics and logs
@@ -61,6 +62,7 @@ Default assumptions:
 - Scheduled jobs can scan, summarize, report, and recommend, but risky actions still require approval.
 - Quality snapshots write generated `.aegis` observability artifacts, not source changes.
 - Knowledge graph refreshes write generated `.aegis` relationship artifacts, not source changes.
+- Change simulations are advisory and read-only; they do not apply edits, run risky commands, or send cloud context.
 
 ## Migration Strategy
 
@@ -76,8 +78,9 @@ Default assumptions:
 10. Maintenance jobs flow through `.aegis/jobs-state.json`, `.aegis/jobs-log.md`, and `/v1/jobs`.
 11. Project health trends flow through `.aegis/health-history.json`, generated quality reports, and `/v1/quality`.
 12. Semantic project relationships flow through `.aegis/knowledge-graph.json`, generated graph summaries, and `/v1/knowledge/*`.
-13. Agent planning and repair loops move into Core.
-14. Clients keep UI approvals, diff/apply/rollback, and editor-native affordances.
+13. Predictive planning forecasts flow through `/v1/simulation/*` and feed Planner Agent task ordering.
+14. Agent planning and repair loops move into Core.
+15. Clients keep UI approvals, diff/apply/rollback, and editor-native affordances.
 
 ## Shared API Layer
 
@@ -167,6 +170,27 @@ POST /v1/knowledge/query
 The graph links files, symbols, systems, APIs, UI components, services, tasks, roadmap items, architecture decisions, bugs, validation failures, risks, and agent-history events. Relationships include `uses`, `depends_on`, `calls`, `implements`, `breaks`, `related_to`, `tested_by`, and `mentioned_in_roadmap`.
 
 Desktop can later render the visualization subset for system relationships, dependency clusters, unstable modules, roadmap links, and hotspots. Agents already consume graph summaries for impacted systems, related history, and suggested context.
+
+## Predictive Planning And Change Simulation
+
+Change simulation is read-only strategy support before edits. It is surfaced through:
+
+```text
+POST /v1/simulation/change
+POST /v1/simulation/compare
+```
+
+The engine combines workspace scan data, the knowledge graph, quality intelligence, validation logs, dependency ripple, historical repair signals, requested focus files, and the proposed approach. It predicts:
+
+- affected systems and impacted files
+- likely build risks and likely test failures
+- dependency ripple and cross-system edges
+- architecture drift risk
+- implementation difficulty, task size, likely blockers, validation cost, and rollback complexity
+
+The response includes UI-ready fields for impact, confidence, validation cost, rollback complexity, and top warnings. Planner Agent consumes the simulation summary during orchestration planning and adds a dedicated split-planning task when high-risk or drift-prone work should be broken down before implementation.
+
+Simulation is advisory. Clients still own approvals, diff previews, patch application, validation execution, and rollback.
 
 ## Desktop Ecosystem Dashboard Contract
 

@@ -23,6 +23,7 @@
 - Added experimental Aegis Core workflow automation with safe scheduled/triggered maintenance jobs, `/v1/jobs`, `aegis jobs`, generated project health reports, and `.aegis/jobs-log.md` history while preserving approval gates for risky actions.
 - Added experimental Aegis Core observability and quality intelligence with `/v1/quality`, `/v1/quality/snapshot`, `aegis quality`, `.aegis/health-history.json`, daily/weekly quality reports, risk detection, and Planner Agent guidance.
 - Added experimental Aegis Core knowledge graph intelligence with `/v1/knowledge/graph`, `/v1/knowledge/query`, `aegis knowledge`, `.aegis/knowledge-graph.json`, relationship queries, visualization data, and Planner Agent graph guidance.
+- Added experimental Aegis Core predictive planning and change simulation with `/v1/simulation/change`, `/v1/simulation/compare`, `aegis simulate`, impact/risk/validation/rollback forecasts, architecture drift warnings, scenario comparison, and Planner Agent split-task guidance.
 - Improved `/v1/tasks/{task_id}/status` error responses for missing tasks and unsupported statuses.
 - Hardened shared task loading so malformed local task records do not break task listing, dashboard sorting, or status summary updates.
 - Hardened shared client registry loading so malformed local client records do not break cross-client dashboard sorting.

@@ -161,6 +161,8 @@ Endpoint families:
 | `GET /v1/knowledge/graph` | `knowledge.graph` | experimental | Build a local semantic project graph without writing history |
 | `POST /v1/knowledge/graph` | `knowledge.graph` | experimental | Persist the local semantic project graph and generated summary |
 | `POST /v1/knowledge/query` | `knowledge.query` | experimental | Query graph relationships for impacted systems, roadmap links, unstable areas, and API ties |
+| `POST /v1/simulation/change` | `simulation.change` | experimental | Predict affected systems, risks, validation cost, and rollback complexity before edits |
+| `POST /v1/simulation/compare` | `simulation.compare` | experimental | Compare implementation approaches by predicted risk, impact, validation, and rollback cost |
 | `POST /v1/validation` | `validation` | stable | Shared validation summary/run |
 | `POST /v1/agent/continue` | `agent.continue.plan` | experimental | Plan-only continue from roadmap |
 | `POST /v1/agent/repair` | `agent.repair.plan` | experimental | Plan-only repair from validation log |
@@ -204,6 +206,14 @@ Knowledge graph:
 - Relationship types include `uses`, `depends_on`, `calls`, `implements`, `breaks`, `related_to`, `tested_by`, and `mentioned_in_roadmap`.
 - Persisted graphs are written to `.aegis/knowledge-graph.json`; summaries are written to `.aegis/knowledge-summary.md`.
 - Planner Agent reads graph summaries during orchestration planning so impacted systems, related issues, and context suggestions influence safer task plans.
+
+Predictive planning and change simulation:
+
+- Core exposes read-only forecasts through `/v1/simulation/change` and scenario comparison through `/v1/simulation/compare`.
+- Simulations combine workspace scan data, the knowledge graph, quality history, validation logs, dependency ripple, and requested focus files.
+- Forecasts return risk level, risk score, confidence, impacted files, affected systems, likely build/test risks, architecture drift warnings, validation cost, rollback complexity, and UI-ready summary fields.
+- Planner Agent uses the forecast during orchestration planning and inserts a risk-splitting task when a change is high risk or likely to create architecture drift.
+- Simulation endpoints never apply edits, run risky commands, send cloud context, or write project source files.
 
 Release candidate notes:
 

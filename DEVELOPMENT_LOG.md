@@ -64,10 +64,12 @@ Actions:
 - Hardened Visual Studio Health Check so Core reachability and Core client registration failures are reported separately with parsed error details.
 - Kept unrelated dirty worktree changes out of scope.
 - Recorded workflow friction in `WORKFLOW_NOTES.md`.
+- Added Core predictive planning and change simulation so planned edits can be scored for impacted files, affected systems, dependency ripple, architecture drift, validation cost, rollback complexity, and safer scenario choices before implementation.
 
 Validation completed:
 
-- Aegis Core contract test suite: pass, 44 tests.
+- Aegis Core contract test suite: pass, 79 tests.
+- Aegis Core simulate CLI smoke test: pass for single forecast and scenario comparison.
 - Aegis Core compile check: pass.
 - Aegis Core BOM-prefixed package framework detection regression test: pass.
 - Aegis Core malformed client registry regression test: pass.

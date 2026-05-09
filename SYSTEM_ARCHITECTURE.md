@@ -75,6 +75,7 @@ Aegis Core is the shared local runtime contract. It must stay small, stable, loc
 - Safe scheduled and trigger-based maintenance jobs for proactive scans, summaries, reports, roadmap refreshes, TODO review, documentation drift, and validation status.
 - Project quality intelligence: health scoring, trend snapshots, risk detection, daily/weekly quality reports, and Planner Agent guidance.
 - Knowledge graph and deep project understanding: semantic relationships between files, systems, APIs, UI components, services, tasks, roadmap items, decisions, bugs, validation failures, and history.
+- Predictive planning and change simulation: read-only forecasts for impacted files, affected systems, build/test risk, dependency ripple, architecture drift, validation cost, rollback complexity, and scenario comparison.
 - Validation summary/run.
 - Plan-only continue and repair flows.
 - Branding tokens shared by clients.
@@ -116,6 +117,14 @@ Knowledge graph intelligence is relationship context for local projects:
 - Relationship types include `uses`, `depends_on`, `calls`, `implements`, `breaks`, `related_to`, `tested_by`, and `mentioned_in_roadmap`.
 - Graph data is safe for future Desktop visualization because the response includes clusters, hotspots, unstable modules, and a visualization-friendly subset.
 - Planner Agent reads graph summaries so impacted systems, related decisions/issues, and suggested context files can guide safer plans.
+
+Predictive simulation is the planning guardrail before edits:
+
+- Core exposes `/v1/simulation/change` for one planned change and `/v1/simulation/compare` for implementation approach comparison.
+- Forecasts combine scan data, graph relationships, quality trends, validation logs, dependency ripple, unstable modules, and requested context files.
+- The response is UI-ready: predicted impact, confidence score, affected systems, validation cost, rollback complexity, build/test risks, and architecture drift warnings.
+- Planner Agent consumes the simulation summary while creating orchestration plans and inserts a dedicated risk-splitting task when a forecast is high risk.
+- Simulation is advisory and read-only; clients still own approval, diffs, patch application, validation execution, and rollback.
 
 Core `/v1` responses use the shared envelope from `aegis-core/aegis_core/contracts.py`:
 

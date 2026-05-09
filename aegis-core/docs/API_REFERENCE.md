@@ -163,6 +163,7 @@ Contract stability:
 | `jobs.dashboard`, `jobs.run` | experimental | Safe scheduled and trigger-based maintenance jobs with approval gates for risky actions. |
 | `quality.dashboard`, `quality.snapshot` | experimental | Project health scoring, trend snapshots, risk detection, quality reports, and Planner guidance. |
 | `knowledge.graph`, `knowledge.query` | experimental | Local semantic project graph and deterministic relationship queries. |
+| `simulation.change`, `simulation.compare` | experimental | Read-only predictive planning, impact forecasting, architecture drift warnings, and scenario comparison. |
 | `patch.proposal`, `rollback.entry`, `rollback.result` | experimental schema-only | Defined for future compatibility; not active Core endpoints yet. |
 
 Shared request body conventions:
@@ -178,6 +179,8 @@ Shared request body conventions:
 - Quality dashboard reads use a `workspace` query parameter. Quality snapshots use a workspace request body and write only generated `.aegis` health history/report files.
 - Knowledge graph reads use a `workspace` query parameter. Persisting the graph uses a workspace request body and writes only generated `.aegis` knowledge artifacts.
 - Knowledge queries use `workspace`, `query`, and optional `focus` for a file path, API route, or system name.
+- Change simulations use `workspace`, `objective`, optional `files`, and optional `approach`. They are read-only and do not write source files.
+- Scenario comparison uses `workspace`, `objective`, `approaches`, and optional `files`.
 
 ## GET /v1/health
 
@@ -641,6 +644,49 @@ Returns deterministic graph-backed answers. Supported query families include:
 - roadmap items related to a module
 - features/tasks tied to an API
 - historical decisions, bugs, validation failures, and agent events related to a focus area
+
+## POST /v1/simulation/change
+
+Body:
+
+```json
+{
+  "workspace": "C:/path/to/project",
+  "objective": "Refactor src/service.py while preserving API behavior",
+  "files": ["src/service.py"],
+  "approach": "Minimal adapter and focused validation"
+}
+```
+
+Returns a read-only forecast before edits are applied:
+
+- `risk_level`, `risk_score`, and `confidence`
+- affected systems and likely impacted files
+- likely build risks, likely test failures, and dependency ripple
+- architecture drift warnings and coupling signals
+- predicted files/tests/systems likely needing attention
+- roadmap difficulty, likely blockers, validation cost, and rollback complexity
+- `ui` fields for dashboards: predicted impact, confidence score, validation cost, rollback complexity, and top warnings
+
+The simulation engine reads scan, quality, graph, memory, and validation-log data. It does not write source files, run validation commands, install packages, or call cloud providers.
+
+## POST /v1/simulation/compare
+
+Body:
+
+```json
+{
+  "workspace": "C:/path/to/project",
+  "objective": "Improve planning behavior safely",
+  "files": ["src/service.py"],
+  "approaches": [
+    "Minimal adapter with focused validation",
+    "Large rewrite of planning architecture"
+  ]
+}
+```
+
+Ranks implementation approaches by predicted risk, affected systems, impacted file count, validation cost, and rollback complexity. The recommended approach is the lowest-risk forecast, not an automatic edit.
 
 ## POST /v1/validation
 

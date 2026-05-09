@@ -16,6 +16,8 @@ from .contracts import (
     OrchestrationPlanRequest,
     OrchestrationStepRequest,
     ProviderKeyRequest,
+    SimulationCompareRequest,
+    SimulationRequest,
     SettingsRequest,
     TaskStatusRequest,
     ValidateRequest,
@@ -33,6 +35,7 @@ from .ollama import OllamaClient
 from .orchestration import advance_orchestration_step, create_orchestration_plan, orchestration_dashboard
 from .quality import quality_dashboard, record_quality_snapshot
 from .roadmap import generate_roadmap
+from .simulation import compare_scenarios, simulate_change
 from .tasks import TaskStorePersistenceError, create_task, list_tasks, update_task_status
 from .validation import run_validation, validation_summary
 from .workspace import WorkspaceScanner
@@ -299,6 +302,32 @@ def create_app():
     @app.post("/v1/knowledge/query")
     def v1_knowledge_query(request: KnowledgeQueryRequest) -> dict[str, Any]:
         return envelope("knowledge.query", query_knowledge_graph(request.workspace, request.query, focus=request.focus), request.workspace)
+
+    @app.post("/v1/simulation/change")
+    def v1_simulate_change(request: SimulationRequest) -> dict[str, Any]:
+        try:
+            data = simulate_change(
+                request.workspace,
+                request.objective,
+                files=request.files,
+                approach=request.approach,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return envelope("simulation.change", data, request.workspace)
+
+    @app.post("/v1/simulation/compare")
+    def v1_compare_simulations(request: SimulationCompareRequest) -> dict[str, Any]:
+        try:
+            data = compare_scenarios(
+                request.workspace,
+                request.objective,
+                request.approaches,
+                files=request.files,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return envelope("simulation.compare", data, request.workspace)
 
     @app.post("/v1/tasks")
     def v1_create_task(request: CreateTaskRequest) -> dict[str, Any]:

@@ -17,6 +17,7 @@ from .ollama import OllamaClient
 from .orchestration import advance_orchestration_step, create_orchestration_plan, orchestration_dashboard
 from .quality import quality_dashboard, record_quality_snapshot
 from .roadmap import generate_roadmap
+from .simulation import compare_scenarios, simulate_change
 from .tasks import TaskStorePersistenceError, create_task, list_tasks
 from .validation import run_validation, validation_summary
 from .workspace import WorkspaceScanner
@@ -49,6 +50,7 @@ def main(argv: list[str] | None = None) -> int:
         "jobs",
         "quality",
         "knowledge",
+        "simulate",
         "route",
         "orchestrate",
     ):
@@ -85,6 +87,10 @@ def main(argv: list[str] | None = None) -> int:
             sub.add_argument("--record", action="store_true", help="Persist the knowledge graph and generated summary.")
             sub.add_argument("--query", help="Ask a rule-based question against the knowledge graph.")
             sub.add_argument("--focus", help="Optional file path, API route, or system focus for a knowledge query.")
+        if name == "simulate":
+            sub.add_argument("--objective", required=True, help="Planned change or roadmap item to simulate.")
+            sub.add_argument("--file", dest="files", action="append", default=[], help="Optional focus file. Can be supplied more than once.")
+            sub.add_argument("--approach", action="append", default=[], help="Implementation approach. Supply more than once to compare scenarios.")
 
     args = parser.parse_args(raw_args)
     args.json = args.json or json_requested
@@ -139,6 +145,11 @@ def main(argv: list[str] | None = None) -> int:
                 result = query_knowledge_graph(workspace, args.query, focus=args.focus)
             else:
                 result = knowledge_graph(workspace, persist=args.record)
+        elif args.command == "simulate":
+            if len(args.approach) > 1:
+                result = compare_scenarios(workspace, args.objective, args.approach, files=args.files)
+            else:
+                result = simulate_change(workspace, args.objective, files=args.files, approach=args.approach[0] if args.approach else None)
         elif args.command == "route":
             result = route_model(
                 workspace,

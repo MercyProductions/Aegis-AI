@@ -337,6 +337,27 @@ def test_v1_endpoint_family_smoke_contracts(tmp_path: Path) -> None:
             "knowledge.query",
             True,
         ),
+        (
+            "/v1/simulation/change",
+            {
+                "workspace": str(workspace),
+                "objective": "Safely update README.md validation notes",
+                "files": ["README.md"],
+                "approach": "Minimal documentation update",
+            },
+            "simulation.change",
+            True,
+        ),
+        (
+            "/v1/simulation/compare",
+            {
+                "workspace": str(workspace),
+                "objective": "Improve validation workflow without broad rewrites",
+                "approaches": ["Minimal adapter and focused test", "Large rewrite of validation runtime"],
+            },
+            "simulation.compare",
+            True,
+        ),
     ]
 
     created_task_id = None
@@ -390,6 +411,8 @@ def test_contract_catalog_covers_unified_phase_runtime_shapes() -> None:
         "quality.snapshot",
         "knowledge.graph",
         "knowledge.query",
+        "simulation.change",
+        "simulation.compare",
         "patch.proposal",
         "rollback.entry",
         "rollback.result",
@@ -740,6 +763,80 @@ def test_knowledge_query_answers_dependents_and_unstable_modules(tmp_path: Path)
     assert unstable.json()["data"]["answers"]
 
 
+def test_change_simulation_forecasts_risk_and_impact(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    src = workspace / "src"
+    src.mkdir()
+    (src / "service.py").write_text(
+        "class ItemService:\n    def list_items(self):\n        return []\n",
+        encoding="utf-8",
+    )
+    (src / "api.py").write_text("from .service import ItemService\n", encoding="utf-8")
+    tests = workspace / "tests"
+    tests.mkdir()
+    (tests / "test_service.py").write_text("from src.service import ItemService\n", encoding="utf-8")
+    append_validation_log(
+        workspace,
+        {
+            "ok": False,
+            "command": ["python", "-m", "pytest"],
+            "stderr": "src/service.py: failed: ItemService regression",
+        },
+    )
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/v1/simulation/change",
+        json={
+            "workspace": str(workspace),
+            "objective": "Refactor src/service.py while preserving API behavior",
+            "files": ["src/service.py"],
+            "approach": "Minimal adapter and focused test-first fix",
+        },
+    )
+
+    assert response.status_code == 200
+    assert_core_contract(response.json(), "simulation.change")
+    data = response.json()["data"]
+    assert data["focus_files"] == ["src/service.py"]
+    assert data["risk_level"] in {"moderate", "high", "dangerous_architectural_change"}
+    assert data["confidence"] >= 60
+    assert any(item["path"] == "src/service.py" for item in data["impacted_files"])
+    assert data["dependency_ripple"]["summary"]
+    assert data["roadmap_forecast"]["implementation_difficulty"] in {"moderate", "hard", "very_hard"}
+    assert data["ui"]["predicted_impact"]
+    assert data["rollback_complexity"]["checkpoint_required"] is True
+
+
+def test_simulation_compare_ranks_incremental_approach_over_rewrite(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    src = workspace / "src"
+    src.mkdir()
+    (src / "service.py").write_text("class PlannerService:\n    pass\n", encoding="utf-8")
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/v1/simulation/compare",
+        json={
+            "workspace": str(workspace),
+            "objective": "Improve src/service.py planning behavior safely",
+            "files": ["src/service.py"],
+            "approaches": [
+                "Minimal adapter with focused validation",
+                "Large rewrite and replace the planning architecture",
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert_core_contract(response.json(), "simulation.compare")
+    data = response.json()["data"]
+    assert data["recommended_approach"] == "Minimal adapter with focused validation"
+    simulations = {item["approach"]: item for item in data["simulations"]}
+    assert simulations["Large rewrite and replace the planning architecture"]["risk_score"] >= simulations["Minimal adapter with focused validation"]["risk_score"]
+    assert data["comparison"][0]["approach"] == "Minimal adapter with focused validation"
+
+
 def test_known_client_contract_parsing_tolerates_missing_optional_fields() -> None:
     desktop_dashboard = make_envelope("ecosystem.dashboard", {}, "C:/workspace")
     vscode_task = make_envelope("task.created", {"id": "task-compat"}, "C:/workspace")
@@ -872,14 +969,17 @@ def test_orchestration_plan_creates_safe_queue_and_memory(tmp_path: Path) -> Non
     assert data["plan"]["quality"]["score"] <= 100
     assert data["plan"]["quality"]["top_risks"]
     assert data["plan"]["knowledge"]["node_count"] > 0
+    assert data["plan"]["simulation"]["risk_level"] in {"high", "dangerous_architectural_change"}
+    assert data["plan"]["simulation"]["split_recommended"] is True
     assert data["plan"]["planner_guidance"]
     assert data["task_list"][0]["status"] == "in_progress"
     assert data["task_list"][0]["active_step"] == "inspect"
-    assert len(data["task_list"]) == 7
+    assert len(data["task_list"]) == 8
     assert data["active_agent"]["id"] == "planner"
     assert [task["owner_agent"] for task in data["task_list"]] == [
         "planner",
         "architect",
+        "planner",
         "coder",
         "reviewer",
         "tester",

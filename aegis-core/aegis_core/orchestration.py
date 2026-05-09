@@ -19,6 +19,7 @@ from .multi_agent import (
 )
 from .quality import planner_guidance, planner_quality_summary, quality_dashboard
 from .safety import is_safe_to_read
+from .simulation import planner_simulation_guidance, planner_simulation_summary, simulate_change
 from .validation import detect_validation_commands, run_validation
 from .workspace import WorkspaceScanner
 
@@ -58,12 +59,16 @@ def create_orchestration_plan(
     graph = knowledge_graph(root, scan=scan)
     knowledge_summary = agent_knowledge_summary(graph, required_files)
     knowledge_guidance = agent_knowledge_guidance(knowledge_summary)
+    simulation = simulate_change(root, objective, files=required_files, scan=scan, graph=graph, quality=quality)
+    simulation_summary = planner_simulation_summary(simulation)
     risk = _risk_level(objective, affected_systems, required_files)
     risk = _risk_with_quality(risk, quality, required_files)
     risk = _risk_with_knowledge(risk, knowledge_summary)
+    risk = _risk_with_simulation(risk, simulation_summary)
     quality_summary = planner_quality_summary(quality)
     guidance = planner_guidance(quality)
     guidance = _merge_lists(guidance, knowledge_guidance)
+    guidance = _merge_lists(guidance, planner_simulation_guidance(simulation))
     gates = _approval_gates(objective, commands)
     validation_plan = _validation_plan(commands)
     rollback_plan = _rollback_plan(root, required_files)
@@ -76,6 +81,7 @@ def create_orchestration_plan(
         risk=risk,
         gates=gates,
         validation_commands=commands,
+        simulation=simulation_summary,
         now=now,
     )
     if queue_tasks:
@@ -90,6 +96,7 @@ def create_orchestration_plan(
         "risk": risk,
         "quality": quality_summary,
         "knowledge": knowledge_summary,
+        "simulation": simulation_summary,
         "planner_guidance": guidance,
         "source_client": source_client,
         "affected_systems": affected_systems,
@@ -120,7 +127,15 @@ def create_orchestration_plan(
         task_id=queue_tasks[0]["id"] if queue_tasks else None,
         plan_id=plan_id,
         summary="Created supervised multi-agent orchestration plan.",
-        details={"risk": risk, "affected_systems": affected_systems, "validation_commands": commands, "quality": quality_summary, "knowledge": knowledge_summary, "planner_guidance": guidance},
+        details={
+            "risk": risk,
+            "affected_systems": affected_systems,
+            "validation_commands": commands,
+            "quality": quality_summary,
+            "knowledge": knowledge_summary,
+            "simulation": simulation_summary,
+            "planner_guidance": guidance,
+        },
     )
     _write_state(memory, state)
     _append_history(memory, {"event": "orchestration_created", "plan": plan})
@@ -292,6 +307,7 @@ def _task_breakdown(
     risk: str,
     gates: list[dict[str, str]],
     validation_commands: list[dict[str, Any]],
+    simulation: dict[str, Any] | None,
     now: str,
 ) -> list[dict[str, Any]]:
     short_goal = objective[:90] + ("..." if len(objective) > 90 else "")
@@ -346,9 +362,20 @@ def _task_breakdown(
             "documentation",
         ),
     ]
+    if risk == "high" or (simulation and simulation.get("split_recommended")):
+        task_specs.insert(
+            2,
+            (
+                f"Split predicted high-risk work for: {short_goal}",
+                "development_task",
+                "Use the simulation forecast to choose the first smallest safe slice and defer broader edits.",
+                set(),
+                "planner",
+            ),
+        )
     tasks: list[dict[str, Any]] = []
     for index, (title, step, detail, gate_filter, agent_id) in enumerate(task_specs, start=1):
-        agent = agent_for_order(index)
+        agent = agent_profile(agent_id) or agent_for_order(index)
         task_gates = [gate for gate in gates if gate.get("id") in gate_filter]
         tasks.append(
             {
@@ -461,6 +488,15 @@ def _risk_with_knowledge(risk: str, knowledge: dict[str, Any]) -> str:
     if knowledge.get("unstable_modules") and risk == "low":
         return "medium"
     if len(knowledge.get("impacted_systems", [])) >= 3 and risk == "low":
+        return "medium"
+    return risk
+
+
+def _risk_with_simulation(risk: str, simulation: dict[str, Any]) -> str:
+    forecast = str(simulation.get("risk_level") or "low")
+    if forecast in {"high", "dangerous_architectural_change"}:
+        return "high"
+    if forecast == "moderate" and risk == "low":
         return "medium"
     return risk
 
@@ -609,6 +645,16 @@ def _write_orchestration_roadmap(memory: ProjectMemory, state: dict[str, Any]) -
     if knowledge:
         impacted = ", ".join(knowledge.get("impacted_systems", [])[:6]) or "none detected"
         lines.append(f"- Knowledge graph impacted systems: {impacted}")
+    simulation = plan.get("simulation") if isinstance(plan.get("simulation"), dict) else {}
+    if simulation:
+        lines.extend(
+            [
+                f"- Simulation forecast: {simulation.get('risk_level')} ({simulation.get('risk_score')}/100, confidence {simulation.get('confidence')}%)",
+                f"- Validation cost: {simulation.get('validation_cost')}",
+                f"- Rollback complexity: {simulation.get('rollback_complexity')}",
+                f"- First safe step: {simulation.get('recommended_first_step')}",
+            ]
+        )
     guidance = plan.get("planner_guidance") if isinstance(plan.get("planner_guidance"), list) else []
     if guidance:
         lines.extend(["", "## Planner Health Guidance", "", *[f"- {item}" for item in guidance]])
