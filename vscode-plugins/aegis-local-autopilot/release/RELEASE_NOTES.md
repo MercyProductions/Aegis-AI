@@ -44,3 +44,4 @@ Aegis does not rewrite projects automatically. It blocks secret and generated pa
 - JSON parsing now handles UTF-8 BOM files, including Windows-created `package.json` files.
 - Impact analysis filters non-file symbol placeholders so `.` no longer appears as a likely affected file.
 - Workspace memory initialization now leaves damaged `.aegis` paths untouched, reports them, and continues in degraded mode.
+- Later `.aegis` index, history, validation-log, decision-log, and recovery writes also skip damaged targets instead of interrupting scans or approved-change bookkeeping.

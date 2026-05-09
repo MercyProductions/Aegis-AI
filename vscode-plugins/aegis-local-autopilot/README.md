@@ -76,6 +76,8 @@ When Aegis Core is running, the VS Code extension registers itself through `/v1/
 
 Set `aegisLocalAutopilot.coreUrl` if Core is not running on `http://127.0.0.1:8788`. If Core is offline, VS Code stays usable in degraded local mode.
 
+Project-local `.aegis/` memory writes are best-effort. If a memory target is damaged, Aegis reports it in the output channel and keeps scans, recovery state, validation logs, decisions, and approved-change bookkeeping from crashing the workflow.
+
 ## Update And Uninstall
 
 Update by rebuilding and reinstalling:

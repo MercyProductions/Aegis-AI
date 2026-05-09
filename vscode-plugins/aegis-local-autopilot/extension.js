@@ -2978,8 +2978,8 @@ async function recordChangeBackup(target, manifest) {
   };
   const nextHistory = [entry, ...history].slice(0, 50);
   changedFilesHistory = nextHistory;
-  await fs.writeFile(lastPath, JSON.stringify(manifest, null, 2), 'utf8');
-  await fs.writeFile(historyPath, JSON.stringify(nextHistory, null, 2), 'utf8');
+  await writeMemoryFileBestEffort(lastPath, JSON.stringify(manifest, null, 2), 'last backup manifest');
+  await writeMemoryFileBestEffort(historyPath, JSON.stringify(nextHistory, null, 2), 'change history');
 }
 
 async function writeAgentRecovery(target, patch) {
@@ -3000,7 +3000,7 @@ async function writeAgentRecovery(target, patch) {
     workspaceRoot: target.workspaceRoot || target.root,
     targetRoot: target.root
   }));
-  await fs.writeFile(recoveryPath, JSON.stringify(next, null, 2), 'utf8');
+  await writeMemoryFileBestEffort(recoveryPath, JSON.stringify(next, null, 2), 'agent recovery state');
 }
 
 async function clearAgentRecovery(target) {
@@ -3207,7 +3207,7 @@ async function writeManagedSection(target, name, sectionName, content) {
   const next = pattern.test(existing)
     ? existing.replace(pattern, block)
     : `${existing.trimEnd()}\n\n${block}\n`;
-  await fs.writeFile(filePath, next, 'utf8');
+  await writeMemoryFileBestEffort(filePath, next, `managed section ${name}`);
 }
 
 function escapeRegExp(text) {
@@ -3397,10 +3397,58 @@ async function ensureMemoryFile(memoryRoot, name, content) {
     }
   }
 
+  await writeMemoryFileBestEffort(targetPath, content, `initialize ${name}`);
+}
+
+async function writeMemoryFileBestEffort(filePath, content, label = 'memory file') {
+  let tempPath = '';
   try {
-    await fs.writeFile(targetPath, content, 'utf8');
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    try {
+      const stat = await fs.stat(filePath);
+      if (!stat.isFile()) {
+        output && output.appendLine(`Aegis ${label} is not a regular file; leaving it untouched: ${filePath}`);
+        return false;
+      }
+    } catch (error) {
+      if (error.code !== 'ENOENT') {
+        output && output.appendLine(`Aegis ${label} check failed: ${filePath} (${error.message})`);
+        return false;
+      }
+    }
+    tempPath = path.join(path.dirname(filePath), `.${path.basename(filePath)}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`);
+    await fs.writeFile(tempPath, content, 'utf8');
+    await fs.rename(tempPath, filePath);
+    return true;
   } catch (error) {
-    output && output.appendLine(`Aegis memory file could not be initialized: ${targetPath} (${error.message})`);
+    output && output.appendLine(`Aegis ${label} write skipped: ${filePath} (${error.message})`);
+    if (tempPath) {
+      await fs.rm(tempPath, { force: true }).catch(() => {});
+    }
+    return false;
+  }
+}
+
+async function appendMemoryFileBestEffort(filePath, content, label = 'memory file') {
+  try {
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    try {
+      const stat = await fs.stat(filePath);
+      if (!stat.isFile()) {
+        output && output.appendLine(`Aegis ${label} is not a regular file; leaving it untouched: ${filePath}`);
+        return false;
+      }
+    } catch (error) {
+      if (error.code !== 'ENOENT') {
+        output && output.appendLine(`Aegis ${label} check failed: ${filePath} (${error.message})`);
+        return false;
+      }
+    }
+    await fs.appendFile(filePath, content, 'utf8');
+    return true;
+  } catch (error) {
+    output && output.appendLine(`Aegis ${label} append skipped: ${filePath} (${error.message})`);
+    return false;
   }
 }
 
@@ -3516,9 +3564,13 @@ async function updateWorkspaceMemoryFromSnapshot(target, snapshot) {
       modified: file.modifiedAt || ''
     }))
   };
-  await fs.writeFile(path.join(memoryRoot, 'file-index.json'), JSON.stringify(index, null, 2), 'utf8');
-  await fs.writeFile(path.join(memoryRoot, 'dependency-graph.json'), JSON.stringify(dependencyGraph, null, 2), 'utf8');
-  await fs.writeFile(path.join(memoryRoot, 'symbol-index.json'), JSON.stringify(symbolIndex, null, 2), 'utf8');
+  await writeMemoryFileBestEffort(path.join(memoryRoot, 'file-index.json'), JSON.stringify(index, null, 2), 'file index');
+  await writeMemoryFileBestEffort(
+    path.join(memoryRoot, 'dependency-graph.json'),
+    JSON.stringify(dependencyGraph, null, 2),
+    'dependency graph'
+  );
+  await writeMemoryFileBestEffort(path.join(memoryRoot, 'symbol-index.json'), JSON.stringify(symbolIndex, null, 2), 'symbol index');
 }
 
 async function buildDependencyGraph(target, snapshot) {
@@ -4377,7 +4429,7 @@ async function appendAgentHistory(target, event) {
   }
   history.push(sanitizeHistoryEvent(Object.assign({ at: new Date().toISOString() }, event)));
   history = history.slice(-100);
-  await fs.writeFile(historyPath, JSON.stringify(history, null, 2), 'utf8');
+  await writeMemoryFileBestEffort(historyPath, JSON.stringify(history, null, 2), 'agent history');
 }
 
 function sanitizeHistoryEvent(value) {
@@ -4410,7 +4462,7 @@ async function recordValidationResult(target, validation) {
     '```',
     ''
   ].join('\n');
-  await fs.appendFile(logPath, entry, 'utf8');
+  await appendMemoryFileBestEffort(logPath, entry, 'validation log');
 }
 
 async function appendDecisionRecord(target, proposal, validation, nextRecommendation) {
@@ -4432,7 +4484,7 @@ async function appendDecisionRecord(target, proposal, validation, nextRecommenda
     `- Next recommendation: ${sanitizeMemoryText(nextRecommendation || 'Review roadmap and continue with a small validated task.')}`,
     ''
   ].join('\n');
-  await fs.appendFile(decisionsPath, entry, 'utf8');
+  await appendMemoryFileBestEffort(decisionsPath, entry, 'decisions log');
 }
 
 function memoryFileNames() {
@@ -5069,7 +5121,7 @@ async function recordRealWorldFinding(title, lines, target) {
     ...[].concat(lines || []).map((line) => `- ${sanitizeMemoryText(String(line))}`),
     ''
   ].join('\n');
-  await fs.appendFile(filePath, entry, 'utf8');
+  await appendMemoryFileBestEffort(filePath, entry, 'real-world testing log');
 }
 
 function formatLogDetails(details) {

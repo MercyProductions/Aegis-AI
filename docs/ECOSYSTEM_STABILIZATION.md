@@ -26,7 +26,7 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 | Shared settings | Improved | Core config loading falls back to defaults for malformed values, unsafe memory directory names, and damaged `.aegis/config.json` paths. |
 | Shared task API | Improved | Bad task status updates return `400`; missing task IDs return `404`. |
 | Memory resilience | Improved | Dashboard/task reads, agent plan reads, and generated-memory writes now tolerate unreadable or damaged `.aegis` JSON/markdown paths. |
-| VS Code memory init | Improved | Workspace startup memory initialization logs damaged `.aegis` paths and continues in degraded mode. |
+| VS Code memory resilience | Improved | Workspace startup and later index/history/log writes skip damaged `.aegis` paths instead of breaking scans or post-apply bookkeeping. |
 | Visual Studio memory init | Improved | Solution memory reads and writes are best-effort, so damaged `.aegis` paths do not crash memory-backed workflows. |
 | Website workspace setup | Improved | Damaged `.aegis` project and validation profile paths now return warnings instead of breaking setup. |
 | Validation detection | Improved | Core now lists JS test/build validation commands only when matching package scripts exist. |
@@ -43,6 +43,7 @@ Ran during this pass:
 - Aegis Core `/v1` TestClient smoke for settings, memory, diagnostics, roadmap, tasks, task status, agent continue, and agent repair: pass
 - Core scan twice: second scan returned `cache_hit: true`
 - `npm run lint` in VS Code extension: pass
+- VS Code memory-write hardening lint: pass
 - `npm run package` in VS Code extension: pass, regenerated `release/aegis-local-autopilot-0.1.1.vsix`
 - Desktop `.\build.ps1`: pass, 0 warnings, 0 errors
 - Visual Studio extension `.\build.ps1`: pass, regenerated `release/AegisLocalAgentVs.vsix`
@@ -66,6 +67,7 @@ Ran during this pass:
 - Restricted shared memory directory settings to one workspace-local folder name, preventing config from pointing memory outside the project.
 - Hardened agent continue/repair planning so damaged roadmap or validation-log paths degrade to safe responses instead of server errors.
 - Hardened VS Code `.aegis` initialization so damaged memory files are left untouched and reported in the output channel.
+- Hardened VS Code index, managed-section, recovery, validation-log, decision-log, and dogfooding-note writes so damaged memory targets remain degraded instead of crashing workflows.
 - Hardened Visual Studio `.aegis` solution memory so damaged memory files are skipped and health checks surface the degraded state.
 - Hardened Website workspace setup so damaged `.aegis/project.json` and `.aegis/validation_profile.json` paths return warnings instead of crashing setup.
 

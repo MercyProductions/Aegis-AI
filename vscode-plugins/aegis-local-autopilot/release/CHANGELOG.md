@@ -8,6 +8,7 @@
 - Fixed UTF-8 BOM JSON parsing so Windows-created `package.json` files still expose scripts, frameworks, and validation commands.
 - Fixed impact analysis context selection so non-file placeholders such as `.` are not shown as likely affected files.
 - Hardened `.aegis` memory initialization so damaged memory paths are logged and skipped instead of breaking startup scans.
+- Hardened index, managed memory, recovery, validation-log, decision-log, and dogfooding-note writes so damaged `.aegis` targets do not break scans or post-apply bookkeeping.
 
 ## 0.1.0 - Release Candidate
 

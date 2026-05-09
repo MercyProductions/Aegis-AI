@@ -62,6 +62,8 @@ Validation logs are written to:
 
 If a memory file is accidentally replaced by a directory or another non-file path, Aegis leaves that path untouched and continues in degraded mode where possible. Run Health Check, inspect the Aegis output channel, then rename or remove only the damaged `.aegis` path after confirming backups and logs are no longer needed.
 
+Indexing, recovery, validation logging, decision logging, and dogfooding-note writes are best-effort. If the output channel says a memory write was skipped, fix that specific `.aegis` file path and rerun the command; approved file edits and backups remain the priority.
+
 ## Recovery
 
 If VS Code reloads mid-task, Aegis reads:
