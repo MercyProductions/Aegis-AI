@@ -126,6 +126,7 @@ function Assert-DiagnosticRedactionGuards {
 
   $runtimeText = Get-Content -Raw -LiteralPath (Join-Path $ProjectDirectory "Services\AegisAgentRuntime.cs")
   $safeEditText = Get-Content -Raw -LiteralPath (Join-Path $ProjectDirectory "Services\SafeEditService.cs")
+  $redactorText = Get-Content -Raw -LiteralPath (Join-Path $ProjectDirectory "Services\DiagnosticRedactor.cs")
 
   $issues = @()
   if ($runtimeText -match 'result\.Lines\.Add\(\$"[^"]*\{ex\.Message\}') {
@@ -136,6 +137,12 @@ function Assert-DiagnosticRedactionGuards {
   }
   if ($safeEditText -match 'return\s+new\[\]\s*\{[^}]*\+\s*ex\.Message') {
     $issues += "SafeEditService rollback messages must redact ex.Message before returning user-visible text."
+  }
+  if ($redactorText -notmatch 'AuthorizationHeaderPattern') {
+    $issues += "DiagnosticRedactor must redact full Authorization header values before assignment-style redaction runs."
+  }
+  if ($redactorText -notmatch '(?s)AuthorizationHeaderPattern\.Replace\(redacted, "\$1\[redacted\]"\).*BearerTokenPattern\.Replace\(redacted, "\$1\[redacted\]"\).*AssignmentSecretPattern\.Replace\(redacted, "\$1\[redacted\]"') {
+    $issues += "DiagnosticRedactor must apply AuthorizationHeaderPattern before bearer and assignment redaction."
   }
 
   if ($issues.Count -gt 0) {

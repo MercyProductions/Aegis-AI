@@ -21,6 +21,10 @@ SENSITIVE_ASSIGNMENT_RE = re.compile(
     r"\b((?:api[_-]?key|token|secret|password|passwd|credential|authorization)\s*[:=]\s*)[^\s&]+",
     re.IGNORECASE,
 )
+AUTHORIZATION_HEADER_RE = re.compile(
+    r"\b(Authorization\s*[:=]\s*)(?:Bearer|Basic|Digest)?\s*[A-Za-z0-9._~+/\-=]+",
+    re.IGNORECASE,
+)
 BEARER_TOKEN_RE = re.compile(r"\b(Bearer\s+)[A-Za-z0-9._~+/\-=]+", re.IGNORECASE)
 URL_CREDENTIAL_RE = re.compile(r"\b(https?://)[^/\s:@]+:[^@\s/]+@", re.IGNORECASE)
 
@@ -290,8 +294,10 @@ def core_envelope_error(envelope: dict[str, Any] | None) -> str:
 def _redact_core_error_text(text: str) -> str:
     cleaned = URL_CREDENTIAL_RE.sub(r"\1[redacted]@", str(text))
     cleaned = SENSITIVE_QUERY_RE.sub(r"\1[redacted]", cleaned)
+    cleaned = AUTHORIZATION_HEADER_RE.sub(r"\1[redacted]", cleaned)
+    cleaned = BEARER_TOKEN_RE.sub(r"\1[redacted]", cleaned)
     cleaned = SENSITIVE_ASSIGNMENT_RE.sub(r"\1[redacted]", cleaned)
-    return BEARER_TOKEN_RE.sub(r"\1[redacted]", cleaned)
+    return cleaned
 
 
 def core_envelope_data(envelope: dict[str, Any] | None) -> dict[str, Any]:

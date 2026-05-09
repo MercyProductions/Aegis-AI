@@ -774,3 +774,23 @@ Validation completed:
 
 - Visual Studio extension Release build/package: pass, 0 warnings.
 - Aegis Core contract tests: pass, 89 tests.
+
+## 2026-05-09 - Authorization Header Redaction Parity
+
+Focus:
+
+- Close a redaction ordering gap where `Authorization: Bearer/Basic/Digest ...` diagnostics could redact the auth scheme but leave the trailing credential visible.
+- Keep Website `/api` adapter errors and Visual Studio diagnostics aligned with the Desktop and VS Code redaction behavior.
+
+Actions:
+
+- Added full authorization-header redaction to the Website Core bridge adapter before generic assignment-style redaction runs.
+- Added full authorization-header redaction to the Visual Studio diagnostic redactor before bearer and assignment-style redaction.
+- Extended the Visual Studio VSIX build guard so the authorization-header redaction pattern and ordering are checked during packaging.
+- Added a Website Core bridge regression for `Authorization: Basic ...` error details.
+
+Validation completed:
+
+- Website Core bridge tests: pass, 13 tests.
+- Visual Studio extension Release build/package: pass, 0 warnings.
+- Aegis Core contract tests: pass, 89 tests.

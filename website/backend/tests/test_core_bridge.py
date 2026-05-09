@@ -249,6 +249,22 @@ def test_core_envelope_error_redacts_secret_like_deprecations() -> None:
     assert "Bearer [redacted]" in error
 
 
+def test_core_envelope_error_redacts_full_authorization_header() -> None:
+    secret = "basic-secret-token"
+    error = core_envelope_error(
+        {
+            "ok": False,
+            "api_version": "v1",
+            "kind": "models",
+            "data": {"error": f"Provider rejected Authorization: Basic {secret}"},
+        }
+    )
+
+    assert secret not in error
+    assert "Authorization: [redacted]" in error
+    assert "Provider rejected" in error
+
+
 def test_core_runtime_endpoint_delegates_to_core_bridge(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
