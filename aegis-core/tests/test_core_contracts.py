@@ -8,7 +8,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 import aegis_core.validation as validation_module
-from aegis_core.config import AegisConfig, load_config
+from aegis_core.config import AegisConfig, load_config, update_config, write_default_config
 from aegis_core.memory import ProjectMemory
 from aegis_core.safety import is_ignored_path, is_safe_to_read, is_secret_like
 from aegis_core.server import create_app
@@ -159,6 +159,38 @@ def test_invalid_config_values_fall_back_safely(tmp_path: Path) -> None:
     assert config.auto_scan_on_open is False
     assert config.validation_preferences == ("npm test", "npm run build")
     assert config.memory_dir_name == AegisConfig.memory_dir_name
+
+
+def test_config_read_write_survives_damaged_paths(tmp_path: Path) -> None:
+    workspace = tmp_path / "damaged-config-project"
+    aegis_dir = workspace / ".aegis"
+    aegis_dir.mkdir(parents=True)
+    (aegis_dir / "config.json").mkdir()
+
+    assert load_config(workspace).default_model == AegisConfig.default_model
+    assert write_default_config(workspace) == aegis_dir / "config.json"
+    assert update_config(workspace, {"default_model": "granite-code:8b"}).default_model == AegisConfig.default_model
+
+    client = TestClient(create_app())
+    get_response = client.get("/v1/settings", params={"workspace": str(workspace)})
+    post_response = client.post(
+        "/v1/settings",
+        json={"workspace": str(workspace), "settings": {"default_model": "qwen2.5-coder:7b"}},
+    )
+
+    assert get_response.status_code == 200
+    assert post_response.status_code == 200
+    assert post_response.json()["data"]["default_model"] == AegisConfig.default_model
+
+
+def test_config_write_survives_memory_root_file(tmp_path: Path) -> None:
+    workspace = tmp_path / "config-root-file-project"
+    workspace.mkdir()
+    (workspace / ".aegis").write_text("not a directory", encoding="utf-8")
+
+    assert load_config(workspace).default_model == AegisConfig.default_model
+    assert write_default_config(workspace) == workspace / ".aegis" / "config.json"
+    assert update_config(workspace, {"default_model": "granite-code:8b"}).default_model == AegisConfig.default_model
 
 
 def test_dashboard_survives_unreadable_memory_files(tmp_path: Path) -> None:

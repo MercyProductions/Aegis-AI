@@ -23,7 +23,7 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 | Website integration | Partial | Website has its own mature local backend. For this phase it remains documented as a client and should migrate incrementally to `/v1` Core contracts. |
 | Workspace scan performance | Improved | Core scan results are cached when the workspace fingerprint is unchanged, skipping repeated expensive symbol/dependency/TODO passes. |
 | Path safety | Improved | Core now evaluates ignored folders relative to the workspace and blocks secret-like filenames case-insensitively. |
-| Shared settings | Improved | Core config loading falls back to defaults for malformed numeric, boolean, string-list, and blank string settings. |
+| Shared settings | Improved | Core config loading falls back to defaults for malformed values and damaged `.aegis/config.json` paths. |
 | Shared task API | Improved | Bad task status updates return `400`; missing task IDs return `404`. |
 | Memory resilience | Improved | Dashboard/task reads and generated-memory writes now tolerate unreadable or damaged `.aegis` JSON/markdown paths. |
 | Validation detection | Improved | Core now lists JS test/build validation commands only when matching package scripts exist. |
@@ -35,7 +35,7 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 
 Ran during this pass:
 
-- `python -m pytest tests -q` in Aegis Core: 17 tests passed
+- `python -m pytest tests -q` in Aegis Core: 19 tests passed
 - `python -m compileall aegis_core`: pass
 - Aegis Core `/v1` TestClient smoke for settings, memory, diagnostics, roadmap, tasks, task status: pass
 - Core scan twice: second scan returned `cache_hit: true`
@@ -58,6 +58,7 @@ Ran during this pass:
 - Added Core dashboard stale-task detection and suggested actions.
 - Hardened Core scan safety for mixed-case ignored folders, token/password/auth-like files, and Windows workspaces under temp-style parent directories.
 - Made generated-memory writes best-effort and atomic where possible, so damaged `.aegis` paths do not crash scans.
+- Made shared settings reads/writes best-effort, so damaged config paths do not crash health or settings APIs.
 
 ## Daily Driver Friction To Watch
 

@@ -77,12 +77,7 @@ def _clean_bool(value: Any, default: bool) -> bool:
 def load_config(workspace: str | Path | None = None) -> AegisConfig:
     root = workspace_root(workspace)
     config_path = root / ".aegis" / "config.json"
-    data: dict[str, Any] = {}
-    if config_path.exists():
-        try:
-            data = json.loads(config_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            data = {}
+    data = _read_config_data(config_path)
 
     env_url = os.environ.get("AEGIS_OLLAMA_URL")
     if env_url:
@@ -105,9 +100,8 @@ def load_config(workspace: str | Path | None = None) -> AegisConfig:
 def write_default_config(workspace: str | Path | None = None) -> Path:
     root = workspace_root(workspace)
     path = root / ".aegis" / "config.json"
-    path.parent.mkdir(parents=True, exist_ok=True)
     if not path.exists():
-        path.write_text(json.dumps(AegisConfig().to_dict(), indent=2) + "\n", encoding="utf-8")
+        _write_json_best_effort(path, AegisConfig().to_dict())
     return path
 
 
@@ -124,12 +118,39 @@ def update_config(workspace: str | Path | None, updates: dict[str, Any]) -> Aegi
     }
     root = workspace_root(workspace)
     path = write_default_config(root)
-    try:
-        current = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        current = {}
+    current = _read_config_data(path)
     for key, value in updates.items():
         if key in allowed:
             current[key] = value
-    path.write_text(json.dumps(current, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    _write_json_best_effort(path, current)
     return load_config(root)
+
+
+def _read_config_data(path: Path) -> dict[str, Any]:
+    if not path.is_file():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _write_json_best_effort(path: Path, data: dict[str, Any]) -> bool:
+    tmp: Path | None = None
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if path.exists() and not path.is_file():
+            return False
+        tmp = path.with_name(f".{path.name}.tmp")
+        tmp.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        tmp.replace(path)
+        return True
+    except OSError:
+        if tmp is not None:
+            try:
+                if tmp.is_file():
+                    tmp.unlink()
+            except OSError:
+                pass
+        return False
