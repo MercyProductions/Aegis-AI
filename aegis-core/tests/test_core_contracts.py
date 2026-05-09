@@ -175,6 +175,46 @@ def test_v1_client_task_dashboard_contract(tmp_path: Path) -> None:
     assert missing_task.status_code == 404
 
 
+def test_shared_mutation_apis_report_unwritable_memory_root(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    (workspace / ".aegis").write_text("not a directory", encoding="utf-8")
+    client = TestClient(create_app())
+
+    registration = client.post(
+        "/v1/clients/register",
+        json={
+            "workspace": str(workspace),
+            "client_id": "unwritable-client",
+            "client_type": "test",
+            "name": "Unwritable Client",
+        },
+    )
+    assert registration.status_code == 503
+    assert "Could not persist client registration" in registration.json()["detail"]
+
+    created = client.post(
+        "/v1/tasks",
+        json={
+            "workspace": str(workspace),
+            "title": "Should report persistence failure",
+            "kind": "test",
+        },
+    )
+    assert created.status_code == 503
+    assert "Could not persist task" in created.json()["detail"]
+
+    clients = client.get("/v1/clients", params={"workspace": str(workspace)})
+    tasks = client.get("/v1/tasks", params={"workspace": str(workspace)})
+    dashboard = client.get("/v1/ecosystem/dashboard", params={"workspace": str(workspace)})
+
+    assert clients.status_code == 200
+    assert clients.json()["data"] == []
+    assert tasks.status_code == 200
+    assert tasks.json()["data"] == []
+    assert dashboard.status_code == 200
+    assert dashboard.json()["data"]["active_tasks"] == []
+
+
 def test_client_listing_normalizes_malformed_client_records(tmp_path: Path) -> None:
     workspace = tmp_path / "malformed-client-project"
     aegis_dir = workspace / ".aegis"
@@ -675,7 +715,11 @@ def test_continue_agent_survives_memory_root_file(tmp_path: Path) -> None:
     response = client.post("/v1/agent/continue", json={"workspace": str(workspace)})
 
     assert response.status_code == 200
-    assert response.json()["data"]["plan"]["mode"] == "plan-only"
+    data = response.json()["data"]
+    assert response.json()["ok"] is False
+    assert data["plan"]["mode"] == "plan-only"
+    assert data["task"] is None
+    assert "Could not persist task" in data["memory_warning"]
 
 
 def test_repair_agent_survives_damaged_validation_log_path(tmp_path: Path) -> None:

@@ -20,6 +20,7 @@ Actions:
 - Added explicit Core task-status API errors for bad statuses and missing task IDs.
 - Hardened shared task record loading so malformed local task metadata and timestamps do not break dashboards or status updates.
 - Hardened shared client registry loading so malformed local client records and mixed timestamp types do not break dashboard client lists.
+- Hardened shared Core client/task mutations so unwritable `.aegis` memory roots return clear persistence failures or degraded plan responses instead of phantom successful writes.
 - Hardened dashboard/task memory reads so corrupted or unreadable `.aegis` files do not crash shared clients.
 - Tightened Core JavaScript validation detection to avoid hallucinated npm/pnpm/yarn test/build commands.
 - Restricted Core validation execution to known safe commands and structured failure results.
@@ -52,7 +53,7 @@ Actions:
 
 Validation completed:
 
-- Aegis Core contract test suite: pass, 38 tests.
+- Aegis Core contract test suite: pass, 39 tests.
 - Aegis Core compile check: pass.
 - Aegis Core BOM-prefixed package framework detection regression test: pass.
 - Aegis Core malformed client registry regression test: pass.

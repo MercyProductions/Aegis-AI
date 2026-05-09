@@ -30,6 +30,7 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 | VS Code settings | Improved | Ollama and Aegis Core URL fields normalize host:port inputs and pasted endpoint paths before model or shared-runtime requests. |
 | Visual Studio settings | Improved | Ollama and Aegis Core URL fields normalize host:port inputs and pasted endpoint paths before model or shared-runtime requests. |
 | Shared task API | Improved | Bad task status updates return `400`, missing task IDs return `404`, and malformed local task records are normalized on read. |
+| Shared mutation persistence | Improved | Client registration and task creation/update now verify persistence; unwritable `.aegis` roots return clear failures or degraded plan responses instead of phantom successful writes. |
 | Memory resilience | Improved | Dashboard/task reads, agent plan reads, and generated-memory writes now tolerate unreadable or damaged `.aegis` JSON/markdown paths. |
 | VS Code memory resilience | Improved | Workspace startup and later index/history/log writes skip damaged `.aegis` paths instead of breaking scans or post-apply bookkeeping. |
 | VS Code rollback safety | Improved | Rollback validates timestamp-like backup IDs, workspace roots, and backup file paths before restoring files; incomplete backup files are skipped with visible output details. |
@@ -47,7 +48,7 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 
 Ran during this pass:
 
-- `python -m pytest tests/test_core_contracts.py -q` in Aegis Core: 38 tests passed
+- `python -m pytest tests/test_core_contracts.py -q` in Aegis Core: 39 tests passed
 - `python -m compileall aegis_core`: pass
 - Core BOM-prefixed package framework detection regression test: pass
 - Core malformed client registry regression test: pass
@@ -86,6 +87,7 @@ Ran during this pass:
 - Added Core dashboard stale-task detection and suggested actions.
 - Hardened shared client registry loading so malformed client records, bad capabilities, and mixed timestamp types do not break dashboard sorting.
 - Hardened shared task loading so malformed local task metadata and timestamps do not break dashboard or status workflows.
+- Hardened shared client/task mutations so unwritable `.aegis` roots do not report successful cross-client coordination that was never persisted.
 - Hardened Core scan safety for mixed-case ignored folders, token/password/auth-like files, and Windows workspaces under temp-style parent directories.
 - Hardened Core read/edit safety so files resolving outside the workspace, including symlinked files, are excluded from scans.
 - Hardened Core workspace scans against malformed `package.json` dependency shapes and file stat races during recent-file sorting.

@@ -14,6 +14,10 @@ ACTIVE_STATUSES = {"planned", "running", "waiting_for_approval", "blocked"}
 VALID_STATUSES = ACTIVE_STATUSES | {"completed", "cancelled", "rolled_back"}
 
 
+class TaskStorePersistenceError(RuntimeError):
+    """Raised when a shared task mutation cannot be persisted."""
+
+
 @dataclass
 class AegisTask:
     id: str
@@ -63,10 +67,17 @@ def create_task(
         request=request,
         metadata=metadata or {},
     )
-    tasks.append(task.to_dict())
+    task_data = task.to_dict()
+    tasks.append(task_data)
     _write_tasks(memory, tasks)
-    _append_history(memory, {"event": "task_created", "task": task.to_dict()})
-    return task.to_dict()
+    persisted = _find_task(_load_tasks(memory), task.id)
+    if persisted != task_data:
+        raise TaskStorePersistenceError(
+            f"Could not persist task at {memory.root / 'tasks.json'}. "
+            "Check that the workspace .aegis path is a writable directory."
+        )
+    _append_history(memory, {"event": "task_created", "task": persisted})
+    return persisted
 
 
 def list_tasks(workspace: str | Path, include_completed: bool = True) -> list[dict[str, Any]]:
@@ -98,8 +109,14 @@ def update_task_status(
                     task["metadata"] = {}
                 task["metadata"]["summary"] = summary
             _write_tasks(memory, tasks)
-            _append_history(memory, {"event": "task_updated", "task": task})
-            return task
+            persisted = _find_task(_load_tasks(memory), task_id)
+            if persisted != task:
+                raise TaskStorePersistenceError(
+                    f"Could not persist task update at {memory.root / 'tasks.json'}. "
+                    "Check that the workspace .aegis path is a writable directory."
+                )
+            _append_history(memory, {"event": "task_updated", "task": persisted})
+            return persisted
     raise KeyError(f"Task not found: {task_id}")
 
 
@@ -153,6 +170,13 @@ def _task_sort_key(task: dict[str, Any]) -> float:
 
 def _write_tasks(memory: ProjectMemory, tasks: list[dict[str, Any]]) -> None:
     memory.write_json("tasks.json", tasks)
+
+
+def _find_task(tasks: list[dict[str, Any]], task_id: str) -> dict[str, Any] | None:
+    for task in tasks:
+        if task.get("id") == task_id:
+            return task
+    return None
 
 
 def _append_history(memory: ProjectMemory, event: dict[str, Any]) -> None:

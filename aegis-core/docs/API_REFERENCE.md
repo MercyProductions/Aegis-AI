@@ -224,7 +224,7 @@ Body:
 }
 ```
 
-Writes or updates `.aegis/clients.json`.
+Writes or updates `.aegis/clients.json`. If the shared memory root is not writable, returns `503` instead of reporting a registration that other clients cannot see.
 
 ## GET /v1/clients
 
@@ -251,7 +251,7 @@ Body:
 }
 ```
 
-Creates a shared task in `.aegis/tasks.json`.
+Creates a shared task in `.aegis/tasks.json`. If the task cannot be persisted to shared memory, returns `503` instead of reporting a phantom task.
 
 ## GET /v1/tasks
 
@@ -276,7 +276,7 @@ Body:
 
 Supported statuses: `planned`, `running`, `waiting_for_approval`, `blocked`, `completed`, `cancelled`, `rolled_back`.
 
-Returns `400` for unsupported statuses and `404` when the task ID does not exist.
+Returns `400` for unsupported statuses, `404` when the task ID does not exist, and `503` if the task update cannot be persisted to shared memory.
 
 ## POST /v1/validation
 
@@ -284,11 +284,11 @@ Detects validation commands or runs a requested safe command, matching `/validat
 
 ## POST /v1/agent/continue
 
-Creates a plan-only continuation workflow and a shared task. It does not apply edits. Damaged roadmap paths degrade to a safe default plan.
+Creates a plan-only continuation workflow and a shared task. It does not apply edits. Damaged roadmap paths degrade to a safe default plan. If task persistence is unavailable, the response still includes the plan with `ok: false`, `task: null`, and a `memory_warning`.
 
 ## POST /v1/agent/repair
 
-Creates a plan-only repair workflow from the latest validation log and a shared task when repair context exists. Missing or unreadable validation logs return a safe no-context response.
+Creates a plan-only repair workflow from the latest validation log and a shared task when repair context exists. Missing or unreadable validation logs return a safe no-context response. If task persistence is unavailable, the response still includes the plan with `ok: false`, `task: null`, and a `memory_warning`.
 
 ## GET /v1/ecosystem/dashboard
 

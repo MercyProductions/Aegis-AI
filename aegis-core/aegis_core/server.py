@@ -3,13 +3,13 @@ from typing import Any
 
 from .agent import continue_from_roadmap, repair_from_last_validation
 from .branding import branding_tokens
-from .clients import list_clients, register_client
+from .clients import ClientRegistryPersistenceError, list_clients, register_client
 from .config import load_config, update_config, write_default_config
 from .diagnostics import CoreLogger
 from .ecosystem import dashboard_summary, diagnostics_summary, shared_memory_summary
 from .ollama import OllamaClient
 from .roadmap import generate_roadmap
-from .tasks import create_task, list_tasks, update_task_status
+from .tasks import TaskStorePersistenceError, create_task, list_tasks, update_task_status
 from .validation import run_validation, validation_summary
 from .workspace import WorkspaceScanner
 
@@ -157,14 +157,17 @@ def create_app():
 
     @app.post("/v1/clients/register")
     def v1_register_client(request: ClientRegistrationRequest) -> dict[str, Any]:
-        client = register_client(
-            request.workspace,
-            request.client_id,
-            request.client_type,
-            request.name,
-            request.version,
-            request.capabilities,
-        )
+        try:
+            client = register_client(
+                request.workspace,
+                request.client_id,
+                request.client_type,
+                request.name,
+                request.version,
+                request.capabilities,
+            )
+        except ClientRegistryPersistenceError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
         return envelope("client.registered", client, request.workspace)
 
     @app.get("/v1/clients")
@@ -173,14 +176,17 @@ def create_app():
 
     @app.post("/v1/tasks")
     def v1_create_task(request: CreateTaskRequest) -> dict[str, Any]:
-        task = create_task(
-            request.workspace,
-            request.title,
-            kind=request.kind,
-            source_client=request.source_client,
-            request=request.request,
-            metadata=request.metadata,
-        )
+        try:
+            task = create_task(
+                request.workspace,
+                request.title,
+                kind=request.kind,
+                source_client=request.source_client,
+                request=request.request,
+                metadata=request.metadata,
+            )
+        except TaskStorePersistenceError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
         return envelope("task.created", task, request.workspace)
 
     @app.get("/v1/tasks")
@@ -195,6 +201,8 @@ def create_app():
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except TaskStorePersistenceError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
         return envelope("task.updated", task, request.workspace)
 
     @app.post("/v1/validation")
@@ -205,27 +213,33 @@ def create_app():
     @app.post("/v1/agent/continue")
     def v1_continue_agent(request: ContinueRequest) -> dict[str, Any]:
         plan = continue_from_roadmap(request.workspace, request.request)
-        task = create_task(
-            request.workspace,
-            plan.get("task", request.request or "Continue from roadmap"),
-            kind="continue",
-            source_client="aegis-core",
-            request=request.request,
-            metadata={"plan_path": ".aegis/active-agent-plan.json", "risk": plan.get("risk")},
-        )
+        try:
+            task = create_task(
+                request.workspace,
+                plan.get("task", request.request or "Continue from roadmap"),
+                kind="continue",
+                source_client="aegis-core",
+                request=request.request,
+                metadata={"plan_path": ".aegis/active-agent-plan.json", "risk": plan.get("risk")},
+            )
+        except TaskStorePersistenceError as exc:
+            return envelope("agent.continue.plan", {"plan": plan, "task": None, "memory_warning": str(exc)}, request.workspace, ok=False)
         return envelope("agent.continue.plan", {"plan": plan, "task": task}, request.workspace)
 
     @app.post("/v1/agent/repair")
     def v1_repair(request: WorkspaceRequest) -> dict[str, Any]:
         plan = repair_from_last_validation(request.workspace)
         if plan.get("ok"):
-            task = create_task(
-                request.workspace,
-                "Repair latest validation failure",
-                kind="repair",
-                source_client="aegis-core",
-                metadata={"plan_path": ".aegis/active-repair-plan.json", "repair_attempt_limit": plan.get("repair_attempt_limit")},
-            )
+            try:
+                task = create_task(
+                    request.workspace,
+                    "Repair latest validation failure",
+                    kind="repair",
+                    source_client="aegis-core",
+                    metadata={"plan_path": ".aegis/active-repair-plan.json", "repair_attempt_limit": plan.get("repair_attempt_limit")},
+                )
+            except TaskStorePersistenceError as exc:
+                return envelope("agent.repair.plan", {"plan": plan, "task": None, "memory_warning": str(exc)}, request.workspace, ok=False)
         else:
             task = None
         return envelope("agent.repair.plan", {"plan": plan, "task": task}, request.workspace, ok=bool(plan.get("ok")))

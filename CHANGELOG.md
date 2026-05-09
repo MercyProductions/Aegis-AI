@@ -14,6 +14,7 @@
 - Improved `/v1/tasks/{task_id}/status` error responses for missing tasks and unsupported statuses.
 - Hardened shared task loading so malformed local task records do not break task listing, dashboard sorting, or status summary updates.
 - Hardened shared client registry loading so malformed local client records do not break cross-client dashboard sorting.
+- Hardened shared client/task mutation APIs so unwritable `.aegis` memory roots return clear persistence failures or degraded plan responses instead of phantom successful writes.
 - Made Core dashboard/task memory reads resilient when `.aegis` JSON or markdown files are unreadable.
 - Improved Core JavaScript validation detection so npm/pnpm/yarn test/build commands are listed only when matching package scripts exist.
 - Restricted Core validation execution to a safe command allow-list and added structured blocked/missing/timeout failure results.

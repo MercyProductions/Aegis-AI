@@ -8,6 +8,10 @@ from typing import Any
 from .memory import ProjectMemory, utc_now
 
 
+class ClientRegistryPersistenceError(RuntimeError):
+    """Raised when a shared client registration cannot be persisted."""
+
+
 @dataclass
 class ClientRegistration:
     client_id: str
@@ -50,7 +54,13 @@ def register_client(
     )
     clients[client_id] = registration.to_dict()
     _write_clients(memory, clients)
-    return clients[client_id]
+    persisted = _load_clients(memory).get(client_id)
+    if persisted != clients[client_id]:
+        raise ClientRegistryPersistenceError(
+            f"Could not persist client registration at {memory.root / 'clients.json'}. "
+            "Check that the workspace .aegis path is a writable directory."
+        )
+    return persisted
 
 
 def list_clients(workspace: str | Path) -> list[dict[str, Any]]:
