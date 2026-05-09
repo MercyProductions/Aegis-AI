@@ -127,7 +127,10 @@ from .storage import EventStore, utc_now
 from .structured_streaming import StructuredReplyDeltaExtractor
 from .task_planner import TaskPlan, TaskPlanner
 from .validation import ValidationManager
-from .validation_commands import POWERSHELL_BUILD_COMMAND_MARKERS
+from .validation_commands import (
+    POWERSHELL_BUILD_COMMAND_MARKERS,
+    is_blocked_validation_launcher_command,
+)
 from .validation_diagnostics import (
     diagnostic_brief as validation_diagnostic_brief,
     diagnostic_display as validation_diagnostic_display,
@@ -5666,6 +5669,13 @@ Large-file behavior:
         normalized = " ".join(command.strip().lower().split())
         reason_normalized = " ".join(reason.strip().lower().split())
         if not normalized:
+            return False
+
+        if normalized.startswith(("powershell ", "powershell.exe ", "pwsh ", "pwsh.exe ")) and (
+            normalized not in POWERSHELL_BUILD_COMMAND_MARKERS
+        ):
+            return False
+        if is_blocked_validation_launcher_command(command):
             return False
 
         blocked_prefixes = (

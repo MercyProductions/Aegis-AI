@@ -1853,6 +1853,28 @@ Validation completed:
 
 - Website validation manager regression suite: pass, 23 tests and 4 subtests.
 
+## 2026-05-09 - Website Agent Draft Validation Alias Filtering
+
+Focus:
+
+- Keep agent-proposed draft validation commands aligned with Website command-history safety filtering.
+- Prevent validation-like command reasons from promoting install or destructive Windows launcher aliases.
+
+Actions:
+
+- Moved the validation launcher-alias filter into the shared validation command helper module.
+- Reused the validation command alias and PowerShell guard checks before accepting agent draft validation commands.
+- Added regressions for blocked `cmd.exe /c npm install`, `npm.cmd install`, and `git.exe reset --hard` draft commands.
+- Added a positive regression showing safe Windows launcher validation such as `npm.cmd test` can still be promoted when the command reason is validation-oriented.
+
+Validation completed:
+
+- Website agent parser focused draft-validation tests: pass, 8 tests.
+- Website agent parser regression suite: pass, 98 tests and 13 subtests.
+- Website validation manager regression suite: pass, 23 tests and 4 subtests.
+- Website command-runner safety suite: pass, 21 tests.
+- Website backend compile check: pass.
+
 ## 2026-05-09 - Website PowerShell Guard Windows Path Compatibility
 
 Focus:

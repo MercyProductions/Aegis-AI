@@ -2514,6 +2514,36 @@ class AgentParserTests(unittest.TestCase):
 
         self.assertIsNone(self.engine._draft_validation_override_recipe(draft))
 
+    def test_windows_launcher_install_commands_are_not_promoted_as_draft_validation(self) -> None:
+        blocked_commands = (
+            "cmd.exe /c npm install",
+            "npm.cmd install",
+            "git.exe reset --hard",
+        )
+
+        for command in blocked_commands:
+            with self.subTest(command=command):
+                draft = AgentDraft(
+                    reply="Run validation.",
+                    changes=[],
+                    proposed_commands=[{"command": command, "reason": "Validate the build."}],
+                )
+
+                self.assertIsNone(self.engine._draft_validation_override_recipe(draft))
+
+    def test_safe_windows_launcher_can_be_promoted_as_draft_validation(self) -> None:
+        draft = AgentDraft(
+            reply="Run tests.",
+            changes=[],
+            proposed_commands=[{"command": "npm.cmd test", "reason": "Validate the build."}],
+        )
+
+        recipe = self.engine._draft_validation_override_recipe(draft)
+
+        self.assertIsNotNone(recipe)
+        assert recipe is not None
+        self.assertEqual(recipe.command, "npm.cmd test")
+
     def test_powershell_build_guard_is_promoted_as_draft_validation_without_reason(self) -> None:
         draft = AgentDraft(
             reply="Run the module guard.",
