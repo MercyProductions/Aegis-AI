@@ -2104,6 +2104,28 @@ def test_model_completion_lm_studio_request_is_not_reinterpreted_as_cloud(tmp_pa
     assert result["route"]["selected"]["provider_id"] == "lm_studio"
 
 
+def test_lm_studio_completion_uses_openai_v1_chat_path(monkeypatch) -> None:
+    captured: dict[str, str] = {}
+
+    def fake_request_json(url, payload, headers, timeout):
+        captured["url"] = url
+        return {"choices": [{"message": {"content": "local response"}}]}
+
+    monkeypatch.setattr(model_router_module, "_request_json", fake_request_json)
+
+    response = model_router_module._complete(
+        "lm_studio",
+        "local-lmstudio-model",
+        [{"role": "user", "content": "hello"}],
+        AegisConfig(lm_studio_url="http://127.0.0.1:1234"),
+        DummyCredentialStore(),
+        1,
+    )
+
+    assert response == "local response"
+    assert captured["url"] == "http://127.0.0.1:1234/v1/chat/completions"
+
+
 def test_model_router_unsupported_provider_override_stays_local(tmp_path: Path, monkeypatch) -> None:
     workspace = tmp_path / "router-unsupported-provider-project"
     aegis_dir = workspace / ".aegis"

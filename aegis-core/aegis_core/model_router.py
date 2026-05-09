@@ -447,7 +447,7 @@ def _complete(
         prompt = "\n\n".join(f"{item['role']}: {item['content']}" for item in messages)
         return OllamaClient(config).chat(prompt, model=model, timeout=timeout)
     if provider_id == "lm_studio":
-        return _openai_compatible_chat(config.lm_studio_url, model, messages, None, timeout)
+        return _openai_compatible_chat(_lm_studio_openai_base(config.lm_studio_url), model, messages, None, timeout)
     api_key = credentials.read_provider_key(provider_id)
     if not api_key:
         raise PermissionError(f"{provider_id} API key is not stored in OS credential storage.")
@@ -489,6 +489,11 @@ def _openai_compatible_chat(base_url: str, model: str, messages: list[dict[str, 
         timeout,
     )
     return str(data.get("choices", [{}])[0].get("message", {}).get("content", "")).strip()
+
+
+def _lm_studio_openai_base(base_url: str) -> str:
+    cleaned = base_url.rstrip("/")
+    return cleaned if cleaned.endswith("/v1") else f"{cleaned}/v1"
 
 
 def _anthropic_chat(model: str, messages: list[dict[str, str]], api_key: str, timeout: int) -> str:

@@ -148,6 +148,24 @@ Validation completed:
 - Aegis Core contract test suite: pass, 115 tests.
 - Repository whitespace check: pass.
 
+## 2026-05-09 - LM Studio Endpoint Compatibility
+
+Focus:
+
+- Keep local LM Studio completions compatible with its OpenAI-compatible API path.
+- Preserve existing safe URL normalization while fixing the runtime call target.
+
+Actions:
+
+- Updated LM Studio completions to call `/v1/chat/completions` when settings store the local server base URL.
+- Added regression coverage for the exact LM Studio request URL.
+
+Validation completed:
+
+- Aegis Core LM Studio/provider regression slice: pass, 4 tests.
+- Aegis Core contract test suite: pass, 116 tests.
+- Repository whitespace check: pass.
+
 ## 2026-05-09 - Autonomous Stabilization Tranche
 
 Focus:
