@@ -2,10 +2,14 @@ const cp = require('child_process');
 
 function quoteForCmd(value) {
   const text = String(value);
-  if (!/[\s&()<>|^"]/.test(text)) {
-    return text;
+  const escaped = text
+    .replace(/\^/g, '^^')
+    .replace(/%/g, '^%')
+    .replace(/"/g, '""');
+  if (!/[\s&()<>|^"%]/.test(text)) {
+    return escaped;
   }
-  return `"${text.replace(/"/g, '""')}"`;
+  return `"${escaped}"`;
 }
 
 function runCommand(command, args, options = {}) {
@@ -37,4 +41,4 @@ function runCommand(command, args, options = {}) {
   }
 }
 
-module.exports = { runCommand };
+module.exports = { quoteForCmd, runCommand };

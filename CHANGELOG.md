@@ -94,6 +94,7 @@
 - Hardened VS Code release metadata so packaged extensions point at the GitHub repository instead of a local filesystem path.
 - Hardened VS Code VSIX contents so the source-tree install helper is excluded from the shipped extension archive.
 - Hardened VS Code package/install scripts so Windows workspace paths with spaces or `&` no longer break VSIX creation or local installation.
+- Hardened VS Code package/install command quoting so Windows paths containing `%...%` or caret characters are not expanded or mangled by `cmd.exe`.
 - Hardened VS Code package lint so every contributed command must have a matching activation event and every command activation must point to a contributed command.
 - Simplified the VS Code PowerShell installer so it delegates to the same validated local install path as npm.
 - Hardened Visual Studio Ollama/Core URL settings so common local inputs normalize before model calls, health checks, and shared Core registration.

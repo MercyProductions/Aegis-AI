@@ -848,3 +848,20 @@ Validation completed:
 - Website Core bridge redaction tests: pass, 3 tests.
 - Visual Studio extension Release build/package: pass.
 - Desktop Release build: pass, 0 warnings.
+
+## 2026-05-09 - VS Code Release Command Quoting Hardening
+
+Focus:
+
+- Keep VS Code package/install scripts reliable from Windows workspaces with unusual but valid path characters.
+- Prevent `cmd.exe` from expanding `%...%` path segments or treating caret characters as escapes when invoking `npx` and `code` command shims.
+
+Actions:
+
+- Escaped percent and caret characters in the shared VS Code release command runner.
+- Exported the command-quoting helper and added package-lint assertions for plain, spaced, percent-containing, and caret-containing arguments.
+
+Validation completed:
+
+- VS Code extension lint: pass.
+- VS Code VSIX package: pass.

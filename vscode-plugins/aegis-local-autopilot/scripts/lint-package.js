@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+const { quoteForCmd } = require('./run-command');
 
 const root = path.resolve(__dirname, '..');
 const manifestPath = path.join(root, 'package.json');
@@ -148,6 +149,11 @@ for (const scriptFile of ['scripts/package-release.js', 'scripts/install-local.j
   }
 }
 
+assertCmdQuoting('plain', 'plain');
+assertCmdQuoting('path with spaces', '"path with spaces"');
+assertCmdQuoting('C:\\Aegis^Tools\\package', '"C:\\Aegis^^Tools\\package"');
+assertCmdQuoting('C:\\Aegis%TEMP%\\package', '"C:\\Aegis^%TEMP^%\\package"');
+
 const ignoreText = fs.readFileSync(path.join(root, '.vscodeignore'), 'utf8');
 for (const privateFile of ['.gitignore', 'DETECTED_MODELS.md', 'DOGFOODING_NOTES.md', 'install.ps1']) {
   const escaped = privateFile.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -196,5 +202,12 @@ function assertDiagnosticRedaction(redactor, sample, disallowed, required) {
     if (!redacted.includes(value)) {
       fail(`redactDiagnosticText lost expected diagnostic context: ${value}`);
     }
+  }
+}
+
+function assertCmdQuoting(input, expected) {
+  const quoted = quoteForCmd(input);
+  if (quoted !== expected) {
+    fail(`Windows command quoting mismatch for "${input}": expected "${expected}", got "${quoted}".`);
   }
 }
