@@ -28,6 +28,7 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 | Shared settings | Improved | Core config loading falls back to defaults for malformed values, unsafe memory directory names, and damaged `.aegis/config.json` paths. |
 | Desktop settings | Improved | Backend and Aegis Core URL fields normalize host:port inputs and pasted endpoint paths before config writes or runtime requests. |
 | VS Code settings | Improved | Ollama and Aegis Core URL fields normalize host:port inputs and pasted endpoint paths before model or shared-runtime requests. |
+| VS Code diagnostics | Improved | Local API HTTP failures now surface parsed, redacted details instead of raw JSON response bodies. |
 | Visual Studio settings | Improved | Ollama and Aegis Core URL fields normalize host:port inputs and pasted endpoint paths before model or shared-runtime requests. |
 | Shared task API | Improved | Bad task status updates return `400`, missing task IDs return `404`, and malformed local task records are normalized on read. |
 | Shared mutation persistence | Improved | Client registration and task creation/update now verify persistence; unwritable `.aegis` roots return clear failures or degraded plan responses instead of phantom successful writes. |
@@ -113,6 +114,7 @@ Ran during this pass:
 - Hardened Website apply changes so failed checkpoint creation stops the apply before file writes and file write/delete failures are reported as warnings tied to the checkpoint.
 - Hardened Desktop backend/Core URL settings so common local inputs normalize to clean base URLs before requests are sent.
 - Hardened VS Code Ollama/Core URL settings so common local inputs normalize before model scans, health checks, and shared task updates.
+- Hardened VS Code local API error messages so degraded Core/Ollama calls are easier to act on.
 - Hardened Visual Studio Ollama/Core URL settings so common local inputs normalize before model calls, health checks, and shared client registration.
 - Hardened Desktop and Visual Studio degraded-mode handling so Core registration failures do not masquerade as full Core outages.
 

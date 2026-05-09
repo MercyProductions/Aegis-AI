@@ -2762,7 +2762,7 @@ function requestJson(url, body, timeoutMs) {
       response.on('end', () => {
         const text = Buffer.concat(chunks).toString('utf8');
         if (response.statusCode < 200 || response.statusCode >= 300) {
-          reject(new Error(`HTTP ${response.statusCode}: ${text}`));
+          reject(new Error(formatHttpError(response.statusCode, text)));
           return;
         }
         try {
@@ -2783,6 +2783,50 @@ function requestJson(url, body, timeoutMs) {
     }
     request.end();
   });
+}
+
+function formatHttpError(statusCode, responseText) {
+  const detail = extractHttpErrorDetail(responseText);
+  if (detail) {
+    return `HTTP ${statusCode}: ${detail}`;
+  }
+  const fallback = sanitizeHttpErrorText(responseText);
+  return fallback ? `HTTP ${statusCode}: ${fallback}` : `HTTP ${statusCode}`;
+}
+
+function extractHttpErrorDetail(responseText) {
+  if (!responseText || !String(responseText).trim()) {
+    return '';
+  }
+  try {
+    const parsed = parseJsonText(responseText);
+    if (typeof parsed.detail === 'string') {
+      return sanitizeHttpErrorText(parsed.detail);
+    }
+    if (Array.isArray(parsed.detail)) {
+      const messages = parsed.detail
+        .map((item) => (item && typeof item.msg === 'string' ? item.msg : String(item || '').trim()))
+        .filter(Boolean);
+      if (messages.length) {
+        return sanitizeHttpErrorText(messages.join('; '));
+      }
+    }
+    for (const key of ['error', 'message']) {
+      if (typeof parsed[key] === 'string') {
+        return sanitizeHttpErrorText(parsed[key]);
+      }
+    }
+  } catch (error) {
+    return '';
+  }
+  return '';
+}
+
+function sanitizeHttpErrorText(text) {
+  const cleaned = sanitizeMemoryText(String(text || '').trim())
+    .replace(/\s+/g, ' ')
+    .trim();
+  return cleaned.length > 700 ? `${cleaned.slice(0, 697)}...` : cleaned;
 }
 
 function activeEditorContext(editor) {

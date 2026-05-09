@@ -42,6 +42,7 @@
 - Hardened Desktop backend/Core URL settings so local host:port inputs, trailing endpoint paths, and empty values normalize before runtime requests or config writes.
 - Hardened Desktop Core dashboard loading so a shared registration failure no longer blocks dashboard reads when Core is otherwise reachable.
 - Hardened VS Code Ollama/Core URL settings so common local inputs normalize before model detection, health checks, and shared Core sync.
+- Hardened VS Code local API error reporting so Core/Ollama HTTP failures surface parsed, redacted detail text instead of raw JSON bodies.
 - Hardened Visual Studio Ollama/Core URL settings so common local inputs normalize before model calls, health checks, and shared Core registration.
 - Hardened Visual Studio Health Check so Core reachability and client registration are reported separately with useful Core error details.
 - Added product-utilization workflow notes for daily Auralith dogfooding.

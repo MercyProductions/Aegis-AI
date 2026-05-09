@@ -67,6 +67,8 @@ If a client is missing:
 
 If Core is reachable but registration is skipped, the client should keep local workflows usable and report shared sync as degraded. Repair the workspace `.aegis` path, especially if `.aegis` or `.aegis/clients.json` was accidentally replaced by a file or directory with the wrong shape.
 
+VS Code and Visual Studio try to show the parsed Core error detail for failed shared sync calls. If the message mentions persistence, repair the workspace `.aegis` folder before retrying client registration or task sync.
+
 ## Safe Apply And Rollback
 
 All clients should keep approval-based edits on by default. Before applying generated edits:

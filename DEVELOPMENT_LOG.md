@@ -48,6 +48,7 @@ Actions:
 - Hardened Desktop backend and Aegis Core URL handling so settings UI/config values are normalized before saving and before runtime requests.
 - Hardened Desktop Core dashboard loading so shared client registration failures no longer block dashboard reads when Core is reachable.
 - Hardened VS Code Ollama and Aegis Core URL handling so settings panel/config values are normalized before health checks, model scans, and shared task sync.
+- Hardened VS Code local API error reporting so Core/Ollama HTTP failures show parsed, redacted details instead of raw JSON response bodies.
 - Hardened Visual Studio Ollama and Aegis Core URL handling so option-page values are normalized before health checks, model calls, and shared client registration.
 - Hardened Visual Studio Health Check so Core reachability and Core client registration failures are reported separately with parsed error details.
 - Kept unrelated dirty worktree changes out of scope.
