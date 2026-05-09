@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shlex
 from collections.abc import Sequence
 
 
@@ -86,19 +87,18 @@ def is_safe_powershell_build_guard_argv(argv: Sequence[str]) -> bool:
 
 
 def is_blocked_validation_launcher_command(command: str) -> bool:
-    normalized = " ".join(command.strip().lower().split())
-    tokens = normalized.split()
+    tokens = _validation_command_tokens(command)
     if not tokens:
         return False
 
-    executable = tokens[0].strip("\"'")
+    executable = tokens[0].strip("\"'").lower()
     executable = executable.rsplit("\\", 1)[-1].rsplit("/", 1)[-1]
     for suffix in (".exe", ".cmd", ".bat"):
         if executable.endswith(suffix):
             executable = executable[: -len(suffix)]
             break
 
-    args = [token.strip("\"'") for token in tokens[1:]]
+    args = [token.strip("\"'").lower() for token in tokens[1:]]
     if executable in {
         "winget",
         "choco",
@@ -139,6 +139,13 @@ def is_blocked_validation_launcher_command(command: str) -> bool:
     if executable == "git" and args and args[0] in {"clean", "reset", "checkout", "push"}:
         return True
     return False
+
+
+def _validation_command_tokens(command: str) -> list[str]:
+    try:
+        return shlex.split(command, posix=False)
+    except ValueError:
+        return command.split()
 
 
 def is_safe_remembered_validation_command(command: str) -> bool:

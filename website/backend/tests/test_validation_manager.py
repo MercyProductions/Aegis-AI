@@ -334,6 +334,14 @@ class ValidationManagerTests(unittest.TestCase):
                     },
                     {
                         "kind": "validation",
+                        "command": '"C:\\Program Files\\nodejs\\npm.cmd" install',
+                        "status": "passed",
+                        "category": "build",
+                        "exit_code": 0,
+                        "allowed": True,
+                    },
+                    {
+                        "kind": "validation",
                         "command": "npm.cmd install",
                         "status": "passed",
                         "category": "build",
@@ -366,6 +374,7 @@ class ValidationManagerTests(unittest.TestCase):
             [item.command for item in suggestions],
         )
         self.assertNotIn("cmd.exe /c npm install", [item.command for item in suggestions])
+        self.assertNotIn('"C:\\Program Files\\nodejs\\npm.cmd" install', [item.command for item in suggestions])
         self.assertNotIn("npm.cmd install", [item.command for item in suggestions])
         self.assertNotIn("git.exe reset --hard", [item.command for item in suggestions])
 

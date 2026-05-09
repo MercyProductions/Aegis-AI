@@ -1897,6 +1897,29 @@ Validation completed:
 - Website command-runner safety suite: pass, 21 tests.
 - Website backend compile check: pass.
 
+## 2026-05-09 - Website Quoted Launcher Validation Filtering
+
+Focus:
+
+- Close the Windows `Program Files` launcher-path gap in remembered validation command filtering.
+- Keep quoted executable paths usable for safe validation commands while blocking quoted install and destructive aliases.
+
+Actions:
+
+- Parsed remembered validation launcher commands with Windows-preserving shell tokenization before extracting the executable name.
+- Added helper coverage for quoted and unquoted `npm.cmd`, `git.exe`, and `cmd.exe` paths.
+- Extended validation-manager and agent draft-validation regressions to cover quoted Windows launcher install commands.
+
+Validation completed:
+
+- Website validation command helper tests: pass, 2 tests and 5 subtests.
+- Website validation manager regression suite: pass, 23 tests and 4 subtests.
+- Website agent parser focused draft-validation tests: pass, 8 tests.
+- Website agent parser regression suite: pass, 99 tests and 14 subtests.
+- Website workspace autopilot helper tests: pass, 10 tests.
+- Website command-runner safety suite: pass, 21 tests.
+- Website backend compile check: pass.
+
 ## 2026-05-09 - Website PowerShell Guard Windows Path Compatibility
 
 Focus:

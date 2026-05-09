@@ -2540,6 +2540,7 @@ class AgentParserTests(unittest.TestCase):
     def test_windows_launcher_install_commands_are_not_promoted_as_draft_validation(self) -> None:
         blocked_commands = (
             "cmd.exe /c npm install",
+            '"C:\\Program Files\\nodejs\\npm.cmd" install',
             "npm.cmd install",
             "git.exe reset --hard",
         )
