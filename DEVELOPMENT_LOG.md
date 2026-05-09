@@ -186,6 +186,27 @@ Validation completed:
 - Aegis Core contract test suite: pass, 118 tests.
 - Repository whitespace check: pass.
 
+## 2026-05-09 - Website Core URL Endpoint Normalization
+
+Focus:
+
+- Keep the Website-to-Core adapter resilient when users paste a full Core endpoint instead of the base URL.
+- Preserve reverse-proxy path prefixes while trimming known Core endpoint suffixes.
+
+Actions:
+
+- Hardened Website Core URL normalization to strip `/v1/...`, legacy `/health`, and legacy `/models` endpoint paths.
+- Added regressions covering direct local endpoints, reverse-proxy prefixes, and path names that merely contain `v1`.
+- Updated troubleshooting guidance for Website/Core URL normalization.
+
+Validation completed:
+
+- Website Core bridge URL normalization regression: pass, 1 test.
+- Website Core bridge regression suite: pass, 15 tests.
+- Website Core bridge/config sync regression slice: pass, 18 tests.
+- Website backend test suite: pass, 783 tests and 155 subtests.
+- Repository whitespace check: pass.
+
 ## 2026-05-09 - Completion Selected Model Guard
 
 Focus:

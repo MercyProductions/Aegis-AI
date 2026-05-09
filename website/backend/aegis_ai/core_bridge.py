@@ -13,6 +13,7 @@ import httpx
 DEFAULT_CORE_API_URL = "http://127.0.0.1:8788"
 CORE_API_VERSION = "v1"
 CORE_CONTRACT_VERSION_FIELD = "contract_version"
+LEGACY_CORE_ENDPOINTS = {"health", "models"}
 SENSITIVE_QUERY_RE = re.compile(
     r"([?&](?:api[_-]?key|key|token|secret|password|passwd|credential)=)[^&#\s]+",
     re.IGNORECASE,
@@ -65,11 +66,23 @@ def normalize_core_base_url(value: str, default: str = DEFAULT_CORE_API_URL) -> 
     if parsed.username or parsed.password:
         return default
 
-    path = parsed.path.rstrip("/")
-    if "/v1" in path:
-        path = path[: path.index("/v1")]
+    path = _strip_core_endpoint_path(parsed.path)
 
     return urlunsplit((parsed.scheme, parsed.netloc, path.rstrip("/"), "", ""))
+
+
+def _strip_core_endpoint_path(path: str) -> str:
+    cleaned = (path or "").rstrip("/")
+    if not cleaned or cleaned == "/":
+        return ""
+    segments = [segment for segment in cleaned.split("/") if segment]
+    lowered = [segment.lower() for segment in segments]
+    if CORE_API_VERSION in lowered:
+        index = lowered.index(CORE_API_VERSION)
+        return "/" + "/".join(segments[:index]) if index else ""
+    if lowered[-1] in LEGACY_CORE_ENDPOINTS:
+        return "/" + "/".join(segments[:-1]) if len(segments) > 1 else ""
+    return cleaned
 
 
 class AegisCoreBridge:

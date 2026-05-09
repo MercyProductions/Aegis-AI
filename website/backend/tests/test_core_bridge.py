@@ -24,7 +24,11 @@ from aegis_ai.core_bridge import (
 def test_normalize_core_base_url_accepts_common_local_inputs() -> None:
     assert normalize_core_base_url("127.0.0.1:8788") == "http://127.0.0.1:8788"
     assert normalize_core_base_url("http://127.0.0.1:8788/v1/health") == "http://127.0.0.1:8788"
+    assert normalize_core_base_url("http://127.0.0.1:8788/health") == "http://127.0.0.1:8788"
     assert normalize_core_base_url("https://core.local:8788/v1/tasks") == "https://core.local:8788"
+    assert normalize_core_base_url("https://proxy.local/aegis/v1/health") == "https://proxy.local/aegis"
+    assert normalize_core_base_url("https://proxy.local/aegis/models") == "https://proxy.local/aegis"
+    assert normalize_core_base_url("https://proxy.local/aegis-v1-proxy") == "https://proxy.local/aegis-v1-proxy"
     assert normalize_core_base_url("not a url") == "http://127.0.0.1:8788"
     assert normalize_core_base_url("http://user:secret@127.0.0.1:8788") == "http://127.0.0.1:8788"
 

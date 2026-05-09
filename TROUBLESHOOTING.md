@@ -20,7 +20,7 @@ If `aegis tasks --create ... --json` returns `ok: false` with a persistence erro
 
 If validation reports `Validation command failed to start`, the command passed the safety allow-list but the OS could not launch it. Check that the tool is installed, available on `PATH`, and allowed by local permissions, then rerun the health check or validation command.
 
-Desktop and VS Code backend/Core URL settings are normalized before use. Inputs like `127.0.0.1:8788` or pasted `/v1/ecosystem/dashboard` URLs are reduced to a clean `http://host:port` base URL, while empty values fall back to the local defaults.
+Desktop, Website, and VS Code backend/Core URL settings are normalized before use. Inputs like `127.0.0.1:8788`, pasted `/v1/ecosystem/dashboard` URLs, and legacy Core endpoints such as `/health` or `/models` are reduced to a clean Core base URL, while empty values fall back to the local defaults.
 
 If saving Core settings returns `Could not persist Aegis Core settings`, inspect the project `.aegis` path. The settings file must be a writable `.aegis/config.json` file, not a directory or a blocked path.
 

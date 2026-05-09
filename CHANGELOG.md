@@ -11,6 +11,7 @@
 - Hardened the Aegis Core start script so existing services on `8788` must return the versioned `/v1/health` envelope before being treated as Core.
 - Hardened the Aegis Core start script so malformed JSON responses on `8788` are reported as wrong-service port conflicts instead of falling through to a confusing server bind failure.
 - Hardened the Aegis Core start script so occupied but non-responsive `8788` listeners are reported as port conflicts instead of falling through to a server bind failure.
+- Hardened Website-to-Core URL normalization so pasted legacy Core endpoint URLs such as `/health` or `/models` are reduced to the Core base URL while reverse-proxy path prefixes are preserved.
 - Improved the Aegis Core CLI so `--json` works before or after the subcommand.
 - Hardened the Aegis Core CLI so shared task persistence failures return clean nonzero errors and JSON payloads instead of tracebacks.
 - Hardened Aegis Core path safety so ignored folders and secret-like filenames are handled case-insensitively and relative to the workspace before scanning.
