@@ -77,6 +77,7 @@ Aegis Core is the shared local runtime contract. It must stay small, stable, loc
 - Knowledge graph and deep project understanding: semantic relationships between files, systems, APIs, UI components, services, tasks, roadmap items, decisions, bugs, validation failures, and history.
 - Predictive planning and change simulation: read-only forecasts for impacted files, affected systems, build/test risk, dependency ripple, architecture drift, validation cost, rollback complexity, and scenario comparison.
 - Autonomous engineering operations: release planning, technical debt tracking, lifecycle awareness, long-term risk monitoring, maintenance scheduling, productivity intelligence, and cross-project coordination.
+- Adaptive personal engineering intelligence: local preference memory, workflow/style learning, recurring project pattern recognition, personalized recommendations, habit analysis, and resettable user-controlled profile state.
 - Validation summary/run.
 - Plan-only continue and repair flows.
 - Branding tokens shared by clients.
@@ -134,6 +135,14 @@ Autonomous engineering operations is the long-term coordination layer:
 - The dashboard returns release readiness, release milestones, implementation phases, validation checkpoints, debt signals, cleanup/refactor/stability priorities, lifecycle stage, risk monitoring, maintenance schedules, productivity bottlenecks, and suggested next actions.
 - Cross-project awareness is advisory: shared libraries, shared tooling, repeated architecture patterns, and unavailable project roots are surfaced so humans can coordinate updates safely.
 - Operations does not make release decisions or execute risky work. It may recommend; humans approve edits, commands, package updates, cloud calls, and major project decisions.
+
+Adaptive personal engineering intelligence is the local alignment layer:
+
+- Core exposes `/v1/personal-intelligence` for read-only local analysis, `/v1/personal-intelligence/profile` for optional profile persistence, and `/v1/personal-intelligence/reset` for clearing local profile memory.
+- Profile state lives in `.aegis/personal-engineering-profile.json` only when explicitly persisted or when explicit preferences are supplied.
+- The service learns from local project structure, frameworks, naming conventions, architecture patterns, validation workflows, task ordering, coding style, recurring systems, quality signals, and open work.
+- It adapts roadmap guidance, diff explanation style, planning depth, summary format, validation detail, and agent guidance while preserving safety gates.
+- It does not store source contents, credentials, API keys, tokens, secrets, or provider credentials. Secret-like preference keys are filtered before persistence.
 
 Core `/v1` responses use the shared envelope from `aegis-core/aegis_core/contracts.py`:
 

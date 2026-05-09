@@ -146,6 +146,13 @@ class OperationsRequest(ContractModel):
     project_roots: list[str] = Field(default_factory=list)
 
 
+class PersonalIntelligenceRequest(ContractModel):
+    workspace: str
+    project_roots: list[str] = Field(default_factory=list)
+    preferences: dict[str, Any] = Field(default_factory=dict)
+    persist: bool = False
+
+
 class CoreEnvelope(ContractModel):
     ok: bool = True
     api_version: Literal["v1"] = CORE_API_VERSION
@@ -674,6 +681,31 @@ class OperationsDashboardData(ContractModel):
     approval_policy: dict[str, Any] = Field(default_factory=dict)
 
 
+class PersonalIntelligenceData(ContractModel):
+    workspace: str | None = None
+    generated_at: str = ""
+    profile_version: str = ""
+    preference_memory: dict[str, Any] = Field(default_factory=dict)
+    learned_signals: dict[str, Any] = Field(default_factory=dict)
+    coding_style_awareness: dict[str, Any] = Field(default_factory=dict)
+    project_pattern_recognition: dict[str, Any] = Field(default_factory=dict)
+    personalized_recommendations: list[dict[str, Any]] = Field(default_factory=list)
+    engineering_habit_analysis: dict[str, Any] = Field(default_factory=dict)
+    workflow_optimization: dict[str, Any] = Field(default_factory=dict)
+    context_personalization: dict[str, Any] = Field(default_factory=dict)
+    agent_guidance: list[str] = Field(default_factory=list)
+    privacy: dict[str, Any] = Field(default_factory=dict)
+
+
+class PersonalIntelligenceResetData(ContractModel):
+    workspace: str | None = None
+    reset: bool = False
+    profile_path: str | None = None
+    existed: bool | None = None
+    error: str | None = None
+    privacy: dict[str, Any] = Field(default_factory=dict)
+
+
 class EcosystemDashboardData(ContractModel):
     workspace: str | None = None
     clients: list[ClientData] = Field(default_factory=list)
@@ -771,6 +803,8 @@ CONTRACTS: dict[str, ContractDescriptor] = {
     "simulation.change": ContractDescriptor(kind="simulation.change", stability="experimental", notes="Read-only change impact simulation, risk forecast, validation estimate, and rollback complexity."),
     "simulation.compare": ContractDescriptor(kind="simulation.compare", stability="experimental", notes="Read-only comparison of implementation scenarios by predicted risk, impact, validation cost, and rollback complexity."),
     "operations.dashboard": ContractDescriptor(kind="operations.dashboard", stability="experimental", notes="Read-only engineering operations dashboard for release planning, technical debt, lifecycle, scheduling, productivity, and cross-project coordination."),
+    "personal.intelligence": ContractDescriptor(kind="personal.intelligence", stability="experimental", notes="Local-first adaptive engineering preferences, workflow patterns, style awareness, and user-controlled profile memory."),
+    "personal.intelligence.reset": ContractDescriptor(kind="personal.intelligence.reset", stability="experimental", notes="Reset local personal engineering profile memory for one workspace."),
     "ecosystem.dashboard": ContractDescriptor(kind="ecosystem.dashboard", stability="stable", notes="Aggregated Core dashboard for desktop and website bridge."),
     "patch.proposal": ContractDescriptor(kind="patch.proposal", stability="experimental", owner="schema-only", notes="Shared shape for approved patch proposals."),
     "rollback.entry": ContractDescriptor(kind="rollback.entry", stability="experimental", owner="schema-only", notes="Shared rollback checkpoint listing shape."),
@@ -813,6 +847,8 @@ CONTRACT_DATA_MODELS: dict[str, type[BaseModel] | tuple[type[BaseModel], bool]] 
     "simulation.change": SimulationData,
     "simulation.compare": SimulationComparisonData,
     "operations.dashboard": OperationsDashboardData,
+    "personal.intelligence": PersonalIntelligenceData,
+    "personal.intelligence.reset": PersonalIntelligenceResetData,
     "ecosystem.dashboard": EcosystemDashboardData,
     "patch.proposal": PatchProposalData,
     "rollback.entry": RollbackEntryData,

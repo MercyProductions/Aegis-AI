@@ -165,6 +165,9 @@ Endpoint families:
 | `POST /v1/simulation/compare` | `simulation.compare` | experimental | Compare implementation approaches by predicted risk, impact, validation, and rollback cost |
 | `GET /v1/operations` | `operations.dashboard` | experimental | Release planning, technical debt, lifecycle, risk monitoring, maintenance, and productivity dashboard |
 | `POST /v1/operations/dashboard` | `operations.dashboard` | experimental | Operations dashboard with optional cross-project awareness |
+| `GET /v1/personal-intelligence` | `personal.intelligence` | experimental | Read-only local workflow, style, preference, pattern, and habit intelligence |
+| `POST /v1/personal-intelligence/profile` | `personal.intelligence` | experimental | Optional local profile persistence with explicit preferences and cross-project pattern inputs |
+| `POST /v1/personal-intelligence/reset` | `personal.intelligence.reset` | experimental | Reset workspace-local personal engineering profile memory |
 | `POST /v1/validation` | `validation` | stable | Shared validation summary/run |
 | `POST /v1/agent/continue` | `agent.continue.plan` | experimental | Plan-only continue from roadmap |
 | `POST /v1/agent/repair` | `agent.repair.plan` | experimental | Plan-only repair from validation log |
@@ -223,6 +226,15 @@ Autonomous engineering operations:
 - Operations combines quality, knowledge, tasks, jobs, validation, roadmap, and simulation-era risk signals into release readiness, milestones, debt tracking, lifecycle stage, maintenance scheduling, productivity intelligence, and suggested next actions.
 - `POST /v1/operations/dashboard` accepts additional local project roots for cross-project awareness: shared tooling, dependencies, architecture patterns, and coordination notes.
 - Operations may recommend scans, validation sweeps, docs refreshes, refactor windows, and release checkpoints, but file edits, build/test commands, dependency installs, cloud calls, and release decisions remain approval-gated.
+
+Adaptive personal engineering intelligence:
+
+- Core exposes read-only local personalization through `/v1/personal-intelligence`.
+- `POST /v1/personal-intelligence/profile` accepts `workspace`, optional `project_roots`, optional explicit `preferences`, and `persist`.
+- Persisted profile summaries live in `.aegis/personal-engineering-profile.json` only when explicitly requested or when preferences are supplied.
+- `POST /v1/personal-intelligence/reset` clears that local profile.
+- The contract returns learned workflow signals, coding style awareness, recurring project patterns, personalized recommendations, habit analysis, workflow optimization, context personalization, and privacy controls.
+- Secret-like preference keys are filtered and source file contents are summarized rather than persisted.
 
 Release candidate notes:
 

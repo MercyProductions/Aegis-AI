@@ -16,6 +16,7 @@ from .contracts import (
     OperationsRequest,
     OrchestrationPlanRequest,
     OrchestrationStepRequest,
+    PersonalIntelligenceRequest,
     ProviderKeyRequest,
     SimulationCompareRequest,
     SimulationRequest,
@@ -35,6 +36,7 @@ from .multi_agent import agent_roster
 from .ollama import OllamaClient
 from .operations import engineering_operations_dashboard
 from .orchestration import advance_orchestration_step, create_orchestration_plan, orchestration_dashboard
+from .personal_intelligence import adaptive_personal_intelligence, reset_personal_intelligence
 from .quality import quality_dashboard, record_quality_snapshot
 from .roadmap import generate_roadmap
 from .simulation import compare_scenarios, simulate_change
@@ -342,6 +344,28 @@ def create_app():
             engineering_operations_dashboard(request.workspace, project_roots=request.project_roots),
             request.workspace,
         )
+
+    @app.get("/v1/personal-intelligence")
+    def v1_personal_intelligence(workspace: str) -> dict[str, Any]:
+        return envelope("personal.intelligence", adaptive_personal_intelligence(workspace), workspace)
+
+    @app.post("/v1/personal-intelligence/profile")
+    def v1_personal_intelligence_profile(request: PersonalIntelligenceRequest) -> dict[str, Any]:
+        return envelope(
+            "personal.intelligence",
+            adaptive_personal_intelligence(
+                request.workspace,
+                project_roots=request.project_roots,
+                preferences=request.preferences,
+                persist=request.persist,
+            ),
+            request.workspace,
+        )
+
+    @app.post("/v1/personal-intelligence/reset")
+    def v1_personal_intelligence_reset(request: WorkspaceRequest) -> dict[str, Any]:
+        data = reset_personal_intelligence(request.workspace)
+        return envelope("personal.intelligence.reset", data, request.workspace, ok=bool(data.get("reset", False)))
 
     @app.post("/v1/tasks")
     def v1_create_task(request: CreateTaskRequest) -> dict[str, Any]:

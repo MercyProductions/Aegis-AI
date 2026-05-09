@@ -269,6 +269,7 @@ def test_v1_endpoint_family_smoke_contracts(tmp_path: Path) -> None:
         ("/v1/quality", {"workspace": str(workspace)}, "quality.dashboard"),
         ("/v1/knowledge/graph", {"workspace": str(workspace)}, "knowledge.graph"),
         ("/v1/operations", {"workspace": str(workspace)}, "operations.dashboard"),
+        ("/v1/personal-intelligence", {"workspace": str(workspace)}, "personal.intelligence"),
         ("/v1/ecosystem/dashboard", {"workspace": str(workspace)}, "ecosystem.dashboard"),
     ]
 
@@ -365,6 +366,13 @@ def test_v1_endpoint_family_smoke_contracts(tmp_path: Path) -> None:
             "operations.dashboard",
             True,
         ),
+        (
+            "/v1/personal-intelligence/profile",
+            {"workspace": str(workspace), "project_roots": [], "preferences": {"planning_depth": "balanced"}},
+            "personal.intelligence",
+            True,
+        ),
+        ("/v1/personal-intelligence/reset", {"workspace": str(workspace)}, "personal.intelligence.reset", True),
     ]
 
     created_task_id = None
@@ -421,6 +429,8 @@ def test_contract_catalog_covers_unified_phase_runtime_shapes() -> None:
         "simulation.change",
         "simulation.compare",
         "operations.dashboard",
+        "personal.intelligence",
+        "personal.intelligence.reset",
         "patch.proposal",
         "rollback.entry",
         "rollback.result",
@@ -918,6 +928,114 @@ def test_operations_dashboard_surfaces_cross_project_awareness(tmp_path: Path) -
     assert cross_project["unavailable_projects"]
     assert "Vite" in cross_project["shared_tooling"]
     assert cross_project["coordination_notes"]
+
+
+def test_personal_intelligence_learns_style_preferences_and_resets_profile(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    src = workspace / "src"
+    components = src / "components"
+    services = src / "services"
+    api = src / "api"
+    components.mkdir(parents=True)
+    services.mkdir(parents=True)
+    api.mkdir(parents=True)
+    (services / "ProjectService.ts").write_text(
+        "export class ProjectService {\n"
+        "  loadProject(id: string) {\n"
+        "    if (!id) return null;\n"
+        "    return { id };\n"
+        "  }\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    (components / "DashboardPanel.tsx").write_text(
+        "export function DashboardPanel() {\n"
+        "  return <section className=\"panel\">Ready</section>;\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    (api / "routes.ts").write_text("export const route = '/v1/projects';\n", encoding="utf-8")
+    ProjectMemory(workspace).append_decision("Use approval-gated small tasks for stabilization.", affected_files=["src/services/ProjectService.ts"])
+    client = TestClient(create_app())
+
+    readonly = client.get("/v1/personal-intelligence", params={"workspace": str(workspace)})
+
+    assert readonly.status_code == 200
+    assert_core_contract(readonly.json(), "personal.intelligence")
+    assert readonly.json()["data"]["preference_memory"]["persisted"] is False
+
+    response = client.post(
+        "/v1/personal-intelligence/profile",
+        json={
+            "workspace": str(workspace),
+            "preferences": {
+                "planning_depth": "deep",
+                "validation_detail": "detailed",
+                "preferred_models": {"local": "qwen2.5-coder"},
+                "api_key": "should-not-be-stored",
+            },
+            "persist": True,
+        },
+    )
+
+    assert response.status_code == 200
+    assert_core_contract(response.json(), "personal.intelligence")
+    data = response.json()["data"]
+    preferences = data["preference_memory"]["stored_preferences"]
+    assert preferences["planning_depth"] == "deep"
+    assert preferences["validation_detail"] == "detailed"
+    assert preferences["preferred_models"]["local"] == "qwen2.5-coder"
+    assert "api_key" not in preferences
+    assert data["learned_signals"]["preferred_frameworks"]
+    assert data["coding_style_awareness"]["formatting_tendencies"]["indentation"] in {"spaces", "tabs", "mixed"}
+    assert data["context_personalization"]["planning_depth"] == "deep"
+    assert data["privacy"]["local_first"] is True
+    profile_path = Path(data["preference_memory"]["profile_path"])
+    assert profile_path.exists()
+    assert "should-not-be-stored" not in profile_path.read_text(encoding="utf-8")
+
+    reset = client.post("/v1/personal-intelligence/reset", json={"workspace": str(workspace)})
+
+    assert reset.status_code == 200
+    assert_core_contract(reset.json(), "personal.intelligence.reset")
+    assert reset.json()["data"]["reset"] is True
+    assert not profile_path.exists()
+
+
+def test_personal_intelligence_surfaces_cross_project_patterns(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    other = tmp_path / "other-pattern-project"
+    other.mkdir()
+    for root in (workspace, other):
+        (root / "src" / "auth").mkdir(parents=True, exist_ok=True)
+        (root / "src" / "api").mkdir(parents=True, exist_ok=True)
+        (root / "tests").mkdir(exist_ok=True)
+        (root / "src" / "auth" / "LoginService.ts").write_text(
+            "export class LoginService {\n  signIn(user: string) { return Boolean(user); }\n}\n",
+            encoding="utf-8",
+        )
+        (root / "src" / "api" / "client.ts").write_text("export const clientRoute = '/api/login';\n", encoding="utf-8")
+        (root / "tests" / "login.test.ts").write_text("test('login', () => expect(true).toBe(true));\n", encoding="utf-8")
+    (other / "README.md").write_text("# Other Pattern Project\n", encoding="utf-8")
+    (other / "package.json").write_text(
+        json.dumps({"scripts": {"test": "vitest"}, "dependencies": {"vite": "^7.0.0", "react": "^19.0.0"}}, indent=2),
+        encoding="utf-8",
+    )
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/v1/personal-intelligence/profile",
+        json={"workspace": str(workspace), "project_roots": [str(other), str(tmp_path / "missing")]},
+    )
+
+    assert response.status_code == 200
+    assert_core_contract(response.json(), "personal.intelligence")
+    patterns = response.json()["data"]["project_pattern_recognition"]
+    system_names = {item["system"] for item in patterns["recurring_systems"]}
+    assert {"auth", "api", "validation"}.intersection(system_names)
+    assert len(patterns["projects_analyzed"]) == 2
+    assert patterns["unavailable_projects"]
+    assert patterns["suggested_templates"]
 
 
 def test_known_client_contract_parsing_tolerates_missing_optional_fields() -> None:

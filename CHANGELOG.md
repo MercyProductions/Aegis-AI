@@ -25,6 +25,7 @@
 - Added experimental Aegis Core knowledge graph intelligence with `/v1/knowledge/graph`, `/v1/knowledge/query`, `aegis knowledge`, `.aegis/knowledge-graph.json`, relationship queries, visualization data, and Planner Agent graph guidance.
 - Added experimental Aegis Core predictive planning and change simulation with `/v1/simulation/change`, `/v1/simulation/compare`, `aegis simulate`, impact/risk/validation/rollback forecasts, architecture drift warnings, scenario comparison, and Planner Agent split-task guidance.
 - Added experimental Aegis Core engineering operations with `/v1/operations`, `/v1/operations/dashboard`, `aegis operations`, release readiness, technical debt tracking, lifecycle awareness, risk monitoring, maintenance scheduling, productivity intelligence, and cross-project awareness.
+- Added experimental Aegis Core adaptive personal engineering intelligence with `/v1/personal-intelligence`, `/v1/personal-intelligence/profile`, `/v1/personal-intelligence/reset`, `aegis personal`, local preference memory, workflow/style learning, reusable pattern suggestions, habit analysis, context personalization, and inspectable resettable privacy controls.
 - Improved `/v1/tasks/{task_id}/status` error responses for missing tasks and unsupported statuses.
 - Hardened shared task loading so malformed local task records do not break task listing, dashboard sorting, or status summary updates.
 - Hardened shared client registry loading so malformed local client records do not break cross-client dashboard sorting.

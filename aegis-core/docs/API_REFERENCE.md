@@ -165,6 +165,7 @@ Contract stability:
 | `knowledge.graph`, `knowledge.query` | experimental | Local semantic project graph and deterministic relationship queries. |
 | `simulation.change`, `simulation.compare` | experimental | Read-only predictive planning, impact forecasting, architecture drift warnings, and scenario comparison. |
 | `operations.dashboard` | experimental | Read-only engineering operations dashboard for release planning, technical debt, lifecycle, maintenance, productivity, and cross-project coordination. |
+| `personal.intelligence`, `personal.intelligence.reset` | experimental | Local-first personal workflow/style/pattern intelligence with explicit profile persistence and reset controls. |
 | `patch.proposal`, `rollback.entry`, `rollback.result` | experimental schema-only | Defined for future compatibility; not active Core endpoints yet. |
 
 Shared request body conventions:
@@ -183,6 +184,7 @@ Shared request body conventions:
 - Change simulations use `workspace`, `objective`, optional `files`, and optional `approach`. They are read-only and do not write source files.
 - Scenario comparison uses `workspace`, `objective`, `approaches`, and optional `files`.
 - Engineering operations uses `workspace` and optional `project_roots` for additional local project roots. It is read-only and coordinates recommendations rather than executing work.
+- Personal intelligence uses `workspace`, optional `project_roots`, optional explicit `preferences`, and `persist`. Read-only calls do not persist profile state.
 
 ## GET /v1/health
 
@@ -729,6 +731,54 @@ Returns the same operations dashboard plus cross-project awareness for additiona
 - repeated architecture patterns
 - repeated systems
 - unavailable project roots and coordination notes
+
+## GET /v1/personal-intelligence
+
+Query:
+
+- `workspace`: required workspace path
+
+Returns read-only local personal engineering intelligence:
+
+- preferred project structures, frameworks, naming conventions, architecture styles, validation workflows, and task ordering
+- coding style awareness for formatting, abstraction, comments, error handling, UI layout patterns, and architecture decisions
+- recurring project systems and reusable template suggestions
+- personalized recommendations, engineering habit analysis, workflow optimization, and agent guidance
+- context personalization for roadmap generation, diff explanations, planning depth, summaries, and validation detail
+- privacy controls, local profile path, and reset endpoint metadata
+
+This endpoint does not persist profile state, write source files, call cloud providers, or store source contents.
+
+## POST /v1/personal-intelligence/profile
+
+Body:
+
+```json
+{
+  "workspace": "C:/path/to/project",
+  "project_roots": ["C:/path/to/another/project"],
+  "preferences": {
+    "planning_depth": "balanced",
+    "validation_detail": "detailed",
+    "safety_level": "high"
+  },
+  "persist": true
+}
+```
+
+Returns the same `personal.intelligence` contract. When `persist` is true or explicit preferences are supplied, Core writes a local profile summary to `.aegis/personal-engineering-profile.json`. Secret-like preference keys such as keys, tokens, passwords, and credentials are ignored.
+
+## POST /v1/personal-intelligence/reset
+
+Body:
+
+```json
+{
+  "workspace": "C:/path/to/project"
+}
+```
+
+Deletes `.aegis/personal-engineering-profile.json` for the workspace and returns `personal.intelligence.reset`. Reset does not remove project memory, tasks, validation logs, health history, knowledge graphs, or source files.
 
 ## POST /v1/validation
 

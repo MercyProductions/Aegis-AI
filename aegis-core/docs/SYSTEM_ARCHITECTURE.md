@@ -29,6 +29,7 @@ Aegis Core owns reusable intelligence and workflow services:
 - Knowledge graph and semantic project relationship queries
 - Predictive planning, change simulation, architecture drift warnings, and scenario comparison
 - Engineering operations for release readiness, debt, lifecycle, maintenance, productivity, and cross-project coordination
+- Adaptive personal engineering intelligence for local preference memory, workflow/style learning, reusable pattern suggestions, habit analysis, and context personalization
 - Validation command detection and safe execution
 - Agent planning, repair planning, rollback metadata, and approval contracts
 - Diagnostics and logs
@@ -65,6 +66,7 @@ Default assumptions:
 - Knowledge graph refreshes write generated `.aegis` relationship artifacts, not source changes.
 - Change simulations are advisory and read-only; they do not apply edits, run risky commands, or send cloud context.
 - Engineering operations dashboards recommend coordination work but do not make release decisions or run risky actions.
+- Personal engineering profiles are local, inspectable, resettable, and persisted only when explicitly requested or when explicit preferences are supplied.
 
 ## Migration Strategy
 
@@ -82,8 +84,9 @@ Default assumptions:
 12. Semantic project relationships flow through `.aegis/knowledge-graph.json`, generated graph summaries, and `/v1/knowledge/*`.
 13. Predictive planning forecasts flow through `/v1/simulation/*` and feed Planner Agent task ordering.
 14. Engineering operations dashboards flow through `/v1/operations/*`.
-15. Agent planning and repair loops move into Core.
-16. Clients keep UI approvals, diff/apply/rollback, and editor-native affordances.
+15. Adaptive personal engineering guidance flows through `/v1/personal-intelligence/*`.
+16. Agent planning and repair loops move into Core.
+17. Clients keep UI approvals, diff/apply/rollback, and editor-native affordances.
 
 ## Shared API Layer
 
@@ -215,6 +218,28 @@ Operations combines current Core signals from quality intelligence, knowledge gr
 - cross-project awareness for shared libraries, shared tooling, architecture patterns, and repeated systems
 
 Operations is read-only and recommendation-first. It may coordinate what should happen next, but file edits, deletions, validation/build commands, dependency installs, cloud context, and release decisions remain approval-gated.
+
+## Adaptive Personal Engineering Intelligence
+
+Personal intelligence is the local alignment layer for developer preferences and recurring work patterns. It is surfaced through:
+
+```text
+GET  /v1/personal-intelligence?workspace=C:/path/to/project
+POST /v1/personal-intelligence/profile
+POST /v1/personal-intelligence/reset
+```
+
+The default `GET` call is read-only and does not create or update profile state. `POST /v1/personal-intelligence/profile` may include explicit preferences and `persist: true`; persisted profile state lives in `.aegis/personal-engineering-profile.json`. `POST /v1/personal-intelligence/reset` deletes that local profile snapshot.
+
+The service summarizes:
+
+- preferred project structures, frameworks, naming conventions, architecture styles, validation workflows, and task ordering
+- coding style tendencies, abstraction preferences, commenting style, error handling style, UI layout patterns, and architecture decisions
+- recurring systems across projects, including API, auth, UI, agent, roadmap, persistence, validation, settings, and model-runtime patterns
+- personalized recommendations, workflow optimization opportunities, engineering habit signals, and agent guidance
+- context personalization for roadmap generation, diff explanations, planning depth, summaries, and validation detail
+
+Privacy constraints are explicit: no cloud calls, no source content persistence, no credentials, no API keys, and no token-like preference keys. The output includes the local profile path and reset controls so clients can make the feature transparent.
 
 ## Desktop Ecosystem Dashboard Contract
 

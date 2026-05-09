@@ -16,6 +16,7 @@ from .multi_agent import agent_roster
 from .ollama import OllamaClient
 from .operations import engineering_operations_dashboard
 from .orchestration import advance_orchestration_step, create_orchestration_plan, orchestration_dashboard
+from .personal_intelligence import adaptive_personal_intelligence, reset_personal_intelligence
 from .quality import quality_dashboard, record_quality_snapshot
 from .roadmap import generate_roadmap
 from .simulation import compare_scenarios, simulate_change
@@ -53,6 +54,7 @@ def main(argv: list[str] | None = None) -> int:
         "knowledge",
         "simulate",
         "operations",
+        "personal",
         "route",
         "orchestrate",
     ):
@@ -95,6 +97,11 @@ def main(argv: list[str] | None = None) -> int:
             sub.add_argument("--approach", action="append", default=[], help="Implementation approach. Supply more than once to compare scenarios.")
         if name == "operations":
             sub.add_argument("--project", dest="project_roots", action="append", default=[], help="Additional local project root to include in cross-project operations awareness.")
+        if name == "personal":
+            sub.add_argument("--project", dest="project_roots", action="append", default=[], help="Additional local project root to include in personal pattern learning.")
+            sub.add_argument("--persist", action="store_true", help="Persist the local personal engineering profile snapshot.")
+            sub.add_argument("--reset", action="store_true", help="Reset the local personal engineering profile snapshot.")
+            sub.add_argument("--preference", action="append", default=[], help="Explicit preference as key=value. Secret-like keys are ignored.")
 
     args = parser.parse_args(raw_args)
     args.json = args.json or json_requested
@@ -156,6 +163,16 @@ def main(argv: list[str] | None = None) -> int:
                 result = simulate_change(workspace, args.objective, files=args.files, approach=args.approach[0] if args.approach else None)
         elif args.command == "operations":
             result = engineering_operations_dashboard(workspace, project_roots=args.project_roots)
+        elif args.command == "personal":
+            if args.reset:
+                result = reset_personal_intelligence(workspace)
+            else:
+                result = adaptive_personal_intelligence(
+                    workspace,
+                    project_roots=args.project_roots,
+                    preferences=_parse_preferences(args.preference),
+                    persist=args.persist,
+                )
         elif args.command == "route":
             result = route_model(
                 workspace,
@@ -186,6 +203,29 @@ def main(argv: list[str] | None = None) -> int:
 
     print_result(result, command=args.command, as_json=args.json)
     return 0
+
+
+def _parse_preferences(values: list[str]) -> dict[str, Any]:
+    preferences: dict[str, Any] = {}
+    for value in values:
+        if "=" not in value:
+            raise ValueError(f"Preference must use key=value syntax: {value}")
+        key, raw = value.split("=", 1)
+        key = key.strip()
+        if not key:
+            raise ValueError("Preference key cannot be empty")
+        preferences[key] = _coerce_preference_value(raw.strip())
+    return preferences
+
+
+def _coerce_preference_value(value: str) -> Any:
+    lowered = value.lower()
+    if lowered in {"true", "false"}:
+        return lowered == "true"
+    try:
+        return int(value)
+    except ValueError:
+        return value
 
 
 def print_error(message: str, command: str, workspace: Path, as_json: bool = False) -> None:
