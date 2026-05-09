@@ -31,6 +31,7 @@
 - Improved Website native task planning focus paths so `.slnx` solutions are surfaced alongside `.sln` and `.vcxproj` files.
 - Improved Desktop local .NET project detection so `.fsproj` and `.vbproj` workspaces receive the same existing-project and validation treatment as `.csproj`.
 - Improved Desktop settings fallback defaults so saving config preserves the backend's full local validation allowlist, including Yarn, Bun, JVM wrappers, Flutter, and Swift.
+- Improved Visual Studio extension onboarding docs so `.slnx`, F#, and Visual Basic project support is reflected in install, troubleshooting, and client-responsibility guidance.
 - Improved Website dependency profiling so root `build.py` and `build.ps1` guard scripts are recorded as validation commands before lower-level CMake/MSBuild native fallbacks.
 - Improved Website agent continuation so existing projects with root `build.ps1` guard scripts propose the same safe PowerShell validation command used by validation discovery.
 - Improved Website project-builder existing-project validation so root `build.ps1` guard scripts are selected before CMake/MSBuild fallback commands.

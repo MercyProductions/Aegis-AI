@@ -84,7 +84,7 @@ Do not add:
 Owns:
 
 - Visual Studio package/tool window lifecycle, solution/project detection, active document/selection context, Error List/build output integration, proposed changes, approval, rollback, and VS options.
-- Visual Studio-specific solution intelligence and `.sln`/`.csproj`/`.vcxproj` context.
+- Visual Studio-specific solution intelligence and `.sln`/`.slnx` plus `.csproj`/`.fsproj`/`.vbproj`/`.vcxproj` context.
 
 Delegates to Core `/v1`:
 

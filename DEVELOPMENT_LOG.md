@@ -83,6 +83,7 @@ Actions:
 - Improved Website native task-planner focus metadata so `.slnx` workspaces are included in native C++/MSBuild focus paths.
 - Improved Desktop local .NET parity so `.fsproj` and `.vbproj` projects are recognized as existing workspaces and receive dotnet validation suggestions.
 - Improved Desktop config-save fallback defaults so an empty command allowlist no longer drops backend-supported local validation tools such as Yarn, Bun, Gradle/Maven wrappers, Flutter, and Swift.
+- Improved Visual Studio extension onboarding and client-responsibility docs to reflect `.slnx`, F#, and Visual Basic project support.
 
 Validation completed:
 

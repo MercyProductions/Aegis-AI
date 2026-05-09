@@ -42,7 +42,7 @@ ollama pull granite-code:8b
 
 ## No Solution Detected
 
-- Open a `.sln` file before running roadmap, review, build repair, or safe edit workflows.
+- Open a `.sln` or `.slnx` file before running roadmap, review, build repair, or safe edit workflows.
 - The `.aegis/` memory folder is created at the solution root.
 - If the tool window is already open, run `Aegis: Rescan Solution Intelligence`.
 

@@ -68,7 +68,7 @@ If more than one Visual Studio version is installed, target the VS2022 Community
 
 After installing the VSIX:
 
-1. Open a normal `.sln`.
+1. Open a normal `.sln` or `.slnx`.
 2. Run `Aegis: Run Health Check`.
 3. Open the Aegis tool window.
 4. Send a short chat message.
