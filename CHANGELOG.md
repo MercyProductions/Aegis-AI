@@ -51,6 +51,7 @@
 - Hardened Website command execution so destructive Git subcommands remain blocked when hidden behind global Git options such as `git -C . reset --hard`.
 - Hardened Website command execution so arbitrary path-qualified tool aliases such as `.\npm.cmd test` cannot satisfy allowlisted tool names, while explicit `./gradlew` and `./mvnw` project wrappers remain supported.
 - Hardened VS Code package lint with validation-command guard regressions so launcher aliases, chained commands, installs, and destructive Git forms stay out of the local fallback runner.
+- Improved VS Code proposal safety messaging so blocked unsafe edits name the first blocked file in the visible warning or error instead of only logging details to the output channel.
 - Hardened VS Code fallback validation detection so native-only Visual Studio solutions no longer receive a misleading `dotnet build` command unless a .NET project file is present.
 - Hardened VS Code Core/Ollama URL handling so reverse-proxy path prefixes are preserved while pasted `/v1`, `/health`, `/models`, and Ollama `/api/...` endpoint paths are trimmed.
 - Hardened Visual Studio Core/Ollama URL handling so reverse-proxy path prefixes are preserved while pasted `/v1`, `/health`, `/models`, and Ollama `/api/...` endpoint paths are trimmed.

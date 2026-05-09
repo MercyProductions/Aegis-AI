@@ -171,6 +171,9 @@ const buildFileClassifier = loadExtensionFunction(extensionText, 'isLikelyBuildF
 assertBuildFileDetection(buildFileClassifier);
 assertProjectRiskPattern(extensionText);
 assertPythonLockfilePatterns(extensionText);
+const blockedProposalFormatter = loadExtensionFunction(extensionText, 'formatBlockedProposalEditSummary');
+assertBlockedProposalEditSummary(blockedProposalFormatter);
+assertBlockedProposalVisibleMessages(extensionText);
 const sourceIndexing = loadExtensionFunctions(
   extensionText,
   [
@@ -499,6 +502,41 @@ function assertPythonLockfilePatterns(source) {
     if (!source.includes(`^${escaped}\\.lock$`)) {
       fail(`extension lockfile safety patterns must include ${lockfile}.lock.`);
     }
+  }
+}
+
+function assertBlockedProposalEditSummary(formatter) {
+  const one = formatter([
+    { edit: { path: 'package-lock.json' }, reason: 'Lockfile edits require an explicit model reason.' }
+  ]);
+  if (!one.includes('package-lock.json') || !one.includes('Lockfile edits require an explicit model reason')) {
+    fail('blocked proposal summaries must include the blocked path and reason.');
+  }
+  const many = formatter([
+    { edit: { path: 'uv.lock' }, reason: 'Lockfile edits require an explicit model reason.' },
+    { edit: { path: 'pdm.lock' }, reason: 'Lockfile edits require an explicit model reason.' }
+  ]);
+  if (!many.includes('uv.lock') || !many.includes('plus 1 more')) {
+    fail('blocked proposal summaries must include the first blocked path and additional count.');
+  }
+  const absolute = formatter([
+    { edit: { path: 'C:\\Users\\demo\\workspace\\package-lock.json' }, reason: 'Absolute paths are not allowed.' }
+  ]);
+  if (!absolute.includes('package-lock.json') || absolute.includes('C:/Users')) {
+    fail('blocked proposal summaries must avoid exposing absolute path details.');
+  }
+  const fallback = formatter([{ edit: {}, reason: '' }]);
+  if (!fallback.includes('<missing path>') || !fallback.includes('Blocked by safety rules')) {
+    fail('blocked proposal summaries must provide a safe fallback for malformed edits.');
+  }
+}
+
+function assertBlockedProposalVisibleMessages(source) {
+  if (!source.includes('Aegis blocked ${blocked.length} unsafe proposed edit(s): ${formatBlockedProposalEditSummary(blocked)}')) {
+    fail('proposal preview blocked-edit warning must name the blocked path.');
+  }
+  if (!source.includes('Aegis refused to apply ${blocked.length} unsafe edit(s): ${formatBlockedProposalEditSummary(blocked)}')) {
+    fail('proposal apply blocked-edit error must name the blocked path.');
   }
 }
 

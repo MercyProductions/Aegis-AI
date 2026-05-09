@@ -30,7 +30,7 @@ Issues found:
 - Impact analysis sometimes listed `.` as a likely affected file because validation command symbols used `.` as their source location.
 - UTF-8 BOM encoded `package.json` files could hide scripts from framework and validation detection on Windows-created projects.
 - Model-backed commands are slow enough that the UI needs continued progress clarity during normal use.
-- Unsafe lockfile proposals were blocked correctly, but the user-facing warning did not name the exact blocked file in the visible message.
+- Unsafe lockfile proposals were blocked correctly, but the user-facing warning did not name the exact blocked file in the visible message. Addressed after 0.1.1 by naming the first blocked edit in visible warnings/errors.
 
 Fixes applied for 0.1.1:
 
@@ -49,7 +49,7 @@ Fixes applied for 0.1.1:
 
 Follow-up candidates:
 
-- Improve visible blocked-edit details in the sidebar/error panel.
+- Improve visible blocked-edit details in the sidebar/error panel. Addressed for warnings/errors; sidebar detail remains a future polish area.
 - Add clearer progress messaging for long local model calls.
 - Consider a lighter roadmap model setting or a fast-mode option for dogfooding large workspaces.
 - Improve build-failure classification for missing dependencies versus code errors.

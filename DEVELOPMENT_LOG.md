@@ -1,5 +1,24 @@
 # Development Log
 
+## 2026-05-09 - VS Code Blocked Edit Visibility
+
+Focus:
+
+- Close a dogfooding UX gap where lockfile proposals were blocked safely but the visible warning did not name the blocked file.
+- Keep proposal safety messages actionable without exposing broad path details or changing apply behavior.
+
+Actions:
+
+- Added a bounded blocked-edit summary formatter that reports the first blocked proposal path, reason, and count of additional blocked edits.
+- Reused that formatter in proposal preview warnings and apply-time refusal errors.
+- Extended VS Code package lint to regress the formatter and require visible blocked-edit messages to include file-specific context.
+- Updated dogfooding notes so the visible blocked-edit detail follow-up is marked as addressed.
+
+Validation completed:
+
+- VS Code package lint: pass.
+- VS Code extension syntax check: pass.
+
 ## 2026-05-09 - VS Code Python Lockfile Parity
 
 Focus:

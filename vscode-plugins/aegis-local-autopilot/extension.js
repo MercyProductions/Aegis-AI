@@ -1570,7 +1570,7 @@ async function showProposalPreview(proposal, options = {}) {
   if (blocked.length) {
     output.appendLine('Blocked unsafe proposal edits:');
     blocked.forEach((item) => output.appendLine(`- ${item.edit.path}: ${item.reason}`));
-    vscode.window.showWarningMessage(`Aegis blocked ${blocked.length} unsafe proposed edit(s). Review the proposal document.`);
+    vscode.window.showWarningMessage(`Aegis blocked ${blocked.length} unsafe proposed edit(s): ${formatBlockedProposalEditSummary(blocked)}. Review the proposal document.`);
     return 'blocked';
   }
 
@@ -1757,7 +1757,7 @@ async function applyProposal(proposal, options = {}) {
     output.appendLine('Refusing to apply unsafe proposal edits:');
     blocked.forEach((item) => output.appendLine(`- ${item.edit.path}: ${item.reason}`));
     output.show(true);
-    vscode.window.showErrorMessage(`Aegis refused to apply ${blocked.length} unsafe edit(s). No files were changed.`);
+    vscode.window.showErrorMessage(`Aegis refused to apply ${blocked.length} unsafe edit(s): ${formatBlockedProposalEditSummary(blocked)}. No files were changed.`);
     return false;
   }
 
@@ -3299,6 +3299,25 @@ function validateProposalEdit(proposal, edit) {
     return { ok: false, edit, reason: 'Path would write outside the current project folder.' };
   }
   return { ok: true, edit: Object.assign({}, edit, { path: normalizedPath }), target, relative: normalizedPath };
+}
+
+function formatBlockedProposalEditSummary(blocked) {
+  const items = Array.isArray(blocked) ? blocked.filter(Boolean) : [];
+  if (!items.length) {
+    return 'unknown edit blocked by safety rules';
+  }
+  const first = items[0];
+  const rawPath = first.edit && typeof first.edit.path === 'string' ? first.edit.path : '<missing path>';
+  const slashPath = rawPath.replace(/\\/g, '/');
+  const absoluteLike = slashPath.startsWith('/') || /^[A-Za-z]:\//.test(slashPath);
+  const normalizedPath = absoluteLike
+    ? (slashPath.split('/').filter(Boolean).pop() || '<absolute path>')
+    : (slashPath.replace(/^\/+/, '') || '<missing path>');
+  const reason = typeof first.reason === 'string' && first.reason.trim()
+    ? first.reason.trim().replace(/[.\s]+$/, '')
+    : 'Blocked by safety rules';
+  const remainder = items.length > 1 ? `; plus ${items.length - 1} more` : '';
+  return `${normalizedPath}: ${reason}${remainder}`;
 }
 
 function isBlockedRelativePath(relativePath) {
