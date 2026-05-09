@@ -899,3 +899,20 @@ Actions:
 Validation completed:
 
 - Website UI E2E wrapper normalization smoke: pass with relative `Root` and trailing-slash backend/frontend URLs.
+
+## 2026-05-09 - Aegis Core Startup Port Conflict Clarity
+
+Focus:
+
+- Keep Core startup failures actionable when port `8788` is occupied by a hung or non-HTTP local process.
+- Avoid falling through to a noisy Uvicorn bind failure after the HTTP health probe times out.
+
+Actions:
+
+- Added a bounded TCP occupancy probe after the `/v1/health` HTTP probe.
+- Reported occupied but non-responsive `8788` listeners as explicit port conflicts before launching Core.
+- Reused shared Core host/port variables in startup status and conflict messages.
+
+Validation completed:
+
+- Aegis Core start script live-port probe: pass; existing Core on `8788` was identified without launching a duplicate server.

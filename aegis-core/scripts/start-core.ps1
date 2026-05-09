@@ -3,7 +3,10 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
-$CoreUrl = "http://127.0.0.1:8788/v1/health"
+$CoreHost = "127.0.0.1"
+$CorePort = 8788
+$CoreBaseUrl = "http://${CoreHost}:$CorePort"
+$CoreUrl = "$CoreBaseUrl/v1/health"
 $VenvPython = Join-Path $root ".venv\Scripts\python.exe"
 
 function Resolve-CorePython {
@@ -58,14 +61,45 @@ function Test-AegisCoreHealth {
     }
 }
 
+function Test-TcpPortOpen {
+    param(
+        [string]$HostName,
+        [int]$Port,
+        [int]$TimeoutMilliseconds = 750
+    )
+
+    $client = [System.Net.Sockets.TcpClient]::new()
+    $async = $null
+    try {
+        $async = $client.BeginConnect($HostName, $Port, $null, $null)
+        if (-not $async.AsyncWaitHandle.WaitOne($TimeoutMilliseconds)) {
+            return $false
+        }
+
+        $client.EndConnect($async)
+        return $true
+    } catch {
+        return $false
+    } finally {
+        if ($async -and $async.AsyncWaitHandle) {
+            $async.AsyncWaitHandle.Close()
+        }
+        $client.Close()
+    }
+}
+
 $probe = Test-AegisCoreHealth
 if ($probe.IsCore) {
-    Write-Host "Aegis Core is already running at http://127.0.0.1:8788 (contract $($probe.ContractVersion))"
+    Write-Host "Aegis Core is already running at $CoreBaseUrl (contract $($probe.ContractVersion))"
     return
 }
 
 if ($probe.Reachable) {
-    throw "Port 8788 is responding, but it is not Aegis Core /v1 health (status $($probe.StatusCode), reason $($probe.Reason)). Stop that process before starting Aegis Core."
+    throw "Port $CorePort is responding, but it is not Aegis Core /v1 health (status $($probe.StatusCode), reason $($probe.Reason)). Stop that process before starting Aegis Core."
+}
+
+if (Test-TcpPortOpen -HostName $CoreHost -Port $CorePort) {
+    throw "Port $CorePort is open, but Aegis Core /v1 health did not respond within the startup probe timeout. Stop that process before starting Aegis Core."
 }
 
 $Python = Resolve-CorePython
