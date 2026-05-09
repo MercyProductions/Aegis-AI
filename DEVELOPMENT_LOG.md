@@ -28,6 +28,7 @@ Actions:
 - Hardened VS Code memory/index/history writes so damaged `.aegis` paths stay degraded instead of breaking scans or post-apply bookkeeping.
 - Hardened Visual Studio solution memory reads/writes so damaged `.aegis` paths no longer crash memory-backed workflows.
 - Hardened Website workspace setup so damaged `.aegis` project and validation profile paths return setup warnings instead of endpoint failures.
+- Hardened Website checkpoint restore against path traversal IDs, damaged manifests, and backup paths outside the checkpoint files folder.
 - Kept unrelated dirty worktree changes out of scope.
 - Recorded workflow friction in `WORKFLOW_NOTES.md`.
 
@@ -41,6 +42,7 @@ Validation completed:
 - Visual Studio extension build/package: pass.
 - Website frontend tests/build and backend tests: pass.
 - Website workspace setup regression tests for damaged `.aegis` paths: pass.
+- Website checkpoint restore safety regression tests: pass, 51 storage tests.
 
 Known next checks:
 

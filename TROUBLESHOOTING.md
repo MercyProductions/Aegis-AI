@@ -70,6 +70,8 @@ All clients should keep approval-based edits on by default. Before applying gene
 
 If an apply fails, use the client's rollback command first, then inspect `.aegis/backups/`.
 
+Website checkpoint restore accepts only checkpoint folder names and validates manifest/backup paths before touching workspace files. If restore fails with a checkpoint safety error, inspect `.aegis/checkpoints/<id>/manifest.json` and preserve the checkpoint before repairing or removing damaged metadata.
+
 ## Website
 
 The Website currently uses its own mature `/api` backend. Do not force it onto standalone Core `/v1` APIs during stabilization unless a specific workflow proves the migration is needed.

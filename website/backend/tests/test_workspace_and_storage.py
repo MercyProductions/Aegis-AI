@@ -57,6 +57,35 @@ class WorkspaceAndStorageTests(unittest.TestCase):
         self.assertEqual(original_file.read_text(encoding="utf-8"), "print('before')\n")
         self.assertFalse((workspace / "new.py").exists())
 
+    def test_restore_checkpoint_rejects_path_traversal_checkpoint_id(self) -> None:
+        manager = WorkspaceManager(self.project_root, self.settings)
+        workspace = manager.resolve_workspace("workspace")
+
+        with self.assertRaisesRegex(ValueError, "checkpoint folder name"):
+            manager.restore_checkpoint(workspace, "../outside")
+
+    def test_restore_checkpoint_rejects_non_file_manifest(self) -> None:
+        manager = WorkspaceManager(self.project_root, self.settings)
+        workspace = manager.resolve_workspace("workspace")
+        checkpoint_root = workspace / ".aegis" / "checkpoints" / "bad-manifest"
+        (checkpoint_root / "manifest.json").mkdir(parents=True)
+
+        with self.assertRaisesRegex(ValueError, "not a regular file"):
+            manager.restore_checkpoint(workspace, "bad-manifest")
+
+    def test_restore_checkpoint_rejects_backup_paths_outside_files_folder(self) -> None:
+        manager = WorkspaceManager(self.project_root, self.settings)
+        workspace = manager.resolve_workspace("workspace")
+        checkpoint_root = workspace / ".aegis" / "checkpoints" / "bad-backup-path"
+        checkpoint_root.mkdir(parents=True)
+        (checkpoint_root / "manifest.json").write_text(
+            json.dumps({"id": "bad-backup-path", "files": [{"path": "../workspace/app.py", "state": "present"}]}),
+            encoding="utf-8",
+        )
+
+        with self.assertRaisesRegex(ValueError, "outside the checkpoint files folder"):
+            manager.restore_checkpoint(workspace, "bad-backup-path")
+
     def test_apply_changes_can_append_large_generated_file_chunks(self) -> None:
         manager = WorkspaceManager(self.project_root, self.settings)
         workspace = manager.resolve_workspace("workspace")

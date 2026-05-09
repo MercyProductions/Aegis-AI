@@ -754,15 +754,24 @@ class WorkspaceManager:
 
     def restore_checkpoint(self, root: Path, checkpoint_id: str) -> list[str]:
         workspace_root = root.resolve()
-        checkpoint_root = workspace_root / ".aegis" / "checkpoints" / checkpoint_id
+        self._ensure_within_allowed_roots(workspace_root)
+        checkpoint_root = self._safe_checkpoint_root(workspace_root, checkpoint_id)
         manifest_path = checkpoint_root / "manifest.json"
 
+        if manifest_path.exists() and not manifest_path.is_file():
+            raise ValueError("checkpoint manifest is not a regular file")
         if not manifest_path.exists():
             raise FileNotFoundError(checkpoint_id)
 
-        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+        try:
+            payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise ValueError("checkpoint manifest is not valid JSON") from exc
+        except OSError as exc:
+            raise ValueError(f"checkpoint manifest could not be read: {exc}") from exc
         files = payload.get("files", []) if isinstance(payload, dict) else []
         restored: list[str] = []
+        files_root = (checkpoint_root / "files").resolve()
 
         for entry in files:
             if not isinstance(entry, dict):
@@ -774,15 +783,21 @@ class WorkspaceManager:
                 continue
 
             target = self._safe_path(workspace_root, relative_path)
-            backup = checkpoint_root / "files" / relative_path
+            backup = (files_root / relative_path).resolve()
+            try:
+                backup.relative_to(files_root)
+            except ValueError as exc:
+                raise ValueError("checkpoint backup path points outside the checkpoint files folder") from exc
 
-            if state == "present" and backup.exists():
+            if state == "present" and backup.is_file():
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(backup, target)
                 restored.append(f"restore: {relative_path}")
                 continue
 
             if state == "missing" and target.exists():
+                if not target.is_file():
+                    raise ValueError(f"{relative_path}: refusing to remove a non-file path during checkpoint restore")
                 target.unlink()
                 restored.append(f"remove: {relative_path}")
 
@@ -1931,6 +1946,23 @@ class WorkspaceManager:
             raise ValueError("path must point to a file inside the workspace, not the workspace root")
 
         return target
+
+    def _safe_checkpoint_root(self, workspace_root: Path, checkpoint_id: str) -> Path:
+        raw = checkpoint_id.strip()
+        if not raw:
+            raise ValueError("checkpoint id is empty")
+
+        candidate = Path(raw)
+        if candidate.is_absolute() or len(candidate.parts) != 1 or candidate.parts[0] in {".", ".."}:
+            raise ValueError("checkpoint id must be a checkpoint folder name")
+
+        checkpoints_root = (workspace_root / ".aegis" / "checkpoints").resolve()
+        checkpoint_root = (checkpoints_root / candidate).resolve()
+        try:
+            checkpoint_root.relative_to(checkpoints_root)
+        except ValueError as exc:
+            raise ValueError("checkpoint points outside the workspace checkpoint folder") from exc
+        return checkpoint_root
 
     def _resolve_configured_workspace_root(self, value: str | None) -> Path | None:
         raw = (value or "").strip()

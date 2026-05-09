@@ -164,6 +164,8 @@ If an older install wrote files into `backend/workspace/`, Aegis now migrates th
 
 Workspace setup stores project and validation metadata under `.aegis/` in the selected workspace. If those memory paths are damaged, setup now stays usable and reports warnings so you can repair the paths before running setup again.
 
+Checkpoint restore validates checkpoint folder names, manifests, and backup paths before touching workspace files. Damaged checkpoint metadata returns a clear restore error instead of attempting an unsafe rollback.
+
 ## Project Layout
 
 ```text
