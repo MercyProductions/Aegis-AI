@@ -1819,6 +1819,30 @@ Validation completed:
 - Aegis Core contract tests: pass, 138 tests.
 - Git diff whitespace check: pass.
 
+## 2026-05-09 - Website PowerShell Guard Windows Path Compatibility
+
+Focus:
+
+- Keep the documented PowerShell module validation command usable in Website command execution.
+- Preserve the narrow root `build.ps1` safety contract while accepting the Windows-style `.\build.ps1` spelling users see in generated README files.
+
+Actions:
+
+- Extended the shared Website PowerShell guard matcher to recognize exact `.\build.ps1` and bare `build.ps1` root guard forms.
+- Normalized accepted PowerShell guard commands to `./build.ps1` before execution so shell parsing does not turn `.\build.ps1` into `.build.ps1`.
+- Added command-runner coverage for the documented Windows-style root guard command.
+
+Validation completed:
+
+- Website command-runner safety suite: pass, 21 tests.
+- Website validation manager regression suite: pass, 22 tests and 4 subtests.
+- Website project-builder/PowerShell-template focused tests: pass, 7 tests.
+- Website agent parser focused PowerShell validation tests: pass, 7 tests.
+- Website backend compile check: pass.
+- Website project-scaffolder regression suite: pass, 120 tests and 46 subtests.
+- Aegis Core contract tests: pass, 138 tests.
+- Git diff whitespace check: pass.
+
 ## 2026-05-09 - Website PowerShell Command Execution Narrowing
 
 Focus:

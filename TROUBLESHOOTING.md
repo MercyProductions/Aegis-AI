@@ -20,7 +20,7 @@ If `aegis tasks --create ... --json` returns `ok: false` with a persistence erro
 
 If validation reports `Validation command failed to start`, the command passed the safety allow-list but the OS could not launch it. Check that the tool is installed, available on `PATH`, and allowed by local permissions, then rerun the health check or validation command.
 
-Website PowerShell validation is intentionally narrow. `powershell` and `pwsh` commands are allowed only for the exact root guard command `powershell -NoProfile -ExecutionPolicy Bypass -File ./build.ps1` or the `pwsh` equivalent. If a broader PowerShell command is blocked, move the checks into the workspace `build.ps1` guard and rerun that validation command.
+Website PowerShell validation is intentionally narrow. `powershell` and `pwsh` commands are allowed only for the exact root guard command `powershell -NoProfile -ExecutionPolicy Bypass -File ./build.ps1`, the Windows-style `.\build.ps1` form, or the `pwsh` equivalent. If a broader PowerShell command is blocked, move the checks into the workspace `build.ps1` guard and rerun that validation command.
 
 Desktop, Website, VS Code, and Visual Studio backend/Core URL settings are normalized before use. Inputs like `127.0.0.1:8788`, pasted `/v1/ecosystem/dashboard` URLs, and legacy Core endpoints such as `/health` or `/models` are reduced to a clean Core base URL, while empty values fall back to the local defaults. All local clients preserve reverse-proxy path prefixes such as `https://proxy.local/aegis` and append Core API paths under that prefix.
 

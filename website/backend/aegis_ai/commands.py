@@ -13,7 +13,7 @@ from pathlib import Path
 
 from .approval_sandbox import SandboxProfileManager
 from .settings import Settings
-from .validation_commands import is_safe_powershell_build_guard_argv
+from .validation_commands import is_safe_powershell_build_guard_argv, is_safe_powershell_build_guard_command
 
 
 DANGEROUS_COMMAND_PARTS = {
@@ -121,7 +121,11 @@ class CommandRunner:
         if not first:
             return self._blocked(command, cwd, "Empty command.")
 
-        if first in {"powershell", "pwsh"} and not is_safe_powershell_build_guard_argv(argv):
+        is_powershell = first in {"powershell", "pwsh"}
+        is_powershell_build_guard = is_safe_powershell_build_guard_argv(
+            argv
+        ) or is_safe_powershell_build_guard_command(stripped)
+        if is_powershell and not is_powershell_build_guard:
             return self._blocked(
                 command,
                 cwd,
@@ -139,6 +143,8 @@ class CommandRunner:
 
         effective_timeout = timeout_seconds or self.settings.aegis_command_timeout_seconds
         effective_timeout = min(effective_timeout, profile.max_execution_time)
+        if is_powershell and is_powershell_build_guard:
+            argv[-1] = "./build.ps1"
         run_argv = [self._resolve_executable_path(argv[0]), *argv[1:]]
         run_argv = self._windows_native_cmake_argv_with_short_build_dir(run_argv, first, cwd)
 

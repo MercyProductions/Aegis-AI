@@ -318,6 +318,15 @@ class ApprovalAndCommandTests(unittest.TestCase):
         self.assertTrue(result.allowed)
         self.assertNotIn("limited to the exact root build.ps1", result.reason)
 
+    def test_powershell_windows_style_root_build_guard_can_run_when_allowlisted(self) -> None:
+        runner = CommandRunner(Settings(_env_file=None, aegis_command_allowlist="powershell,pwsh"))
+        self.workspace.joinpath("build.ps1").write_text("Write-Output 'guard ok'\n", encoding="utf-8")
+
+        result = runner.run(r"powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1", self.workspace)
+
+        self.assertTrue(result.allowed)
+        self.assertNotIn("limited to the exact root build.ps1", result.reason)
+
 
 if __name__ == "__main__":
     unittest.main()
