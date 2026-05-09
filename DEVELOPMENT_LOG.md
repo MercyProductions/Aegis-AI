@@ -370,3 +370,20 @@ Validation completed:
 
 - Website acceptance script syntax check: pass.
 - Website acceptance gate with explicit trailing-slash URLs: pass; validate, doctor, real-chat smoke, and full browser e2e completed.
+
+## 2026-05-09 - VS Code Command Activation Guard
+
+Focus:
+
+- Prevent VS Code extension package drift where a contributed command can ship without activation, or an activation event can point at a removed command.
+- Keep release validation headless and cheap.
+
+Actions:
+
+- Extended `vscode-plugins/aegis-local-autopilot/scripts/lint-package.js` to compare all contributed commands with all `onCommand:` activation events.
+- Kept the existing required-command checks, release metadata checks, and VSIX exclusion checks intact.
+
+Validation completed:
+
+- VS Code extension lint: pass.
+- VS Code VSIX package: pass; packaged contents remain limited to runtime files and package metadata.

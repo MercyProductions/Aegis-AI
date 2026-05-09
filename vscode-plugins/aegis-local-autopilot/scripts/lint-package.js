@@ -57,12 +57,29 @@ if (typeof manifest.repository.url !== 'string' || !/^https:\/\/github\.com\/Mer
 }
 
 const contributedCommands = new Set((manifest.contributes.commands || []).map((item) => item.command));
+const commandActivationEvents = new Set(
+  (manifest.activationEvents || [])
+    .filter((event) => typeof event === 'string' && event.startsWith('onCommand:'))
+    .map((event) => event.slice('onCommand:'.length))
+);
 for (const command of requiredCommands) {
   if (!contributedCommands.has(command)) {
     fail(`missing contributed command: ${command}`);
   }
-  if (!manifest.activationEvents.includes(`onCommand:${command}`)) {
+  if (!commandActivationEvents.has(command)) {
     fail(`missing activation event for command: ${command}`);
+  }
+}
+
+for (const command of contributedCommands) {
+  if (!commandActivationEvents.has(command)) {
+    fail(`contributed command is missing activation event: ${command}`);
+  }
+}
+
+for (const command of commandActivationEvents) {
+  if (!contributedCommands.has(command)) {
+    fail(`activation event references an uncontributed command: ${command}`);
   }
 }
 

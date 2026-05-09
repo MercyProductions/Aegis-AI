@@ -205,6 +205,20 @@ Fixes applied:
 - Passed the normalized root/backend/frontend values into all live child validation scripts.
 - Documented the direct alternate-port acceptance command.
 
+### 2026-05-09 - VS Code Command Activation Guard
+
+Context:
+- VS Code packaging already checked a required command subset, but future commands could still drift out of sync with activation events.
+- This is a small release-quality issue because a command can appear in the palette but fail to activate cleanly if the manifest gets out of step.
+
+What worked:
+- The current manifest has 25 contributed commands and 25 matching command activation events.
+- Lint and VSIX package creation both pass with the stricter parity guard.
+
+Fixes applied:
+- Package lint now fails if any contributed command lacks `onCommand:` activation.
+- Package lint now fails if any `onCommand:` activation references a command that is not contributed.
+
 ### 2026-05-08 - Product Utilization Kickoff
 
 Context:
@@ -243,6 +257,7 @@ Fixes applied:
 | 2026-05-09 | Extension release metadata | VS Code repository metadata used a local `file:` URL and Visual Studio MoreInfo used a localhost placeholder. | Medium | Pointed both at GitHub and added package/build guards. |
 | 2026-05-09 | VS Code package contents | VSIX archive included the source-tree `install.ps1` helper, which is only useful before packaging. | Low | Excluded it from the VSIX and added a lint guard. |
 | 2026-05-09 | VS Code release scripts | Package/install commands broke when the workspace path contained spaces and `&`. | Medium | Replaced shell command strings with a shared command runner and relative VSIX args. |
+| 2026-05-09 | VS Code manifest | Package lint checked only a required command subset, leaving future contributed-command activation drift possible. | Low | Added full contributed-command/activation parity checks. |
 | 2026-05-09 | VS Code installer | PowerShell installer duplicated the npm/Node install path. | Low | Made it delegate to `npm run install-local` and validated the wrapper. |
 | 2026-05-09 | Website launcher | HTTP readiness probes had no explicit timeout, so half-responsive local services could stall startup. | Medium | Added short launch probe timeouts and validated launch/smoke. |
 | 2026-05-09 | Website launcher | Occupied backend/frontend ports could still lead to duplicate startup attempts after a warning. | Medium | Added blocked-port guards and validated mocked/live launch paths. |
