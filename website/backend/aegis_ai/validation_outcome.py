@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from .commands import CommandResult
+from .diagnostic_redaction import redact_inline
 from .schemas import CommandRun
 from .validation_diagnostics import failed_step_parts_from_steps
 
@@ -12,7 +13,7 @@ def validation_ok(validation: CommandRun) -> bool:
 
 
 def error_signature(validation: CommandRun) -> str:
-    text = (validation.stderr or validation.stdout or validation.reason).strip()
+    text = redact_inline(validation.stderr or validation.stdout or validation.reason).strip()
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     return "\n".join(lines[:8])[:1200]
 
@@ -86,12 +87,12 @@ def categorize_command_result(result: CommandResult, *, recipe: Any = None) -> s
 
 
 def summarize_command_result(result: CommandResult, *, category: str, recipe: Any = None) -> str:
-    label = getattr(recipe, "label", "") or result.command
+    label = redact_inline(getattr(recipe, "label", "") or result.command)
 
     if result.timed_out:
         return f"{label} timed out before finishing."
     if not result.allowed:
-        return result.reason or f"{label} was blocked by the current control settings."
+        return redact_inline(result.reason) or f"{label} was blocked by the current control settings."
     if result.exit_code == 0:
         return f"{label} completed successfully."
 

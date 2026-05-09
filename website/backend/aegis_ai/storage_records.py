@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from .diagnostic_redaction import redact_inline
 from .schemas import (
     ExecutionQueueItem,
     PluginManifest,
@@ -36,8 +37,8 @@ def task_summary_from_row(row: Any, *, workspace_root: Path | None = None) -> Ta
     payload["related_files"] = parse_json_list(payload.pop("related_files_json", "[]"))
     payload["validation_commands"] = parse_json_list(payload.pop("validation_commands_json", "[]"))
     payload["checkpoints"] = parse_json_list(payload.pop("checkpoints_json", "[]"))
-    payload["error_summary"] = payload.get("error_summary") or ""
-    payload["final_summary"] = payload.get("final_summary") or ""
+    payload["error_summary"] = redact_inline(payload.get("error_summary") or "")
+    payload["final_summary"] = redact_inline(payload.get("final_summary") or "")
     payload["status"] = normalize_task_status(str(payload.get("status") or "queued"))
     return TaskSummary.model_validate(payload)
 
@@ -114,8 +115,8 @@ def execution_job_values(item: ExecutionQueueItem) -> tuple[Any, ...]:
         item.permission_scope,
         item.sandbox_profile,
         json.dumps(item.payload, ensure_ascii=True),
-        item.error_summary,
-        item.result_summary,
+        redact_inline(item.error_summary),
+        redact_inline(item.result_summary),
         item.lease_expires_at,
     )
 
@@ -145,8 +146,8 @@ def execution_job_from_row(
         permission_scope=str(row["permission_scope"] or "read"),
         sandbox_profile=str(row["sandbox_profile"] or "safe"),
         payload=parse_json_payload(str(row["payload_json"] or "{}")),
-        error_summary=str(row["error_summary"] or ""),
-        result_summary=str(row["result_summary"] or ""),
+        error_summary=redact_inline(str(row["error_summary"] or "")),
+        result_summary=redact_inline(str(row["result_summary"] or "")),
         lease_expires_at=str(row["lease_expires_at"] or ""),
     )
 

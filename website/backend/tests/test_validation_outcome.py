@@ -37,6 +37,16 @@ class ValidationOutcomeTests(unittest.TestCase):
         self.assertTrue(signature.startswith("first error\nsecond error"))
         self.assertLessEqual(len(signature), 1200)
 
+    def test_error_signature_redacts_secret_values_without_hiding_parser_context(self) -> None:
+        secret = "oauth-access-token-1234567890"
+        validation = command_run(stderr=f"SyntaxError: unexpected token: < access_token={secret}")
+
+        signature = error_signature(validation)
+
+        self.assertNotIn(secret, signature)
+        self.assertIn("access_token=[redacted]", signature)
+        self.assertIn("unexpected token: <", signature)
+
     def test_categorizes_validation_failures_by_control_state_and_output(self) -> None:
         cases = [
             (command_run(category="build", stderr="whatever"), "build"),

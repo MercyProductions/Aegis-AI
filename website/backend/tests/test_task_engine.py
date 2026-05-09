@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from aegis_ai import main
-from aegis_ai.schemas import RepairAttempt
+from aegis_ai.schemas import ExecutionQueueItem, RepairAttempt
 from aegis_ai.settings import Settings
 from aegis_ai.storage import EventStore
 from aegis_ai.workspace import WorkspaceManager
@@ -118,6 +118,57 @@ class TaskEngineTests(unittest.TestCase):
         self.assertIn("checkpoint-123", artifacts.checkpoints)
         self.assertEqual(artifacts.repair_attempts[0].outcome, "repaired")
         self.assertTrue(any(event.title == "Task completed" for event in timeline))
+
+    def test_task_and_execution_summaries_redact_secret_values(self) -> None:
+        secret = "oauth-access-token-1234567890"
+        task_id = self.store.create_task(mode="develop", workspace_root=self.workspace, message="Fix secret-bearing error")
+        self.store.transition_task(task_id, "planning")
+        self.store.transition_task(task_id, "running")
+        self.store.transition_task(task_id, "validating")
+        self.store.transition_task(
+            task_id,
+            "failed",
+            error_summary=f"SyntaxError: unexpected token: < access_token={secret}",
+            final_summary=f"client_secret={secret}",
+            detail=f"refresh_token={secret}",
+        )
+        task = self.store.task(task_id)
+        timeline = self.store.task_events(task_id)
+
+        self.assertNotIn(secret, task.error_summary)
+        self.assertNotIn(secret, task.final_summary)
+        self.assertIn("access_token=[redacted]", task.error_summary)
+        self.assertIn("unexpected token: <", task.error_summary)
+        self.assertIn("client_secret=[redacted]", task.final_summary)
+        self.assertTrue(any("refresh_token=[redacted]" in event.detail for event in timeline))
+
+        job = self.store.create_execution_job(
+            ExecutionQueueItem(
+                id="job-secret",
+                task_id=task_id,
+                workspace_root=str(self.workspace),
+                title="Validate",
+                user_goal="Run validation",
+                created_at="now",
+                error_summary=f"access_token={secret}",
+                result_summary=f"client_secret={secret}",
+            )
+        )
+        updated = self.store.update_execution_job(
+            job.id,
+            status="failed",
+            error_summary=f"refresh_token={secret}",
+            result_summary=f"private_key={secret}",
+        )
+
+        self.assertNotIn(secret, job.error_summary)
+        self.assertNotIn(secret, job.result_summary)
+        self.assertNotIn(secret, updated.error_summary)
+        self.assertNotIn(secret, updated.result_summary)
+        self.assertIn("access_token=[redacted]", job.error_summary)
+        self.assertIn("client_secret=[redacted]", job.result_summary)
+        self.assertIn("refresh_token=[redacted]", updated.error_summary)
+        self.assertIn("private_key=[redacted]", updated.result_summary)
 
     def test_task_api_endpoints(self) -> None:
         workspace_manager = WorkspaceManager(self.project_root, self.settings)

@@ -1,5 +1,24 @@
 # Development Log
 
+## 2026-05-09 - Website Summary Persistence Redaction
+
+Focus:
+
+- Keep validation signatures, task summaries, and distributed execution summaries from preserving provider/OAuth secret values as durable workspace context.
+- Preserve useful parser text such as `unexpected token: <` in repair comparisons and task evidence.
+
+Actions:
+
+- Redacted validation failure signatures before they are used for task error summaries and repair comparisons.
+- Redacted task `error_summary`, task `final_summary`, and timeline transition details at persistence boundaries.
+- Redacted distributed execution `error_summary` and `result_summary` during create/update and row mapping.
+- Added regressions for task summaries, execution job summaries, and validation signatures.
+
+Validation completed:
+
+- Website validation-outcome, task-engine, storage-record, and distributed-runtime tests: 24 passed.
+- Website backend compile check: pass.
+
 ## 2026-05-09 - Website Validation Output Secret Redaction
 
 Focus:

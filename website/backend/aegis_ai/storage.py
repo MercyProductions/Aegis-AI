@@ -136,6 +136,7 @@ from .storage_quality import (
     token_calibration_trend_recommendation as storage_token_calibration_trend_recommendation,
     token_estimator_label as storage_token_estimator_label,
 )
+from .diagnostic_redaction import redact_inline
 from .storage_records import (
     execution_job_from_row as storage_execution_job_from_row,
     execution_job_values as storage_execution_job_values,
@@ -240,6 +241,9 @@ class EventStore:
         final_summary: str = "",
         payload: dict[str, Any] | None = None,
     ) -> ToolEvent | None:
+        error_summary = redact_inline(error_summary)
+        final_summary = redact_inline(final_summary)
+        detail = redact_inline(detail)
         with self._session() as conn:
             row = conn.execute("select status from tasks where id = ?", (task_id,)).fetchone()
             if row is None:
@@ -1218,6 +1222,8 @@ class EventStore:
         result_summary: str = "",
         lease_expires_at: str = "",
     ) -> ExecutionQueueItem:
+        error_summary = redact_inline(error_summary)
+        result_summary = redact_inline(result_summary)
         now = utc_now()
         with self._session() as conn:
             row = conn.execute("select * from execution_queue where id = ?", (job_id,)).fetchone()
