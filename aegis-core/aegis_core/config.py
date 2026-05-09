@@ -9,6 +9,12 @@ from urllib.parse import urlparse
 
 
 SUPPORTED_CLOUD_PROVIDERS = {"openai", "anthropic", "google", "openrouter"}
+PROVIDER_ALIASES = {
+    "open_ai": "openai",
+    "openai": "openai",
+    "open_router": "openrouter",
+    "openrouter": "openrouter",
+}
 CONFIG_UPDATE_KEYS = {
     "ollama_url",
     "lm_studio_url",
@@ -110,7 +116,8 @@ def _clean_routing_mode(value: Any) -> str:
 
 
 def _clean_cloud_provider(value: Any) -> str:
-    text = _clean_string(value, AegisConfig.preferred_cloud_provider).lower().replace("-", "_")
+    text = _clean_string(value, AegisConfig.preferred_cloud_provider).lower().replace("-", "_").replace(" ", "_")
+    text = PROVIDER_ALIASES.get(text, text)
     return text if text in SUPPORTED_CLOUD_PROVIDERS else AegisConfig.preferred_cloud_provider
 
 

@@ -8,7 +8,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from .config import AegisConfig, load_config, workspace_root
+from .config import AegisConfig, PROVIDER_ALIASES, load_config, workspace_root
 from .credentials import CredentialStore, CredentialStoreError
 from .diagnostics import redact_inline, scrub
 from .ollama import OllamaClient
@@ -394,10 +394,7 @@ def _normalize_provider_id(provider_id: str | None) -> str | None:
     aliases = {
         "lmstudio": "lm_studio",
         "lm_studio": "lm_studio",
-        "open_ai": "openai",
-        "openai": "openai",
-        "open_router": "openrouter",
-        "openrouter": "openrouter",
+        **PROVIDER_ALIASES,
     }
     return aliases.get(canonical, text)
 

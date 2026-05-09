@@ -186,6 +186,25 @@ Validation completed:
 - Aegis Core contract test suite: pass, 118 tests.
 - Repository whitespace check: pass.
 
+## 2026-05-09 - Settings Provider Alias Consistency
+
+Focus:
+
+- Keep saved hybrid provider settings consistent with route-time provider alias handling.
+- Avoid surprising fallback to OpenAI when clients save display-style OpenRouter names.
+
+Actions:
+
+- Shared cloud provider alias normalization between settings and model routing.
+- Canonicalized `open-router` and `open router` to `openrouter` when loading or saving preferred cloud provider settings.
+- Added settings API regressions proving provider aliases persist canonically while invalid providers still fall back safely.
+
+Validation completed:
+
+- Aegis Core settings/routing provider alias regression slice: pass, 7 tests.
+- Aegis Core contract test suite: pass, 130 tests.
+- Repository whitespace check: pass.
+
 ## 2026-05-09 - Provider Alias Normalization
 
 Focus:

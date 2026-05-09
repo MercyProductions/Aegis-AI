@@ -180,7 +180,7 @@ Hybrid model routing:
 - Core defaults to `model_routing_mode: local_only` and routes normal work to Ollama at `http://127.0.0.1:11434`.
 - Optional providers are OpenAI, Anthropic, Google, OpenRouter, and local LM Studio.
 - Explicit local provider requests such as `ollama` or `lm_studio` stay local; they are not reinterpreted as cloud fallback requests.
-- Provider IDs accept common casing, spacing, and hyphen aliases such as `LM Studio`, `lm-studio`, `open-router`, and `open router`, and key mutations store under canonical provider IDs.
+- Provider IDs and cloud provider settings accept common casing, spacing, and hyphen aliases such as `LM Studio`, `lm-studio`, `open-router`, and `open router`, and key mutations store under canonical provider IDs.
 - LM Studio settings normalize to the local server base, and completions call its OpenAI-compatible `/v1/chat/completions` endpoint.
 - Cloud routes require client-visible warnings, explicit approval, sanitized context metadata, and provider keys stored in OS credential storage.
 - `preferred_cloud_provider` is restricted to OpenAI, Anthropic, Google, or OpenRouter.

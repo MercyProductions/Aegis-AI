@@ -1979,7 +1979,7 @@ def test_hybrid_model_settings_are_sanitized(tmp_path: Path) -> None:
                 "local_small_model": "local-small",
                 "local_coder_model": "local-coder",
                 "local_embedding_model": "local-embed",
-                "preferred_cloud_provider": "OpenRouter",
+                "preferred_cloud_provider": "open-router",
                 "preferred_cloud_model": "openrouter-model",
                 "cloud_cost_warnings": "false",
             }
@@ -2604,6 +2604,22 @@ def test_settings_api_persists_sanitized_hybrid_values(tmp_path: Path) -> None:
     assert persisted["cloud_cost_warnings"] is False
 
 
+def test_settings_api_persists_canonical_cloud_provider_alias(tmp_path: Path) -> None:
+    workspace = tmp_path / "settings-provider-alias-project"
+    workspace.mkdir()
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/v1/settings",
+        json={"workspace": str(workspace), "settings": {"preferred_cloud_provider": "open router"}},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["data"]["preferred_cloud_provider"] == "openrouter"
+    config_path = workspace / ".aegis" / "config.json"
+    assert json.loads(config_path.read_text(encoding="utf-8"))["preferred_cloud_provider"] == "openrouter"
+
+
 def test_settings_api_normalizes_existing_known_config_values(tmp_path: Path) -> None:
     workspace = tmp_path / "settings-stale-config-project"
     aegis_dir = workspace / ".aegis"
@@ -2614,7 +2630,7 @@ def test_settings_api_normalizes_existing_known_config_values(tmp_path: Path) ->
             {
                 "lm_studio_url": "127.0.0.1:1234/v1/chat/completions",
                 "model_routing_mode": "cloud-allowed",
-                "preferred_cloud_provider": "not-a-provider",
+                "preferred_cloud_provider": "open-router",
                 "fallback_models": "qwen2.5-coder:7b, granite-code:8b",
                 "max_context_chars": "not-a-number",
                 "custom_client_setting": {"preserve": True},
@@ -2633,7 +2649,7 @@ def test_settings_api_normalizes_existing_known_config_values(tmp_path: Path) ->
     persisted = json.loads(config_path.read_text(encoding="utf-8"))
     assert persisted["lm_studio_url"] == "http://127.0.0.1:1234"
     assert persisted["model_routing_mode"] == "cloud_allowed"
-    assert persisted["preferred_cloud_provider"] == AegisConfig.preferred_cloud_provider
+    assert persisted["preferred_cloud_provider"] == "openrouter"
     assert persisted["fallback_models"] == ["qwen2.5-coder:7b", "granite-code:8b"]
     assert persisted["max_context_chars"] == AegisConfig.max_context_chars
     assert persisted["auto_scan_on_open"] is True
