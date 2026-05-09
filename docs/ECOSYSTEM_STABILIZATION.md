@@ -40,7 +40,7 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 | VS Code rollback safety | Improved | Rollback validates timestamp-like backup IDs, workspace roots, and backup file paths before restoring files; incomplete backup files are skipped with visible output details. |
 | Visual Studio memory init | Improved | Solution memory reads and writes are best-effort, so damaged `.aegis` paths do not crash memory-backed workflows. |
 | Visual Studio rollback | Improved | Backup manifests now carry explicit IDs, rollback rejects cross-solution manifests, and manifest/backup paths are validated before touching solution files. |
-| Website workspace setup | Improved | Damaged `.aegis` project and validation profile paths now return warnings instead of breaking setup. |
+| Website workspace setup | Improved | Damaged `.aegis` project and validation profile paths now return warnings instead of breaking setup, and generated/dependency folder ignores are matched case-insensitively during scans. |
 | Website validation discovery | Improved | Damaged project marker directories such as `package.json`, `build.py`, or `CMakeLists.txt` no longer create false validation or install suggestions, root `build.ps1` guard scripts are preferred over lower-level native build fallbacks, agent/project-builder continuation proposes the same safe PowerShell guard command, and command execution blocks broader PowerShell invocations. |
 | Website validation profiles | Improved | Manual validation profile updates now use atomic writes, clean failed temp files, and report damaged profile paths as clear API errors. |
 | Website memory notes | Improved | Memory-note files are confined to the memory directory, damaged memory paths degrade with clear API errors, writes are atomic, malformed confidence input is tolerated, rapid note IDs are collision-safe, and the memory editor uses shared API base discovery for note operations. |
@@ -94,6 +94,7 @@ Ran during this pass:
 - Aegis Core contract regression suite after Unity metadata scan hardening: 158 passed
 - Website approval/autonomous/workspace-operation lockfile safety tests: 36 passed, 11 subtests passed
 - Website approval/workspace/autonomous Unity metadata safety tests: 38 passed, 11 subtests passed
+- Website workspace/storage and workspace-operation scan ignore tests: 74 passed
 - VS Code package lint and extension syntax check after Unity metadata context hardening: pass
 - Website focused frontend API/runtime/task tests: 40 tests passed
 - Website acceptance gate with explicit backend/frontend URLs: pass
@@ -127,6 +128,7 @@ Ran during this pass:
 - Improved VS Code local fallback snapshots so Unity package manifests, package lockfiles, project settings, and assembly-definition metadata stay available as important context/build-risk files when Core scan is unavailable.
 - Improved Visual Studio solution scans and smart context so Unity package manifests, package lockfiles, project settings, and assembly-definition metadata stay available as important context/config files without treating Unity's package lockfile as the old NuGet typo.
 - Improved Website workspace profiling, watcher drift, guided approval, and autonomous dependency projections so Unity package manifests, package lockfiles, project settings, and assembly-definition metadata receive dependency/config safety treatment while generated Unity runtime folders are skipped.
+- Hardened Website scan ignores so mixed-case generated/dependency directories such as `Node_Modules`, `BUILD`, `LIBRARY`, `temp`, and `LOGS` stay out of context and dependency profiling.
 - Hardened Core validation detection so ignored dependency/build folders do not trigger false `.NET` build suggestions.
 - Hardened Core validation detection so damaged root build-marker directories do not trigger false Cargo, Python, CMake, pnpm, or Yarn suggestions.
 - Reduced Core validation startup overhead by avoiding duplicate validation-command detection.

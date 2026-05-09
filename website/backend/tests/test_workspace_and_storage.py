@@ -460,6 +460,29 @@ class WorkspaceAndStorageTests(unittest.TestCase):
         for relative in files:
             self.assertEqual(scanned.get(relative.replace("\\", "/")), "text", relative)
 
+    def test_scan_ignores_generated_and_dependency_dirs_case_insensitively(self) -> None:
+        manager = WorkspaceManager(self.project_root, self.settings)
+        workspace = manager.resolve_workspace("workspace")
+
+        files = {
+            "src/app.py": "print('ok')\n",
+            "Node_Modules/pkg/index.js": "console.log('cached')\n",
+            "BUILD/Hidden.vcxproj": "<Project />\n",
+            "LIBRARY/generated.cs": "class Generated {}\n",
+            "temp/scratch.txt": "temp\n",
+            "LOGS/editor.log": "log\n",
+        }
+        for relative, content in files.items():
+            path = workspace / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
+
+        scanned_paths = {item.path for item in manager.scan(workspace, max_files=40)}
+        profile = manager.inspect_dependency_profile(workspace)
+
+        self.assertEqual(scanned_paths, {"src/app.py"})
+        self.assertNotIn("BUILD/Hidden.vcxproj", profile.config_files)
+
     def test_large_file_scan_context_and_line_slice_support(self) -> None:
         manager = WorkspaceManager(self.project_root, self.settings)
         workspace = manager.resolve_workspace("workspace")

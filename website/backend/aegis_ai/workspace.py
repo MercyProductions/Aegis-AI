@@ -42,6 +42,7 @@ IGNORE_NAMES = {
     "dist",
     "node_modules",
 }
+IGNORE_NAMES_NORMALIZED = {name.casefold() for name in IGNORE_NAMES}
 
 DOTNET_PROJECT_SUFFIXES = {".csproj": "C#", ".fsproj": "F#", ".vbproj": "Visual Basic"}
 DOTNET_DEPENDENCY_METADATA_FILES = ("Directory.Packages.props", "packages.config", "packages.lock.json")
@@ -352,6 +353,10 @@ DATABASE_TOOLS = {
 }
 
 
+def _is_ignored_name(name: str) -> bool:
+    return name.casefold() in IGNORE_NAMES_NORMALIZED
+
+
 @dataclass
 class ApplyResult:
     applied: list[str]
@@ -410,12 +415,12 @@ class WorkspaceManager:
             return files
 
         for current, dirs, names in os.walk(root):
-            dirs[:] = [name for name in dirs if name not in IGNORE_NAMES and not name.startswith(".")]
+            dirs[:] = [name for name in dirs if not _is_ignored_name(name) and not name.startswith(".")]
 
             for name in sorted(names):
                 if len(files) >= max_files:
                     return files
-                if name in IGNORE_NAMES:
+                if _is_ignored_name(name):
                     continue
 
                 path = Path(current) / name
@@ -1487,13 +1492,14 @@ class WorkspaceManager:
     def _instruction_scan_dirs(self, relative_dir: str, dirs: list[str]) -> list[str]:
         allowed: list[str] = []
         in_aegis = relative_dir == ".aegis" or relative_dir.startswith(".aegis/")
+        instruction_ignored = {"checkpoints", "node_modules", "dist", "build", ".next", "__pycache__"}
         for name in dirs:
-            if name in {"checkpoints", "node_modules", "dist", "build", ".next", "__pycache__"}:
+            if name.casefold() in instruction_ignored:
                 continue
             if name == ".aegis":
                 allowed.append(name)
                 continue
-            if name in IGNORE_NAMES:
+            if _is_ignored_name(name):
                 continue
             if name.startswith("."):
                 continue
@@ -1504,7 +1510,7 @@ class WorkspaceManager:
 
     def _could_be_instruction_file(self, path: Path, *, referenced: bool = False) -> bool:
         name = path.name
-        if name in IGNORE_NAMES:
+        if _is_ignored_name(name):
             return False
         suffix = path.suffix.lower()
         extensionless_name = name.lower()
@@ -1853,7 +1859,7 @@ class WorkspaceManager:
                 relative_parts = path.relative_to(root).parts
             except ValueError:
                 continue
-            if any(part in IGNORE_NAMES for part in relative_parts):
+            if any(_is_ignored_name(part) for part in relative_parts):
                 continue
             if not self._path_is_file(path):
                 continue
@@ -1865,7 +1871,7 @@ class WorkspaceManager:
     def _workspace_has_suffix(self, root: Path, suffix: str, *, max_scan: int = 2_000) -> bool:
         scanned = 0
         for current, dirs, names in os.walk(root):
-            dirs[:] = [name for name in dirs if name not in IGNORE_NAMES and not name.startswith(".")]
+            dirs[:] = [name for name in dirs if not _is_ignored_name(name) and not name.startswith(".")]
             for name in names:
                 scanned += 1
                 if scanned > max_scan:

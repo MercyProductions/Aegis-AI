@@ -1,5 +1,23 @@
 # Development Log
 
+## 2026-05-09 - Website Case-Insensitive Scan Ignores
+
+Focus:
+
+- Keep Website workspace scans aligned with Core and editor clients on generated/dependency folder exclusion.
+- Prevent mixed-case ignored folders on Windows from leaking into model context or dependency profiling.
+
+Actions:
+
+- Added a shared case-insensitive ignore-name helper for Website workspace scanning, instruction scanning, bounded globs, and suffix scans.
+- Added a regression that verifies mixed-case `Node_Modules`, `BUILD`, `LIBRARY`, `temp`, and `LOGS` folders are excluded while normal source files remain visible.
+
+Validation completed:
+
+- Website workspace/storage and workspace-operations tests: 74 passed.
+- Website backend compile check: pass.
+- Git whitespace check: pass.
+
 ## 2026-05-09 - Website Unity Metadata Safety
 
 Focus:
