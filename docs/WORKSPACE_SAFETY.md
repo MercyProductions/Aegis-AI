@@ -25,6 +25,8 @@ The `fix now` path for a recommendation creates a queued task and records a `rec
 
 Distributed execution is opt-in and audit-first. The default local worker can run safe queue jobs, but command-backed validation/build jobs require `allow_commands=true` at dispatch time and still use `CommandRunner`, the allowlist, approval settings, and the selected sandbox profile. LAN and remote workers are ignored unless the dispatch request sets `allow_remote=true` and the worker registration is trusted.
 
+The Website `CommandRunner` treats the command allowlist as a tool-name contract, not permission to run any executable with the same basename. Normal tools should be launched through `PATH` with bare names such as `npm test` or `python -m pytest`; the only explicit path wrappers accepted are local `./gradlew` and `./mvnw` project wrappers.
+
 Remote sync exports store manifests and payload hashes in SQLite; they do not copy files to a remote machine by themselves. Distributed repair jobs created after validation failure are timeline and queue records only. They do not write project files directly and must hand off to the normal task runtime for approved code changes, checkpoints, validation, and rollback.
 
 ## Plugin Boundary

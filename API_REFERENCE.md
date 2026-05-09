@@ -252,6 +252,7 @@ Release candidate notes:
 
 - Core `/v1/validation` blocks unsafe command overrides and returns structured `ok: false` results.
 - Detected safe validation commands such as `npm test` can return nonzero exit codes without crashing Core or Website clients.
+- Website command execution resolves normal validation/build tools from bare `PATH` names and rejects arbitrary path-qualified aliases such as `.\npm.cmd test`; explicit `./gradlew` and `./mvnw` project wrappers remain supported.
 - Simulated Ollama outages through workspace-local Core settings return model health data with `reachable: false` and an error detail.
 
 See `aegis-core/docs/API_REFERENCE.md` for the Core-only details and examples.

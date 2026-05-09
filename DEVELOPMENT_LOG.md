@@ -2019,6 +2019,26 @@ Validation completed:
 - Visual Studio VSIX build and package validation: pass.
 - Repository whitespace check: pass.
 
+## 2026-05-09 - Website Command Path Alias Narrowing
+
+Focus:
+
+- Keep the Website command allowlist tied to trusted tool names instead of arbitrary executable paths.
+- Preserve explicit local project wrapper support for Gradle and Maven without letting workspace-local package-manager shims impersonate trusted tools.
+
+Actions:
+
+- Blocked path-qualified Website command executables such as `.\npm.cmd test`, `tools/npm.cmd test`, and quoted absolute `python.exe` paths even when the basename is allowlisted.
+- Preserved the existing explicit `./gradlew` and `./mvnw` wrapper behavior for project-local JVM validation workflows.
+- Updated Website and shared safety documentation to explain the bare-tool and project-wrapper command contract.
+
+Validation completed:
+
+- Website command-runner safety suite: pass, 23 tests and 11 subtests.
+- Website validation command helper suite: pass, 2 tests and 5 subtests.
+- Website backend compile check: pass.
+- Repository whitespace check: pass.
+
 ## 2026-05-09 - Website PowerShell Guard Windows Path Compatibility
 
 Focus:

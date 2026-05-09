@@ -105,6 +105,23 @@ class ApprovalAndCommandTests(unittest.TestCase):
         self.assertIn("could not start", gradle.reason.lower())
         self.assertIn("could not start", maven.reason.lower())
 
+    def test_path_qualified_tool_aliases_stay_blocked(self) -> None:
+        runner = CommandRunner(Settings(_env_file=None, aegis_command_allowlist="npm,python"))
+        commands = (
+            r".\npm.cmd test",
+            "./npm test",
+            "tools/npm.cmd test",
+            r'"C:\Program Files\nodejs\npm.cmd" test',
+            r'"C:\Python311\python.exe" --version',
+        )
+
+        for command in commands:
+            with self.subTest(command=command):
+                result = runner.run(command, self.workspace)
+
+                self.assertFalse(result.allowed)
+                self.assertIn("Path-qualified executables", result.reason)
+
     def test_destructive_git_aliases_stay_blocked_when_git_is_allowlisted(self) -> None:
         runner = CommandRunner(Settings(_env_file=None, aegis_command_allowlist="git"))
         commands = (

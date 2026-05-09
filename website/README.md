@@ -138,9 +138,11 @@ When `Run validation` is enabled in the UI and changes are applied, Aegis tries 
 Commands are constrained by:
 
 ```text
-AEGIS_COMMAND_ALLOWLIST=python,py,node,npm,npx,pnpm,pytest,uvicorn,tsc,vite,cargo,rustc,go,dotnet
+AEGIS_COMMAND_ALLOWLIST=python,py,node,npm,npx,pnpm,yarn,bun,pytest,uvicorn,tsc,vite,cargo,rustc,go,dotnet,cmake,ctest,msbuild,ninja,make,gradle,gradlew,mvn,mvnw,javac,java,flutter,swift,powershell,pwsh,ruff,mypy,sqlfluff
 AEGIS_COMMAND_TIMEOUT_SECONDS=120
 ```
+
+Use bare executable names such as `npm test`, `python -m pytest`, or `dotnet build`. The only path-qualified executables accepted by the Website command runner are local project wrappers `./gradlew` and `./mvnw`; arbitrary tool paths such as `.\npm.cmd test` or `C:\Tools\npm.cmd test` are blocked so workspace files cannot impersonate trusted tools by basename.
 
 Every task, event, command result, and validated repair memory is stored in:
 

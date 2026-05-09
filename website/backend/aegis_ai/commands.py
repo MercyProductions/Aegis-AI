@@ -45,6 +45,7 @@ SHELL_METACHARS = {
 
 ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 SHELL_OPERATOR_SCAN_ORDER = ("&&", "||", ">>", "<<", "|", "&", ";", ">", "<")
+LOCAL_PROJECT_WRAPPERS = {"gradlew", "mvnw"}
 
 
 @dataclass(frozen=True)
@@ -83,6 +84,7 @@ class CommandRunner:
     ) -> CommandResult:
         stripped = command.strip()
         normalized = f" {stripped.lower()} "
+        raw_first_token = self._raw_first_token(stripped)
         profile_name = sandbox_profile or self.settings.sandbox_profile
 
         try:
@@ -123,6 +125,17 @@ class CommandRunner:
         first = self._normalize_executable(argv[0])
         if not first:
             return self._blocked(command, cwd, "Empty command.")
+
+        executable_token = raw_first_token or argv[0]
+        if (
+            self._is_path_qualified_executable(executable_token)
+            and not self._is_allowed_path_qualified_executable(executable_token, first)
+        ):
+            return self._blocked(
+                command,
+                cwd,
+                "Path-qualified executables are limited to ./gradlew and ./mvnw project wrappers.",
+            )
 
         is_powershell = first in {"powershell", "pwsh"}
         is_powershell_build_guard = is_safe_powershell_build_guard_argv(
@@ -228,6 +241,19 @@ class CommandRunner:
             return ""
         return self._normalize_executable(argv[0])
 
+    def _raw_first_token(self, command: str) -> str:
+        if not command:
+            return ""
+        if command[0] in {"'", '"'}:
+            quote = command[0]
+            index = 1
+            while index < len(command):
+                if command[index] == quote:
+                    return command[: index + 1]
+                index += 1
+            return command
+        return command.split(maxsplit=1)[0]
+
     def _normalize_executable(self, value: str) -> str:
         first = value.strip("\"'").replace("\\", "/").lower()
         first = first.rsplit("/", 1)[-1]
@@ -237,6 +263,22 @@ class CommandRunner:
             if first.endswith(suffix):
                 first = first[: -len(suffix)]
         return first
+
+    def _is_path_qualified_executable(self, value: str) -> bool:
+        cleaned = value.strip("\"'").replace("\\", "/")
+        return "/" in cleaned or bool(re.match(r"^[A-Za-z]:", cleaned))
+
+    def _is_allowed_path_qualified_executable(self, value: str, normalized_executable: str) -> bool:
+        if normalized_executable not in LOCAL_PROJECT_WRAPPERS:
+            return False
+        cleaned = value.strip("\"'").replace("\\", "/").lower()
+        allowed_names = (
+            normalized_executable,
+            f"{normalized_executable}.cmd",
+            f"{normalized_executable}.bat",
+            f"{normalized_executable}.exe",
+        )
+        return any(cleaned == f"./{name}" for name in allowed_names)
 
     def _is_destructive_argv(self, argv: list[str]) -> bool:
         if not argv:
