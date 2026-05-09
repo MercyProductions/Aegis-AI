@@ -19,6 +19,7 @@ Actions:
 - Hardened Ollama model inventory parsing so malformed `/api/tags` payloads do not break shared health/model endpoints.
 - Added explicit Core task-status API errors for bad statuses and missing task IDs.
 - Hardened shared task record loading so malformed local task metadata and timestamps do not break dashboards or status updates.
+- Hardened shared client registry loading so malformed local client records and mixed timestamp types do not break dashboard client lists.
 - Hardened dashboard/task memory reads so corrupted or unreadable `.aegis` files do not crash shared clients.
 - Tightened Core JavaScript validation detection to avoid hallucinated npm/pnpm/yarn test/build commands.
 - Restricted Core validation execution to known safe commands and structured failure results.
@@ -45,8 +46,9 @@ Actions:
 
 Validation completed:
 
-- Aegis Core contract test suite: pass, 36 tests.
+- Aegis Core contract test suite: pass, 37 tests.
 - Aegis Core compile check: pass.
+- Aegis Core malformed client registry regression test: pass.
 - Aegis Core malformed task record regression tests: pass.
 - Aegis Core outside-workspace path and symlink scan safety regression tests: pass.
 - Aegis Core workspace scan malformed package/stat-race regression tests: pass.

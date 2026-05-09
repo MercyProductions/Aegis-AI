@@ -8,6 +8,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 import aegis_core.validation as validation_module
+from aegis_core.clients import list_clients
 from aegis_core.config import AegisConfig, load_config, memory_dir, update_config, write_default_config
 from aegis_core.memory import ProjectMemory
 from aegis_core.ollama import OllamaClient
@@ -158,6 +159,32 @@ def test_v1_client_task_dashboard_contract(tmp_path: Path) -> None:
         json={"workspace": str(workspace), "status": "completed"},
     )
     assert missing_task.status_code == 404
+
+
+def test_client_listing_normalizes_malformed_client_records(tmp_path: Path) -> None:
+    workspace = tmp_path / "malformed-client-project"
+    aegis_dir = workspace / ".aegis"
+    aegis_dir.mkdir(parents=True)
+    (aegis_dir / "clients.json").write_text(
+        json.dumps(
+            {
+                "bad-value": "not-a-client",
+                "missing-id": {"name": "Missing ID"},
+                "client-a": {"client_id": " client-a ", "last_seen": 2, "capabilities": "scan"},
+                "client-b": {"client_id": "client-b", "last_seen": "2020-01-01T00:00:00Z", "capabilities": [123, "scan", None, ""]},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    clients = list_clients(workspace)
+
+    assert {client["client_id"] for client in clients} == {"missing-id", "client-a", "client-b"}
+    by_id = {client["client_id"]: client for client in clients}
+    assert by_id["missing-id"]["name"] == "Missing ID"
+    assert by_id["client-a"]["last_seen"] == "2"
+    assert by_id["client-a"]["capabilities"] == []
+    assert by_id["client-b"]["capabilities"] == ["123", "scan"]
 
 
 def test_task_listing_normalizes_malformed_task_records(tmp_path: Path) -> None:

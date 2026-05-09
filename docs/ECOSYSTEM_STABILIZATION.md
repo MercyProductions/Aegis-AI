@@ -17,6 +17,7 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 | Ollama model routing | Pass | Core detects `qwen3-coder:30b` with configured fallbacks available, and malformed URLs or model inventory payloads degrade to health/config diagnostics. |
 | Shared client registration | Pass | Desktop, VS Code, and Visual Studio now have Core registration paths. |
 | Shared task visibility | Pass | VS Code creates and updates Core tasks during agent mode; Core dashboard displays active/recent tasks. |
+| Shared client registry resilience | Improved | Core normalizes malformed local client records before dashboard sorting. |
 | Desktop dashboard bridge | Pass | Desktop has `core_api_base_url` and an Auralith Ecosystem card backed by `/v1/ecosystem/dashboard`. |
 | VS Code health check | Improved | Health check now warns when Aegis Core is offline and registers the VS Code client when Core is reachable. |
 | Visual Studio health check | Improved | Health check now verifies Aegis Core and registers the Visual Studio client. |
@@ -43,8 +44,9 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 
 Ran during this pass:
 
-- `python -m pytest tests/test_core_contracts.py -q` in Aegis Core: 36 tests passed
+- `python -m pytest tests/test_core_contracts.py -q` in Aegis Core: 37 tests passed
 - `python -m compileall aegis_core`: pass
+- Core malformed client registry regression test: pass
 - Core malformed task record regression tests: pass
 - Core outside-workspace path and symlink scan safety regression tests: pass
 - Core workspace scan malformed package/stat-race regression tests: pass
@@ -76,6 +78,7 @@ Ran during this pass:
 - Added Visual Studio Core health/registration check to the native health command.
 - Added Core scan cache through `.aegis/scan-cache.json`.
 - Added Core dashboard stale-task detection and suggested actions.
+- Hardened shared client registry loading so malformed client records, bad capabilities, and mixed timestamp types do not break dashboard sorting.
 - Hardened shared task loading so malformed local task metadata and timestamps do not break dashboard or status workflows.
 - Hardened Core scan safety for mixed-case ignored folders, token/password/auth-like files, and Windows workspaces under temp-style parent directories.
 - Hardened Core read/edit safety so files resolving outside the workspace, including symlinked files, are excluded from scans.
