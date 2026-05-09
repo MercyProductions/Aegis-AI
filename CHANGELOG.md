@@ -36,7 +36,7 @@
 - Aligned Website Core-bridge, project-status, and feedback redaction with the Core/editor OAuth provider secret coverage for `access_token`, `refresh_token`, `client_secret`, `x-api-key`, and `private_key` fields.
 - Hardened Website command output and validation diagnostic formatting so secret-shaped provider values are redacted before reaching build logs, repair prompts, or API payloads while parser errors such as `unexpected token: <` stay readable.
 - Hardened Website task and distributed-execution summaries so validation signatures, task errors, final summaries, execution errors, and job result summaries redact provider/OAuth secret values before becoming durable workspace context.
-- Hardened Website Core dashboard adapters so Core-sourced validation command output and task summaries are re-redacted before reaching Website runtime status payloads.
+- Hardened Website Core dashboard adapters so Core-sourced validation command output, task summaries, and nested model status details are re-redacted before reaching Website runtime status payloads.
 - Improved Website scaffold install preflight so `.fsproj`, `.vbproj`, and `.slnx` projects receive the same missing-restore detection as `.csproj` projects.
 - Improved Website workspace profiling and validation planning so existing `.slnx` Visual Studio solutions are treated like `.sln` workspaces.
 - Improved Website agent and fallback continuation so existing `.slnx` workspaces keep Visual Studio stack guardrails and receive runnable MSBuild validation helpers.

@@ -443,6 +443,41 @@ def test_core_dashboard_adapter_redacts_task_summary_secret_values() -> None:
     assert "private_key: [redacted]" in serialized
 
 
+def test_core_dashboard_adapter_redacts_nested_model_status_secrets() -> None:
+    secret = "model-provider-access-token-12345"
+    dashboard = core_dashboard_to_website_runtime_status(
+        {
+            "ok": True,
+            "api_version": "v1",
+            "contract_version": "2026.05.09",
+            "kind": "ecosystem.dashboard",
+            "data": {
+                "clients": [],
+                "model_status": {
+                    "ready": False,
+                    "message": f"Authorization: Bearer {secret}",
+                    "providers": [
+                        {
+                            "name": "provider",
+                            "url": f"https://user:{secret}@provider.test/v1",
+                            "detail": f'Provider rejected {{"x-api-key":"{secret}"}}',
+                        }
+                    ],
+                },
+            },
+        }
+    )
+
+    serialized = json.dumps(dashboard)
+
+    assert secret not in serialized
+    assert dashboard["model_status"]["ready"] is False
+    assert "Authorization: [redacted]" in serialized
+    assert "https://[redacted]@provider.test/v1" in serialized
+    provider_detail = dashboard["model_status"]["providers"][0]["detail"]
+    assert '"x-api-key":"[redacted]"' in provider_detail
+
+
 def test_core_runtime_endpoint_delegates_to_core_bridge(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()

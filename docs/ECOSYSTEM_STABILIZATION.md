@@ -113,7 +113,7 @@ Ran during this pass:
 - Website backend compile check after validation output secret redaction: pass
 - Website backend validation-outcome, task-engine, storage-record, and distributed-runtime tests after summary persistence redaction: 24 passed
 - Website backend compile check after summary persistence redaction: pass
-- Website backend Core bridge adapter redaction tests after dashboard adapter hardening: 18 passed
+- Website backend Core bridge adapter redaction tests after dashboard adapter hardening: 19 passed
 - Website focused frontend API/runtime/task tests: 40 tests passed
 - Website acceptance gate with explicit backend/frontend URLs: pass
 - Website backend tests: 739 tests and 155 subtests passed
@@ -156,7 +156,7 @@ Ran during this pass:
 - Hardened Website Core bridge, project-status, and feedback redaction for OAuth/provider fields such as `access_token`, `refresh_token`, `client_secret`, `x-api-key`, and `private_key`.
 - Hardened Website validation command output, diagnostic formatting, and project-scaffold excerpts so provider/OAuth secret values are redacted before they reach build logs, repair prompts, or API payloads.
 - Hardened Website validation signatures, task summaries, and distributed execution summaries so provider/OAuth secret values are redacted before they become durable task or job context.
-- Hardened Website Core dashboard adapter mapping so Core-sourced validation command output and task summaries are redacted again before they reach runtime status payloads.
+- Hardened Website Core dashboard adapter mapping so Core-sourced validation command output, task summaries, and nested model status details are redacted again before they reach runtime status payloads.
 - Hardened Core validation detection so ignored dependency/build folders do not trigger false `.NET` build suggestions.
 - Hardened Core validation detection so damaged root build-marker directories do not trigger false Cargo, Python, CMake, pnpm, or Yarn suggestions.
 - Reduced Core validation startup overhead by avoiding duplicate validation-command detection.

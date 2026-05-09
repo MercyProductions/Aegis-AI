@@ -4,7 +4,7 @@
 
 Focus:
 
-- Keep Core-sourced validation output and task summaries from bypassing Website's shared diagnostic redaction when dashboard contracts are adapted for runtime status responses.
+- Keep Core-sourced validation output, task summaries, and model status details from bypassing Website's shared diagnostic redaction when dashboard contracts are adapted for runtime status responses.
 - Remove duplicated Website Core-bridge redaction regexes so Core errors and adapter payloads share the same provider/OAuth secret vocabulary.
 
 Actions:
@@ -12,11 +12,12 @@ Actions:
 - Reused the shared Website diagnostic redactor for Core bridge error text.
 - Redacted Core dashboard task titles, summaries, and task metadata strings during Website adapter mapping.
 - Redacted Core validation command names, command text, reasons, stdout, and stderr before returning Website runtime status payloads.
-- Added regressions for Core-sourced validation output and dashboard task summaries containing provider/OAuth secret values.
+- Redacted nested Core dashboard model status values while preserving non-string readiness state.
+- Added regressions for Core-sourced validation output, dashboard task summaries, and nested model status details containing provider/OAuth secret values.
 
 Validation completed:
 
-- Website Core bridge tests: 18 passed.
+- Website Core bridge tests: 19 passed.
 
 ## 2026-05-09 - Website Summary Persistence Redaction
 

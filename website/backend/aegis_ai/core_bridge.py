@@ -301,6 +301,19 @@ def _redact_core_text(text: object) -> str:
     return redact_inline(str(text))
 
 
+def _redact_core_value(value: Any) -> Any:
+    if isinstance(value, str):
+        return _redact_core_text(value)
+    if isinstance(value, list):
+        return [_redact_core_value(item) for item in value]
+    if isinstance(value, dict):
+        return {
+            _redact_core_text(key) if isinstance(key, str) else key: _redact_core_value(item)
+            for key, item in value.items()
+        }
+    return value
+
+
 def core_envelope_data(envelope: dict[str, Any] | None) -> dict[str, Any]:
     if not isinstance(envelope, dict):
         return {}
@@ -363,12 +376,13 @@ def core_dashboard_to_website_runtime_status(envelope: dict[str, Any] | None) ->
     recent_tasks = data.get("recent_tasks") if isinstance(data.get("recent_tasks"), list) else []
     validation = data.get("validation") if isinstance(data.get("validation"), dict) else {}
     model_status = data.get("model_status") if isinstance(data.get("model_status"), dict) else {}
+    redacted_model_status = _redact_core_value(model_status)
     return {
         "workspace": str(data.get("workspace") or ""),
         "client_count": len([item for item in clients if isinstance(item, dict)]),
         "active_tasks": [core_task_to_website_task_summary(item) for item in active_tasks if isinstance(item, dict)],
         "recent_tasks": [core_task_to_website_task_summary(item) for item in recent_tasks if isinstance(item, dict)],
-        "model_status": model_status,
+        "model_status": redacted_model_status if isinstance(redacted_model_status, dict) else {},
         "validation": core_validation_to_website_validation(validation),
         "contract_version": str(envelope.get(CORE_CONTRACT_VERSION_FIELD) or "") if isinstance(envelope, dict) else "",
     }
