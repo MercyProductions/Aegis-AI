@@ -30,6 +30,7 @@
 - Tightened VS Code rollback backup ID validation to reject dot and hidden-folder aliases.
 - Hardened Visual Studio solution memory reads and writes so damaged `.aegis` paths degrade safely and Health Check can report them.
 - Hardened Visual Studio rollback so backups carry explicit IDs and rollback skips unsafe or incomplete manifest entries instead of restoring from ambiguous paths.
+- Tightened Visual Studio rollback so shared backup folders cannot roll back manifests from a different solution and invalid backup IDs no longer fall back to the newest backup folder.
 - Hardened Website workspace setup so damaged `.aegis` project and validation profile paths return warnings instead of breaking setup.
 - Hardened Website checkpoint restore so checkpoint IDs stay folder-local and damaged manifests or backup paths return clean errors instead of unsafe restores or server failures.
 - Hardened Website apply changes so checkpoint creation failures stop the apply before files are touched and later write/delete failures return warnings with checkpoint context.

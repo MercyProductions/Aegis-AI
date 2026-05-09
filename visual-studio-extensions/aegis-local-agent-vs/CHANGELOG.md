@@ -8,6 +8,7 @@
 - Hardened `build.ps1` so MSBuild failures stop packaging and the generated VSIX is checked for matching manifest version plus embedded `Menus.ctmenu` resources.
 - Hardened solution memory reads and writes so damaged `.aegis` paths degrade safely instead of crashing roadmap, context, build-log, or history workflows.
 - Hardened rollback manifests with explicit backup IDs and rollback path validation so corrupted metadata cannot restore from ambiguous or escaped paths.
+- Tightened rollback for shared backup locations so manifests from another solution, hidden/dot backup IDs, ambiguous newest-backup fallback, and traversal or secret-like proposed paths are rejected.
 - Updated install and troubleshooting documentation to make manual rescan the expected first-run indexing workflow.
 - Added `DOGFOODING_NOTES.md` to track real-solution test coverage, observed issues, and remaining manual GUI gaps.
 

@@ -30,7 +30,7 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 | VS Code memory resilience | Improved | Workspace startup and later index/history/log writes skip damaged `.aegis` paths instead of breaking scans or post-apply bookkeeping. |
 | VS Code rollback safety | Improved | Rollback validates timestamp-like backup IDs, workspace roots, and backup file paths before restoring files. |
 | Visual Studio memory init | Improved | Solution memory reads and writes are best-effort, so damaged `.aegis` paths do not crash memory-backed workflows. |
-| Visual Studio rollback | Improved | Backup manifests now carry explicit IDs and rollback validates manifest/backup paths before touching solution files. |
+| Visual Studio rollback | Improved | Backup manifests now carry explicit IDs, rollback rejects cross-solution manifests, and manifest/backup paths are validated before touching solution files. |
 | Website workspace setup | Improved | Damaged `.aegis` project and validation profile paths now return warnings instead of breaking setup. |
 | Website checkpoint restore | Improved | Restore now validates checkpoint IDs, damaged manifests, and backup paths before touching workspace files. |
 | Website safe apply | Improved | Apply refuses to edit when checkpoint creation fails and reports later write/delete failures with checkpoint context. |
@@ -60,6 +60,7 @@ Ran during this pass:
 - Desktop `.\build.ps1`: pass, 0 warnings, 0 errors
 - Visual Studio extension `.\build.ps1`: pass, regenerated `release/AegisLocalAgentVs.vsix`
 - Visual Studio rollback hardening `.\build.ps1`: pass, regenerated `release/AegisLocalAgentVs.vsix`
+- Visual Studio rollback cross-solution/path hardening `.\build.ps1`: pass, regenerated `release/AegisLocalAgentVs.vsix`
 - Website frontend tests: 21 files / 169 tests passed
 - Website frontend production build: pass, Vite reported the existing large main chunk warning
 - Website backend tests: 739 tests and 155 subtests passed
@@ -92,6 +93,7 @@ Ran during this pass:
 - Tightened VS Code rollback backup ID validation to reject dot and hidden-folder aliases.
 - Hardened Visual Studio `.aegis` solution memory so damaged memory files are skipped and health checks surface the degraded state.
 - Hardened Visual Studio rollback so it resolves backups by explicit ID and skips unsafe or incomplete rollback manifest entries.
+- Tightened Visual Studio rollback so shared backup folders cannot restore another solution's manifest, invalid backup IDs do not fall back to the newest backup folder, and proposed edit paths cannot contain traversal or secret-like path segments.
 - Hardened Website workspace setup so damaged `.aegis/project.json` and `.aegis/validation_profile.json` paths return warnings instead of crashing setup.
 - Hardened Website checkpoint restore so invalid checkpoint IDs, non-file manifests, and escaped backup paths fail safely before workspace files are restored or removed.
 - Hardened Website apply changes so failed checkpoint creation stops the apply before file writes and file write/delete failures are reported as warnings tied to the checkpoint.

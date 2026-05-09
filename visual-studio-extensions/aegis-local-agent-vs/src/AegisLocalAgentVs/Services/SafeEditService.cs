@@ -18,6 +18,7 @@ namespace Aegis.LocalAgent.VisualStudio.Services
         };
 
         private static readonly Regex SecretFilePattern = new Regex(@"(^\.env(\.|$)|secret|credential|token|private|\.pfx$|\.p12$|\.pem$|\.key$)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex BackupIdPattern = new Regex(@"^[A-Za-z0-9][A-Za-z0-9_.-]{0,120}$", RegexOptions.Compiled);
         private readonly Func<AegisSettingsSnapshot> settingsProvider;
 
         public AgentProposal PendingProposal { get; private set; }
@@ -153,6 +154,11 @@ namespace Aegis.LocalAgent.VisualStudio.Services
             if (manifest == null || manifest.Files == null)
             {
                 return new[] { "The last Aegis backup manifest is damaged or empty." };
+            }
+
+            if (!string.IsNullOrWhiteSpace(manifest.SolutionRoot) && !IsSameRoot(context.SolutionRoot, manifest.SolutionRoot))
+            {
+                return new[] { "The last Aegis backup belongs to a different solution and was not rolled back." };
             }
 
             var backupRoot = ResolveBackupRoot(backupBase, manifest);
@@ -294,12 +300,17 @@ namespace Aegis.LocalAgent.VisualStudio.Services
 
             normalizedPath = proposedPath.Replace('\\', '/').TrimStart('/');
             var segments = normalizedPath.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
-            if (segments.Length == 0 || segments.Any(segment => BlockedSegments.Contains(segment)))
+            if (segments.Length == 0 || segments.Any(segment =>
+                segment == "." ||
+                segment == ".." ||
+                BlockedSegments.Contains(segment) ||
+                SecretFilePattern.IsMatch(segment)))
             {
                 message = $"Blocked unsafe path: {proposedPath}";
                 return false;
             }
 
+            normalizedPath = string.Join("/", segments);
             if (SecretFilePattern.IsMatch(Path.GetFileName(normalizedPath)))
             {
                 message = $"Blocked secret-like path: {proposedPath}";
@@ -397,35 +408,20 @@ namespace Aegis.LocalAgent.VisualStudio.Services
             var normalizedBase = Path.GetFullPath(backupBase);
             foreach (var rawName in new[] { manifest.BackupId, TimestampFromCreatedAt(manifest.CreatedAtString) })
             {
-                if (string.IsNullOrWhiteSpace(rawName) || Path.IsPathRooted(rawName))
+                var backupId = rawName?.Trim();
+                if (!IsSafeBackupId(backupId))
                 {
                     continue;
                 }
 
-                var candidateName = rawName.Replace('/', Path.DirectorySeparatorChar);
-                if (candidateName.IndexOf(Path.DirectorySeparatorChar) >= 0 || candidateName == "." || candidateName == "..")
-                {
-                    continue;
-                }
-
-                var candidate = Path.GetFullPath(Path.Combine(normalizedBase, candidateName));
+                var candidate = Path.GetFullPath(Path.Combine(normalizedBase, backupId));
                 if (IsInside(normalizedBase, candidate) && Directory.Exists(candidate))
                 {
                     return candidate;
                 }
             }
 
-            try
-            {
-                return Directory.GetDirectories(normalizedBase)
-                    .Where(dir => File.Exists(Path.Combine(dir, "manifest.json")))
-                    .OrderByDescending(Directory.GetCreationTimeUtc)
-                    .FirstOrDefault();
-            }
-            catch
-            {
-                return string.Empty;
-            }
+            return string.Empty;
         }
 
         private static bool TryResolveBackupFile(string filesRoot, string backupPath, string fallbackPath, out string backup, out string message)
@@ -449,6 +445,38 @@ namespace Aegis.LocalAgent.VisualStudio.Services
 
             backup = candidate;
             return true;
+        }
+
+        private static bool IsSafeBackupId(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value) || Path.IsPathRooted(value))
+            {
+                return false;
+            }
+
+            var trimmed = value.Trim();
+            if (trimmed.StartsWith(".", StringComparison.Ordinal) ||
+                trimmed.IndexOf('/') >= 0 ||
+                trimmed.IndexOf('\\') >= 0)
+            {
+                return false;
+            }
+
+            return BackupIdPattern.IsMatch(trimmed);
+        }
+
+        private static bool IsSameRoot(string left, string right)
+        {
+            try
+            {
+                var normalizedLeft = Path.GetFullPath(left).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                var normalizedRight = Path.GetFullPath(right).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                return string.Equals(normalizedLeft, normalizedRight, StringComparison.OrdinalIgnoreCase);
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         private sealed class BackupManifest
