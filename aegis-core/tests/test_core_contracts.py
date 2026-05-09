@@ -276,6 +276,28 @@ def test_workspace_scan_detects_fsharp_and_visual_basic_dotnet_projects(tmp_path
     assert result["dependency_graph"]["files"]["src/VisualBasicTool/Program.vb"] == ["System"]
 
 
+def test_workspace_scan_indexes_fsharp_and_visual_basic_symbols(tmp_path: Path) -> None:
+    workspace = tmp_path / "dotnet-symbol-project"
+    src = workspace / "src"
+    src.mkdir(parents=True)
+    (src / "Program.fs").write_text(
+        "module Program\nlet run = true\ntype Worker = { Name: string }\n",
+        encoding="utf-8",
+    )
+    (src / "Worker.vb").write_text(
+        "Public Module WorkerModule\nPublic Function Run() As Boolean\nReturn True\nEnd Function\nEnd Module\n",
+        encoding="utf-8",
+    )
+
+    result = WorkspaceScanner(workspace).scan(persist=False)
+
+    assert {"kind": "module", "name": "Program", "line": 1} in result["symbol_index"]["src/Program.fs"]
+    assert {"kind": "function", "name": "run", "line": 2} in result["symbol_index"]["src/Program.fs"]
+    assert {"kind": "class", "name": "Worker", "line": 3} in result["symbol_index"]["src/Program.fs"]
+    assert {"kind": "module", "name": "WorkerModule", "line": 1} in result["symbol_index"]["src/Worker.vb"]
+    assert {"kind": "function", "name": "Run", "line": 2} in result["symbol_index"]["src/Worker.vb"]
+
+
 def test_workspace_scan_recent_files_survives_stat_race(tmp_path: Path, monkeypatch) -> None:
     workspace = tmp_path / "stat-race-project"
     workspace.mkdir()

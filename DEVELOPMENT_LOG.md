@@ -2149,6 +2149,24 @@ Validation completed:
 
 - Focused Core intelligence suffix regression slice: pass, 3 tests.
 
+## 2026-05-09 - Core F#/VB Symbol Indexing
+
+Focus:
+
+- Ensure F# and Visual Basic files contribute real symbols after being added to Core scan and graph flows.
+- Keep downstream roadmap, knowledge graph, and personal intelligence metadata useful for non-C# .NET projects.
+
+Actions:
+
+- Reused the shared source suffix set for Core TODO, dependency graph, and symbol indexing passes.
+- Added symbol detection for F# modules, functions, and type declarations.
+- Added symbol detection for Visual Basic modules and functions.
+- Added a regression covering F#/VB symbol extraction from workspace scans.
+
+Validation completed:
+
+- Focused Core F#/VB workspace symbol regression slice: pass, 2 tests.
+
 ## 2026-05-09 - Website PowerShell Guard Windows Path Compatibility
 
 Focus:

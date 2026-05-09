@@ -39,6 +39,8 @@ SOURCE_CODE_SUFFIXES = {
     ".hpp",
     ".xaml",
 }
+DEPENDENCY_GRAPH_SUFFIXES = SOURCE_CODE_SUFFIXES - {".xaml"}
+TODO_SCAN_SUFFIXES = SOURCE_CODE_SUFFIXES | {".md"}
 
 TEXT_SUFFIXES = {
     *SOURCE_CODE_SUFFIXES,
@@ -376,7 +378,7 @@ class WorkspaceScanner:
     def _find_todos(self, files: list[Path]) -> list[dict[str, Any]]:
         todos = []
         for path in files:
-            if path.suffix.lower() not in {".py", ".js", ".jsx", ".ts", ".tsx", ".cs", ".fs", ".fsi", ".fsx", ".vb", ".cpp", ".h", ".hpp", ".md"}:
+            if path.suffix.lower() not in TODO_SCAN_SUFFIXES:
                 continue
             for number, line in enumerate(self._read_text(path).splitlines(), start=1):
                 lowered = line.lower()
@@ -398,7 +400,7 @@ class WorkspaceScanner:
             re.compile(r"^\s*#include\s+[<\"](.+?)[>\"]"),
         ]
         for path in files:
-            if path.suffix.lower() not in {".py", ".js", ".jsx", ".ts", ".tsx", ".cs", ".fs", ".fsi", ".fsx", ".vb", ".cpp", ".c", ".h", ".hpp"}:
+            if path.suffix.lower() not in DEPENDENCY_GRAPH_SUFFIXES:
                 continue
             deps: list[str] = []
             for line in self._read_text(path).splitlines()[:500]:
@@ -414,19 +416,26 @@ class WorkspaceScanner:
     def _symbol_index(self, files: list[Path]) -> dict[str, list[dict[str, Any]]]:
         symbols: dict[str, list[dict[str, Any]]] = defaultdict(list)
         patterns = {
-            "class": re.compile(r"\b(class|interface|struct|enum)\s+([A-Za-z_][\w]*)"),
-            "function": re.compile(r"\b(function|def)\s+([A-Za-z_][\w]*)|^\s*(?:public|private|protected|internal)?\s*(?:static\s+)?[\w<>\[\],]+\s+([A-Za-z_][\w]*)\s*\("),
+            "module": re.compile(r"^\s*(?:(?:public|private|friend|protected)\s+)*(?:module|namespace)\s+([A-Za-z_][\w.]*)", re.IGNORECASE),
+            "class": re.compile(r"\b(?:class|interface|struct|enum|type)\s+([A-Za-z_][\w]*)", re.IGNORECASE),
+            "function": re.compile(
+                r"\b(?:function|def)\s+([A-Za-z_][\w]*)"
+                r"|^\s*(?:(?:public|private|protected|internal|friend)\s+)*"
+                r"(?:(?:static|shared|async|virtual|override)\s+)*[\w<>\[\],]+\s+([A-Za-z_][\w]*)\s*\("
+                r"|^\s*let\s+(?:private\s+|rec\s+|inline\s+)*([A-Za-z_][\w]*)\b",
+                re.IGNORECASE,
+            ),
             "component": re.compile(r"\b(?:export\s+default\s+)?function\s+([A-Z][A-Za-z0-9_]*)\s*\("),
         }
         for path in files:
-            if path.suffix.lower() not in {".py", ".js", ".jsx", ".ts", ".tsx", ".cs", ".cpp", ".h", ".hpp", ".xaml"}:
+            if path.suffix.lower() not in SOURCE_CODE_SUFFIXES:
                 continue
             text = self._read_text(path)
             for number, line in enumerate(text.splitlines(), start=1):
                 for kind, pattern in patterns.items():
                     match = pattern.search(line)
                     if match:
-                        name = next((group for group in match.groups()[1:] if group), None)
+                        name = next((group for group in match.groups() if group), None)
                         if name:
                             symbols[self._rel(path)].append({"kind": kind, "name": name, "line": number})
         return symbols
