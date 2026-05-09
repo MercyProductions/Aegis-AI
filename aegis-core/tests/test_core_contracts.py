@@ -7,6 +7,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from aegis_core.safety import is_ignored_path, is_safe_to_read, is_secret_like
 from aegis_core.server import create_app
 
 
@@ -101,3 +102,13 @@ def test_v1_client_task_dashboard_contract(tmp_path: Path) -> None:
     )
     assert updated.status_code == 200
     assert updated.json()["data"]["status"] == "completed"
+
+
+def test_safety_rules_are_case_insensitive_and_secret_aware(tmp_path: Path) -> None:
+    assert is_ignored_path(tmp_path / "Node_Modules" / "package" / "index.js", tmp_path)
+    assert is_ignored_path(tmp_path / "LIBRARY" / "metadata.json", tmp_path)
+    assert is_secret_like(tmp_path / ".env.example")
+    assert is_secret_like(tmp_path / "service-token.json")
+    assert is_secret_like(tmp_path / "prod.password.txt")
+    assert is_safe_to_read(tmp_path / "src" / "tokenizer.py", tmp_path)
+    assert not is_safe_to_read(tmp_path / "Temp" / "cache.json", tmp_path)

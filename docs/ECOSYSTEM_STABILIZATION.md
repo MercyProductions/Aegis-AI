@@ -22,13 +22,14 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 | Visual Studio health check | Improved | Health check now verifies Aegis Core and registers the Visual Studio client. |
 | Website integration | Partial | Website has its own mature local backend. For this phase it remains documented as a client and should migrate incrementally to `/v1` Core contracts. |
 | Workspace scan performance | Improved | Core scan results are cached when the workspace fingerprint is unchanged, skipping repeated expensive symbol/dependency/TODO passes. |
+| Path safety | Improved | Core now evaluates ignored folders relative to the workspace and blocks secret-like filenames case-insensitively. |
 | Diagnostics | Improved | Core dashboard now surfaces stale tasks and suggested actions. |
 
 ## Verification Run
 
 Ran during this pass:
 
-- `python -m pytest tests -q` in Aegis Core: 3 tests passed
+- `python -m pytest tests -q` in Aegis Core: 4 tests passed
 - `python -m compileall aegis_core`: pass
 - Aegis Core `/v1` TestClient smoke for settings, memory, diagnostics, roadmap, tasks, task status: pass
 - Core scan twice: second scan returned `cache_hit: true`
@@ -49,6 +50,7 @@ Ran during this pass:
 - Added Visual Studio Core health/registration check to the native health command.
 - Added Core scan cache through `.aegis/scan-cache.json`.
 - Added Core dashboard stale-task detection and suggested actions.
+- Hardened Core scan safety for mixed-case ignored folders, token/password/auth-like files, and Windows workspaces under temp-style parent directories.
 
 ## Daily Driver Friction To Watch
 

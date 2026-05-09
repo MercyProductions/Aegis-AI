@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from .memory import ProjectMemory
-from .safety import IGNORED_DIRS, is_safe_to_read
+from .safety import IGNORED_DIRS, is_ignored_path, is_safe_to_read
 
 
 TEXT_SUFFIXES = {
@@ -133,13 +133,13 @@ class WorkspaceScanner:
     def _collect_files(self) -> list[Path]:
         collected: list[Path] = []
         for dirpath, dirnames, filenames in os.walk(self.workspace):
-            dirnames[:] = [name for name in dirnames if name not in IGNORED_DIRS]
             base = Path(dirpath)
+            dirnames[:] = [name for name in dirnames if not is_ignored_path(base / name, self.workspace)]
             for filename in filenames:
                 if len(collected) >= self.options.max_files:
                     return collected
                 path = base / filename
-                if not is_safe_to_read(path):
+                if not is_safe_to_read(path, self.workspace):
                     continue
                 if path.suffix.lower() not in TEXT_SUFFIXES and path.name not in BUILD_FILE_NAMES:
                     continue
@@ -209,7 +209,7 @@ class WorkspaceScanner:
         rels = {self._rel(path) for path in files}
         frameworks: set[str] = set()
         package_json = self.workspace / "package.json"
-        if package_json.exists() and is_safe_to_read(package_json):
+        if package_json.exists() and is_safe_to_read(package_json, self.workspace):
             try:
                 package = json.loads(package_json.read_text(encoding="utf-8"))
                 deps = {**package.get("dependencies", {}), **package.get("devDependencies", {})}

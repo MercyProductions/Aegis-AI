@@ -41,6 +41,7 @@ Fixes applied:
 | Date | Area | Friction | Impact | Action |
 | --- | --- | --- | --- | --- |
 | 2026-05-08 | Aegis Core CLI | `--json` only worked before the subcommand. | Medium | Fixed. |
+| 2026-05-08 | Aegis Core safety | Ignored folder checks were case-sensitive and inspected absolute parent paths, so Windows temp-parent workspaces could be over-blocked. Core also blocked fewer secret-like filenames than editor clients. | High | Fixed with regression coverage. |
 | 2026-05-08 | Website/Core boundary | Website backend and standalone Core overlap in naming and responsibilities. | Medium | Keep website on `/api`; migrate local/dev dashboard features incrementally. |
 | 2026-05-08 | Manual UI confidence | Build/API checks pass, but live click-through is still needed. | Medium | Add to daily workflow checklist. |
 

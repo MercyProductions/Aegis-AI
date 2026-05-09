@@ -12,6 +12,7 @@ Actions:
 
 - Confirmed GitHub remote: `https://github.com/MercyProductions/Aegis-AI.git`.
 - Added regression tests around the Aegis Core contracts that every client is beginning to depend on.
+- Hardened shared Core safety checks for mixed-case ignored folders, token/password/auth-like files, and Windows temp-parent workspaces.
 - Kept unrelated dirty worktree changes out of scope.
 - Recorded workflow friction in `WORKFLOW_NOTES.md`.
 

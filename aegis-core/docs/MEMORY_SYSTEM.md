@@ -46,6 +46,7 @@ Core should not store:
 - private keys
 - credentials
 - secret-looking values
+- password/token/auth files
 - generated build outputs
 - vendor dependencies
 
