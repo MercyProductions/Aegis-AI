@@ -22,7 +22,7 @@ namespace Aegis.LocalAgent.VisualStudio.Services
 
         public async Task<JObject> HealthAsync(string workspaceRoot, CancellationToken cancellationToken = default)
         {
-            var url = $"{BaseUrl}/v1/health";
+            var url = CoreUrl("/v1/health");
             if (!string.IsNullOrWhiteSpace(workspaceRoot))
             {
                 url += "?workspace=" + Uri.EscapeDataString(workspaceRoot);
@@ -56,7 +56,7 @@ namespace Aegis.LocalAgent.VisualStudio.Services
 
             using (var content = new StringContent(body.ToString(Formatting.None), Encoding.UTF8, "application/json"))
             {
-                using (var response = await Http.PostAsync($"{BaseUrl}/v1/clients/register", content, cancellationToken))
+                using (var response = await Http.PostAsync(CoreUrl("/v1/clients/register"), content, cancellationToken))
                 {
                     await EnsureSuccessAsync(response, "register Visual Studio client with Aegis Core");
                     var text = await response.Content.ReadAsStringAsync();
@@ -161,13 +161,10 @@ namespace Aegis.LocalAgent.VisualStudio.Services
             return "Core returned ok=false.";
         }
 
-        private string BaseUrl
+        private string CoreUrl(string path)
         {
-            get
-            {
-                var settings = settingsProvider?.Invoke() ?? AegisSettingsSnapshot.Default;
-                return AegisSettingsSnapshot.NormalizeHttpBaseUrl(settings.AegisCoreUrl, "http://127.0.0.1:8788");
-            }
+            var settings = settingsProvider?.Invoke() ?? AegisSettingsSnapshot.Default;
+            return AegisSettingsSnapshot.BuildServiceUrl(settings.AegisCoreUrl, "http://127.0.0.1:8788", path);
         }
     }
 }

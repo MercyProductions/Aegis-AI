@@ -14,6 +14,7 @@
 - Hardened rollback manifests with explicit backup IDs and rollback path validation so corrupted metadata cannot restore from ambiguous or escaped paths.
 - Tightened rollback for shared backup locations so manifests from another solution, hidden/dot backup IDs, ambiguous newest-backup fallback, and traversal or secret-like proposed paths are rejected.
 - Hardened Ollama/Core URL settings so host:port inputs, pasted endpoint paths, and invalid values normalize before model calls or shared Core registration.
+- Hardened Core/Ollama URL normalization to preserve reverse-proxy path prefixes while trimming pasted endpoint paths.
 - Hardened Ollama/Core diagnostic details so HTTP errors redact query-string keys, bearer tokens, URL credentials, and assignment-style secrets before they are shown in Visual Studio.
 - Hardened health-check, rollback, and command error diagnostics so user-visible exception details are redacted, and packaging now fails if those paths drift back to raw exception messages.
 - Hardened authorization header redaction so `Authorization: Bearer/Basic/Digest ...` values cannot leave trailing credentials visible in diagnostics.

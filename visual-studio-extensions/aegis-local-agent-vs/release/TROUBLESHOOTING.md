@@ -22,7 +22,7 @@ If VSIXInstaller reports no applicable SKUs on a machine with multiple Visual St
 - Start Ollama before using chat or agent actions.
 - Confirm `http://127.0.0.1:11434/api/tags` responds in a browser or PowerShell.
 - If you changed the endpoint, confirm **Tools > Options > Aegis Local Agent > General > Ollama URL** is correct.
-- The Ollama and Aegis Core URL fields normalize host:port inputs and pasted endpoint URLs back to the local base URL. Empty or invalid values fall back to the local defaults.
+- The Ollama and Aegis Core URL fields normalize host:port inputs and pasted endpoint URLs back to the usable service base URL. Reverse-proxy prefixes such as `https://proxy.local/aegis` or `https://proxy.local/ollama` are preserved, and empty or invalid values fall back to the local defaults.
 - Run `Aegis: Run Health Check` after Ollama starts.
 
 ## Model Missing

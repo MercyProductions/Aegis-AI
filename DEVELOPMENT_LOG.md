@@ -229,6 +229,26 @@ Validation completed:
 - VS Code extension package build: pass.
 - Repository whitespace check: pass.
 
+## 2026-05-09 - Visual Studio Core URL Prefix Preservation
+
+Focus:
+
+- Align Visual Studio Core/Ollama URL handling with Website and VS Code bridge normalization.
+- Preserve reverse-proxy path prefixes while still tolerating pasted endpoint URLs.
+
+Actions:
+
+- Updated Visual Studio settings normalization to strip known Core and Ollama endpoint suffixes without discarding proxy prefixes.
+- Routed Core health/registration and Ollama model/chat requests through the shared service URL builder.
+- Added build-time URL normalization guards to catch regressions before VSIX packaging.
+- Updated Visual Studio and root troubleshooting docs.
+
+Validation completed:
+
+- Visual Studio extension build/package: pass.
+- Visual Studio URL normalization build guard: pass.
+- Repository whitespace check: pass.
+
 ## 2026-05-09 - Completion Selected Model Guard
 
 Focus:

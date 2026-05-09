@@ -157,12 +157,48 @@ function Assert-DiagnosticRedactionGuards {
   }
 }
 
+function Assert-UrlNormalizationGuards {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$ProjectDirectory
+  )
+
+  $optionsText = Get-Content -Raw -LiteralPath (Join-Path $ProjectDirectory "Options\AegisOptionsPage.cs")
+  $coreClientText = Get-Content -Raw -LiteralPath (Join-Path $ProjectDirectory "Services\AegisCoreClient.cs")
+  $ollamaClientText = Get-Content -Raw -LiteralPath (Join-Path $ProjectDirectory "Services\OllamaClient.cs")
+
+  $issues = @()
+  if ($optionsText -notmatch 'StripKnownServiceEndpointPath') {
+    $issues += "AegisSettingsSnapshot must preserve reverse-proxy prefixes while trimming known endpoint suffixes."
+  }
+  if ($optionsText -notmatch 'BuildServiceUrl') {
+    $issues += "AegisSettingsSnapshot must expose a service URL builder that appends API paths below normalized prefixes."
+  }
+  if ($optionsText -notmatch 'Array\.IndexOf\(lowered, "v1"\)' -or $optionsText -notmatch '"health"' -or $optionsText -notmatch '"models"') {
+    $issues += "Core URL normalization must strip known /v1, /health, and /models endpoint suffixes."
+  }
+  if ($optionsText -notmatch '"api"' -or $optionsText -notmatch '"tags"' -or $optionsText -notmatch '"chat"') {
+    $issues += "Ollama URL normalization must strip known /api endpoint suffixes."
+  }
+  if ($coreClientText -match '\$"\{BaseUrl\}/v1/' -or $coreClientText -notmatch 'CoreUrl\("/v1/health"\)' -or $coreClientText -notmatch 'BuildServiceUrl') {
+    $issues += "AegisCoreClient must build Core request URLs through the shared URL helper."
+  }
+  if ($ollamaClientText -match '\$"\{NormalizeBaseUrl\(settings\)\}/api/' -or $ollamaClientText -notmatch 'OllamaUrl\(settings, "/api/tags"\)' -or $ollamaClientText -notmatch 'BuildServiceUrl') {
+    $issues += "OllamaClient must build Ollama request URLs through the shared URL helper."
+  }
+
+  if ($issues.Count -gt 0) {
+    throw "Visual Studio URL normalization validation failed:`n - $($issues -join "`n - ")"
+  }
+}
+
 Assert-VisualStudioCommandTable `
   -VsctPath (Join-Path $projectDir "AegisLocalAgentPackage.vsct") `
   -CommandIdsPath (Join-Path $projectDir "CommandIds.cs") `
   -CommandRegistrationPath (Join-Path $projectDir "Commands\AegisCommands.cs")
 
 Assert-DiagnosticRedactionGuards -ProjectDirectory $projectDir
+Assert-UrlNormalizationGuards -ProjectDirectory $projectDir
 
 New-Item -ItemType Directory -Force -Path $release | Out-Null
 $sourceOnlyReleaseFiles = @(

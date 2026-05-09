@@ -23,12 +23,12 @@ namespace Aegis.LocalAgent.VisualStudio.Options
     {
         [Category("Ollama")]
         [DisplayName("Ollama URL")]
-        [Description("Base URL for the local Ollama server. Host:port and pasted API URLs are normalized before use.")]
+        [Description("Base URL for the local Ollama server. Host:port and pasted API URLs are normalized before use; reverse-proxy path prefixes are preserved.")]
         public string OllamaUrl { get; set; } = "http://127.0.0.1:11434";
 
         [Category("Aegis Core")]
         [DisplayName("Aegis Core URL")]
-        [Description("Base URL for the shared local Aegis Core runtime. Host:port and pasted API URLs are normalized before use.")]
+        [Description("Base URL for the shared local Aegis Core runtime. Host:port and pasted API URLs are normalized before use; reverse-proxy path prefixes are preserved.")]
         public string AegisCoreUrl { get; set; } = "http://127.0.0.1:8788";
 
         [Category("Ollama")]
@@ -141,7 +141,51 @@ namespace Aegis.LocalAgent.VisualStudio.Options
             }
 
             var builder = new UriBuilder(uri.Scheme, uri.Host, uri.IsDefaultPort ? -1 : uri.Port);
-            return builder.Uri.GetLeftPart(UriPartial.Authority).TrimEnd('/');
+            var authority = builder.Uri.GetLeftPart(UriPartial.Authority).TrimEnd('/');
+            return authority + StripKnownServiceEndpointPath(uri.AbsolutePath);
+        }
+
+        internal static string BuildServiceUrl(string value, string fallback, string path)
+        {
+            var baseUrl = NormalizeHttpBaseUrl(value, fallback).TrimEnd('/');
+            var suffix = (path ?? string.Empty).TrimStart('/');
+            return string.IsNullOrWhiteSpace(suffix) ? baseUrl : baseUrl + "/" + suffix;
+        }
+
+        private static string StripKnownServiceEndpointPath(string path)
+        {
+            var cleaned = (path ?? string.Empty).TrimEnd('/');
+            if (string.IsNullOrWhiteSpace(cleaned) || cleaned == "/")
+            {
+                return string.Empty;
+            }
+
+            var segments = cleaned
+                .Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries)
+                .ToArray();
+            var lowered = segments.Select(segment => segment.ToLowerInvariant()).ToArray();
+
+            var v1Index = Array.IndexOf(lowered, "v1");
+            if (v1Index >= 0)
+            {
+                return v1Index == 0 ? string.Empty : "/" + string.Join("/", segments.Take(v1Index));
+            }
+
+            var apiIndex = Array.IndexOf(lowered, "api");
+            var ollamaEndpoint = apiIndex >= 0 && apiIndex + 1 < lowered.Length ? lowered[apiIndex + 1] : string.Empty;
+            var ollamaEndpointPaths = new[] { "chat", "embeddings", "generate", "ps", "show", "tags", "version" };
+            if (apiIndex >= 0 && ollamaEndpointPaths.Contains(ollamaEndpoint))
+            {
+                return apiIndex == 0 ? string.Empty : "/" + string.Join("/", segments.Take(apiIndex));
+            }
+
+            var lastSegment = lowered.LastOrDefault();
+            if (lastSegment == "health" || lastSegment == "models")
+            {
+                return segments.Length <= 1 ? string.Empty : "/" + string.Join("/", segments.Take(segments.Length - 1));
+            }
+
+            return cleaned;
         }
     }
 }

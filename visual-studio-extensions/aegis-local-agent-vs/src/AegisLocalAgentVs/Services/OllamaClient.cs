@@ -34,7 +34,7 @@ namespace Aegis.LocalAgent.VisualStudio.Services
         public async Task<IReadOnlyList<OllamaModel>> ListModelsAsync(CancellationToken cancellationToken = default)
         {
             var settings = GetSettings();
-            using (var response = await Http.GetAsync($"{NormalizeBaseUrl(settings)}/api/tags", cancellationToken))
+            using (var response = await Http.GetAsync(OllamaUrl(settings, "/api/tags"), cancellationToken))
             {
                 await EnsureSuccessAsync(response, "list Ollama models");
                 var text = await response.Content.ReadAsStringAsync();
@@ -108,7 +108,7 @@ namespace Aegis.LocalAgent.VisualStudio.Services
 
             using (var content = new StringContent(body.ToString(Formatting.None), Encoding.UTF8, "application/json"))
             {
-                using (var response = await Http.PostAsync($"{NormalizeBaseUrl(settings)}/api/chat", content, cancellationToken))
+                using (var response = await Http.PostAsync(OllamaUrl(settings, "/api/chat"), content, cancellationToken))
                 {
                     await EnsureSuccessAsync(response, $"chat with Ollama model '{model}'");
                     var text = await response.Content.ReadAsStringAsync();
@@ -191,9 +191,9 @@ namespace Aegis.LocalAgent.VisualStudio.Services
             }
         }
 
-        private static string NormalizeBaseUrl(AegisSettingsSnapshot settings)
+        private static string OllamaUrl(AegisSettingsSnapshot settings, string path)
         {
-            return AegisSettingsSnapshot.NormalizeHttpBaseUrl(settings?.OllamaUrl, "http://127.0.0.1:11434");
+            return AegisSettingsSnapshot.BuildServiceUrl(settings?.OllamaUrl, "http://127.0.0.1:11434", path);
         }
     }
 }
