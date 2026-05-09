@@ -34,6 +34,7 @@
 - Improved Visual Studio extension onboarding docs so `.slnx`, F#, and Visual Basic project support is reflected in install, troubleshooting, and client-responsibility guidance.
 - Improved Desktop build/run follow-up detection so nested `.slnx`, `.vcxproj`, `.csproj`, `.fsproj`, and `.vbproj` project layouts receive stack-preserving validation commands.
 - Improved VS Code fallback validation so Bun lockfiles and `packageManager` metadata produce safe `bun run` validation commands instead of npm fallbacks.
+- Improved Website scaffold validation plans so Bun build/test commands keep the correct build/test phases and user-facing labels.
 - Improved Website dependency profiling so root `build.py` and `build.ps1` guard scripts are recorded as validation commands before lower-level CMake/MSBuild native fallbacks.
 - Improved Website agent continuation so existing projects with root `build.ps1` guard scripts propose the same safe PowerShell validation command used by validation discovery.
 - Improved Website project-builder existing-project validation so root `build.ps1` guard scripts are selected before CMake/MSBuild fallback commands.

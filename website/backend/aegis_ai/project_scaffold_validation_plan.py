@@ -67,11 +67,26 @@ def validation_step_phase(command: str) -> str:
         return "configure"
     if ("cmake" in lowered and "--build" in lowered) or "msbuild" in lowered or "dotnet build" in lowered:
         return "build"
-    if any(token in lowered for token in ("npm run build", "pnpm build", "yarn build", "vite build", "cargo check")):
+    if any(
+        token in lowered
+        for token in ("npm run build", "pnpm build", "yarn build", "bun run build", "vite build", "cargo check")
+    ):
         return "build"
     if any(
         token in lowered
-        for token in ("npm test", "pnpm test", "yarn test", "pytest", "vitest", "jest", "ctest", "cargo test", "go test")
+        for token in (
+            "npm test",
+            "pnpm test",
+            "yarn test",
+            "bun test",
+            "bun run test",
+            "pytest",
+            "vitest",
+            "jest",
+            "ctest",
+            "cargo test",
+            "go test",
+        )
     ):
         return "test"
     if any(token in lowered for token in ("typecheck", "type-check", "tsc --noemit", "mypy", "pyright")):
@@ -91,9 +106,9 @@ def validation_step_label(command: str, *, index: int, total: int) -> str:
         return "Build CMake project"
     if lowered.startswith("ctest "):
         return "Run CTest suite"
-    if "npm run build" in lowered or "pnpm build" in lowered or "yarn build" in lowered:
+    if "npm run build" in lowered or "pnpm build" in lowered or "yarn build" in lowered or "bun run build" in lowered:
         return "Build web project"
-    if "npm test" in lowered or "pnpm test" in lowered or "pytest" in lowered:
+    if "npm test" in lowered or "pnpm test" in lowered or "bun test" in lowered or "bun run test" in lowered or "pytest" in lowered:
         return "Run test suite"
     if total > 1:
         return f"Validation step {index}"

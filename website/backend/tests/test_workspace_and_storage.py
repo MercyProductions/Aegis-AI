@@ -807,6 +807,40 @@ Project completion list
         self.assertTrue(any(item.name == "react" for item in profile.dependencies))
         self.assertTrue(any(item.name == "typescript" for item in profile.dev_dependencies))
 
+    def test_inspect_dependency_profile_detects_bun_node_stack(self) -> None:
+        manager = WorkspaceManager(self.project_root, self.settings)
+        workspace = manager.resolve_workspace("workspace")
+        (workspace / "bun.lock").write_text("", encoding="utf-8")
+        (workspace / "package.json").write_text(
+            json.dumps(
+                {
+                    "packageManager": "bun@1.1.0",
+                    "scripts": {
+                        "build": "vite build",
+                        "test": "bun test",
+                        "typecheck": "tsc --noEmit",
+                    },
+                    "dependencies": {
+                        "react": "^19.0.0",
+                    },
+                    "devDependencies": {
+                        "typescript": "^5.0.0",
+                        "vite": "^6.0.0",
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        profile = manager.inspect_dependency_profile(workspace)
+
+        self.assertIn("bun", profile.package_managers)
+        self.assertIn("bun install", profile.install_commands)
+        self.assertIn("bun run build", profile.validation_commands)
+        self.assertIn("bun run typecheck", profile.validation_commands)
+        self.assertIn("React", profile.frameworks)
+        self.assertIn("Vite", profile.frameworks)
+
     def test_inspect_dependency_profile_accepts_bom_prefixed_package_json(self) -> None:
         manager = WorkspaceManager(self.project_root, self.settings)
         workspace = manager.resolve_workspace("workspace")

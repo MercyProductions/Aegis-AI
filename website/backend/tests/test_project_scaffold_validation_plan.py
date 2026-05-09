@@ -30,6 +30,9 @@ class ProjectScaffoldValidationPlanTests(unittest.TestCase):
             "cmake -S . -B build": "configure",
             "cmake --build build": "build",
             "npm run build": "build",
+            "bun run build": "build",
+            "bun test": "test",
+            "bun run test": "test",
             "pytest": "test",
             "npx tsc --noEmit": "typecheck",
             "ruff check .": "lint",
@@ -45,6 +48,8 @@ class ProjectScaffoldValidationPlanTests(unittest.TestCase):
         self.assertEqual(validation_step_label("cmake --build build", index=2, total=2), "Build CMake project")
         self.assertEqual(validation_step_label("ctest --test-dir build", index=3, total=3), "Run CTest suite")
         self.assertEqual(validation_step_label("npm run build", index=1, total=1), "Build web project")
+        self.assertEqual(validation_step_label("bun run build", index=1, total=1), "Build web project")
+        self.assertEqual(validation_step_label("bun test", index=1, total=1), "Run test suite")
         self.assertEqual(validation_step_label("pytest", index=1, total=1), "Run test suite")
         self.assertEqual(validation_step_label("python verify.py", index=2, total=3), "Validation step 2")
         self.assertEqual(validation_step_label("python verify.py", index=1, total=1), "Run validation command")

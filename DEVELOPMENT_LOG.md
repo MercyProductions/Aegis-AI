@@ -86,6 +86,7 @@ Actions:
 - Improved Visual Studio extension onboarding and client-responsibility docs to reflect `.slnx`, F#, and Visual Basic project support.
 - Improved Desktop build/run follow-up validation inference so bounded nested project scans find `.slnx`, native MSBuild projects, and managed `.csproj`/`.fsproj`/`.vbproj` layouts while skipping noisy generated folders.
 - Improved VS Code fallback package-manager parity so Bun lockfiles and `packageManager` metadata are reflected in project summaries, safe validation commands, and package lint regressions.
+- Improved Website scaffold validation-plan parity so Bun build/test commands are classified and labeled as normal web build/test steps, with dependency profile and validation-manager regressions covering Bun discovery.
 
 Validation completed:
 
@@ -114,6 +115,7 @@ Validation completed:
 - Visual Studio rollback hardening build/package: pass.
 - Visual Studio rollback cross-solution/path hardening build/package: pass.
 - Website frontend tests/build and backend tests: pass.
+- Website Bun scaffold/profile/validation parity regressions: pass, 97 focused backend tests.
 - Website workspace setup regression tests for damaged `.aegis` paths: pass.
 - Website validation manager damaged-marker/profile-persistence regression tests: pass, 21 tests and 4 subtests.
 - Website model-manager damaged-log regression tests: pass, 4 tests.

@@ -88,6 +88,30 @@ class ValidationManagerTests(unittest.TestCase):
         self.assertEqual(pipeline[0].command, "pnpm install")
         self.assertIn("pnpm typecheck", [step.command for step in pipeline])
 
+    def test_node_validation_respects_bun_package_manager_and_install_inference(self) -> None:
+        (self.workspace / "package.json").write_text(
+            json.dumps(
+                {
+                    "packageManager": "bun@1.1.0",
+                    "scripts": {
+                        "build": "vite build",
+                        "test": "bun test",
+                        "typecheck": "tsc --noEmit",
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        snapshot = self.manager.profile_snapshot(self.workspace)
+        pipeline = self.manager.verification_plan(self.workspace, include_install=True)
+
+        self.assertIsNotNone(snapshot.profile)
+        self.assertEqual(snapshot.profile.command, "bun run test")
+        self.assertEqual(pipeline[0].phase, "install")
+        self.assertEqual(pipeline[0].command, "bun install")
+        self.assertIn("bun run typecheck", [step.command for step in pipeline])
+
     def test_discovers_dotnet_validation_for_supported_project_files(self) -> None:
         for suffix in (".csproj", ".fsproj", ".vbproj"):
             workspace = self.workspace / suffix.strip(".")

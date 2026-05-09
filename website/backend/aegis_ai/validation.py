@@ -697,7 +697,7 @@ class ValidationManager:
         if category in {"install", "configure", "build", "typecheck", "database", "lint", "test", "validate"}:
             return category
 
-        if any(token in text for token in ("npm install", "pnpm install", "yarn install", "pip install", "cargo fetch")):
+        if any(token in text for token in ("npm install", "pnpm install", "yarn install", "bun install", "pip install", "cargo fetch")):
             return "install"
         if "configure" in text:
             return "configure"
