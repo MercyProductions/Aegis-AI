@@ -474,3 +474,18 @@ Actions:
 Validation completed:
 
 - Visual Studio extension build/package: pass; command-table and VSIX metadata guards ran before packaging.
+
+## 2026-05-09 - Desktop Runtime Error Detail Hardening
+
+Focus:
+
+- Keep Desktop degraded-mode messages useful across Website backend and Aegis Core error envelope shapes.
+
+Actions:
+
+- Expanded the shared desktop HTTP error-detail extractor to recognize top-level `error`, top-level `message`, and nested `data.error`/`data.message` fields in addition to FastAPI `detail`.
+- Normalized and bounded extracted error details before they are shown in Desktop health/runtime messages.
+
+Validation completed:
+
+- Desktop Release build: pass, 0 warnings.

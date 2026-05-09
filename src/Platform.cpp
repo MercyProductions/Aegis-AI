@@ -166,6 +166,15 @@ bool IsBackendRootMismatchMessage(const std::string& message)
         || message.find("invalid backend health response") != std::string::npos;
 }
 
+std::string CompactErrorDetail(std::string detail)
+{
+    std::replace(detail.begin(), detail.end(), '\r', ' ');
+    std::replace(detail.begin(), detail.end(), '\n', ' ');
+    std::replace(detail.begin(), detail.end(), '\t', ' ');
+    detail = Trim(detail);
+    return detail.size() <= 240 ? detail : detail.substr(0, 237) + "...";
+}
+
 HttpResponse SendWinHttpRequest(
     const std::wstring& method,
     const std::string& url,
@@ -692,17 +701,40 @@ std::string FirstJsonErrorDetail(const std::string& body)
     if (!parsed.ok || !parsed.value.IsObject()) {
         return {};
     }
+
+    const JsonValue& error = parsed.value["error"];
+    if (error.IsString()) {
+        return CompactErrorDetail(error.AsString());
+    }
+
+    const JsonValue& message = parsed.value["message"];
+    if (message.IsString()) {
+        return CompactErrorDetail(message.AsString());
+    }
+
+    const JsonValue& data = parsed.value["data"];
+    if (data.IsObject()) {
+        const JsonValue& data_error = data["error"];
+        if (data_error.IsString()) {
+            return CompactErrorDetail(data_error.AsString());
+        }
+        const JsonValue& data_message = data["message"];
+        if (data_message.IsString()) {
+            return CompactErrorDetail(data_message.AsString());
+        }
+    }
+
     const JsonValue& detail = parsed.value["detail"];
     if (detail.IsString()) {
-        return detail.AsString();
+        return CompactErrorDetail(detail.AsString());
     }
     if (detail.IsArray() && !detail.array_value.empty()) {
         const JsonValue& first = detail.At(0);
         if (first.IsString()) {
-            return first.AsString();
+            return CompactErrorDetail(first.AsString());
         }
         if (first.IsObject()) {
-            return first["msg"].AsString();
+            return CompactErrorDetail(first["msg"].AsString());
         }
     }
     return {};
