@@ -12,6 +12,7 @@ Actions:
 
 - Confirmed GitHub remote: `https://github.com/MercyProductions/Aegis-AI.git`.
 - Added regression tests around the Aegis Core contracts that every client is beginning to depend on.
+- Hardened Aegis Core CLI shared task creation so persistence failures produce structured nonzero errors instead of tracebacks.
 - Hardened shared Core safety checks for mixed-case ignored folders, token/password/auth-like files, and Windows temp-parent workspaces.
 - Hardened shared Core safety checks so paths resolving outside the workspace are not treated as project-local read/edit targets.
 - Hardened shared Core config parsing so malformed settings degrade to defaults.
@@ -56,7 +57,7 @@ Actions:
 
 Validation completed:
 
-- Aegis Core contract test suite: pass, 39 tests.
+- Aegis Core contract test suite: pass, 40 tests.
 - Aegis Core compile check: pass.
 - Aegis Core BOM-prefixed package framework detection regression test: pass.
 - Aegis Core malformed client registry regression test: pass.

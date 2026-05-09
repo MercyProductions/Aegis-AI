@@ -42,6 +42,16 @@ def run_cli(core_root: Path, *args: str) -> dict:
     return json.loads(completed.stdout)
 
 
+def run_cli_raw(core_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, "-m", "aegis_core.cli", *args],
+        cwd=str(core_root),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
 def test_cli_json_flag_works_before_or_after_subcommand(tmp_path: Path) -> None:
     workspace = make_workspace(tmp_path)
     core_root = Path(__file__).resolve().parents[1]
@@ -52,6 +62,22 @@ def test_cli_json_flag_works_before_or_after_subcommand(tmp_path: Path) -> None:
     assert prefix["workspace"] == str(workspace.resolve())
     assert suffix["workspace"] == str(workspace.resolve())
     assert prefix["model_status"]["selected_model"] == suffix["model_status"]["selected_model"]
+
+
+def test_cli_task_create_reports_persistence_failure_without_traceback(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    (workspace / ".aegis").write_text("not a directory", encoding="utf-8")
+    core_root = Path(__file__).resolve().parents[1]
+
+    completed = run_cli_raw(core_root, "--json", "tasks", "--workspace", str(workspace), "--create", "Unwritable task")
+
+    assert completed.returncode == 1
+    payload = json.loads(completed.stdout)
+    assert payload["ok"] is False
+    assert payload["command"] == "tasks"
+    assert "Could not persist task" in payload["error"]
+    assert "Traceback" not in completed.stdout
+    assert "Traceback" not in completed.stderr
 
 
 def test_workspace_scan_cache_reuses_unchanged_scan(tmp_path: Path) -> None:

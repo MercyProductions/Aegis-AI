@@ -15,6 +15,7 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 | --- | --- | --- |
 | Aegis Core health | Pass | `/v1/health` responds through FastAPI TestClient and CLI. |
 | Ollama model routing | Pass | Core detects `qwen3-coder:30b` with configured fallbacks available, and malformed URLs or model inventory payloads degrade to health/config diagnostics. |
+| Aegis Core CLI | Improved | JSON mode is flexible, and task persistence failures return structured nonzero errors instead of tracebacks. |
 | Shared client registration | Pass | Desktop, VS Code, and Visual Studio now have Core registration paths. |
 | Shared task visibility | Pass | VS Code creates and updates Core tasks during agent mode; Core dashboard displays active/recent tasks. |
 | Shared client registry resilience | Improved | Core normalizes malformed local client records before dashboard sorting. |
@@ -49,7 +50,7 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 
 Ran during this pass:
 
-- `python -m pytest tests/test_core_contracts.py -q` in Aegis Core: 39 tests passed
+- `python -m pytest tests/test_core_contracts.py -q` in Aegis Core: 40 tests passed
 - `python -m compileall aegis_core`: pass
 - Core BOM-prefixed package framework detection regression test: pass
 - Core malformed client registry regression test: pass
@@ -86,6 +87,7 @@ Ran during this pass:
 - Added Visual Studio Core health/registration check to the native health command.
 - Added Core scan cache through `.aegis/scan-cache.json`.
 - Added Core dashboard stale-task detection and suggested actions.
+- Hardened Core CLI shared task creation so persistence failures are actionable in scripts and do not leak tracebacks.
 - Hardened shared client registry loading so malformed client records, bad capabilities, and mixed timestamp types do not break dashboard sorting.
 - Hardened shared task loading so malformed local task metadata and timestamps do not break dashboard or status workflows.
 - Hardened shared client/task mutations so unwritable `.aegis` roots do not report successful cross-client coordination that was never persisted.

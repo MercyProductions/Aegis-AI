@@ -11,7 +11,7 @@ from .config import load_config, write_default_config
 from .ecosystem import dashboard_summary, diagnostics_summary, shared_memory_summary
 from .ollama import OllamaClient
 from .roadmap import generate_roadmap
-from .tasks import create_task, list_tasks
+from .tasks import TaskStorePersistenceError, create_task, list_tasks
 from .validation import run_validation, validation_summary
 from .workspace import WorkspaceScanner
 
@@ -42,38 +42,49 @@ def main(argv: list[str] | None = None) -> int:
     args.json = args.json or json_requested
     workspace = Path(args.workspace).resolve()
 
-    if args.command == "health":
-        config = load_config(workspace)
-        result = {"workspace": str(workspace), "config": config.to_dict(), "ollama": OllamaClient(config).health().__dict__}
-    elif args.command == "scan":
-        result = WorkspaceScanner(workspace).scan(persist=True)
-    elif args.command == "roadmap":
-        result = generate_roadmap(workspace, persist=True)
-    elif args.command == "validate":
-        result = run_validation(workspace) if args.run else validation_summary(workspace)
-    elif args.command == "continue":
-        result = continue_from_roadmap(workspace, args.request)
-    elif args.command == "repair":
-        result = repair_from_last_validation(workspace)
-    elif args.command == "config":
-        result = {"path": str(write_default_config(workspace))}
-    elif args.command == "dashboard":
-        result = dashboard_summary(workspace)
-    elif args.command == "memory":
-        result = shared_memory_summary(workspace)
-    elif args.command == "diagnostics":
-        result = diagnostics_summary(workspace)
-    elif args.command == "tasks":
-        if args.create:
-            result = create_task(workspace, args.create, kind=args.kind, source_client=args.source_client)
+    try:
+        if args.command == "health":
+            config = load_config(workspace)
+            result = {"workspace": str(workspace), "config": config.to_dict(), "ollama": OllamaClient(config).health().__dict__}
+        elif args.command == "scan":
+            result = WorkspaceScanner(workspace).scan(persist=True)
+        elif args.command == "roadmap":
+            result = generate_roadmap(workspace, persist=True)
+        elif args.command == "validate":
+            result = run_validation(workspace) if args.run else validation_summary(workspace)
+        elif args.command == "continue":
+            result = continue_from_roadmap(workspace, args.request)
+        elif args.command == "repair":
+            result = repair_from_last_validation(workspace)
+        elif args.command == "config":
+            result = {"path": str(write_default_config(workspace))}
+        elif args.command == "dashboard":
+            result = dashboard_summary(workspace)
+        elif args.command == "memory":
+            result = shared_memory_summary(workspace)
+        elif args.command == "diagnostics":
+            result = diagnostics_summary(workspace)
+        elif args.command == "tasks":
+            if args.create:
+                result = create_task(workspace, args.create, kind=args.kind, source_client=args.source_client)
+            else:
+                result = {"tasks": list_tasks(workspace)}
         else:
-            result = {"tasks": list_tasks(workspace)}
-    else:
-        parser.error(f"Unknown command {args.command}")
-        return 2
+            parser.error(f"Unknown command {args.command}")
+            return 2
+    except TaskStorePersistenceError as exc:
+        print_error(str(exc), command=args.command, workspace=workspace, as_json=args.json)
+        return 1
 
     print_result(result, command=args.command, as_json=args.json)
     return 0
+
+
+def print_error(message: str, command: str, workspace: Path, as_json: bool = False) -> None:
+    if as_json:
+        print(json.dumps({"ok": False, "command": command, "workspace": str(workspace), "error": message}, indent=2, sort_keys=True))
+        return
+    print(f"error: {message}", file=sys.stderr)
 
 
 def print_result(result: dict[str, Any], command: str, as_json: bool = False) -> None:
