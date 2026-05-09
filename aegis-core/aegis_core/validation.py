@@ -14,6 +14,9 @@ from .memory import ProjectMemory, utc_now
 from .safety import is_ignored_path, is_safe_to_read
 
 
+VALIDATION_LOG_FILE = "validation-log.md"
+
+
 @dataclass
 class ValidationCommand:
     name: str
@@ -133,8 +136,7 @@ def run_validation(workspace: str | Path, command: list[str] | None = None, time
             "stderr": f"Blocked unsafe validation command: {' '.join(selected)}",
             "blocked": True,
         }
-        append_validation_log(root, result)
-        return result
+        return _record_validation_result(root, result)
 
     try:
         run_command = _resolve_validation_command(selected)
@@ -154,8 +156,7 @@ def run_validation(workspace: str | Path, command: list[str] | None = None, time
             "stdout": "",
             "stderr": f"Validation executable not found: {exc.filename or selected[0]}",
         }
-        append_validation_log(root, result)
-        return result
+        return _record_validation_result(root, result)
     except OSError as exc:
         result = {
             "ok": False,
@@ -165,8 +166,7 @@ def run_validation(workspace: str | Path, command: list[str] | None = None, time
             "stderr": f"Validation command failed to start: {exc}",
             "start_failed": True,
         }
-        append_validation_log(root, result)
-        return result
+        return _record_validation_result(root, result)
     except subprocess.TimeoutExpired as exc:
         result = {
             "ok": False,
@@ -176,8 +176,7 @@ def run_validation(workspace: str | Path, command: list[str] | None = None, time
             "stderr": f"Validation timed out after {timeout} seconds.\n{_scrub_tail(exc.stderr)}".strip(),
             "timed_out": True,
         }
-        append_validation_log(root, result)
-        return result
+        return _record_validation_result(root, result)
     result = {
         "ok": completed.returncode == 0,
         "command": selected,
@@ -185,8 +184,7 @@ def run_validation(workspace: str | Path, command: list[str] | None = None, time
         "stdout": _scrub_tail(completed.stdout),
         "stderr": _scrub_tail(completed.stderr),
     }
-    append_validation_log(root, result)
-    return result
+    return _record_validation_result(root, result)
 
 
 def _resolve_validation_command(command: list[str]) -> list[str]:
@@ -244,15 +242,35 @@ def _scrub_tail(value: Any, limit: int = 12000) -> str:
     return scrub(_decode_output(value)[-(limit * 2):])[-limit:]
 
 
-def append_validation_log(workspace: str | Path, result: dict[str, Any]) -> None:
+def append_validation_log(workspace: str | Path, result: dict[str, Any]) -> dict[str, Any]:
     memory = ProjectMemory(workspace)
     memory.ensure()
+    path = memory.root / VALIDATION_LOG_FILE
     command = scrub(" ".join(result.get("command") or []))
     status = "passed" if result.get("ok") else "failed"
     output = scrub((result.get("stderr") or result.get("stdout") or "").strip())
     entry = f"## {utc_now()} - {status}\n\nCommand: `{command}`\n\n```text\n{output[:4000]}\n```\n\n"
     try:
-        with (memory.root / "validation-log.md").open("a", encoding="utf-8") as handle:
+        with path.open("a", encoding="utf-8") as handle:
             handle.write(entry)
-    except OSError:
-        return
+    except OSError as exc:
+        return _validation_log_status(path, False, f"Could not persist validation log at {path}: {exc}")
+    if not path.is_file():
+        return _validation_log_status(path, False, f"Could not persist validation log at {path}.")
+    return _validation_log_status(path, True)
+
+
+def _record_validation_result(workspace: str | Path, result: dict[str, Any]) -> dict[str, Any]:
+    log_status = append_validation_log(workspace, result)
+    result["validation_log"] = log_status
+    if not log_status.get("persisted"):
+        result["memory_warning"] = log_status.get("warning") or "Could not persist validation log."
+    return result
+
+
+def _validation_log_status(path: Path, persisted: bool, warning: str | None = None) -> dict[str, Any]:
+    return {
+        "path": str(path),
+        "persisted": persisted,
+        "warning": scrub(warning) if warning else None,
+    }

@@ -33,6 +33,7 @@
 - Hardened Core knowledge graph persistence so damaged graph or summary paths return explicit failures instead of reporting unsaved project intelligence.
 - Hardened Core personal intelligence profile persistence and reset handling so damaged local profile paths cannot report false saved or reset states.
 - Hardened Core roadmap generation so damaged roadmap artifact paths return explicit persistence failures while agent continuation still falls back to safe plan-only behavior.
+- Hardened Core validation runs so damaged validation-log paths are surfaced in result metadata instead of silently losing validation evidence.
 - Added experimental Aegis Core autonomous task orchestration with supervised goal planning, local queue state, approval gates, validation state, rollback metadata, and memory updates without uncontrolled file editing.
 - Added experimental Aegis Core multi-agent specialization with Planner, Architect, Coder, Reviewer, Tester, Repair, and Documentation roles assigned to orchestration tasks.
 - Added experimental Aegis Core workflow automation with safe scheduled/triggered maintenance jobs, `/v1/jobs`, `aegis jobs`, generated project health reports, and `.aegis/jobs-log.md` history while preserving approval gates for risky actions.

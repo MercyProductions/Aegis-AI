@@ -36,6 +36,8 @@ If saving or resetting personal intelligence reports `Could not persist personal
 
 If roadmap generation reports `Could not persist roadmap`, repair `.aegis/roadmap.md` so it is a writable Markdown file. Agent continuation can still produce a plan-only fallback, but saved roadmap-driven workflows should not be trusted until the file path is fixed.
 
+If validation results include a `validation_log.persisted: false` status or a `Could not persist validation log` warning, repair `.aegis/validation-log.md` so it is a writable Markdown file. The command result is still useful, but repair planning, quality trends, and historical failure analysis will miss that run until logging is fixed.
+
 ## Ollama
 
 Default local endpoint:

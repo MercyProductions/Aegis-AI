@@ -2405,6 +2405,25 @@ def test_validation_runner_handles_oserror_start_failure(tmp_path: Path, monkeyp
     assert "Validation command failed to start" in result["stderr"]
 
 
+def test_validation_runner_surfaces_log_persistence_failure(tmp_path: Path, monkeypatch) -> None:
+    workspace = tmp_path / "validation-log-warning-project"
+    workspace.mkdir()
+    aegis_dir = workspace / ".aegis"
+    aegis_dir.mkdir()
+    (aegis_dir / "validation-log.md").mkdir()
+
+    def return_success(*args, **kwargs):
+        return subprocess.CompletedProcess(args[0], 0, stdout="ok", stderr="")
+
+    monkeypatch.setattr(validation_module.subprocess, "run", return_success)
+
+    result = run_validation(workspace, command=[sys.executable, "-m", "pytest"])
+
+    assert result["ok"] is True
+    assert result["validation_log"]["persisted"] is False
+    assert "Could not persist validation log" in result["memory_warning"]
+
+
 def test_validation_runner_handles_timeout(tmp_path: Path, monkeypatch) -> None:
     workspace = tmp_path / "timeout-project"
     workspace.mkdir()
@@ -2471,7 +2490,10 @@ def test_validation_log_write_failures_do_not_crash(tmp_path: Path) -> None:
     aegis_dir.mkdir()
     (aegis_dir / "validation-log.md").mkdir()
 
-    append_validation_log(workspace, {"ok": False, "command": ["npm", "test"], "stderr": "still returns"})
+    result = append_validation_log(workspace, {"ok": False, "command": ["npm", "test"], "stderr": "still returns"})
+
+    assert result["persisted"] is False
+    assert "Could not persist validation log" in result["warning"]
 
 
 def test_health_survives_unwritable_core_log_path(tmp_path: Path) -> None:

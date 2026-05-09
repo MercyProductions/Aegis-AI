@@ -1212,3 +1212,23 @@ Validation completed:
 - Core roadmap and continuation focused tests: pass, 4 tests.
 - Aegis Core contract tests: pass, 108 tests.
 - Git diff whitespace check: pass.
+
+## 2026-05-09 - Core Validation Log Persistence Visibility
+
+Focus:
+
+- Avoid silent loss of validation evidence when `.aegis/validation-log.md` cannot be appended.
+- Keep command results usable while making damaged validation history visible to clients.
+
+Actions:
+
+- Added `validation_log` result metadata for persisted validation-log status.
+- Added `memory_warning` when a validation run cannot append its log entry.
+- Kept direct `append_validation_log` callers non-throwing while returning a structured persistence status.
+- Updated contract metadata, troubleshooting, changelog, and regression coverage for damaged validation-log paths.
+
+Validation completed:
+
+- Core validation focused tests: pass, 12 tests.
+- Aegis Core contract tests: pass, 109 tests.
+- Git diff whitespace check: pass.

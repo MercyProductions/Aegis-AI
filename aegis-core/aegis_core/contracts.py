@@ -372,6 +372,8 @@ class ValidationData(ContractModel):
     blocked: bool | None = None
     start_failed: bool | None = None
     timed_out: bool | None = None
+    validation_log: dict[str, Any] = Field(default_factory=dict)
+    memory_warning: str | None = None
 
 
 class AgentPlanData(ContractModel):
