@@ -7,6 +7,9 @@ from .prompt_intent import prompt_has_explanation_prefix, prompt_requests_execut
 from .schemas import WorkspaceDependencyProfile, WorkspaceProjectManifest
 
 
+POWERSHELL_BUILD_COMMAND = "powershell -NoProfile -ExecutionPolicy Bypass -File ./build.ps1"
+
+
 def should_validate_existing_project_only(
     prompt: str,
     target: Path,
@@ -79,12 +82,16 @@ def existing_project_validation_command(
     command = preferred_command.strip()
     if command == "python build.py" and not (target / "build.py").exists():
         command = ""
+    if _is_root_powershell_build_command(command) and not (target / "build.ps1").exists():
+        command = ""
     if "cmake --build build" in command.lower() and not (target / "build").exists():
         return "cmake -S . -B build && cmake --build build --config Release"
     if command:
         return command
     if (target / "build.py").exists():
         return "python build.py"
+    if (target / "build.ps1").exists():
+        return POWERSHELL_BUILD_COMMAND
     solution_files = sorted(target.glob("*.sln"))
     if solution_files:
         return f"msbuild {solution_files[0].name} /m /p:Configuration=Release"
@@ -95,6 +102,16 @@ def existing_project_validation_command(
     if profile.validation_commands:
         return profile.validation_commands[0]
     return ""
+
+
+def _is_root_powershell_build_command(command: str) -> bool:
+    normalized = " ".join(command.strip().lower().split())
+    if not normalized.startswith(("powershell ", "pwsh ")):
+        return False
+    return any(
+        marker in f" {normalized} "
+        for marker in (" -file ./build.ps1 ", " -file .\\build.ps1 ", " -file build.ps1 ")
+    )
 
 
 def continuity_preset_id(
@@ -119,6 +136,18 @@ def continuity_preset_id(
     config_files = {item.lower().replace("\\", "/") for item in profile.config_files}
     build_systems = {item.lower() for item in profile.build_systems}
     frameworks = {item.lower() for item in profile.frameworks}
+
+    has_powershell_module_source = any(
+        path.exists()
+        for path in (
+            *target.glob("*.psm1"),
+            *target.glob("*.psd1"),
+            *target.glob("src/*.psm1"),
+            *target.glob("src/*.psd1"),
+        )
+    )
+    if has_powershell_module_source and (target / "build.ps1").exists() and "powershell-module" in known_presets:
+        return "powershell-module"
 
     if "dll/shared library" in frameworks or any(
         item.endswith((".dll", ".lib", ".def", ".exp")) for item in config_files

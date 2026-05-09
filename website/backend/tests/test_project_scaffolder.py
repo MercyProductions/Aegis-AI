@@ -1216,6 +1216,51 @@ class ProjectScaffolderTests(unittest.TestCase):
         self.assertTrue(result.scaffold_request.run_validation)
         self.assertIn("existing workspace continuity", result.detected_keywords)
 
+    def test_prompt_plan_reuses_existing_cmake_project_powershell_build_guard(self) -> None:
+        target = self.project_root / "workspace" / "Existing CMake Guard"
+        (target / "src").mkdir(parents=True, exist_ok=True)
+        (target / "CMakeLists.txt").write_text(
+            "cmake_minimum_required(VERSION 3.20)\n"
+            "project(ExistingCMakeGuard LANGUAGES CXX)\n"
+            "add_executable(ExistingCMakeGuard src/main.cpp)\n",
+            encoding="utf-8",
+        )
+        (target / "src" / "main.cpp").write_text("int main(){return 0;}\n", encoding="utf-8")
+        (target / "build.ps1").write_text("Write-Host 'guard build'\n", encoding="utf-8")
+
+        result = self.scaffolder.plan_from_prompt(
+            ProjectScaffoldPlanRequest(
+                prompt="you didn't build it, build it and fix any errors",
+                workspace_root=str(target),
+            )
+        )
+
+        expected = "powershell -NoProfile -ExecutionPolicy Bypass -File ./build.ps1"
+        self.assertEqual(result.preset.id, "cpp-cmake-cli")
+        self.assertEqual(result.execution_mode, "existing_validation")
+        self.assertEqual(result.primary_action, "validate_existing_project")
+        self.assertEqual(result.validation_command, expected)
+        self.assertEqual(result.scaffold_request.validation_command, expected)
+        self.assertTrue(result.scaffold_request.run_validation)
+
+    def test_prompt_plan_reuses_existing_powershell_module_build_guard(self) -> None:
+        target = self.project_root / "workspace" / "Existing PowerShell Module"
+        (target / "src").mkdir(parents=True, exist_ok=True)
+        (target / "src" / "AdminToolkit.psm1").write_text("function Test-AegisPath {}\n", encoding="utf-8")
+        (target / "build.ps1").write_text("Write-Host 'guard build'\n", encoding="utf-8")
+
+        result = self.scaffolder.plan_from_prompt(
+            ProjectScaffoldPlanRequest(
+                prompt=f"at this path {target} build it and make sure there are no errors",
+                preferred_target_path=str(target),
+            )
+        )
+
+        self.assertEqual(result.preset.id, "powershell-module")
+        self.assertEqual(result.execution_mode, "existing_validation")
+        self.assertEqual(result.validation_command, "powershell -NoProfile -ExecutionPolicy Bypass -File ./build.ps1")
+        self.assertIn("existing workspace continuity", result.detected_keywords)
+
     def test_scaffold_followup_build_validates_existing_manifest_without_new_files(self) -> None:
         target = self.project_root / "workspace" / "Roblox" / "Test 1"
         manifest = target / ".aegis" / "project.json"

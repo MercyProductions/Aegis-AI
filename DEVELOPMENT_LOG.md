@@ -1795,3 +1795,26 @@ Validation completed:
 - Website agent parser regression suite: pass, 96 tests and 10 subtests.
 - Aegis Core contract tests: pass, 138 tests.
 - Git diff whitespace check: pass.
+
+## 2026-05-09 - Website Project Builder PowerShell Guard Parity
+
+Focus:
+
+- Keep Website project-builder existing-project validation aligned with validation discovery and agent continuation.
+- Avoid running CMake/MSBuild fallbacks when an existing workspace already provides a root PowerShell build guard.
+
+Actions:
+
+- Updated existing-project validation command selection to prefer root `build.ps1` before Visual Studio or CMake fallback commands.
+- Preserved CMake/Visual Studio preset continuity while using the workspace-owned PowerShell guard for validation.
+- Added continuity detection for existing PowerShell module workspaces with `build.ps1` and module source files.
+- Added project-builder plan regressions for CMake projects with PowerShell guards and existing PowerShell modules.
+
+Validation completed:
+
+- Project-builder focused existing guard planning tests: pass, 4 tests.
+- Website dependency-profile focused tests: pass, 6 tests.
+- Website validation manager regression suite: pass, 22 tests and 4 subtests.
+- Website project-scaffolder regression suite: pass, 120 tests and 46 subtests.
+- Aegis Core contract tests: pass, 138 tests.
+- Git diff whitespace check: pass.
