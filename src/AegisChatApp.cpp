@@ -149,7 +149,7 @@ bool PathLooksLikeExistingProject(const std::string& path)
             continue;
         }
         const std::string extension = Lower(WideToUtf8(entry.path().extension().wstring()));
-        if (extension == ".sln" || extension == ".slnx" || extension == ".csproj" || extension == ".vcxproj" ||
+        if (extension == ".sln" || extension == ".slnx" || extension == ".csproj" || extension == ".fsproj" || extension == ".vbproj" || extension == ".vcxproj" ||
             extension == ".dll" || extension == ".lib" || extension == ".def" || extension == ".exp" || extension == ".pdb") {
             return true;
         }
@@ -398,7 +398,7 @@ std::string DefaultValidationCommandForWorkspace(const std::string& path)
         if (extension == ".vcxproj") {
             return "msbuild \"" + WideToUtf8(entry.path().filename().wstring()) + "\" /m /p:Configuration=Release";
         }
-        if (extension == ".csproj") {
+        if (extension == ".csproj" || extension == ".fsproj" || extension == ".vbproj") {
             return "dotnet build \"" + WideToUtf8(entry.path().filename().wstring()) + "\"";
         }
     }
@@ -1385,6 +1385,13 @@ bool HasWorkspaceFileWithExtension(const std::vector<WorkspaceFile>& files, cons
     return !FirstWorkspaceFileWithExtension(files, extension).empty();
 }
 
+bool HasDotNetWorkspaceProject(const std::vector<WorkspaceFile>& files)
+{
+    return HasWorkspaceFileWithExtension(files, ".csproj") ||
+        HasWorkspaceFileWithExtension(files, ".fsproj") ||
+        HasWorkspaceFileWithExtension(files, ".vbproj");
+}
+
 bool HasWorkspacePathContaining(const std::vector<WorkspaceFile>& files, const std::string& needle)
 {
     const std::string lowered = WorkspacePathLower(needle);
@@ -1484,7 +1491,7 @@ std::vector<ValidationSuggestionInfo> BuildProjectValidationSuggestions(const st
         solution = FirstWorkspaceFileWithExtension(files, ".slnx");
     }
     const bool has_vcxproj = HasWorkspaceFileWithExtension(files, ".vcxproj");
-    const bool has_csproj = HasWorkspaceFileWithExtension(files, ".csproj");
+    const bool has_dotnet_project = HasDotNetWorkspaceProject(files);
     if (HasNamedWorkspaceFile(files, {"build.py"})) {
         AddValidationSuggestion(suggestions, "python build.py", "Project build runner", "native/build", "Workspace build.py detected; use the project-owned configure/build/test entrypoint.");
     }
@@ -1493,10 +1500,10 @@ std::vector<ValidationSuggestionInfo> BuildProjectValidationSuggestions(const st
     }
     if (!solution.empty() && has_vcxproj) {
         AddValidationSuggestion(suggestions, "msbuild " + QuoteCommandPath(solution) + " /p:Configuration=Release /p:Platform=x64", "Visual Studio build", "windows/cpp", "Solution and vcxproj detected; validate native Windows build output.");
-    } else if (!solution.empty() && has_csproj) {
-        AddValidationSuggestion(suggestions, "dotnet test " + QuoteCommandPath(solution), "dotnet tests", "dotnet", "Solution and C# project detected; run the .NET test target.");
-    } else if (has_csproj) {
-        AddValidationSuggestion(suggestions, "dotnet test", "dotnet tests", "dotnet", "C# project detected; run the .NET test target.");
+    } else if (!solution.empty() && has_dotnet_project) {
+        AddValidationSuggestion(suggestions, "dotnet test " + QuoteCommandPath(solution), "dotnet tests", "dotnet", "Solution and .NET project detected; run the .NET test target.");
+    } else if (has_dotnet_project) {
+        AddValidationSuggestion(suggestions, "dotnet test", "dotnet tests", "dotnet", ".NET project detected; run the .NET test target.");
     }
 
     if (HasNamedWorkspaceFile(files, {"CMakeLists.txt"}) && !HasNamedWorkspaceFile(files, {"build.py"})) {

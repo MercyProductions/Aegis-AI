@@ -81,6 +81,7 @@ Actions:
 - Improved Website command-runner native wrapper detection so Windows `.slnx` workspaces can receive Visual Studio developer environment setup before MSBuild/build.py validation.
 - Improved Desktop local workspace classification and validation suggestion parity so `.slnx` solutions are treated as Visual Studio/MSBuild projects.
 - Improved Website native task-planner focus metadata so `.slnx` workspaces are included in native C++/MSBuild focus paths.
+- Improved Desktop local .NET parity so `.fsproj` and `.vbproj` projects are recognized as existing workspaces and receive dotnet validation suggestions.
 
 Validation completed:
 

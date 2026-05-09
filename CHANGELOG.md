@@ -29,6 +29,7 @@
 - Improved Website Windows native command wrapping so `.slnx` workspaces receive the same Visual Studio developer environment handling as `.sln` projects.
 - Improved Desktop workspace detection and validation hints so `.slnx` solutions follow the same Visual Studio/MSBuild path as `.sln` files.
 - Improved Website native task planning focus paths so `.slnx` solutions are surfaced alongside `.sln` and `.vcxproj` files.
+- Improved Desktop local .NET project detection so `.fsproj` and `.vbproj` workspaces receive the same existing-project and validation treatment as `.csproj`.
 - Improved Website dependency profiling so root `build.py` and `build.ps1` guard scripts are recorded as validation commands before lower-level CMake/MSBuild native fallbacks.
 - Improved Website agent continuation so existing projects with root `build.ps1` guard scripts propose the same safe PowerShell validation command used by validation discovery.
 - Improved Website project-builder existing-project validation so root `build.ps1` guard scripts are selected before CMake/MSBuild fallback commands.
