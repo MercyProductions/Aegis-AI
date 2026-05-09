@@ -24,6 +24,18 @@ let browser;
 let page;
 let cleanupWorkspace = false;
 
+function apiRoutePattern(pathname) {
+  return `**${pathname}`;
+}
+
+async function routeApi(pageInstance, pathname, handler) {
+  await pageInstance.route(apiRoutePattern(pathname), handler);
+}
+
+async function unrouteApi(pageInstance, pathname) {
+  await pageInstance.unroute(apiRoutePattern(pathname));
+}
+
 try {
   await waitForJson(`${backendUrl}/api/health`, (health) => Boolean(health?.ready), 'backend health');
   await waitForHttpOk(frontendUrl, 'frontend');
@@ -986,7 +998,7 @@ async function exerciseHeaderModelSwitcher(page) {
     };
   }
 
-  await page.route(`${backendUrl}/api/models`, async (route) => {
+  await routeApi(page, '/api/models', async (route) => {
     await route.fulfill({
       status: 200,
       headers: { 'content-type': 'application/json' },
@@ -1016,7 +1028,7 @@ async function exerciseHeaderModelSwitcher(page) {
     });
   });
 
-  await page.route(`${backendUrl}/api/model-manager`, async (route) => {
+  await routeApi(page, '/api/model-manager', async (route) => {
     await route.fulfill({
       status: 200,
       headers: { 'content-type': 'application/json' },
@@ -1049,7 +1061,7 @@ async function exerciseHeaderModelSwitcher(page) {
     });
   });
 
-  await page.route(`${backendUrl}/api/model-registry`, async (route) => {
+  await routeApi(page, '/api/model-registry', async (route) => {
     await route.fulfill({
       status: 200,
       headers: { 'content-type': 'application/json' },
@@ -1067,7 +1079,7 @@ async function exerciseHeaderModelSwitcher(page) {
     });
   });
 
-  await page.route(`${backendUrl}/api/config`, async (route) => {
+  await routeApi(page, '/api/config', async (route) => {
     if (route.request().method() !== 'POST') {
       await route.continue();
       return;
@@ -1107,10 +1119,10 @@ async function exerciseHeaderModelSwitcher(page) {
   await waitForLocatorText(modelButton, 'qwen2.5-coder:7b', 'header model restored after quick switcher test');
 
   assert(configSaves === 2, `Expected two mocked model config saves, got ${configSaves}.`);
-  await page.unroute(`${backendUrl}/api/models`);
-  await page.unroute(`${backendUrl}/api/model-manager`);
-  await page.unroute(`${backendUrl}/api/model-registry`);
-  await page.unroute(`${backendUrl}/api/config`);
+  await unrouteApi(page, '/api/models');
+  await unrouteApi(page, '/api/model-manager');
+  await unrouteApi(page, '/api/model-registry');
+  await unrouteApi(page, '/api/config');
 }
 
 async function exerciseMalformedPersistedUiState(page) {
@@ -1299,7 +1311,7 @@ async function exerciseDetailsPanelVisibilityPreference(page) {
 
 async function exercisePinnedContextFiles(page) {
   let pinnedRequestPayload = null;
-  await page.route(`${backendUrl}/api/chat/stream`, async (route) => {
+  await routeApi(page, '/api/chat/stream', async (route) => {
     pinnedRequestPayload = JSON.parse(route.request().postData() || '{}');
     await route.fulfill({
       status: 200,
@@ -1344,7 +1356,7 @@ async function exercisePinnedContextFiles(page) {
     Array.isArray(pinnedRequestPayload.context_paths) && pinnedRequestPayload.context_paths.includes('tracked.txt'),
     `Expected pinned context_paths to include tracked.txt, got ${JSON.stringify(pinnedRequestPayload.context_paths)}.`
   );
-  await page.unroute(`${backendUrl}/api/chat/stream`);
+  await unrouteApi(page, '/api/chat/stream');
 
   await clickUnique(page.getByRole('button', { name: 'New session', exact: true }), 'new session after pinned context test');
   await waitForLocatorCount(page.getByText('Welcome to Auralith OS', { exact: true }), 1, 'empty session after pinned context test');
@@ -1368,7 +1380,7 @@ async function exerciseGeneratedChangeApplyScopes(page) {
       content: 'all change applied\n'
     }
   ];
-  await page.route(`${backendUrl}/api/chat/stream`, async (route) => {
+  await routeApi(page, '/api/chat/stream', async (route) => {
     applyScopeRequests += 1;
     const payload = JSON.parse(route.request().postData() || '{}');
     const message = String(payload.message || '');
@@ -1440,7 +1452,7 @@ async function exerciseGeneratedChangeApplyScopes(page) {
       ].join('\n')
     });
   });
-  await page.route(`${backendUrl}/api/validate`, async (route) => {
+  await routeApi(page, '/api/validate', async (route) => {
     manualApplyValidationRequests += 1;
     const validationFailed = manualApplyValidationRequests === 1;
     const validationSummary = validationFailed ? 'Manual apply validation failed.' : 'Manual apply validation passed.';
@@ -2004,8 +2016,8 @@ async function exerciseGeneratedChangeApplyScopes(page) {
     manualApplyValidationRequests === 2,
     `Expected validation after each manual apply operation, got ${manualApplyValidationRequests}.`
   );
-  await page.unroute(`${backendUrl}/api/chat/stream`);
-  await page.unroute(`${backendUrl}/api/validate`);
+  await unrouteApi(page, '/api/chat/stream');
+  await unrouteApi(page, '/api/validate');
   await runValidationToggle.uncheck();
 
   await clickUnique(page.getByRole('button', { name: 'New session', exact: true }), 'new session after apply scope test');
@@ -2019,7 +2031,7 @@ async function exerciseManualApplyWarningStatus(page) {
   await writeFile(path.join(workspaceRoot, retryPath), retryExistingContent, 'utf8');
 
   let warningStatusRequests = 0;
-  await page.route(`${backendUrl}/api/chat/stream`, async (route) => {
+  await routeApi(page, '/api/chat/stream', async (route) => {
     warningStatusRequests += 1;
     await route.fulfill({
       status: 200,
@@ -2143,7 +2155,7 @@ async function exerciseManualApplyWarningStatus(page) {
   await expectWorkspaceFile(retryPath, retryGeneratedContent);
 
   assert(warningStatusRequests === 1, `Expected one warning status stream request, got ${warningStatusRequests}.`);
-  await page.unroute(`${backendUrl}/api/chat/stream`);
+  await unrouteApi(page, '/api/chat/stream');
 
   await clickUnique(page.getByRole('button', { name: 'New session', exact: true }), 'new session after warning status test');
   await waitForLocatorCount(page.getByText('Welcome to Auralith OS', { exact: true }), 1, 'empty session after warning status test');
@@ -2157,7 +2169,7 @@ async function exerciseSamePathWarningPrecision(page) {
   await writeFile(path.join(workspaceRoot, samePath), createdContent, 'utf8');
 
   let samePathRequests = 0;
-  await page.route(`${backendUrl}/api/chat/stream`, async (route) => {
+  await routeApi(page, '/api/chat/stream', async (route) => {
     samePathRequests += 1;
     await route.fulfill({
       status: 200,
@@ -2242,7 +2254,7 @@ async function exerciseSamePathWarningPrecision(page) {
   );
 
   assert(samePathRequests === 1, `Expected one same-path warning stream request, got ${samePathRequests}.`);
-  await page.unroute(`${backendUrl}/api/chat/stream`);
+  await unrouteApi(page, '/api/chat/stream');
 
   await clickUnique(page.getByRole('button', { name: 'New session', exact: true }), 'new session after same-path warning test');
   await waitForLocatorCount(page.getByText('Welcome to Auralith OS', { exact: true }), 1, 'empty session after same-path warning test');
@@ -2263,7 +2275,7 @@ async function exerciseGeneratedChangeReviewRestore(page) {
   await writeFile(path.join(checkpointFilesRoot, updatePath), oldContent, 'utf8');
 
   let restoreRequests = 0;
-  await page.route(`${backendUrl}/api/chat/stream`, async (route) => {
+  await routeApi(page, '/api/chat/stream', async (route) => {
     restoreRequests += 1;
     await route.fulfill({
       status: 200,
@@ -2397,7 +2409,7 @@ async function exerciseGeneratedChangeReviewRestore(page) {
   );
 
   assert(restoreRequests === 1, `Expected one saved review stream request, got ${restoreRequests}.`);
-  await page.unroute(`${backendUrl}/api/chat/stream`);
+  await unrouteApi(page, '/api/chat/stream');
 
   await clickUnique(page.getByRole('button', { name: 'New session', exact: true }), 'new session after restore review test');
   await waitForLocatorCount(page.getByText('Welcome to Auralith OS', { exact: true }), 1, 'empty session after restore review test');
@@ -2421,7 +2433,7 @@ async function exerciseComposerDraftRestore(page) {
   assert(storedDraft === draftText, 'Composer draft was not saved to local storage.');
 
   let draftRequests = 0;
-  await page.route(`${backendUrl}/api/chat/stream`, async (route) => {
+  await routeApi(page, '/api/chat/stream', async (route) => {
     draftRequests += 1;
     await route.fulfill({
       status: 200,
@@ -2450,7 +2462,7 @@ async function exerciseComposerDraftRestore(page) {
   const remainingDraft = await page.evaluate((storageKey) => localStorage.getItem(storageKey), composerDraftStorageKey);
   assert(remainingDraft === null, 'Composer draft was not cleared after sending.');
   assert(draftRequests === 1, `Expected one draft stream request, got ${draftRequests}.`);
-  await page.unroute(`${backendUrl}/api/chat/stream`);
+  await unrouteApi(page, '/api/chat/stream');
 }
 
 async function exerciseCurrentChatExport(page, userMessage, assistantMessage) {
@@ -2486,7 +2498,7 @@ async function exerciseChatAutoScroll(page) {
   ].join('\n');
 
   let autoScrollRequests = 0;
-  await page.route(`${backendUrl}/api/chat/stream`, async (route) => {
+  await routeApi(page, '/api/chat/stream', async (route) => {
     autoScrollRequests += 1;
     await route.fulfill({
       status: 200,
@@ -2512,7 +2524,7 @@ async function exerciseChatAutoScroll(page) {
   await waitForChatScrollAtBottom(page, 'chat auto-scroll after long response');
 
   assert(autoScrollRequests === 1, `Expected one auto-scroll stream request, got ${autoScrollRequests}.`);
-  await page.unroute(`${backendUrl}/api/chat/stream`);
+  await unrouteApi(page, '/api/chat/stream');
 
   await clickUnique(page.getByRole('button', { name: 'New session', exact: true }), 'new session after auto-scroll test');
   await waitForLocatorCount(page.getByText('Welcome to Auralith OS', { exact: true }), 1, 'empty session after auto-scroll test');
@@ -2523,7 +2535,7 @@ async function exerciseQueuedPromptTray(page) {
 
   let streamRequests = 0;
   const streamMessages = [];
-  await page.route(`${backendUrl}/api/chat/stream`, async (route) => {
+  await routeApi(page, '/api/chat/stream', async (route) => {
     streamRequests += 1;
     const payload = JSON.parse(route.request().postData() || '{}');
     streamMessages.push(payload.message);
@@ -2638,12 +2650,12 @@ async function exerciseQueuedPromptTray(page) {
     streamMessages.join(' | ') === 'start a slow queue tray test | second queued prompt should go next',
     `Queued prompts streamed in the wrong order: ${streamMessages.join(' | ')}`
   );
-  await page.unroute(`${backendUrl}/api/chat/stream`);
+  await unrouteApi(page, '/api/chat/stream');
 }
 
 async function exerciseStopActiveResponse(page) {
   let stopRequests = 0;
-  await page.route(`${backendUrl}/api/chat/stream`, async (route) => {
+  await routeApi(page, '/api/chat/stream', async (route) => {
     stopRequests += 1;
     await delay(1_200);
     await route
@@ -2683,7 +2695,7 @@ async function exerciseStopActiveResponse(page) {
     1_000
   );
   assert(stopRequests === 1, `Expected one stopped stream request, got ${stopRequests}.`);
-  await page.unroute(`${backendUrl}/api/chat/stream`);
+  await unrouteApi(page, '/api/chat/stream');
 }
 
 async function exerciseResponsiveShell(page) {

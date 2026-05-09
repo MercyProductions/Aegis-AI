@@ -4,6 +4,9 @@
 
 ### Stabilization
 
+- Fixed Website workspace resolution so uncreatable or invalid workspace roots return clean `400` API errors instead of `500` stack traces.
+- Fixed the Website UI E2E mock routing so tests intercept both direct backend URLs and the Vite `/api` proxy.
+- Added release candidate install and validation documentation for daily dogfooding.
 - Added focused Aegis Core regression tests for `/v1` client registration, shared tasks, dashboard contracts, scan caching, and flexible CLI JSON output.
 - Improved the Aegis Core CLI so `--json` works before or after the subcommand.
 - Hardened the Aegis Core CLI so shared task persistence failures return clean nonzero errors and JSON payloads instead of tracebacks.
@@ -61,6 +64,7 @@
 
 ### Validation
 
+- Ecosystem release candidate validation passed for Core startup, Website launch, real web chat smoke, UI E2E, Core/Website API workflows, Core-offline and backend-offline degraded behavior, simulated Ollama failure, rollback after failed validation, VS Code VSIX install, Visual Studio VSIX packaging, desktop GUI smoke, and Core CLI/package checks.
 - Aegis Core pytest, compile, CLI/API smoke checks pass.
 - Desktop App build passes.
 - VS Code extension lint and VSIX packaging pass.

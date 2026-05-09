@@ -177,3 +177,14 @@ Duplicate logic is now tracked in `DEPRECATION_PLAN.md`. Removal is allowed only
 - Website and frontend compatibility tests cover the old `/api` shape;
 - Core-offline behavior remains clear and non-crashing;
 - rollback/apply safety tests exist for any file-writing workflow.
+
+## Release Candidate Validation
+
+The current daily dogfooding release candidate keeps the established runtime split:
+
+- Core owns shared `/v1` contracts for health, models, settings, workspace scan, roadmap, memory summary, diagnostics, clients, tasks, validation, and plan-only continue/repair.
+- Website `/api` owns rich product workflows, chat, generated changes, apply, checkpoint restore, Website memory CRUD, task UX, auth/session, and advanced product surfaces.
+- Desktop and Website can continue using `/api` when Core is offline.
+- VS Code and Visual Studio keep local IDE-specific apply/rollback behavior while gradually reading shared state from Core.
+
+The latest RC validation verified startup, smoke workflows, Core-offline degraded Website health, backend-offline frontend availability, invalid workspace errors, simulated Ollama failure, Website rollback after failed validation, VS Code VSIX install, Visual Studio VSIX packaging, and desktop GUI smoke captures. See `ECOSYSTEM_VALIDATION_REPORT.md`.

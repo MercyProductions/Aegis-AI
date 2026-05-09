@@ -40,6 +40,12 @@ Stable product groups:
 - `GET/PUT /api/approval/settings`
 - `POST /api/project-builder/plan`, `/preview`, `/scaffold`
 
+Failure behavior:
+
+- Invalid or uncreatable `workspace_root` values should return `400` with a useful `detail` message.
+- If Aegis Core is offline, low-risk adapter fields report `core_runtime_status: unavailable` while mature Website `/api` behavior continues where local fallback is safe.
+- Website apply/checkpoint restore remains Website-owned. Core rollback contracts are still schema-only.
+
 Product/advanced groups that stay Website-owned for now:
 
 - model registry, model manager, model benchmarks
@@ -144,6 +150,12 @@ Endpoint families:
 | `GET /v1/ecosystem/dashboard` | `ecosystem.dashboard` | stable | Shared clients/tasks/model/diagnostics dashboard |
 
 Schema-only experimental contracts are defined in `aegis-core/aegis_core/contracts.py` for `patch.proposal`, `rollback.entry`, and `rollback.result`. They are intentionally not active write endpoints yet.
+
+Release candidate notes:
+
+- Core `/v1/validation` blocks unsafe command overrides and returns structured `ok: false` results.
+- Detected safe validation commands such as `npm test` can return nonzero exit codes without crashing Core or Website clients.
+- Simulated Ollama outages through workspace-local Core settings return model health data with `reachable: false` and an error detail.
 
 See `aegis-core/docs/API_REFERENCE.md` for the Core-only details and examples.
 

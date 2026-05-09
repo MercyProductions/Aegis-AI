@@ -409,6 +409,14 @@ class WorkspaceAndStorageTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             manager.resolve_workspace(str(outside))
 
+    def test_resolve_workspace_reports_create_failures_as_value_errors(self) -> None:
+        blocker = self.project_root / "not-a-directory"
+        blocker.write_text("blocks child workspace creation", encoding="utf-8")
+        manager = WorkspaceManager(self.project_root, self.settings)
+
+        with self.assertRaisesRegex(ValueError, "workspace root could not be created"):
+            manager.resolve_workspace("not-a-directory/workspace")
+
     def test_resolve_workspace_allows_safe_explicit_absolute_project_paths(self) -> None:
         outside = self.project_root.parent / "outside-aegis-workspace"
         settings = Settings(

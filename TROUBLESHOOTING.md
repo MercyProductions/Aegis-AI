@@ -78,6 +78,15 @@ Expected degraded behavior when Core is offline:
 - VS Code: logs Core registration/task/model/scan/roadmap/validation warnings and falls back to local or direct Ollama paths where available.
 - Visual Studio: reports Core health/registration as a warning and keeps local solution/review/build workflows available.
 - Desktop: keeps Website `/api` workflows available and marks the shared Core dashboard as unavailable.
+- Website: keeps `/api` health, chat, file, apply, validation, memory, and task workflows available; `/api/health` reports `core_runtime_status: unavailable` until Core returns.
+
+If the Website backend is offline while the Vite frontend is still running, the browser shell may continue to load from `http://127.0.0.1:5173`, but API-backed panels should show checking/offline/degraded states. Restart with:
+
+```powershell
+.\website\scripts\start-backend.ps1
+```
+
+Invalid or uncreatable workspace roots should return a `400` response with a useful detail message. If you see a `500` stack trace for a bad workspace path, rerun the backend tests around `WorkspaceManager.resolve_workspace`.
 
 ## Safe Apply And Rollback
 
@@ -98,3 +107,5 @@ Website apply requires checkpoint creation before file edits. If apply returns a
 The Website currently uses its own mature `/api` backend. Do not force it onto standalone Core `/v1` APIs during stabilization unless a specific workflow proves the migration is needed.
 
 If workspace setup warns that `.aegis/project.json` or `.aegis/validation_profile.json` could not be written, inspect those paths in the selected workspace. Preserve anything useful, then repair the damaged file/directory path and run setup again.
+
+The web UI E2E harness expects API mocks to catch both direct backend URLs and the Vite `/api` proxy. If model-switcher or stream mocks stop matching after API base discovery changes, use the shared route helper in `website/scripts/e2e-web.mjs` instead of hard-coding only `http://127.0.0.1:8787`.
