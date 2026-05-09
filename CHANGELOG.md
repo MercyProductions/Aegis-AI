@@ -79,6 +79,7 @@
 - Hardened the Website-to-Core adapter so HTTP 200 responses with malformed JSON are reported as reachable degraded Core responses instead of being mistaken for offline Core.
 - Hardened the Website-to-Core adapter so Core error details and HTTP error URLs are redacted before reaching Website `/api` clients.
 - Hardened Website and Visual Studio diagnostic redactors so full `Authorization: Bearer/Basic/Digest ...` header values are redacted before generic assignment redaction can expose trailing credentials.
+- Hardened Website, Desktop, and Visual Studio diagnostic redactors so JSON-shaped secret fields in Core/provider error bodies are redacted before display.
 - Hardened Desktop backend/Core URL settings so local host:port inputs, trailing endpoint paths, and empty values normalize before runtime requests or config writes.
 - Hardened Desktop Core dashboard loading so a shared registration failure no longer blocks dashboard reads when Core is otherwise reachable.
 - Hardened Desktop HTTP diagnostics so backend/Core error envelopes using `error`, `message`, or nested `data` details surface as bounded user-facing messages.

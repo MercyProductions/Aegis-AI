@@ -828,3 +828,23 @@ Validation completed:
 
 - VS Code extension lint: pass.
 - VS Code VSIX package: pass.
+
+## 2026-05-09 - Cross-Client JSON Diagnostic Redaction Parity
+
+Focus:
+
+- Keep Website, Desktop, and Visual Studio error diagnostics aligned with the Core and VS Code JSON secret-field redaction behavior.
+- Preserve useful provider/Core error context while redacting quoted JSON fields such as `"api_key":"..."`.
+
+Actions:
+
+- Added JSON-shaped secret-field redaction to the Website Core bridge.
+- Added JSON-shaped secret-field redaction to the Desktop diagnostic redactor.
+- Added JSON-shaped secret-field redaction to the Visual Studio diagnostic redactor and strengthened the VSIX build guard.
+- Added a Website Core bridge regression for JSON secret-field redaction.
+
+Validation completed:
+
+- Website Core bridge redaction tests: pass, 3 tests.
+- Visual Studio extension Release build/package: pass.
+- Desktop Release build: pass, 0 warnings.

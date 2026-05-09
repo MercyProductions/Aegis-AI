@@ -17,6 +17,10 @@ namespace Aegis.LocalAgent.VisualStudio.Services
             @"\b((?:api[_-]?key|token|secret|password|passwd|credential|authorization)\s*[:=]\s*)[^\s&]+",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+        private static readonly Regex JsonSecretPattern = new Regex(
+            @"([""'](?:api[_-]?key|token|secret|password|passwd|credential|authorization|private[_-]?key)[""']\s*:\s*[""'])[^""']+",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
         private static readonly Regex AuthorizationHeaderPattern = new Regex(
             @"\b(Authorization\s*[:=]\s*)(?:Bearer|Basic|Digest)?\s*[A-Za-z0-9._~+/\-=]+",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -35,6 +39,7 @@ namespace Aegis.LocalAgent.VisualStudio.Services
             var normalized = detail.Replace("\r", " ").Replace("\n", " ").Trim();
             var redacted = UrlCredentialPattern.Replace(normalized, "$1[redacted]@");
             redacted = QuerySecretPattern.Replace(redacted, "$1[redacted]");
+            redacted = JsonSecretPattern.Replace(redacted, "$1[redacted]");
             redacted = AuthorizationHeaderPattern.Replace(redacted, "$1[redacted]");
             redacted = BearerTokenPattern.Replace(redacted, "$1[redacted]");
             redacted = AssignmentSecretPattern.Replace(redacted, "$1[redacted]");

@@ -265,6 +265,22 @@ def test_core_envelope_error_redacts_full_authorization_header() -> None:
     assert "Provider rejected" in error
 
 
+def test_core_envelope_error_redacts_json_secret_fields() -> None:
+    secret = "json-secret-token"
+    error = core_envelope_error(
+        {
+            "ok": False,
+            "api_version": "v1",
+            "kind": "models",
+            "data": {"error": f'Provider HTTP 401: {{"api_key":"{secret}","message":"invalid"}}'},
+        }
+    )
+
+    assert secret not in error
+    assert '"api_key":"[redacted]"' in error
+    assert "invalid" in error
+
+
 def test_core_runtime_endpoint_delegates_to_core_bridge(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()

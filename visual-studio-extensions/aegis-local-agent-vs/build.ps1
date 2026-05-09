@@ -141,8 +141,11 @@ function Assert-DiagnosticRedactionGuards {
   if ($redactorText -notmatch 'AuthorizationHeaderPattern') {
     $issues += "DiagnosticRedactor must redact full Authorization header values before assignment-style redaction runs."
   }
-  if ($redactorText -notmatch '(?s)AuthorizationHeaderPattern\.Replace\(redacted, "\$1\[redacted\]"\).*BearerTokenPattern\.Replace\(redacted, "\$1\[redacted\]"\).*AssignmentSecretPattern\.Replace\(redacted, "\$1\[redacted\]"') {
-    $issues += "DiagnosticRedactor must apply AuthorizationHeaderPattern before bearer and assignment redaction."
+  if ($redactorText -notmatch 'JsonSecretPattern') {
+    $issues += "DiagnosticRedactor must redact JSON-shaped secret fields before assignment-style redaction runs."
+  }
+  if ($redactorText -notmatch '(?s)JsonSecretPattern\.Replace\(redacted, "\$1\[redacted\]"\).*AuthorizationHeaderPattern\.Replace\(redacted, "\$1\[redacted\]"\).*BearerTokenPattern\.Replace\(redacted, "\$1\[redacted\]"\).*AssignmentSecretPattern\.Replace\(redacted, "\$1\[redacted\]"') {
+    $issues += "DiagnosticRedactor must apply JSON and Authorization header redaction before bearer and assignment redaction."
   }
 
   if ($issues.Count -gt 0) {

@@ -685,6 +685,9 @@ std::string RedactDiagnosticText(const std::string& value, std::size_t max_lengt
     static const std::regex assignment_secret(
         R"(\b((api[_-]?key|token|secret|password|passwd|credential|authorization)\s*[:=]\s*)[^\s&]+)",
         std::regex_constants::icase);
+    static const std::regex json_secret(
+        R"((["'](api[_-]?key|token|secret|password|passwd|credential|authorization|private[_-]?key)["']\s*:\s*["'])[^"']+)",
+        std::regex_constants::icase);
     static const std::regex authorization_value(
         R"(\b(Authorization\s*[:=]\s*)(Bearer|Basic|Digest)?\s*[A-Za-z0-9._~+/\-=]+)",
         std::regex_constants::icase);
@@ -694,6 +697,7 @@ std::string RedactDiagnosticText(const std::string& value, std::size_t max_lengt
 
     detail = std::regex_replace(detail, url_credentials, "$1[redacted]@");
     detail = std::regex_replace(detail, query_secret, "$1[redacted]");
+    detail = std::regex_replace(detail, json_secret, "$1[redacted]");
     detail = std::regex_replace(detail, authorization_value, "$1[redacted]");
     detail = std::regex_replace(detail, bearer_token, "$1[redacted]");
     detail = std::regex_replace(detail, assignment_secret, "$1[redacted]");
