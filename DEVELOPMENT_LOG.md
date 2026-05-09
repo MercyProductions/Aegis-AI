@@ -48,6 +48,7 @@ Actions:
 - Tightened Visual Studio rollback to reject cross-solution manifests, dot/hidden backup aliases, ambiguous newest-backup fallback, and proposal paths containing traversal or secret-like segments.
 - Hardened Website workspace setup so damaged `.aegis` project and validation profile paths return setup warnings instead of endpoint failures.
 - Hardened Website validation discovery so damaged project marker directories do not create false validation or install suggestions.
+- Hardened Website dependency profiling so damaged marker directories and lockfile paths do not distort onboarding stack summaries.
 - Hardened Website checkpoint restore against path traversal IDs, damaged manifests, and backup paths outside the checkpoint files folder.
 - Hardened Website checkpoint restore preflight so missing backup files stop the restore before any workspace files are touched.
 - Hardened Website apply changes so failed checkpoint creation prevents edits and write/delete failures return warnings instead of raw endpoint failures.
@@ -83,7 +84,7 @@ Validation completed:
 - Website frontend tests/build and backend tests: pass.
 - Website workspace setup regression tests for damaged `.aegis` paths: pass.
 - Website validation manager damaged-marker regression tests: pass, 20 tests and 4 subtests.
-- Website checkpoint restore and apply safety regression tests: pass, 53 storage tests.
+- Website checkpoint restore, apply safety, and dependency-profile regression tests: pass, 54 workspace/storage tests.
 - Website backend compile check: pass.
 
 Known next checks:

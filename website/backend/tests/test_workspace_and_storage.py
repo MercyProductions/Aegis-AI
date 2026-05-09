@@ -809,6 +809,65 @@ Project completion list
         self.assertIn("npm", profile.package_managers)
         self.assertIn("npm run test", profile.validation_commands)
 
+    def test_inspect_dependency_profile_ignores_damaged_marker_directories(self) -> None:
+        manager = WorkspaceManager(self.project_root, self.settings)
+        workspace = manager.resolve_workspace("workspace")
+        marker_dirs = (
+            "package.json",
+            "tsconfig.json",
+            "requirements.txt",
+            "go.mod",
+            "Cargo.toml",
+            "CMakeLists.txt",
+            "build.py",
+            "Demo.csproj",
+            "Demo.vcxproj",
+            "Demo.sln",
+            "Demo.vcxproj.filters",
+            "pom.xml",
+            "build.gradle",
+            "schema.sql",
+            "pnpm-lock.yaml",
+            "yarn.lock",
+            "bun.lock",
+            "prisma/schema.prisma",
+            "src/main.tsx",
+        )
+        for relative in marker_dirs:
+            (workspace / relative).mkdir(parents=True)
+
+        profile = manager.inspect_dependency_profile(workspace)
+
+        self.assertEqual(profile.config_files, [])
+        self.assertEqual(profile.validation_commands, [])
+        self.assertEqual(profile.entry_points, [])
+        self.assertIn("No dependency or build manifest was detected.", profile.warnings)
+
+        (workspace / "package.json").rmdir()
+        (workspace / "package.json").write_text(
+            json.dumps({"scripts": {"build": "vite build"}}),
+            encoding="utf-8",
+        )
+
+        profile = manager.inspect_dependency_profile(workspace)
+
+        self.assertIn("package.json", profile.config_files)
+        self.assertIn("npm", profile.package_managers)
+        self.assertNotIn("pnpm", profile.package_managers)
+        self.assertNotIn("tsconfig.json", profile.config_files)
+        self.assertIn("npm run build", profile.validation_commands)
+
+        python_workspace = manager.resolve_workspace("python-workspace")
+        (python_workspace / "pyproject.toml").write_text("[project]\nname = \"demo\"\n", encoding="utf-8")
+        (python_workspace / "uv.lock").mkdir()
+        (python_workspace / "poetry.lock").mkdir()
+
+        profile = manager.inspect_dependency_profile(python_workspace)
+
+        self.assertIn("pip", profile.package_managers)
+        self.assertNotIn("uv", profile.package_managers)
+        self.assertNotIn("poetry", profile.package_managers)
+
     def test_inspect_dependency_profile_detects_python_stack(self) -> None:
         manager = WorkspaceManager(self.project_root, self.settings)
         workspace = manager.resolve_workspace("workspace")

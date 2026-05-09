@@ -40,6 +40,7 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 | Visual Studio rollback | Improved | Backup manifests now carry explicit IDs, rollback rejects cross-solution manifests, and manifest/backup paths are validated before touching solution files. |
 | Website workspace setup | Improved | Damaged `.aegis` project and validation profile paths now return warnings instead of breaking setup. |
 | Website validation discovery | Improved | Damaged project marker directories such as `package.json`, `build.py`, or `CMakeLists.txt` no longer create false validation or install suggestions. |
+| Website dependency profiling | Improved | Damaged marker directories and lockfile paths no longer distort onboarding stack, package-manager, entry-point, or database summaries. |
 | Website checkpoint restore | Improved | Restore now validates checkpoint IDs, damaged manifests, backup paths, and missing backup files before touching workspace files. |
 | Website safe apply | Improved | Apply refuses to edit when checkpoint creation fails and reports later write/delete failures with checkpoint context. |
 | Validation detection | Improved | Core now lists JS test/build validation commands only when matching package scripts exist, ignores project files in dependency/build folders, ignores damaged root build-marker directories, and avoids duplicate default-command detection during validation runs. |
@@ -77,7 +78,7 @@ Ran during this pass:
 - Website backend tests: 739 tests and 155 subtests passed
 - Website workspace setup regression and helper tests for damaged `.aegis` paths: 8 tests passed
 - Website validation manager damaged-marker regression tests: 20 tests and 4 subtests passed
-- Website checkpoint restore and apply safety tests: 53 storage tests passed
+- Website checkpoint restore, apply safety, and dependency-profile tests: 54 workspace/storage tests passed
 - Website backend `python -m compileall aegis_ai`: pass
 
 ## Fixes Made In This Pass
@@ -118,6 +119,7 @@ Ran during this pass:
 - Tightened Visual Studio rollback so shared backup folders cannot restore another solution's manifest, invalid backup IDs do not fall back to the newest backup folder, and proposed edit paths cannot contain traversal or secret-like path segments.
 - Hardened Website workspace setup so damaged `.aegis/project.json` and `.aegis/validation_profile.json` paths return warnings instead of crashing setup.
 - Hardened Website validation discovery so damaged project marker directories do not produce false validation or install suggestions.
+- Hardened Website dependency profiling so damaged marker directories and lockfile paths do not distort onboarding stack summaries.
 - Hardened Website checkpoint restore so invalid checkpoint IDs, non-file manifests, and escaped backup paths fail safely before workspace files are restored or removed.
 - Hardened Website checkpoint restore preflight so missing backup files fail clearly before any workspace files are restored or removed.
 - Hardened Website apply changes so failed checkpoint creation stops the apply before file writes and file write/delete failures are reported as warnings tied to the checkpoint.

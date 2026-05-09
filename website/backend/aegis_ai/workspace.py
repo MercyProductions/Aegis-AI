@@ -891,9 +891,10 @@ class WorkspaceManager:
 
         self._add_unique(profile.config_files, "package.json")
         self._add_unique(profile.languages, "JavaScript")
-        if (root / "tsconfig.json").exists() or "typescript" in self._node_dependency_names(payload):
+        if self._path_is_file(root / "tsconfig.json") or "typescript" in self._node_dependency_names(payload):
             self._add_unique(profile.languages, "TypeScript")
-            self._add_unique(profile.config_files, "tsconfig.json")
+            if self._path_is_file(root / "tsconfig.json"):
+                self._add_unique(profile.config_files, "tsconfig.json")
 
         package_manager = self._node_package_manager(root, payload)
         self._add_unique(profile.package_managers, package_manager)
@@ -973,7 +974,7 @@ class WorkspaceManager:
             self._add_python_validation_commands(profile, python_names)
 
         requirements = root / "requirements.txt"
-        if requirements.exists():
+        if self._path_is_file(requirements):
             self._add_unique(profile.config_files, "requirements.txt")
             self._add_unique(profile.languages, "Python")
             self._add_unique(profile.package_managers, "pip")
@@ -1015,7 +1016,7 @@ class WorkspaceManager:
 
     def _inspect_go_mod(self, root: Path, profile: WorkspaceDependencyProfile) -> None:
         path = root / "go.mod"
-        if not path.exists():
+        if not self._path_is_file(path):
             return
 
         self._add_unique(profile.config_files, "go.mod")
@@ -1063,14 +1064,14 @@ class WorkspaceManager:
 
     def _inspect_cmake(self, root: Path, profile: WorkspaceDependencyProfile) -> None:
         path = root / "CMakeLists.txt"
-        if not path.exists():
+        if not self._path_is_file(path):
             return
         self._add_unique(profile.config_files, "CMakeLists.txt")
         self._add_unique(profile.languages, "C")
         self._add_unique(profile.languages, "C++")
         self._add_unique(profile.package_managers, "cmake")
         self._add_unique(profile.build_systems, "CMake")
-        if (root / "build.py").exists():
+        if self._path_is_file(root / "build.py"):
             self._add_unique(profile.validation_commands, "python build.py")
         self._add_unique(profile.validation_commands, "cmake --build build")
         self._add_unique(profile.validation_commands, "ctest --test-dir build")
@@ -1095,14 +1096,14 @@ class WorkspaceManager:
             self._add_unique(profile.config_files, relative)
             self._add_unique(profile.validation_commands, f"msbuild {relative} /m /p:Configuration=Release")
             filters = project.with_suffix(project.suffix + ".filters")
-            if filters.exists():
+            if self._path_is_file(filters):
                 self._add_unique(profile.config_files, filters.relative_to(root).as_posix())
 
     def _inspect_native_code_conventions(self, root: Path, profile: WorkspaceDependencyProfile) -> None:
         candidates: list[Path] = []
         for relative in ("CMakeLists.txt", "Makefile", "premake5.lua", "xmake.lua"):
             path = root / relative
-            if path.exists() and path.is_file():
+            if self._path_is_file(path):
                 candidates.append(path)
         for pattern in (
             "*.vcxproj",
@@ -1207,7 +1208,7 @@ class WorkspaceManager:
 
     def _inspect_java_manifests(self, root: Path, profile: WorkspaceDependencyProfile) -> None:
         pom = root / "pom.xml"
-        if pom.exists():
+        if self._path_is_file(pom):
             self._add_unique(profile.config_files, "pom.xml")
             self._add_unique(profile.languages, "Java")
             self._add_unique(profile.package_managers, "maven")
@@ -1232,7 +1233,7 @@ class WorkspaceManager:
 
         for gradle in ("build.gradle", "build.gradle.kts"):
             path = root / gradle
-            if not path.exists():
+            if not self._path_is_file(path):
                 continue
             self._add_unique(profile.config_files, gradle)
             self._add_unique(profile.languages, "Java")
@@ -1245,11 +1246,11 @@ class WorkspaceManager:
 
     def _inspect_database_files(self, root: Path, profile: WorkspaceDependencyProfile) -> None:
         prisma = root / "prisma" / "schema.prisma"
-        if prisma.exists():
+        if self._path_is_file(prisma):
             self._add_unique(profile.config_files, "prisma/schema.prisma")
             self._add_unique(profile.database_tools, "Prisma")
             self._add_unique(profile.validation_commands, "npx prisma validate")
-        if (root / "migrations").exists() or self._workspace_has_suffix(root, ".sql"):
+        if self._path_is_dir(root / "migrations") or self._workspace_has_suffix(root, ".sql"):
             self._add_unique(profile.languages, "SQL")
             self._add_unique(profile.database_tools, "SQL migrations")
 
@@ -1280,7 +1281,7 @@ class WorkspaceManager:
             "driver/driver.c",
         ]
         for relative in candidates:
-            if (root / relative).exists():
+            if self._path_is_file(root / relative):
                 self._add_unique(profile.entry_points, relative)
 
         for pattern in ("tests/test_*.py", "test_*.py", "src/**/*.test.ts", "src/**/*.test.tsx", "tests/**/*.cs"):
@@ -1372,11 +1373,23 @@ class WorkspaceManager:
 
     def _read_small_text(self, path: Path, max_bytes: int = 512_000) -> str:
         try:
-            if not path.exists() or not path.is_file() or path.stat().st_size > max_bytes:
+            if not self._path_is_file(path) or path.stat().st_size > max_bytes:
                 return ""
             return path.read_text(encoding="utf-8", errors="replace")
         except OSError:
             return ""
+
+    def _path_is_file(self, path: Path) -> bool:
+        try:
+            return path.is_file()
+        except OSError:
+            return False
+
+    def _path_is_dir(self, path: Path) -> bool:
+        try:
+            return path.is_dir()
+        except OSError:
+            return False
 
     def _instruction_scan_dirs(self, relative_dir: str, dirs: list[str]) -> list[str]:
         allowed: list[str] = []
@@ -1733,7 +1746,7 @@ class WorkspaceManager:
 
     def _read_toml_object(self, path: Path) -> dict[str, Any] | None:
         try:
-            if not path.exists() or not path.is_file() or path.stat().st_size > 512_000:
+            if not self._path_is_file(path) or path.stat().st_size > 512_000:
                 return None
             payload = tomllib.loads(path.read_text(encoding="utf-8", errors="replace"))
         except (OSError, tomllib.TOMLDecodeError):
@@ -1748,6 +1761,8 @@ class WorkspaceManager:
             except ValueError:
                 continue
             if any(part in IGNORE_NAMES for part in relative_parts):
+                continue
+            if not self._path_is_file(path):
                 continue
             matches.append(path)
             if len(matches) >= max_items:
@@ -1808,11 +1823,11 @@ class WorkspaceManager:
             return "bun"
         if raw.startswith("npm"):
             return "npm"
-        if (root / "pnpm-lock.yaml").exists():
+        if self._path_is_file(root / "pnpm-lock.yaml"):
             return "pnpm"
-        if (root / "yarn.lock").exists():
+        if self._path_is_file(root / "yarn.lock"):
             return "yarn"
-        if (root / "bun.lockb").exists() or (root / "bun.lock").exists():
+        if self._path_is_file(root / "bun.lockb") or self._path_is_file(root / "bun.lock"):
             return "bun"
         return "npm"
 
@@ -1851,11 +1866,11 @@ class WorkspaceManager:
 
     def _python_package_manager(self, root: Path, payload: dict[str, Any]) -> str:
         tool = payload.get("tool") if isinstance(payload.get("tool"), dict) else {}
-        if (root / "uv.lock").exists() or "uv" in tool:
+        if self._path_is_file(root / "uv.lock") or "uv" in tool:
             return "uv"
-        if (root / "poetry.lock").exists() or "poetry" in tool:
+        if self._path_is_file(root / "poetry.lock") or "poetry" in tool:
             return "poetry"
-        if (root / "pdm.lock").exists() or "pdm" in tool:
+        if self._path_is_file(root / "pdm.lock") or "pdm" in tool:
             return "pdm"
         return "pip"
 
