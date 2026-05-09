@@ -84,6 +84,7 @@ Actions:
 - Improved Desktop local .NET parity so `.fsproj` and `.vbproj` projects are recognized as existing workspaces and receive dotnet validation suggestions.
 - Improved Desktop config-save fallback defaults so an empty command allowlist no longer drops backend-supported local validation tools such as Yarn, Bun, Gradle/Maven wrappers, Flutter, and Swift.
 - Improved Visual Studio extension onboarding and client-responsibility docs to reflect `.slnx`, F#, and Visual Basic project support.
+- Improved Desktop build/run follow-up validation inference so bounded nested project scans find `.slnx`, native MSBuild projects, and managed `.csproj`/`.fsproj`/`.vbproj` layouts while skipping noisy generated folders.
 
 Validation completed:
 

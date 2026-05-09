@@ -103,6 +103,63 @@ bool ContainsWindowsPathPattern(const std::string& text)
     return false;
 }
 
+bool IsNoisyProjectScanDirectory(const std::filesystem::path& path)
+{
+    const std::string name = Lower(WideToUtf8(path.filename().wstring()));
+    return name == ".git" || name == ".vs" || name == "node_modules" || name == "packages" ||
+        name == ".venv" || name == "venv" || name == "__pycache__" || name == "bin" ||
+        name == "obj" || name == "dist" || name == "build" || name == "x64" ||
+        name == "temp";
+}
+
+bool HasAnyExtension(const std::filesystem::path& path, std::initializer_list<const char*> extensions)
+{
+    const std::string extension = Lower(WideToUtf8(path.extension().wstring()));
+    for (const char* expected : extensions) {
+        if (extension == expected) {
+            return true;
+        }
+    }
+    return false;
+}
+
+std::string WorkspaceRelativeQuotedPath(const std::filesystem::path& root, const std::filesystem::path& path)
+{
+    std::error_code ec;
+    std::filesystem::path relative = std::filesystem::relative(path, root, ec);
+    if (ec || relative.empty()) {
+        relative = path.filename();
+    }
+    return "\"" + WideToUtf8(relative.wstring()) + "\"";
+}
+
+std::filesystem::path FindNestedProjectFile(
+    const std::filesystem::path& root,
+    std::initializer_list<const char*> extensions,
+    size_t max_entries = 800)
+{
+    std::error_code ec;
+    std::filesystem::recursive_directory_iterator iterator(root, ec);
+    const std::filesystem::recursive_directory_iterator end;
+    size_t visited = 0;
+    while (!ec && iterator != end && visited < max_entries) {
+        const std::filesystem::path path = iterator->path();
+        if (iterator->is_directory(ec)) {
+            if (!ec && IsNoisyProjectScanDirectory(path)) {
+                iterator.disable_recursion_pending();
+            }
+        } else if (!ec && iterator->is_regular_file(ec)) {
+            ++visited;
+            if (HasAnyExtension(path, extensions)) {
+                return path;
+            }
+        }
+        ec.clear();
+        iterator.increment(ec);
+    }
+    return {};
+}
+
 bool PathLooksLikeExistingProject(const std::string& path)
 {
     const std::string trimmed = Trim(path);
@@ -148,13 +205,13 @@ bool PathLooksLikeExistingProject(const std::string& path)
         if (!entry.is_regular_file(ec)) {
             continue;
         }
-        const std::string extension = Lower(WideToUtf8(entry.path().extension().wstring()));
-        if (extension == ".sln" || extension == ".slnx" || extension == ".csproj" || extension == ".fsproj" || extension == ".vbproj" || extension == ".vcxproj" ||
-            extension == ".dll" || extension == ".lib" || extension == ".def" || extension == ".exp" || extension == ".pdb") {
+        if (HasAnyExtension(
+                entry.path(),
+                {".sln", ".slnx", ".csproj", ".fsproj", ".vbproj", ".vcxproj", ".dll", ".lib", ".def", ".exp", ".pdb"})) {
             return true;
         }
     }
-    return false;
+    return !FindNestedProjectFile(root, {".sln", ".slnx", ".csproj", ".fsproj", ".vbproj", ".vcxproj"}).empty();
 }
 
 bool PromptTargetsExistingNativeOrDllWork(const std::string& prompt)
@@ -391,16 +448,28 @@ std::string DefaultValidationCommandForWorkspace(const std::string& path)
         if (!entry.is_regular_file(ec)) {
             continue;
         }
-        const std::string extension = Lower(WideToUtf8(entry.path().extension().wstring()));
-        if (extension == ".sln" || extension == ".slnx") {
-            return "msbuild \"" + WideToUtf8(entry.path().filename().wstring()) + "\" /m /p:Configuration=Release";
+        if (HasAnyExtension(entry.path(), {".sln", ".slnx"})) {
+            return "msbuild " + WorkspaceRelativeQuotedPath(root, entry.path()) + " /m /p:Configuration=Release";
         }
-        if (extension == ".vcxproj") {
-            return "msbuild \"" + WideToUtf8(entry.path().filename().wstring()) + "\" /m /p:Configuration=Release";
+        if (HasAnyExtension(entry.path(), {".vcxproj"})) {
+            return "msbuild " + WorkspaceRelativeQuotedPath(root, entry.path()) + " /m /p:Configuration=Release";
         }
-        if (extension == ".csproj" || extension == ".fsproj" || extension == ".vbproj") {
-            return "dotnet build \"" + WideToUtf8(entry.path().filename().wstring()) + "\"";
+        if (HasAnyExtension(entry.path(), {".csproj", ".fsproj", ".vbproj"})) {
+            return "dotnet build " + WorkspaceRelativeQuotedPath(root, entry.path());
         }
+    }
+
+    const std::filesystem::path nested_solution = FindNestedProjectFile(root, {".sln", ".slnx"});
+    if (!nested_solution.empty()) {
+        return "msbuild " + WorkspaceRelativeQuotedPath(root, nested_solution) + " /m /p:Configuration=Release";
+    }
+    const std::filesystem::path nested_native_project = FindNestedProjectFile(root, {".vcxproj"});
+    if (!nested_native_project.empty()) {
+        return "msbuild " + WorkspaceRelativeQuotedPath(root, nested_native_project) + " /m /p:Configuration=Release";
+    }
+    const std::filesystem::path nested_dotnet_project = FindNestedProjectFile(root, {".csproj", ".fsproj", ".vbproj"});
+    if (!nested_dotnet_project.empty()) {
+        return "dotnet build " + WorkspaceRelativeQuotedPath(root, nested_dotnet_project);
     }
     return {};
 }
