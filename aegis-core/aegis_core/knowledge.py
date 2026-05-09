@@ -10,28 +10,12 @@ from .diagnostics import scrub
 from .memory import ProjectMemory, utc_now
 from .quality import quality_dashboard
 from .safety import is_safe_to_read
-from .workspace import WorkspaceScanner
+from .workspace import SOURCE_CODE_SUFFIXES, WorkspaceScanner
 
 
 KNOWLEDGE_GRAPH_FILE = "knowledge-graph.json"
 KNOWLEDGE_SUMMARY_FILE = "knowledge-summary.md"
 GRAPH_VERSION = "2026.05.09"
-CODE_SUFFIXES = {
-    ".py",
-    ".js",
-    ".jsx",
-    ".ts",
-    ".tsx",
-    ".cs",
-    ".fs",
-    ".fsi",
-    ".fsx",
-    ".vb",
-    ".cpp",
-    ".c",
-    ".h",
-    ".hpp",
-}
 PATH_CANDIDATE_SUFFIXES = [
     "",
     ".py",
@@ -437,7 +421,7 @@ class _GraphBuilder:
             paths.update(self.scan["symbol_index"].keys())
         if isinstance(self.scan.get("dependency_graph"), dict):
             paths.update(self.scan["dependency_graph"].get("files", {}).keys())
-        return sorted(path for path in paths if Path(path).suffix.lower() in CODE_SUFFIXES)
+        return sorted(path for path in paths if Path(path).suffix.lower() in SOURCE_CODE_SUFFIXES)
 
     def _clusters(self) -> list[dict[str, Any]]:
         cluster_nodes: dict[str, list[str]] = defaultdict(list)

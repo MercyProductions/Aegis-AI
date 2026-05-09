@@ -12,7 +12,7 @@ from .diagnostics import scrub
 from .memory import ProjectMemory, utc_now
 from .safety import is_safe_to_read
 from .validation import validation_summary
-from .workspace import WorkspaceScanner
+from .workspace import SOURCE_CODE_SUFFIXES, WorkspaceScanner
 
 
 HEALTH_HISTORY_FILE = "health-history.json"
@@ -347,7 +347,7 @@ def _complexity_hotspots(scan: dict[str, Any]) -> list[dict[str, Any]]:
 def _stale_documentation(scan: dict[str, Any]) -> dict[str, Any]:
     readmes = scan.get("readmes", [])
     recent = scan.get("recent_files", [])
-    recent_code = [path for path in recent if Path(path).suffix.lower() in {".py", ".js", ".jsx", ".ts", ".tsx", ".cs", ".cpp", ".h", ".hpp"}]
+    recent_code = [path for path in recent if Path(path).suffix.lower() in SOURCE_CODE_SUFFIXES]
     recent_docs = [path for path in recent if Path(path).suffix.lower() in {".md", ".txt"}]
     stale = not readmes or (len(recent_code) >= 8 and not recent_docs)
     return {"stale": stale, "readmes": readmes, "recent_code_files": recent_code[:20], "recent_doc_files": recent_docs[:20]}

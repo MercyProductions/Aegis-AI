@@ -15,7 +15,7 @@ from .quality import record_quality_snapshot
 from .roadmap import generate_roadmap, next_best_tasks
 from .safety import is_ignored_path, is_safe_to_read
 from .validation import detect_validation_commands, run_validation, validation_summary
-from .workspace import WorkspaceScanner
+from .workspace import SOURCE_CODE_SUFFIXES, WorkspaceScanner
 
 
 JOBS_STATE_FILE = "jobs-state.json"
@@ -377,7 +377,7 @@ def _workflow_documentation_drift_check(root: Path) -> dict[str, Any]:
         actions.append("Create a README with setup, run, and validation instructions.")
     if scan.get("file_count", 0) > 100 and len(readmes) <= 1:
         warnings.append("Large project with minimal documentation surface.")
-    recent_code = [path for path in scan.get("recent_files", []) if Path(path).suffix.lower() in {".py", ".js", ".ts", ".tsx", ".cs", ".cpp", ".h"}]
+    recent_code = [path for path in scan.get("recent_files", []) if Path(path).suffix.lower() in SOURCE_CODE_SUFFIXES]
     if len(recent_code) >= 10:
         actions.append("Review whether recent code changes require README or architecture-map updates.")
     return _result(

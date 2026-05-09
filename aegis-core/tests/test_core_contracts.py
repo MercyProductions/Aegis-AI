@@ -750,6 +750,26 @@ def test_broken_references_job_reports_missing_markdown_targets(tmp_path: Path) 
     assert result["metrics"]["broken_references"][0]["target"] == "missing-file.md"
 
 
+def test_quality_and_jobs_include_fsharp_and_visual_basic_recent_code(tmp_path: Path) -> None:
+    workspace = make_dotnet_polyglot_workspace(tmp_path, "dotnet-quality-jobs-project")
+    client = TestClient(create_app())
+
+    quality = client.get("/v1/quality", params={"workspace": str(workspace)})
+    job = client.post(
+        "/v1/jobs/run",
+        json={"workspace": str(workspace), "job_id": "documentation-drift-check"},
+    )
+
+    assert quality.status_code == 200
+    assert_core_contract(quality.json(), "quality.dashboard")
+    quality_recent_code = set(quality.json()["data"]["current_snapshot"]["stale_documentation"]["recent_code_files"])
+    assert {"src/FSharpApp/Program.fs", "src/VisualBasicTool/Program.vb"}.issubset(quality_recent_code)
+    assert job.status_code == 200
+    assert_core_contract(job.json(), "jobs.run")
+    job_recent_code = set(job.json()["data"]["results"][0]["metrics"]["recent_code_files"])
+    assert {"src/FSharpApp/Program.fs", "src/VisualBasicTool/Program.vb"}.issubset(job_recent_code)
+
+
 def test_quality_dashboard_reports_score_risks_and_statuses(tmp_path: Path) -> None:
     workspace = make_workspace(tmp_path)
     (workspace / ".aegis").mkdir(exist_ok=True)
@@ -1280,6 +1300,21 @@ def test_personal_intelligence_learns_style_preferences_and_resets_profile(tmp_p
     assert_core_contract(reset.json(), "personal.intelligence.reset")
     assert reset.json()["data"]["reset"] is True
     assert not profile_path.exists()
+
+
+def test_personal_intelligence_style_includes_fsharp_and_visual_basic_sources(tmp_path: Path) -> None:
+    workspace = make_dotnet_polyglot_workspace(tmp_path, "dotnet-personal-style-project")
+    client = TestClient(create_app())
+
+    response = client.get("/v1/personal-intelligence", params={"workspace": str(workspace)})
+
+    assert response.status_code == 200
+    assert_core_contract(response.json(), "personal.intelligence")
+    suffixes = {
+        item["name"]
+        for item in response.json()["data"]["coding_style_awareness"]["formatting_tendencies"]["dominant_suffixes"]
+    }
+    assert {".fs", ".vb"}.issubset(suffixes)
 
 
 def test_personal_intelligence_reports_profile_persistence_failure(tmp_path: Path) -> None:

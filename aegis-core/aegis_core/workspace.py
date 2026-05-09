@@ -20,8 +20,7 @@ DOTNET_FRAMEWORK_BY_SUFFIX = {
     ".vbproj": "VB.NET",
 }
 BUILD_FILE_SUFFIXES = {".sln", ".slnx", ".vcxproj"} | DOTNET_PROJECT_SUFFIXES
-
-TEXT_SUFFIXES = {
+SOURCE_CODE_SUFFIXES = {
     ".py",
     ".js",
     ".jsx",
@@ -39,6 +38,10 @@ TEXT_SUFFIXES = {
     ".h",
     ".hpp",
     ".xaml",
+}
+
+TEXT_SUFFIXES = {
+    *SOURCE_CODE_SUFFIXES,
     ".json",
     ".toml",
     ".yaml",

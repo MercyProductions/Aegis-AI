@@ -2132,6 +2132,23 @@ Validation completed:
 
 - Focused Core knowledge/workspace .NET graph regression slice: pass, 2 tests.
 
+## 2026-05-09 - Core Intelligence Source Suffix Consolidation
+
+Focus:
+
+- Prevent source-file suffix drift between Core workspace scans, knowledge graphs, quality reports, maintenance jobs, and personal intelligence.
+- Ensure F# and Visual Basic files appear in high-level quality/job metrics and coding-style awareness.
+
+Actions:
+
+- Added a shared `SOURCE_CODE_SUFFIXES` constant in the Core workspace scanner module.
+- Reused the shared suffix set in knowledge graph code paths, quality stale-documentation detection, documentation-drift jobs, and personal style analysis.
+- Added regressions proving F#/VB source files appear in quality/job recent-code metrics and personal-intelligence dominant suffixes.
+
+Validation completed:
+
+- Focused Core intelligence suffix regression slice: pass, 3 tests.
+
 ## 2026-05-09 - Website PowerShell Guard Windows Path Compatibility
 
 Focus:

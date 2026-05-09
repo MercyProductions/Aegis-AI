@@ -13,13 +13,12 @@ from .quality import quality_dashboard
 from .safety import is_safe_to_read
 from .tasks import ACTIVE_STATUSES, list_tasks
 from .validation import validation_summary
-from .workspace import WorkspaceScanner
+from .workspace import SOURCE_CODE_SUFFIXES, WorkspaceScanner
 
 
 PERSONAL_PROFILE_FILE = "personal-engineering-profile.json"
 PROFILE_VERSION = "2026.05.09"
 
-CODE_SUFFIXES = {".py", ".js", ".jsx", ".ts", ".tsx", ".cs", ".cpp", ".c", ".h", ".hpp", ".xaml"}
 SECRET_PREF_TERMS = {"key", "token", "secret", "password", "credential", "apikey", "api_key", "bearer", "private_key"}
 
 
@@ -457,7 +456,7 @@ def _agent_guidance(learned: dict[str, Any], habits: dict[str, Any], context: di
 
 
 def _style_snapshot(root: Path, scan: dict[str, Any]) -> dict[str, Any]:
-    paths = [path for path in _scan_paths(scan) if Path(path).suffix.lower() in CODE_SUFFIXES]
+    paths = [path for path in _scan_paths(scan) if Path(path).suffix.lower() in SOURCE_CODE_SUFFIXES]
     paths = _dedupe(paths)[:120]
     counts = defaultdict(int)
     suffix_counts: Counter[str] = Counter()
