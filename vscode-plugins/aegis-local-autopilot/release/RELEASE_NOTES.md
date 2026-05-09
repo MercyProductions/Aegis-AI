@@ -43,3 +43,4 @@ Aegis does not rewrite projects automatically. It blocks secret and generated pa
 - Failed validation output is included in the build-repair request so the model is grounded in the actual error.
 - JSON parsing now handles UTF-8 BOM files, including Windows-created `package.json` files.
 - Impact analysis filters non-file symbol placeholders so `.` no longer appears as a likely affected file.
+- Workspace memory initialization now leaves damaged `.aegis` paths untouched, reports them, and continues in degraded mode.

@@ -234,6 +234,8 @@ Agent Mode creates local memory files in `.aegis/`:
 
 Memory content is project-local and avoids storing secret-looking lines. Generated Markdown is written into managed sections so human notes outside those sections are preserved. In this repo, `.aegis/` is ignored by git.
 
+If a `.aegis` memory file is accidentally replaced by a directory or another non-file path, startup leaves it untouched, logs the issue to the Aegis output channel when possible, and continues in degraded mode. Run the health check to identify the damaged path before resetting memory.
+
 ## Health Check
 
 Run `Aegis: Run Health Check` from the Command Palette or the sidebar.
@@ -453,5 +455,6 @@ Before applying edits, the extension:
 - **Selected Model Missing**: pull the model or choose one from the sidebar model selector.
 - **Slow Model Calls**: use a smaller task, lower `maxContextChars`, or switch to `qwen2.5-coder:7b`.
 - **Write Failures**: check permissions for the workspace and `.aegis/`.
+- **Damaged `.aegis` Memory**: run Health Check, inspect the Aegis output channel, then rename or remove only the damaged `.aegis` path after confirming backups/logs are no longer needed.
 - **Validation Fails**: review the validation console, then let Aegis propose a repair or run rollback.
 - **Stuck State After Reload**: use the recovery prompt, or delete `.aegis/agent-recovery.json` after confirming no task should resume.

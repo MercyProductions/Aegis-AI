@@ -3354,7 +3354,12 @@ function proposalToPlanText(proposal) {
 
 async function ensureWorkspaceMemory(target) {
   const memoryRoot = path.join(target.workspaceRoot || target.root, '.aegis');
-  await fs.mkdir(memoryRoot, { recursive: true });
+  try {
+    await fs.mkdir(memoryRoot, { recursive: true });
+  } catch (error) {
+    output && output.appendLine(`Aegis memory folder is not writable: ${memoryRoot} (${error.message})`);
+    return memoryRoot;
+  }
   const files = {
     'project-summary.md': '# Project Summary\n\nNot scanned yet.\n',
     'architecture-map.md': '# Architecture Map\n\nAdd human architecture notes here. Aegis updates its managed section below.\n',
@@ -3372,18 +3377,31 @@ async function ensureWorkspaceMemory(target) {
   };
 
   for (const [name, content] of Object.entries(files)) {
-    const targetPath = path.join(memoryRoot, name);
-    try {
-      await fs.stat(targetPath);
-    } catch (error) {
-      if (error.code === 'ENOENT') {
-        await fs.writeFile(targetPath, content, 'utf8');
-      } else {
-        throw error;
-      }
-    }
+    await ensureMemoryFile(memoryRoot, name, content);
   }
   return memoryRoot;
+}
+
+async function ensureMemoryFile(memoryRoot, name, content) {
+  const targetPath = path.join(memoryRoot, name);
+  try {
+    const stat = await fs.stat(targetPath);
+    if (!stat.isFile()) {
+      output && output.appendLine(`Aegis memory file is not a regular file; leaving it untouched: ${targetPath}`);
+    }
+    return;
+  } catch (error) {
+    if (error.code !== 'ENOENT') {
+      output && output.appendLine(`Aegis memory file check failed: ${targetPath} (${error.message})`);
+      return;
+    }
+  }
+
+  try {
+    await fs.writeFile(targetPath, content, 'utf8');
+  } catch (error) {
+    output && output.appendLine(`Aegis memory file could not be initialized: ${targetPath} (${error.message})`);
+  }
 }
 
 async function updateWorkspaceMemoryFromSnapshot(target, snapshot) {
