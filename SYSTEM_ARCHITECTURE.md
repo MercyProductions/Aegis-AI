@@ -74,6 +74,7 @@ Aegis Core is the shared local runtime contract. It must stay small, stable, loc
 - Supervised autonomous task orchestration: goal planning, local queue state, specialized owner agents, approval gates, validation state, and memory updates.
 - Safe scheduled and trigger-based maintenance jobs for proactive scans, summaries, reports, roadmap refreshes, TODO review, documentation drift, and validation status.
 - Project quality intelligence: health scoring, trend snapshots, risk detection, daily/weekly quality reports, and Planner Agent guidance.
+- Knowledge graph and deep project understanding: semantic relationships between files, systems, APIs, UI components, services, tasks, roadmap items, decisions, bugs, validation failures, and history.
 - Validation summary/run.
 - Plan-only continue and repair flows.
 - Branding tokens shared by clients.
@@ -107,6 +108,14 @@ Quality intelligence is observability for local projects:
 - Generated reports are written to `.aegis/daily-health-report.md` and `.aegis/weekly-quality-summary.md`.
 - The dashboard combines validation status, dependency drift, TODOs, known bugs, stale docs, complexity hotspots, repeated repairs, model failures, risky diffs, and frequently changed files.
 - Planner Agent reads this data while creating orchestration plans so broken builds, repeated failures, high-risk files, and missing tests can be prioritized before speculative work.
+
+Knowledge graph intelligence is relationship context for local projects:
+
+- Core exposes the graph through `/v1/knowledge/graph` and deterministic relationship queries through `/v1/knowledge/query`.
+- Persisted graph state lives in `.aegis/knowledge-graph.json`; generated summaries live in `.aegis/knowledge-summary.md`.
+- Relationship types include `uses`, `depends_on`, `calls`, `implements`, `breaks`, `related_to`, `tested_by`, and `mentioned_in_roadmap`.
+- Graph data is safe for future Desktop visualization because the response includes clusters, hotspots, unstable modules, and a visualization-friendly subset.
+- Planner Agent reads graph summaries so impacted systems, related decisions/issues, and suggested context files can guide safer plans.
 
 Core `/v1` responses use the shared envelope from `aegis-core/aegis_core/contracts.py`:
 

@@ -162,6 +162,7 @@ Contract stability:
 | `orchestration.plan`, `orchestration.dashboard`, `orchestration.step` | experimental | Supervised autonomous goal queues with approval gates; Core does not blindly edit files. |
 | `jobs.dashboard`, `jobs.run` | experimental | Safe scheduled and trigger-based maintenance jobs with approval gates for risky actions. |
 | `quality.dashboard`, `quality.snapshot` | experimental | Project health scoring, trend snapshots, risk detection, quality reports, and Planner guidance. |
+| `knowledge.graph`, `knowledge.query` | experimental | Local semantic project graph and deterministic relationship queries. |
 | `patch.proposal`, `rollback.entry`, `rollback.result` | experimental schema-only | Defined for future compatibility; not active Core endpoints yet. |
 
 Shared request body conventions:
@@ -175,6 +176,8 @@ Shared request body conventions:
 - Orchestration endpoints plan, queue, validate, and update memory; clients still own diff display, approval UI, patch apply, and rollback execution.
 - Job run requests use `job_id`, `trigger`, or `run_due`. Jobs can scan, summarize, report, and recommend automatically, but risky actions require approval.
 - Quality dashboard reads use a `workspace` query parameter. Quality snapshots use a workspace request body and write only generated `.aegis` health history/report files.
+- Knowledge graph reads use a `workspace` query parameter. Persisting the graph uses a workspace request body and writes only generated `.aegis` knowledge artifacts.
+- Knowledge queries use `workspace`, `query`, and optional `focus` for a file path, API route, or system name.
 
 ## GET /v1/health
 
@@ -589,6 +592,55 @@ Records the current quality dashboard to `.aegis/health-history.json` and writes
 - `.aegis/weekly-quality-summary.md`
 
 This endpoint is safe to run from explicit client actions, scheduled jobs, or project-open triggers because it writes only generated `.aegis` health artifacts. It does not edit project source, run build/test/lint commands, install packages, or call cloud providers.
+
+## GET /v1/knowledge/graph
+
+Query:
+
+- `workspace`: required workspace path
+
+Builds a local semantic graph from the current workspace scan and `.aegis` memory without writing the graph to disk. Nodes include:
+
+- files, systems, symbols, services, UI components, and APIs
+- tasks, roadmap items, architecture decisions, known issues, validation failures, quality risks, and agent-history events
+
+Edges include:
+
+- `uses`, `depends_on`, `calls`, `implements`, `breaks`, `related_to`, `tested_by`, and `mentioned_in_roadmap`
+
+The response includes graph clusters, architecture hotspots, unstable modules, query examples, and a visualization-friendly node/edge subset for future Desktop rendering.
+
+## POST /v1/knowledge/graph
+
+Body:
+
+```json
+{
+  "workspace": "C:/path/to/project"
+}
+```
+
+Builds and persists the knowledge graph to `.aegis/knowledge-graph.json` and writes `.aegis/knowledge-summary.md`. This endpoint writes generated `.aegis` artifacts only.
+
+## POST /v1/knowledge/query
+
+Body:
+
+```json
+{
+  "workspace": "C:/path/to/project",
+  "query": "What systems depend on this file?",
+  "focus": "src/service.py"
+}
+```
+
+Returns deterministic graph-backed answers. Supported query families include:
+
+- dependents for a file/API/system
+- unstable project areas
+- roadmap items related to a module
+- features/tasks tied to an API
+- historical decisions, bugs, validation failures, and agent events related to a focus area
 
 ## POST /v1/validation
 

@@ -21,6 +21,7 @@ This first pass is intentionally small. It consolidates common backend responsib
 - Specialized local agent roles for planning, architecture, coding, review, testing, repair, and documentation
 - Safe scheduled and trigger-based maintenance jobs for scans, reports, roadmap refreshes, TODO review, documentation drift, and validation status
 - Project health scoring, trend tracking, risk detection, and quality reports
+- Local knowledge graph for files, symbols, systems, APIs, UI components, services, tasks, roadmap items, decisions, bugs, validation failures, and historical relationships
 - Validation command detection and safe opt-in execution
 - Agent planning placeholders that propose next steps without applying edits
 - Diagnostics and local logs
@@ -58,6 +59,8 @@ python -m aegis_core.cli agents --workspace ..
 python -m aegis_core.cli jobs --workspace ..
 python -m aegis_core.cli jobs --workspace .. --run daily-project-scan
 python -m aegis_core.cli quality --workspace .. --record
+python -m aegis_core.cli knowledge --workspace .. --record
+python -m aegis_core.cli knowledge --workspace .. --query "What systems depend on aegis-core/aegis_core/server.py?"
 python -m aegis_core.cli route --workspace .. --task-type hard_debugging
 python -m aegis_core.cli orchestrate --workspace .. --goal "Stabilize the extension packaging flow"
 ```
@@ -77,6 +80,8 @@ aegis agents --workspace <path>
 aegis jobs --workspace <path>
 aegis jobs --workspace <path> --trigger project_opened
 aegis quality --workspace <path> --record
+aegis knowledge --workspace <path> --record
+aegis knowledge --workspace <path> --query "What areas of the project are most unstable?"
 aegis route --workspace <path> --task-type code_completion
 aegis orchestrate --workspace <path> --goal "Stabilize one workflow"
 ```
@@ -128,6 +133,9 @@ GET  /v1/jobs
 POST /v1/jobs/run
 GET  /v1/quality
 POST /v1/quality/snapshot
+GET  /v1/knowledge/graph
+POST /v1/knowledge/graph
+POST /v1/knowledge/query
 GET  /v1/ecosystem/dashboard
 ```
 
@@ -184,6 +192,16 @@ Quality snapshots track build/test/lint status, TODO count, known bugs, dependen
 
 Planner Agent reads the quality dashboard when creating an orchestration plan, so broken validation, repeated failures, untested areas, and high-risk files can influence task order and warnings.
 
+## Knowledge Graph
+
+Core exposes semantic project understanding through `/v1/knowledge/graph`, `POST /v1/knowledge/graph`, `/v1/knowledge/query`, and `aegis knowledge`.
+
+The graph links files, symbols, systems, APIs, UI components, services, tasks, roadmap items, architecture decisions, known issues, validation failures, risks, and agent-history events. Relationship types include `uses`, `depends_on`, `calls`, `implements`, `breaks`, `related_to`, `tested_by`, and `mentioned_in_roadmap`.
+
+Recorded graphs are written to `.aegis/knowledge-graph.json` and `.aegis/knowledge-summary.md`. Query support is deterministic and local: it answers relationship questions from graph evidence rather than sending project context to a model.
+
+Planner Agent reads graph summaries while creating orchestration plans so impacted systems, related decisions/issues, and suggested context files can influence task order and risk.
+
 ## Memory
 
 Workspace-local memory lives under:
@@ -192,9 +210,9 @@ Workspace-local memory lives under:
 .aegis/
 ```
 
-Core writes generated files such as `project-summary.md`, `roadmap.md`, `daily-health-report.md`, `weekly-quality-summary.md`, `file-index.json`, `dependency-graph.json`, `symbol-index.json`, `validation-log.md`, `jobs-log.md`, and `core-log.md`.
+Core writes generated files such as `project-summary.md`, `roadmap.md`, `daily-health-report.md`, `weekly-quality-summary.md`, `knowledge-summary.md`, `file-index.json`, `dependency-graph.json`, `symbol-index.json`, `validation-log.md`, `jobs-log.md`, and `core-log.md`.
 
-Shared ecosystem files include `clients.json` for connected client registrations, `tasks.json` for cross-client task visibility, `health-history.json` for quality trends, `jobs-state.json` for maintenance job state, `orchestration-queue.json` for staged autonomous goals, and `scan-cache.json` for faster repeated workspace scans.
+Shared ecosystem files include `clients.json` for connected client registrations, `tasks.json` for cross-client task visibility, `health-history.json` for quality trends, `knowledge-graph.json` for semantic project relationships, `jobs-state.json` for maintenance job state, `orchestration-queue.json` for staged autonomous goals, and `scan-cache.json` for faster repeated workspace scans.
 
 ## Migration Direction
 

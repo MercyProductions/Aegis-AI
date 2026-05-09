@@ -158,6 +158,9 @@ Endpoint families:
 | `POST /v1/jobs/run` | `jobs.run` | experimental | Run one job, due scheduled jobs, or trigger-based jobs with approval gates |
 | `GET /v1/quality` | `quality.dashboard` | experimental | Project health score, trend, warnings, risks, cleanup tasks, and Planner guidance |
 | `POST /v1/quality/snapshot` | `quality.snapshot` | experimental | Record a project health snapshot and generated daily/weekly quality reports |
+| `GET /v1/knowledge/graph` | `knowledge.graph` | experimental | Build a local semantic project graph without writing history |
+| `POST /v1/knowledge/graph` | `knowledge.graph` | experimental | Persist the local semantic project graph and generated summary |
+| `POST /v1/knowledge/query` | `knowledge.query` | experimental | Query graph relationships for impacted systems, roadmap links, unstable areas, and API ties |
 | `POST /v1/validation` | `validation` | stable | Shared validation summary/run |
 | `POST /v1/agent/continue` | `agent.continue.plan` | experimental | Plan-only continue from roadmap |
 | `POST /v1/agent/repair` | `agent.repair.plan` | experimental | Plan-only repair from validation log |
@@ -193,6 +196,14 @@ Quality intelligence:
 - Snapshots track validation status, TODOs, known bugs, dependency drift, risky diffs, stale docs, repeated repairs, repeated model failures, complexity hotspots, and frequently changed files.
 - Snapshot history is stored in `.aegis/health-history.json`; generated reports are written to `.aegis/daily-health-report.md` and `.aegis/weekly-quality-summary.md`.
 - Planner Agent uses the quality dashboard during orchestration planning so broken validation, repeated failures, high-risk files, and missing tests can influence task order.
+
+Knowledge graph:
+
+- Core exposes local semantic project understanding through `/v1/knowledge/graph` and `/v1/knowledge/query`.
+- The graph links files, symbols, systems, APIs, UI components, services, tasks, roadmap items, decisions, known issues, validation failures, risks, and agent-history events.
+- Relationship types include `uses`, `depends_on`, `calls`, `implements`, `breaks`, `related_to`, `tested_by`, and `mentioned_in_roadmap`.
+- Persisted graphs are written to `.aegis/knowledge-graph.json`; summaries are written to `.aegis/knowledge-summary.md`.
+- Planner Agent reads graph summaries during orchestration planning so impacted systems, related issues, and context suggestions influence safer task plans.
 
 Release candidate notes:
 

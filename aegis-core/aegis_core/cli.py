@@ -10,6 +10,7 @@ from .agent import continue_from_roadmap, repair_from_last_validation
 from .config import load_config, write_default_config
 from .ecosystem import dashboard_summary, diagnostics_summary, shared_memory_summary
 from .jobs import jobs_dashboard, run_job
+from .knowledge import knowledge_graph, query_knowledge_graph
 from .model_router import provider_inventory, route_model
 from .multi_agent import agent_roster
 from .ollama import OllamaClient
@@ -47,6 +48,7 @@ def main(argv: list[str] | None = None) -> int:
         "agents",
         "jobs",
         "quality",
+        "knowledge",
         "route",
         "orchestrate",
     ):
@@ -79,6 +81,10 @@ def main(argv: list[str] | None = None) -> int:
             sub.add_argument("--approval", action="store_true", help="Approve risky job actions such as build/test commands.")
         if name == "quality":
             sub.add_argument("--record", action="store_true", help="Record a health snapshot and update quality reports.")
+        if name == "knowledge":
+            sub.add_argument("--record", action="store_true", help="Persist the knowledge graph and generated summary.")
+            sub.add_argument("--query", help="Ask a rule-based question against the knowledge graph.")
+            sub.add_argument("--focus", help="Optional file path, API route, or system focus for a knowledge query.")
 
     args = parser.parse_args(raw_args)
     args.json = args.json or json_requested
@@ -128,6 +134,11 @@ def main(argv: list[str] | None = None) -> int:
                 result = jobs_dashboard(workspace)
         elif args.command == "quality":
             result = record_quality_snapshot(workspace) if args.record else quality_dashboard(workspace)
+        elif args.command == "knowledge":
+            if args.query:
+                result = query_knowledge_graph(workspace, args.query, focus=args.focus)
+            else:
+                result = knowledge_graph(workspace, persist=args.record)
         elif args.command == "route":
             result = route_model(
                 workspace,

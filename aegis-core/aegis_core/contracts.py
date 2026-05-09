@@ -121,6 +121,12 @@ class JobRunRequest(ContractModel):
     run_due: bool = False
 
 
+class KnowledgeQueryRequest(ContractModel):
+    workspace: str
+    query: str
+    focus: str | None = None
+
+
 class CoreEnvelope(ContractModel):
     ok: bool = True
     api_version: Literal["v1"] = CORE_API_VERSION
@@ -413,6 +419,7 @@ class OrchestrationPlanData(ContractModel):
     status: str = "in_progress"
     risk: str = "unknown"
     quality: dict[str, Any] = Field(default_factory=dict)
+    knowledge: dict[str, Any] = Field(default_factory=dict)
     planner_guidance: list[str] = Field(default_factory=list)
     source_client: str = "unknown"
     affected_systems: list[str] = Field(default_factory=list)
@@ -549,6 +556,50 @@ class QualityDashboardData(ContractModel):
     history_path: str | None = None
 
 
+class KnowledgeNodeData(ContractModel):
+    id: str
+    type: str = ""
+    label: str = ""
+    path: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class KnowledgeEdgeData(ContractModel):
+    source: str
+    target: str
+    type: str = ""
+    weight: int = 1
+    evidence: list[str] = Field(default_factory=list)
+
+
+class KnowledgeGraphData(ContractModel):
+    workspace: str | None = None
+    workspace_name: str = ""
+    version: str = ""
+    generated_at: str = ""
+    nodes: list[KnowledgeNodeData | dict[str, Any]] = Field(default_factory=list)
+    edges: list[KnowledgeEdgeData | dict[str, Any]] = Field(default_factory=list)
+    clusters: list[dict[str, Any]] = Field(default_factory=list)
+    architecture_hotspots: list[dict[str, Any]] = Field(default_factory=list)
+    unstable_modules: list[dict[str, Any]] = Field(default_factory=list)
+    query_examples: list[str] = Field(default_factory=list)
+    visualization: dict[str, Any] = Field(default_factory=dict)
+    graph_path: str | None = None
+    summary_path: str | None = None
+
+
+class KnowledgeQueryData(ContractModel):
+    workspace: str | None = None
+    query: str = ""
+    focus: str | None = None
+    intent: str = "search"
+    answers: list[dict[str, Any]] = Field(default_factory=list)
+    nodes: list[dict[str, Any]] = Field(default_factory=list)
+    edges: list[KnowledgeEdgeData | dict[str, Any]] = Field(default_factory=list)
+    suggested_followups: list[str] = Field(default_factory=list)
+    graph_version: str | None = None
+
+
 class EcosystemDashboardData(ContractModel):
     workspace: str | None = None
     clients: list[ClientData] = Field(default_factory=list)
@@ -641,6 +692,8 @@ CONTRACTS: dict[str, ContractDescriptor] = {
     "jobs.run": ContractDescriptor(kind="jobs.run", stability="experimental", notes="Explicit maintenance job run or trigger result with approval gates for risky actions."),
     "quality.dashboard": ContractDescriptor(kind="quality.dashboard", stability="experimental", notes="Project health score, trends, risks, and recommended quality actions."),
     "quality.snapshot": ContractDescriptor(kind="quality.snapshot", stability="experimental", notes="Recorded project health snapshot and generated quality reports."),
+    "knowledge.graph": ContractDescriptor(kind="knowledge.graph", stability="experimental", notes="Local semantic project knowledge graph across files, systems, APIs, tasks, docs, and history."),
+    "knowledge.query": ContractDescriptor(kind="knowledge.query", stability="experimental", notes="Rule-based project knowledge graph query result."),
     "ecosystem.dashboard": ContractDescriptor(kind="ecosystem.dashboard", stability="stable", notes="Aggregated Core dashboard for desktop and website bridge."),
     "patch.proposal": ContractDescriptor(kind="patch.proposal", stability="experimental", owner="schema-only", notes="Shared shape for approved patch proposals."),
     "rollback.entry": ContractDescriptor(kind="rollback.entry", stability="experimental", owner="schema-only", notes="Shared rollback checkpoint listing shape."),
@@ -678,6 +731,8 @@ CONTRACT_DATA_MODELS: dict[str, type[BaseModel] | tuple[type[BaseModel], bool]] 
     "jobs.run": JobRunData,
     "quality.dashboard": QualityDashboardData,
     "quality.snapshot": QualityDashboardData,
+    "knowledge.graph": KnowledgeGraphData,
+    "knowledge.query": KnowledgeQueryData,
     "ecosystem.dashboard": EcosystemDashboardData,
     "patch.proposal": PatchProposalData,
     "rollback.entry": RollbackEntryData,

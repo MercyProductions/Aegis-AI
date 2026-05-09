@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from .diagnostics import scrub
+from .knowledge import agent_knowledge_guidance, agent_knowledge_summary, knowledge_graph
 from .memory import ProjectMemory, utc_now
 from .multi_agent import (
     active_agent,
@@ -54,10 +55,15 @@ def create_orchestration_plan(
     required_files = _required_files(scan, context)
     affected_systems = _affected_systems(scan, objective, required_files)
     quality = quality_dashboard(root, scan=scan)
+    graph = knowledge_graph(root, scan=scan)
+    knowledge_summary = agent_knowledge_summary(graph, required_files)
+    knowledge_guidance = agent_knowledge_guidance(knowledge_summary)
     risk = _risk_level(objective, affected_systems, required_files)
     risk = _risk_with_quality(risk, quality, required_files)
+    risk = _risk_with_knowledge(risk, knowledge_summary)
     quality_summary = planner_quality_summary(quality)
     guidance = planner_guidance(quality)
+    guidance = _merge_lists(guidance, knowledge_guidance)
     gates = _approval_gates(objective, commands)
     validation_plan = _validation_plan(commands)
     rollback_plan = _rollback_plan(root, required_files)
@@ -83,6 +89,7 @@ def create_orchestration_plan(
         "status": "in_progress",
         "risk": risk,
         "quality": quality_summary,
+        "knowledge": knowledge_summary,
         "planner_guidance": guidance,
         "source_client": source_client,
         "affected_systems": affected_systems,
@@ -113,7 +120,7 @@ def create_orchestration_plan(
         task_id=queue_tasks[0]["id"] if queue_tasks else None,
         plan_id=plan_id,
         summary="Created supervised multi-agent orchestration plan.",
-        details={"risk": risk, "affected_systems": affected_systems, "validation_commands": commands, "quality": quality_summary, "planner_guidance": guidance},
+        details={"risk": risk, "affected_systems": affected_systems, "validation_commands": commands, "quality": quality_summary, "knowledge": knowledge_summary, "planner_guidance": guidance},
     )
     _write_state(memory, state)
     _append_history(memory, {"event": "orchestration_created", "plan": plan})
@@ -446,6 +453,18 @@ def _risk_with_quality(risk: str, quality: dict[str, Any], required_files: list[
     return risk
 
 
+def _risk_with_knowledge(risk: str, knowledge: dict[str, Any]) -> str:
+    if risk == "high":
+        return risk
+    if knowledge.get("related_items") and any(item.get("type") in {"bug", "validation_failure"} for item in knowledge["related_items"]):
+        return "high"
+    if knowledge.get("unstable_modules") and risk == "low":
+        return "medium"
+    if len(knowledge.get("impacted_systems", [])) >= 3 and risk == "low":
+        return "medium"
+    return risk
+
+
 def _approval_gates(objective: str, validation_commands: list[dict[str, Any]]) -> list[dict[str, str]]:
     text = objective.lower()
     gates = [{"id": "file_edit", "label": APPROVAL_GATE_LABELS["file_edit"]}]
@@ -586,6 +605,10 @@ def _write_orchestration_roadmap(memory: ProjectMemory, state: dict[str, Any]) -
                 f"- Recommended improvement: {quality.get('recommended_next_improvement')}",
             ]
         )
+    knowledge = plan.get("knowledge") if isinstance(plan.get("knowledge"), dict) else {}
+    if knowledge:
+        impacted = ", ".join(knowledge.get("impacted_systems", [])[:6]) or "none detected"
+        lines.append(f"- Knowledge graph impacted systems: {impacted}")
     guidance = plan.get("planner_guidance") if isinstance(plan.get("planner_guidance"), list) else []
     if guidance:
         lines.extend(["", "## Planner Health Guidance", "", *[f"- {item}" for item in guidance]])

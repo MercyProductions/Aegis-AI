@@ -267,6 +267,7 @@ def test_v1_endpoint_family_smoke_contracts(tmp_path: Path) -> None:
         ("/v1/orchestration", {"workspace": str(workspace)}, "orchestration.dashboard"),
         ("/v1/jobs", {"workspace": str(workspace)}, "jobs.dashboard"),
         ("/v1/quality", {"workspace": str(workspace)}, "quality.dashboard"),
+        ("/v1/knowledge/graph", {"workspace": str(workspace)}, "knowledge.graph"),
         ("/v1/ecosystem/dashboard", {"workspace": str(workspace)}, "ecosystem.dashboard"),
     ]
 
@@ -329,6 +330,13 @@ def test_v1_endpoint_family_smoke_contracts(tmp_path: Path) -> None:
             True,
         ),
         ("/v1/quality/snapshot", {"workspace": str(workspace)}, "quality.snapshot", True),
+        ("/v1/knowledge/graph", {"workspace": str(workspace)}, "knowledge.graph", True),
+        (
+            "/v1/knowledge/query",
+            {"workspace": str(workspace), "query": "What areas of the project are most unstable?"},
+            "knowledge.query",
+            True,
+        ),
     ]
 
     created_task_id = None
@@ -380,6 +388,8 @@ def test_contract_catalog_covers_unified_phase_runtime_shapes() -> None:
         "jobs.run",
         "quality.dashboard",
         "quality.snapshot",
+        "knowledge.graph",
+        "knowledge.query",
         "patch.proposal",
         "rollback.entry",
         "rollback.result",
@@ -640,6 +650,96 @@ def test_quality_job_records_snapshot_and_reports(tmp_path: Path) -> None:
     assert (workspace / ".aegis" / "health-history.json").is_file()
 
 
+def test_knowledge_graph_links_files_apis_docs_and_validation(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    src = workspace / "src"
+    src.mkdir()
+    (src / "service.py").write_text(
+        "class ItemService:\n    def list_items(self):\n        return []\n",
+        encoding="utf-8",
+    )
+    (src / "api.py").write_text(
+        "from fastapi import FastAPI\nfrom .service import ItemService\napp = FastAPI()\n@app.get('/v1/items')\ndef list_items():\n    return ItemService().list_items()\n",
+        encoding="utf-8",
+    )
+    (src / "ui.tsx").write_text(
+        "export function ItemsPanel() {\n  fetch('/v1/items');\n  return null;\n}\n",
+        encoding="utf-8",
+    )
+    tests = workspace / "tests"
+    tests.mkdir()
+    (tests / "test_service.py").write_text("from src.service import ItemService\n", encoding="utf-8")
+    (workspace / ".aegis").mkdir(exist_ok=True)
+    (workspace / ".aegis" / "roadmap.md").write_text("- Build item API workflow for ItemsPanel\n", encoding="utf-8")
+    (workspace / ".aegis" / "decisions.md").write_text("## API Boundary\n\n- What changed: ItemService backs the item API.\n", encoding="utf-8")
+    (workspace / ".aegis" / "known-issues.md").write_text("- bug: /v1/items fails when src/api.py changes\n", encoding="utf-8")
+    (workspace / ".aegis" / "validation-log.md").write_text(
+        "## 2026-05-09T00:00:00Z - failed\n\nCommand: `pytest`\n\n```text\nsrc/api.py: failed\n```\n",
+        encoding="utf-8",
+    )
+    client = TestClient(create_app())
+
+    response = client.post("/v1/knowledge/graph", json={"workspace": str(workspace)})
+
+    assert response.status_code == 200
+    assert_core_contract(response.json(), "knowledge.graph")
+    data = response.json()["data"]
+    node_ids = {node["id"] for node in data["nodes"]}
+    edge_types = {(edge["source"], edge["target"], edge["type"]) for edge in data["edges"]}
+    assert "file:src/api.py" in node_ids
+    assert "api:get:/v1/items" in node_ids
+    assert any(source == "file:src/api.py" and target == "file:src/service.py" and edge_type == "uses" for source, target, edge_type in edge_types)
+    assert any(target == "api:get:/v1/items" and edge_type == "implements" for _, target, edge_type in edge_types)
+    assert any(edge_type == "mentioned_in_roadmap" for _, _, edge_type in edge_types)
+    assert any(edge_type == "breaks" for _, _, edge_type in edge_types)
+    assert (workspace / ".aegis" / "knowledge-graph.json").is_file()
+    assert (workspace / ".aegis" / "knowledge-summary.md").is_file()
+
+
+def test_knowledge_graph_get_is_read_only(tmp_path: Path) -> None:
+    workspace = tmp_path / "knowledge-readonly"
+    workspace.mkdir()
+    (workspace / "src.py").write_text("def run():\n    return True\n", encoding="utf-8")
+    client = TestClient(create_app())
+
+    response = client.get("/v1/knowledge/graph", params={"workspace": str(workspace)})
+
+    assert response.status_code == 200
+    assert_core_contract(response.json(), "knowledge.graph")
+    assert not (workspace / ".aegis").exists()
+
+
+def test_knowledge_query_answers_dependents_and_unstable_modules(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    src = workspace / "src"
+    src.mkdir()
+    (src / "service.py").write_text("class ItemService:\n    pass\n", encoding="utf-8")
+    (src / "api.py").write_text("from .service import ItemService\n", encoding="utf-8")
+    (workspace / ".aegis").mkdir(exist_ok=True)
+    (workspace / ".aegis" / "validation-log.md").write_text(
+        "## 2026-05-09T00:00:00Z - failed\n\nCommand: `pytest`\n\n```text\nsrc/service.py: failed\n```\n",
+        encoding="utf-8",
+    )
+    client = TestClient(create_app())
+    client.post("/v1/knowledge/graph", json={"workspace": str(workspace)})
+
+    dependents = client.post(
+        "/v1/knowledge/query",
+        json={"workspace": str(workspace), "query": "What systems depend on this file?", "focus": "src/service.py"},
+    )
+    unstable = client.post(
+        "/v1/knowledge/query",
+        json={"workspace": str(workspace), "query": "What areas of the project are most unstable?"},
+    )
+
+    assert dependents.status_code == 200
+    assert_core_contract(dependents.json(), "knowledge.query")
+    assert any(answer["title"] == "src/api.py" for answer in dependents.json()["data"]["answers"])
+    assert unstable.status_code == 200
+    assert_core_contract(unstable.json(), "knowledge.query")
+    assert unstable.json()["data"]["answers"]
+
+
 def test_known_client_contract_parsing_tolerates_missing_optional_fields() -> None:
     desktop_dashboard = make_envelope("ecosystem.dashboard", {}, "C:/workspace")
     vscode_task = make_envelope("task.created", {"id": "task-compat"}, "C:/workspace")
@@ -771,6 +871,7 @@ def test_orchestration_plan_creates_safe_queue_and_memory(tmp_path: Path) -> Non
     assert data["plan"]["risk"] == "high"
     assert data["plan"]["quality"]["score"] <= 100
     assert data["plan"]["quality"]["top_risks"]
+    assert data["plan"]["knowledge"]["node_count"] > 0
     assert data["plan"]["planner_guidance"]
     assert data["task_list"][0]["status"] == "in_progress"
     assert data["task_list"][0]["active_step"] == "inspect"

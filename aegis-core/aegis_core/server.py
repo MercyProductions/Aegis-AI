@@ -10,6 +10,7 @@ from .contracts import (
     ContinueRequest,
     CreateTaskRequest,
     JobRunRequest,
+    KnowledgeQueryRequest,
     ModelCompletionRequest,
     ModelRouteRequest,
     OrchestrationPlanRequest,
@@ -25,6 +26,7 @@ from .credentials import CredentialStoreError
 from .diagnostics import CoreLogger
 from .ecosystem import dashboard_summary, diagnostics_summary, shared_memory_summary
 from .jobs import jobs_dashboard, run_job
+from .knowledge import knowledge_graph, query_knowledge_graph
 from .model_router import complete_with_route, delete_provider_key, provider_inventory, route_model, store_provider_key
 from .multi_agent import agent_roster
 from .ollama import OllamaClient
@@ -285,6 +287,18 @@ def create_app():
     @app.post("/v1/quality/snapshot")
     def v1_quality_snapshot(request: WorkspaceRequest) -> dict[str, Any]:
         return envelope("quality.snapshot", record_quality_snapshot(request.workspace), request.workspace)
+
+    @app.get("/v1/knowledge/graph")
+    def v1_knowledge_graph(workspace: str) -> dict[str, Any]:
+        return envelope("knowledge.graph", knowledge_graph(workspace), workspace)
+
+    @app.post("/v1/knowledge/graph")
+    def v1_record_knowledge_graph(request: WorkspaceRequest) -> dict[str, Any]:
+        return envelope("knowledge.graph", knowledge_graph(request.workspace, persist=True), request.workspace)
+
+    @app.post("/v1/knowledge/query")
+    def v1_knowledge_query(request: KnowledgeQueryRequest) -> dict[str, Any]:
+        return envelope("knowledge.query", query_knowledge_graph(request.workspace, request.query, focus=request.focus), request.workspace)
 
     @app.post("/v1/tasks")
     def v1_create_task(request: CreateTaskRequest) -> dict[str, Any]:

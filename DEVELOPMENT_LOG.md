@@ -585,3 +585,26 @@ Actions:
 Validation completed:
 
 - Aegis Core contract tests: pass, 74 tests including quality dashboard, read-only dashboard behavior, snapshot history, trend detection, quality job execution, and Planner integration.
+
+## 2026-05-09 - Aegis Core Knowledge Graph Intelligence
+
+Focus:
+
+- Move Core from simple file indexing toward local semantic project understanding.
+- Keep graph intelligence deterministic, local-first, and advisory instead of granting edit authority.
+
+Actions:
+
+- Added the `knowledge.graph` and `knowledge.query` Core contracts.
+- Added `/v1/knowledge/graph`, `/v1/knowledge/query`, and `aegis knowledge`.
+- Added `.aegis/knowledge-graph.json` and `.aegis/knowledge-summary.md` generated artifacts.
+- Built graph nodes for files, systems, symbols, services, UI components, APIs, tasks, roadmap items, architecture decisions, bugs, validation failures, risks, and agent-history events.
+- Added relationship edges for `uses`, `depends_on`, `calls`, `implements`, `breaks`, `related_to`, `tested_by`, and `mentioned_in_roadmap`.
+- Added deterministic query support for dependents, unstable modules, roadmap/module links, API feature links, and historical context.
+- Added graph clusters, architecture hotspots, unstable modules, and a visualization subset for future Desktop graph views.
+- Wired Planner Agent orchestration planning to read graph summaries for impacted systems, related history, and suggested context.
+- Updated API, architecture, runtime consolidation, client responsibility, and compatibility docs.
+
+Validation completed:
+
+- Aegis Core contract tests: pass, 77 tests including graph persistence, read-only graph behavior, API/file/doc/validation relationships, graph query responses, and Planner graph integration.

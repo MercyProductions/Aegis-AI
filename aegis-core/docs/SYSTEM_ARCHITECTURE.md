@@ -26,6 +26,7 @@ Aegis Core owns reusable intelligence and workflow services:
 - Specialized local agent roles
 - Safe workflow automation and scheduled maintenance jobs
 - Project quality intelligence, health trends, and risk reports
+- Knowledge graph and semantic project relationship queries
 - Validation command detection and safe execution
 - Agent planning, repair planning, rollback metadata, and approval contracts
 - Diagnostics and logs
@@ -59,6 +60,7 @@ Default assumptions:
 - Autonomous orchestration means staged queues, specialized owner agents, and approval gates, not uncontrolled edits.
 - Scheduled jobs can scan, summarize, report, and recommend, but risky actions still require approval.
 - Quality snapshots write generated `.aegis` observability artifacts, not source changes.
+- Knowledge graph refreshes write generated `.aegis` relationship artifacts, not source changes.
 
 ## Migration Strategy
 
@@ -73,8 +75,9 @@ Default assumptions:
 9. Supervised goal queues flow through `.aegis/orchestration-queue.json` and `/v1/orchestration/*`.
 10. Maintenance jobs flow through `.aegis/jobs-state.json`, `.aegis/jobs-log.md`, and `/v1/jobs`.
 11. Project health trends flow through `.aegis/health-history.json`, generated quality reports, and `/v1/quality`.
-12. Agent planning and repair loops move into Core.
-13. Clients keep UI approvals, diff/apply/rollback, and editor-native affordances.
+12. Semantic project relationships flow through `.aegis/knowledge-graph.json`, generated graph summaries, and `/v1/knowledge/*`.
+13. Agent planning and repair loops move into Core.
+14. Clients keep UI approvals, diff/apply/rollback, and editor-native affordances.
 
 ## Shared API Layer
 
@@ -150,6 +153,20 @@ POST /v1/quality/snapshot
 The dashboard reports current health score, trend, warnings, failing systems, high-risk files, complexity hotspots, cleanup tasks, and recommended next improvement. Snapshots generate `.aegis/daily-health-report.md` and `.aegis/weekly-quality-summary.md`.
 
 Planner Agent reads this dashboard when planning supervised work, so repeated validation failures, risky files, stale docs, and untested core modules can influence task order.
+
+## Knowledge Graph
+
+Knowledge graph state is stored in `.aegis/knowledge-graph.json` and surfaced through:
+
+```text
+GET  /v1/knowledge/graph?workspace=C:/path/to/project
+POST /v1/knowledge/graph
+POST /v1/knowledge/query
+```
+
+The graph links files, symbols, systems, APIs, UI components, services, tasks, roadmap items, architecture decisions, bugs, validation failures, risks, and agent-history events. Relationships include `uses`, `depends_on`, `calls`, `implements`, `breaks`, `related_to`, `tested_by`, and `mentioned_in_roadmap`.
+
+Desktop can later render the visualization subset for system relationships, dependency clusters, unstable modules, roadmap links, and hotspots. Agents already consume graph summaries for impacted systems, related history, and suggested context.
 
 ## Desktop Ecosystem Dashboard Contract
 
