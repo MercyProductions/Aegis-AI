@@ -7,6 +7,13 @@ from .memory import ProjectMemory
 from .workspace import WorkspaceScanner
 
 
+ROADMAP_FILE = "roadmap.md"
+
+
+class RoadmapPersistenceError(RuntimeError):
+    """Raised when the generated roadmap cannot be persisted."""
+
+
 def generate_roadmap(workspace: str | Path, scan: dict[str, Any] | None = None, persist: bool = True) -> dict[str, Any]:
     root = Path(workspace).resolve()
     scan_data = scan or WorkspaceScanner(root).scan(persist=persist)
@@ -14,7 +21,7 @@ def generate_roadmap(workspace: str | Path, scan: dict[str, Any] | None = None, 
     markdown = render_roadmap(scan_data, tasks)
     path = None
     if persist:
-        path = ProjectMemory(root).write_generated_markdown("roadmap.md", "Roadmap", markdown)
+        path = _persist_roadmap(ProjectMemory(root), markdown)
     return {"workspace": str(root), "roadmap_path": str(path) if path else None, "tasks": tasks, "markdown": markdown}
 
 
@@ -64,3 +71,25 @@ def render_roadmap(scan: dict[str, Any], tasks: list[dict[str, str]]) -> str:
         "- Use rollback metadata before modifying files.",
     ])
     return "\n".join(lines)
+
+
+def _persist_roadmap(memory: ProjectMemory, markdown: str) -> Path:
+    path = memory.root / ROADMAP_FILE
+    _ensure_roadmap_target(path)
+    memory.write_generated_markdown(ROADMAP_FILE, "Roadmap", markdown)
+    try:
+        persisted = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise RoadmapPersistenceError(f"Could not persist roadmap at {path}.") from exc
+    if markdown.rstrip() not in persisted:
+        raise RoadmapPersistenceError(
+            f"Could not persist roadmap at {path}. Check that the workspace .aegis path is writable."
+        )
+    return path
+
+
+def _ensure_roadmap_target(path: Path) -> None:
+    if path.parent.exists() and not path.parent.is_dir():
+        raise RoadmapPersistenceError(f"Could not persist roadmap because {path.parent} is not a directory.")
+    if path.exists() and not path.is_file():
+        raise RoadmapPersistenceError(f"Could not persist roadmap because {path} is not a writable file.")

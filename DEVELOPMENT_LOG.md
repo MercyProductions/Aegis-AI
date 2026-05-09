@@ -1192,3 +1192,23 @@ Validation completed:
 - Core personal intelligence focused tests: pass, 4 tests.
 - Aegis Core contract tests: pass, 106 tests.
 - Git diff whitespace check: pass.
+
+## 2026-05-09 - Core Roadmap Persistence Failure Handling
+
+Focus:
+
+- Avoid false successful roadmap generation when `.aegis/roadmap.md` cannot be written.
+- Preserve safe plan-only agent continuation when roadmap persistence is damaged.
+
+Actions:
+
+- Added `RoadmapPersistenceError` for failed roadmap writes.
+- Verified generated roadmap markdown after writes before returning persisted roadmap paths.
+- Updated API, CLI, troubleshooting, and regression coverage for damaged roadmap paths.
+- Kept agent continuation resilient by surfacing roadmap persistence failures as memory warnings.
+
+Validation completed:
+
+- Core roadmap and continuation focused tests: pass, 4 tests.
+- Aegis Core contract tests: pass, 108 tests.
+- Git diff whitespace check: pass.

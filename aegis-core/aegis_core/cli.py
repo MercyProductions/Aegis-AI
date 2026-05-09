@@ -18,7 +18,7 @@ from .operations import engineering_operations_dashboard
 from .orchestration import OrchestrationPersistenceError, advance_orchestration_step, create_orchestration_plan, orchestration_dashboard
 from .personal_intelligence import PersonalIntelligencePersistenceError, adaptive_personal_intelligence, reset_personal_intelligence
 from .quality import QualityPersistenceError, quality_dashboard, record_quality_snapshot
-from .roadmap import generate_roadmap
+from .roadmap import RoadmapPersistenceError, generate_roadmap
 from .simulation import compare_scenarios, simulate_change
 from .tasks import TaskStorePersistenceError, create_task, list_tasks
 from .validation import run_validation, validation_summary
@@ -203,6 +203,7 @@ def main(argv: list[str] | None = None) -> int:
         OrchestrationPersistenceError,
         PersonalIntelligencePersistenceError,
         QualityPersistenceError,
+        RoadmapPersistenceError,
         TaskStorePersistenceError,
         ValueError,
     ) as exc:

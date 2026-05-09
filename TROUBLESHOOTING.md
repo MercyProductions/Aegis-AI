@@ -34,6 +34,8 @@ If recording the knowledge graph reports `Could not persist knowledge graph` or 
 
 If saving or resetting personal intelligence reports `Could not persist personal engineering profile` or `Could not reset personal engineering profile`, repair `.aegis/personal-engineering-profile.json` so it is a writable JSON file. Personal workflow preferences remain local, explicit, and user-controlled, but the profile is not trustworthy until that path is fixed.
 
+If roadmap generation reports `Could not persist roadmap`, repair `.aegis/roadmap.md` so it is a writable Markdown file. Agent continuation can still produce a plan-only fallback, but saved roadmap-driven workflows should not be trusted until the file path is fixed.
+
 ## Ollama
 
 Default local endpoint:

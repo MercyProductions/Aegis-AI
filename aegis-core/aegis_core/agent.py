@@ -5,7 +5,7 @@ from typing import Any
 
 from .diagnostics import scrub
 from .memory import ProjectMemory
-from .roadmap import generate_roadmap
+from .roadmap import RoadmapPersistenceError, generate_roadmap
 from .validation import validation_summary
 from .workspace import WorkspaceScanner
 
@@ -15,8 +15,12 @@ def continue_from_roadmap(workspace: str | Path, request: str | None = None) -> 
     memory = ProjectMemory(root)
     memory.ensure()
     roadmap_path = memory.root / "roadmap.md"
+    memory_warning = None
     if not roadmap_path.is_file():
-        generate_roadmap(root, persist=True)
+        try:
+            generate_roadmap(root, persist=True)
+        except RoadmapPersistenceError as exc:
+            memory_warning = str(exc)
 
     scan = WorkspaceScanner(root).scan(persist=True)
     roadmap = _read_text_best_effort(roadmap_path)
@@ -42,6 +46,8 @@ def continue_from_roadmap(workspace: str | Path, request: str | None = None) -> 
         },
         "validation": validation_summary(root),
     }
+    if memory_warning:
+        plan["memory_warning"] = memory_warning
     memory.write_json("active-agent-plan.json", plan)
     return plan
 

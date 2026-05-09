@@ -106,6 +106,24 @@ def test_cli_task_create_reports_persistence_failure_without_traceback(tmp_path:
     assert "Traceback" not in completed.stderr
 
 
+def test_cli_roadmap_reports_persistence_failure_without_traceback(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    aegis_dir = workspace / ".aegis"
+    aegis_dir.mkdir()
+    (aegis_dir / "roadmap.md").mkdir()
+    core_root = Path(__file__).resolve().parents[1]
+
+    completed = run_cli_raw(core_root, "--json", "roadmap", "--workspace", str(workspace))
+
+    assert completed.returncode == 1
+    payload = json.loads(completed.stdout)
+    assert payload["ok"] is False
+    assert payload["command"] == "roadmap"
+    assert "Could not persist roadmap" in payload["error"]
+    assert "Traceback" not in completed.stdout
+    assert "Traceback" not in completed.stderr
+
+
 def test_workspace_scan_cache_reuses_unchanged_scan(tmp_path: Path) -> None:
     workspace = make_workspace(tmp_path)
     core_root = Path(__file__).resolve().parents[1]
@@ -1174,6 +1192,21 @@ def test_personal_intelligence_surfaces_cross_project_patterns(tmp_path: Path) -
     assert len(patterns["projects_analyzed"]) == 2
     assert patterns["unavailable_projects"]
     assert patterns["suggested_templates"]
+
+
+def test_roadmap_endpoint_reports_persistence_failure(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    aegis_dir = workspace / ".aegis"
+    aegis_dir.mkdir()
+    roadmap_path = aegis_dir / "roadmap.md"
+    roadmap_path.mkdir()
+    client = TestClient(create_app())
+
+    response = client.post("/v1/workspaces/roadmap", json={"workspace": str(workspace)})
+
+    assert response.status_code == 503
+    assert "Could not persist roadmap" in response.json()["detail"]
+    assert roadmap_path.is_dir()
 
 
 def test_known_client_contract_parsing_tolerates_missing_optional_fields() -> None:
@@ -2494,6 +2527,7 @@ def test_continue_agent_survives_damaged_roadmap_path(tmp_path: Path) -> None:
     data = response.json()["data"]
     assert data["plan"]["mode"] == "plan-only"
     assert data["plan"]["approval_required"] is True
+    assert "Could not persist roadmap" in data["plan"]["memory_warning"]
     assert data["task"]["status"] == "planned"
 
 

@@ -38,7 +38,7 @@ from .operations import engineering_operations_dashboard
 from .orchestration import OrchestrationPersistenceError, advance_orchestration_step, create_orchestration_plan, orchestration_dashboard
 from .personal_intelligence import PersonalIntelligencePersistenceError, adaptive_personal_intelligence, reset_personal_intelligence
 from .quality import QualityPersistenceError, quality_dashboard, record_quality_snapshot
-from .roadmap import generate_roadmap
+from .roadmap import RoadmapPersistenceError, generate_roadmap
 from .simulation import compare_scenarios, simulate_change
 from .tasks import TaskStorePersistenceError, create_task, list_tasks, update_task_status
 from .validation import run_validation, validation_summary
@@ -81,7 +81,10 @@ def create_app():
 
     @app.post("/workspace/roadmap")
     def roadmap(request: WorkspaceRequest) -> dict[str, Any]:
-        return generate_roadmap(request.workspace, persist=True)
+        try:
+            return generate_roadmap(request.workspace, persist=True)
+        except RoadmapPersistenceError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     @app.post("/validation")
     def validate(request: ValidateRequest) -> dict[str, Any]:
@@ -200,7 +203,11 @@ def create_app():
 
     @app.post("/v1/workspaces/roadmap")
     def v1_roadmap(request: WorkspaceRequest) -> dict[str, Any]:
-        return envelope("workspace.roadmap", generate_roadmap(request.workspace, persist=True), request.workspace)
+        try:
+            data = generate_roadmap(request.workspace, persist=True)
+        except RoadmapPersistenceError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        return envelope("workspace.roadmap", data, request.workspace)
 
     @app.get("/v1/memory")
     def v1_memory(workspace: str) -> dict[str, Any]:
