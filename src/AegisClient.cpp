@@ -70,6 +70,42 @@ std::vector<WorkspaceFile> ParseWorkspaceFiles(const JsonValue& value)
     return files;
 }
 
+AegisCoreDashboardInfo ParseCoreDashboard(const JsonValue& value)
+{
+    AegisCoreDashboardInfo dashboard;
+    const JsonValue& data = value["data"].IsObject() ? value["data"] : value;
+    dashboard.reachable = value["ok"].AsBool(true);
+    dashboard.workspace_root = data["workspace"].AsString();
+
+    const JsonValue& clients = data["clients"];
+    if (clients.IsArray()) {
+        dashboard.connected_client_count = static_cast<int>(clients.array_value.size());
+    }
+    const JsonValue& active_tasks = data["active_tasks"];
+    if (active_tasks.IsArray()) {
+        dashboard.active_task_count = static_cast<int>(active_tasks.array_value.size());
+    }
+    const JsonValue& recent_tasks = data["recent_tasks"];
+    if (recent_tasks.IsArray()) {
+        dashboard.recent_task_count = static_cast<int>(recent_tasks.array_value.size());
+    }
+
+    const JsonValue& model_status = data["model_status"];
+    dashboard.ollama_reachable = model_status["reachable"].AsBool(false);
+    dashboard.selected_model = model_status["selected_model"].AsString();
+    if (model_status["installed_models"].IsArray()) {
+        dashboard.installed_model_count = static_cast<int>(model_status["installed_models"].array_value.size());
+    }
+
+    const JsonValue& commands = data["validation"]["commands"];
+    if (commands.IsArray()) {
+        dashboard.validation_command_count = static_cast<int>(commands.array_value.size());
+    }
+    dashboard.roadmap_excerpt = data["roadmap"]["excerpt"].AsString();
+    dashboard.diagnostic_excerpt = data["diagnostics"]["logs"]["core_log"]["tail"].AsString();
+    return dashboard;
+}
+
 CommandRun ParseCommandRun(const JsonValue& value, bool* present);
 
 ProjectScaffoldPresetInfo ParseProjectScaffoldPreset(const JsonValue& value)
@@ -4210,6 +4246,42 @@ void AegisClient::DeleteMemoryNote(const std::string& workspace_root, const std:
     (void)RequireJson(HttpDelete(Endpoint(endpoint)), "delete memory note");
 }
 
+void AegisClient::RegisterCoreClient(
+    const std::string& workspace_root,
+    const std::string& client_id,
+    const std::string& client_type,
+    const std::string& name,
+    const std::string& version,
+    const std::vector<std::string>& capabilities)
+{
+    std::ostringstream body;
+    body << "{";
+    body << "\"workspace\":" << JsonString(workspace_root) << ",";
+    body << "\"client_id\":" << JsonString(client_id) << ",";
+    body << "\"client_type\":" << JsonString(client_type) << ",";
+    body << "\"name\":" << JsonString(name) << ",";
+    body << "\"version\":" << JsonString(version) << ",";
+    body << "\"capabilities\":" << JsonStringArray(capabilities);
+    body << "}";
+    (void)RequireJson(HttpPostJson(CoreEndpoint("/v1/clients/register"), body.str()), "register Aegis Core client");
+}
+
+AegisCoreDashboardInfo AegisClient::GetCoreDashboard(const std::string& workspace_root)
+{
+    const std::string endpoint = "/v1/ecosystem/dashboard?workspace=" + UrlEncode(workspace_root);
+    const std::string body = RequireJson(HttpGet(CoreEndpoint(endpoint)), "load Aegis Core dashboard");
+    const JsonParseResult parsed = ParseJson(body);
+    if (!parsed.ok) {
+        throw std::runtime_error(parsed.error);
+    }
+    AegisCoreDashboardInfo dashboard = ParseCoreDashboard(parsed.value);
+    if (dashboard.workspace_root.empty()) {
+        dashboard.workspace_root = workspace_root;
+    }
+    dashboard.reachable = true;
+    return dashboard;
+}
+
 ValidationProfileInfo AegisClient::GetValidationProfile(const std::string& workspace_root)
 {
     std::string endpoint = "/api/validation/profile";
@@ -4311,6 +4383,14 @@ MediaJobSummary AegisClient::CreateMediaJob(
 std::string AegisClient::Endpoint(const std::string& path) const
 {
     return JoinUrl(settings_.api_base_url, path);
+}
+
+std::string AegisClient::CoreEndpoint(const std::string& path) const
+{
+    const std::string base = Trim(settings_.core_api_base_url).empty()
+        ? "http://127.0.0.1:8788"
+        : settings_.core_api_base_url;
+    return JoinUrl(base, path);
 }
 
 std::string AegisClient::RequireJson(const HttpResponse& response, const std::string& action) const

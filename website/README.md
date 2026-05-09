@@ -67,6 +67,14 @@ The built-in engine is `Aegis Core`. It is a self-contained local workflow engin
 - local model-backed drafting when a configured model server is reachable
 - validation command execution when enabled
 
+During ecosystem stabilization, the standalone shared Aegis Core runtime can also run at:
+
+```text
+http://127.0.0.1:8788
+```
+
+The website remains on its existing `/api` backend for daily use. Local/dev dashboard features should migrate to the shared `/v1` Core contracts incrementally after the Desktop, VS Code, and Visual Studio clients have dogfooded that path.
+
 The UI lets you set:
 
 - your Aegis assistant name

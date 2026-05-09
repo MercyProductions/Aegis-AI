@@ -1,0 +1,103 @@
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+from fastapi.testclient import TestClient
+
+from aegis_core.server import create_app
+
+
+def make_workspace(tmp_path: Path) -> Path:
+    workspace = tmp_path / "sample-project"
+    workspace.mkdir()
+    (workspace / "README.md").write_text("# Sample Project\n\nTODO: validate workflow.\n", encoding="utf-8")
+    (workspace / "package.json").write_text(
+        json.dumps({"scripts": {"test": "node smoke.js", "build": "node smoke.js"}, "dependencies": {"vite": "^7.0.0"}}, indent=2),
+        encoding="utf-8",
+    )
+    (workspace / "smoke.js").write_text("console.log('ok')\n", encoding="utf-8")
+    return workspace
+
+
+def run_cli(core_root: Path, *args: str) -> dict:
+    completed = subprocess.run(
+        [sys.executable, "-m", "aegis_core.cli", *args],
+        cwd=str(core_root),
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return json.loads(completed.stdout)
+
+
+def test_cli_json_flag_works_before_or_after_subcommand(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    core_root = Path(__file__).resolve().parents[1]
+
+    prefix = run_cli(core_root, "--json", "dashboard", "--workspace", str(workspace))
+    suffix = run_cli(core_root, "dashboard", "--workspace", str(workspace), "--json")
+
+    assert prefix["workspace"] == str(workspace.resolve())
+    assert suffix["workspace"] == str(workspace.resolve())
+    assert prefix["model_status"]["selected_model"] == suffix["model_status"]["selected_model"]
+
+
+def test_workspace_scan_cache_reuses_unchanged_scan(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    core_root = Path(__file__).resolve().parents[1]
+
+    first = run_cli(core_root, "--json", "scan", "--workspace", str(workspace))
+    second = run_cli(core_root, "--json", "scan", "--workspace", str(workspace))
+
+    assert first["cache_hit"] is False
+    assert second["cache_hit"] is True
+    assert second["cache_reason"] == "workspace file fingerprint unchanged"
+    assert (workspace / ".aegis" / "scan-cache.json").exists()
+
+
+def test_v1_client_task_dashboard_contract(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    client = TestClient(create_app())
+
+    registration = client.post(
+        "/v1/clients/register",
+        json={
+            "workspace": str(workspace),
+            "client_id": "contract-test-client",
+            "client_type": "test",
+            "name": "Contract Test Client",
+            "version": "0.0.0",
+            "capabilities": ["health", "tasks"],
+        },
+    )
+    assert registration.status_code == 200
+    assert registration.json()["data"]["client_id"] == "contract-test-client"
+
+    created = client.post(
+        "/v1/tasks",
+        json={
+            "workspace": str(workspace),
+            "title": "Contract smoke task",
+            "kind": "test",
+            "source_client": "pytest",
+            "request": "validate shared task flow",
+        },
+    )
+    assert created.status_code == 200
+    task_id = created.json()["data"]["id"]
+
+    dashboard = client.get("/v1/ecosystem/dashboard", params={"workspace": str(workspace)})
+    assert dashboard.status_code == 200
+    data = dashboard.json()["data"]
+    assert any(item["client_id"] == "contract-test-client" for item in data["clients"])
+    assert any(item["id"] == task_id for item in data["active_tasks"])
+
+    updated = client.post(
+        f"/v1/tasks/{task_id}/status",
+        json={"workspace": str(workspace), "status": "completed", "summary": "contract passed"},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["data"]["status"] == "completed"

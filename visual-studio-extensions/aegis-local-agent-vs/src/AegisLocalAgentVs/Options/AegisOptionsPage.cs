@@ -1,0 +1,114 @@
+using System;
+using System.ComponentModel;
+using System.Linq;
+using Microsoft.VisualStudio.Shell;
+
+namespace Aegis.LocalAgent.VisualStudio.Options
+{
+    public enum AegisSafetyMode
+    {
+        Strict,
+        Balanced
+    }
+
+    public enum AegisBuildValidationPreference
+    {
+        Solution,
+        StartupProject,
+        SelectedProject,
+        None
+    }
+
+    public sealed class AegisOptionsPage : DialogPage
+    {
+        [Category("Ollama")]
+        [DisplayName("Ollama URL")]
+        [Description("Base URL for the local Ollama server.")]
+        public string OllamaUrl { get; set; } = "http://127.0.0.1:11434";
+
+        [Category("Aegis Core")]
+        [DisplayName("Aegis Core URL")]
+        [Description("Base URL for the shared local Aegis Core runtime.")]
+        public string AegisCoreUrl { get; set; } = "http://127.0.0.1:8788";
+
+        [Category("Ollama")]
+        [DisplayName("Default Model")]
+        [Description("Default local model used for chat and agent proposals.")]
+        public string DefaultModel { get; set; } = "qwen3-coder:30b";
+
+        [Category("Ollama")]
+        [DisplayName("Fallback Models")]
+        [Description("Comma-separated fallback models used when the selected/default model fails.")]
+        public string FallbackModels { get; set; } = "qwen2.5-coder:7b, granite-code:8b";
+
+        [Category("Context")]
+        [DisplayName("Max Context Size")]
+        [Description("Maximum prompt context size used by Aegis before truncation.")]
+        public int MaxContextSize { get; set; } = 42000;
+
+        [Category("Safety")]
+        [DisplayName("Safety Mode")]
+        [Description("Strict keeps all protected path checks enabled. Balanced is reserved for future lower-friction workflows.")]
+        public AegisSafetyMode SafetyMode { get; set; } = AegisSafetyMode.Strict;
+
+        [Category("Indexing")]
+        [DisplayName("Auto Scan On Solution Open")]
+        [Description("Automatically index solution symbols and dependencies when a solution opens. Disabled by default to keep large solutions responsive at startup.")]
+        public bool AutoScanOnSolutionOpen { get; set; } = false;
+
+        [Category("Validation")]
+        [DisplayName("Validate After Apply")]
+        [Description("Run Visual Studio build validation after approved edits are applied.")]
+        public bool ValidateAfterApply { get; set; } = true;
+
+        [Category("Validation")]
+        [DisplayName("Build Validation Preference")]
+        [Description("Preferred validation target for manual agent workflows.")]
+        public AegisBuildValidationPreference BuildValidationPreference { get; set; } = AegisBuildValidationPreference.Solution;
+
+        [Category("Backups")]
+        [DisplayName("Backup Location")]
+        [Description("Relative solution path where approved-change backups are written.")]
+        public string BackupLocation { get; set; } = ".aegis/backups";
+
+        internal AegisSettingsSnapshot ToSnapshot()
+        {
+            var fallbacks = (FallbackModels ?? string.Empty)
+                .Split(new[] { ',', ';', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(item => item.Trim())
+                .Where(item => !string.IsNullOrWhiteSpace(item))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            return new AegisSettingsSnapshot
+            {
+                OllamaUrl = string.IsNullOrWhiteSpace(OllamaUrl) ? "http://127.0.0.1:11434" : OllamaUrl.Trim(),
+                AegisCoreUrl = string.IsNullOrWhiteSpace(AegisCoreUrl) ? "http://127.0.0.1:8788" : AegisCoreUrl.Trim(),
+                DefaultModel = string.IsNullOrWhiteSpace(DefaultModel) ? "qwen3-coder:30b" : DefaultModel.Trim(),
+                FallbackModels = fallbacks.Length == 0 ? new[] { "qwen2.5-coder:7b", "granite-code:8b" } : fallbacks,
+                MaxContextSize = Math.Max(8000, Math.Min(MaxContextSize, 160000)),
+                SafetyMode = SafetyMode,
+                AutoScanOnSolutionOpen = AutoScanOnSolutionOpen,
+                ValidateAfterApply = ValidateAfterApply,
+                BuildValidationPreference = BuildValidationPreference,
+                BackupLocation = string.IsNullOrWhiteSpace(BackupLocation) ? ".aegis/backups" : BackupLocation.Trim()
+            };
+        }
+    }
+
+    internal sealed class AegisSettingsSnapshot
+    {
+        public string OllamaUrl { get; set; } = "http://127.0.0.1:11434";
+        public string AegisCoreUrl { get; set; } = "http://127.0.0.1:8788";
+        public string DefaultModel { get; set; } = "qwen3-coder:30b";
+        public string[] FallbackModels { get; set; } = new[] { "qwen2.5-coder:7b", "granite-code:8b" };
+        public int MaxContextSize { get; set; } = 42000;
+        public AegisSafetyMode SafetyMode { get; set; } = AegisSafetyMode.Strict;
+        public bool AutoScanOnSolutionOpen { get; set; } = false;
+        public bool ValidateAfterApply { get; set; } = true;
+        public AegisBuildValidationPreference BuildValidationPreference { get; set; } = AegisBuildValidationPreference.Solution;
+        public string BackupLocation { get; set; } = ".aegis/backups";
+
+        public static AegisSettingsSnapshot Default { get; } = new AegisSettingsSnapshot();
+    }
+}

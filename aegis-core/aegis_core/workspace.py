@@ -1,0 +1,360 @@
+from __future__ import annotations
+
+import json
+import os
+import re
+from collections import Counter, defaultdict
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+from .memory import ProjectMemory
+from .safety import IGNORED_DIRS, is_safe_to_read
+
+
+TEXT_SUFFIXES = {
+    ".py",
+    ".js",
+    ".jsx",
+    ".ts",
+    ".tsx",
+    ".cs",
+    ".cpp",
+    ".cxx",
+    ".cc",
+    ".c",
+    ".h",
+    ".hpp",
+    ".xaml",
+    ".json",
+    ".toml",
+    ".yaml",
+    ".yml",
+    ".md",
+    ".txt",
+    ".sln",
+    ".csproj",
+    ".vcxproj",
+    ".props",
+    ".targets",
+    ".cmake",
+}
+
+LANGUAGE_BY_SUFFIX = {
+    ".py": "Python",
+    ".js": "JavaScript",
+    ".jsx": "React",
+    ".ts": "TypeScript",
+    ".tsx": "React/TypeScript",
+    ".cs": "C#",
+    ".cpp": "C++",
+    ".cxx": "C++",
+    ".cc": "C++",
+    ".c": "C/C++",
+    ".h": "C/C++ Header",
+    ".hpp": "C++ Header",
+    ".xaml": "XAML",
+}
+
+BUILD_FILE_NAMES = {
+    "package.json",
+    "pnpm-lock.yaml",
+    "yarn.lock",
+    "requirements.txt",
+    "pyproject.toml",
+    "Cargo.toml",
+    "CMakeLists.txt",
+    "Makefile",
+}
+
+
+@dataclass
+class ScanOptions:
+    max_files: int = 5000
+    max_file_bytes: int = 300000
+
+
+class WorkspaceScanner:
+    def __init__(self, workspace: str | Path, options: ScanOptions | None = None):
+        self.workspace = Path(workspace).resolve()
+        self.options = options or ScanOptions()
+
+    def scan(self, persist: bool = True) -> dict[str, Any]:
+        files = self._collect_files()
+        fingerprint = self._scan_fingerprint(files)
+        if persist:
+            cached = self._load_cached_scan(fingerprint)
+            if cached:
+                cached["cache_hit"] = True
+                cached["cache_reason"] = "workspace file fingerprint unchanged"
+                return cached
+
+        language_counts = Counter(LANGUAGE_BY_SUFFIX.get(path.suffix.lower(), path.suffix.lower() or "other") for path in files)
+        build_files = [self._rel(path) for path in files if path.name in BUILD_FILE_NAMES or path.suffix.lower() in {".sln", ".slnx", ".csproj", ".vcxproj"}]
+        readmes = [self._rel(path) for path in files if path.name.lower().startswith("readme")]
+        tests = [self._rel(path) for path in files if self._is_test_file(path)]
+        recent = sorted(files, key=lambda path: path.stat().st_mtime if path.exists() else 0, reverse=True)[:20]
+        todo_comments = self._find_todos(files)
+        dependency_graph = self._dependency_graph(files)
+        symbol_index = self._symbol_index(files)
+        frameworks = self._detect_frameworks(files)
+
+        result = {
+            "workspace": str(self.workspace),
+            "workspace_name": self.workspace.name,
+            "frameworks": frameworks,
+            "languages": dict(language_counts.most_common()),
+            "file_count": len(files),
+            "build_files": build_files,
+            "readmes": readmes[:20],
+            "test_files": tests[:50],
+            "entry_points": self._entry_points(files),
+            "todo_comments": todo_comments[:100],
+            "recent_files": [self._rel(path) for path in recent],
+            "ignored_dirs": sorted(IGNORED_DIRS),
+            "dependency_graph": dependency_graph,
+            "symbol_index": symbol_index,
+            "scan_fingerprint": fingerprint,
+            "cache_hit": False,
+        }
+
+        if persist:
+            memory = ProjectMemory(self.workspace)
+            memory.ensure()
+            memory.write_json("file-index.json", self._file_index(files))
+            memory.write_json("dependency-graph.json", dependency_graph)
+            memory.write_json("symbol-index.json", symbol_index)
+            memory.write_json("scan-cache.json", {"fingerprint": fingerprint, "result": result})
+            memory.write_generated_markdown("project-summary.md", "Project Summary", render_project_summary(result))
+            memory.write_generated_markdown("architecture-map.md", "Architecture Map", render_architecture_map(result))
+
+        return result
+
+    def _collect_files(self) -> list[Path]:
+        collected: list[Path] = []
+        for dirpath, dirnames, filenames in os.walk(self.workspace):
+            dirnames[:] = [name for name in dirnames if name not in IGNORED_DIRS]
+            base = Path(dirpath)
+            for filename in filenames:
+                if len(collected) >= self.options.max_files:
+                    return collected
+                path = base / filename
+                if not is_safe_to_read(path):
+                    continue
+                if path.suffix.lower() not in TEXT_SUFFIXES and path.name not in BUILD_FILE_NAMES:
+                    continue
+                try:
+                    if path.stat().st_size > self.options.max_file_bytes:
+                        continue
+                except OSError:
+                    continue
+                collected.append(path)
+        return collected
+
+    def _rel(self, path: Path) -> str:
+        try:
+            return path.relative_to(self.workspace).as_posix()
+        except ValueError:
+            return str(path)
+
+    def _file_index(self, files: list[Path]) -> list[dict[str, Any]]:
+        index = []
+        for path in files:
+            try:
+                stat = path.stat()
+            except OSError:
+                continue
+            index.append({
+                "path": self._rel(path),
+                "suffix": path.suffix.lower(),
+                "size": stat.st_size,
+                "modified": int(stat.st_mtime),
+            })
+        return index
+
+    def _scan_fingerprint(self, files: list[Path]) -> dict[str, Any]:
+        max_mtime = 0
+        total_size = 0
+        suffix_counts = Counter()
+        for path in files:
+            try:
+                stat = path.stat()
+            except OSError:
+                continue
+            max_mtime = max(max_mtime, int(stat.st_mtime))
+            total_size += stat.st_size
+            suffix_counts[path.suffix.lower() or path.name] += 1
+        return {
+            "file_count": len(files),
+            "max_modified": max_mtime,
+            "total_size": total_size,
+            "suffixes": dict(sorted(suffix_counts.items())),
+        }
+
+    def _load_cached_scan(self, fingerprint: dict[str, Any]) -> dict[str, Any] | None:
+        cache_path = ProjectMemory(self.workspace).root / "scan-cache.json"
+        if not cache_path.exists():
+            return None
+        try:
+            cached = json.loads(cache_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+        if cached.get("fingerprint") != fingerprint:
+            return None
+        result = cached.get("result")
+        return result if isinstance(result, dict) else None
+
+    def _detect_frameworks(self, files: list[Path]) -> list[str]:
+        names = {path.name for path in files}
+        rels = {self._rel(path) for path in files}
+        frameworks: set[str] = set()
+        package_json = self.workspace / "package.json"
+        if package_json.exists() and is_safe_to_read(package_json):
+            try:
+                package = json.loads(package_json.read_text(encoding="utf-8"))
+                deps = {**package.get("dependencies", {}), **package.get("devDependencies", {})}
+                if "next" in deps:
+                    frameworks.add("Next.js")
+                if "vite" in deps:
+                    frameworks.add("Vite")
+                if "react" in deps:
+                    frameworks.add("React")
+                if "express" in deps:
+                    frameworks.add("Node/Express")
+            except (OSError, json.JSONDecodeError):
+                frameworks.add("Node")
+        if any(item.endswith(".sln") or item.endswith(".slnx") for item in rels):
+            frameworks.add("Visual Studio Solution")
+        if any(item.endswith(".csproj") for item in rels):
+            frameworks.add("C#/.NET")
+        if any(item.endswith(".vcxproj") for item in rels):
+            frameworks.add("C++/MSBuild")
+        if "ProjectSettings.asset" in names or (self.workspace / "Assets").exists() and (self.workspace / "ProjectSettings").exists():
+            frameworks.add("Unity")
+        if "pyproject.toml" in names or "requirements.txt" in names:
+            frameworks.add("Python")
+        if "Cargo.toml" in names:
+            frameworks.add("Rust")
+        if "CMakeLists.txt" in names:
+            frameworks.add("CMake")
+        return sorted(frameworks) or ["Unknown"]
+
+    def _entry_points(self, files: list[Path]) -> list[str]:
+        candidates = []
+        for path in files:
+            rel = self._rel(path)
+            lower = rel.lower()
+            if lower in {"main.py", "app.py", "program.cs", "index.js", "server.js"}:
+                candidates.append(rel)
+            elif lower.endswith(("/program.cs", "/main.py", "/main.ts", "/main.tsx", "/app.tsx", "/index.tsx")):
+                candidates.append(rel)
+        return candidates[:50]
+
+    def _is_test_file(self, path: Path) -> bool:
+        rel = self._rel(path).lower()
+        name = path.name.lower()
+        return (
+            "/test/" in rel
+            or "/tests/" in rel
+            or name.startswith("test_")
+            or name.endswith((".test.ts", ".test.tsx", ".spec.ts", ".spec.tsx", "tests.cs"))
+            or "test" in name and path.suffix.lower() in {".cs", ".py", ".js", ".ts", ".tsx"}
+        )
+
+    def _read_text(self, path: Path) -> str:
+        try:
+            return path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            return ""
+
+    def _find_todos(self, files: list[Path]) -> list[dict[str, Any]]:
+        todos = []
+        for path in files:
+            if path.suffix.lower() not in {".py", ".js", ".jsx", ".ts", ".tsx", ".cs", ".cpp", ".h", ".hpp", ".md"}:
+                continue
+            for number, line in enumerate(self._read_text(path).splitlines(), start=1):
+                lowered = line.lower()
+                if "todo" in lowered or "fixme" in lowered:
+                    todos.append({"file": self._rel(path), "line": number, "text": line.strip()[:220]})
+                    if len(todos) >= 100:
+                        return todos
+        return todos
+
+    def _dependency_graph(self, files: list[Path]) -> dict[str, Any]:
+        graph: dict[str, list[str]] = defaultdict(list)
+        import_patterns = [
+            re.compile(r"^\s*import\s+.+?from\s+[\"'](.+?)[\"']"),
+            re.compile(r"^\s*import\s+[\"'](.+?)[\"']"),
+            re.compile(r"^\s*from\s+([\w.]+)\s+import\s+"),
+            re.compile(r"^\s*using\s+([\w.]+)\s*;"),
+            re.compile(r"^\s*#include\s+[<\"](.+?)[>\"]"),
+        ]
+        for path in files:
+            if path.suffix.lower() not in {".py", ".js", ".jsx", ".ts", ".tsx", ".cs", ".cpp", ".c", ".h", ".hpp"}:
+                continue
+            deps: list[str] = []
+            for line in self._read_text(path).splitlines()[:500]:
+                for pattern in import_patterns:
+                    match = pattern.search(line)
+                    if match:
+                        deps.append(match.group(1))
+                        break
+            if deps:
+                graph[self._rel(path)] = sorted(set(deps))
+        return {"files": graph}
+
+    def _symbol_index(self, files: list[Path]) -> dict[str, list[dict[str, Any]]]:
+        symbols: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        patterns = {
+            "class": re.compile(r"\b(class|interface|struct|enum)\s+([A-Za-z_][\w]*)"),
+            "function": re.compile(r"\b(function|def)\s+([A-Za-z_][\w]*)|^\s*(?:public|private|protected|internal)?\s*(?:static\s+)?[\w<>\[\],]+\s+([A-Za-z_][\w]*)\s*\("),
+            "component": re.compile(r"\b(?:export\s+default\s+)?function\s+([A-Z][A-Za-z0-9_]*)\s*\("),
+        }
+        for path in files:
+            if path.suffix.lower() not in {".py", ".js", ".jsx", ".ts", ".tsx", ".cs", ".cpp", ".h", ".hpp", ".xaml"}:
+                continue
+            text = self._read_text(path)
+            for number, line in enumerate(text.splitlines(), start=1):
+                for kind, pattern in patterns.items():
+                    match = pattern.search(line)
+                    if match:
+                        name = next((group for group in match.groups()[1:] if group), None)
+                        if name:
+                            symbols[self._rel(path)].append({"kind": kind, "name": name, "line": number})
+        return symbols
+
+
+def render_project_summary(scan: dict[str, Any]) -> str:
+    languages = ", ".join(f"{name} ({count})" for name, count in scan["languages"].items())
+    frameworks = ", ".join(scan["frameworks"])
+    return "\n".join([
+        f"Workspace: `{scan['workspace_name']}`",
+        "",
+        f"Detected frameworks: {frameworks}",
+        f"Indexed files: {scan['file_count']}",
+        f"Languages: {languages or 'none detected'}",
+        "",
+        "Build/project files:",
+        *[f"- `{item}`" for item in scan["build_files"][:30]],
+        "",
+        "Likely entry points:",
+        *[f"- `{item}`" for item in scan["entry_points"][:30]],
+    ])
+
+
+def render_architecture_map(scan: dict[str, Any]) -> str:
+    return "\n".join([
+        f"Workspace: `{scan['workspace_name']}`",
+        "",
+        "Major systems inferred from local files:",
+        *[f"- {item}" for item in scan["frameworks"]],
+        "",
+        "Tests:",
+        *[f"- `{item}`" for item in scan["test_files"][:30]],
+        "",
+        "Risk areas to review first:",
+        "- Build files and package configuration",
+        "- Files with TODO/FIXME comments",
+        "- Recent modified files",
+        "- Areas with no nearby tests",
+    ])

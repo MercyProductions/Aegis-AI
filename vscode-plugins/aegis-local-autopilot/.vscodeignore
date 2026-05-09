@@ -1,0 +1,9 @@
+*.vsix
+release/
+scripts/
+.aegis/
+node_modules/
+.vscode-test/
+out/
+dist/
+*.log

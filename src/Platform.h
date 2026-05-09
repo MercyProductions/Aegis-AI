@@ -17,6 +17,7 @@ struct HttpResponse {
 
 struct DesktopSettings {
     std::string api_base_url = "http://127.0.0.1:8787";
+    std::string core_api_base_url = "http://127.0.0.1:8788";
     std::filesystem::path backend_root;
     std::string backend_start_script = "scripts\\start-backend.ps1";
     bool auto_start_backend = true;

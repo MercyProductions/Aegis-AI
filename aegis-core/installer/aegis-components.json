@@ -1,0 +1,74 @@
+{
+  "schema": "auralith.aegis.components.v1",
+  "version": "0.1.0",
+  "core": {
+    "name": "Aegis Core",
+    "kind": "local-runtime",
+    "default_url": "http://127.0.0.1:8788",
+    "health_endpoint": "/v1/health",
+    "start_script": "scripts/start-core.ps1",
+    "required": true
+  },
+  "clients": [
+    {
+      "id": "auralith-desktop",
+      "name": "Auralith Desktop",
+      "kind": "desktop-app",
+      "uses_core": true,
+      "register_endpoint": "/v1/clients/register"
+    },
+    {
+      "id": "aegis-vscode",
+      "name": "Aegis Local Agent for VS Code",
+      "kind": "vscode-extension",
+      "uses_core": true,
+      "register_endpoint": "/v1/clients/register"
+    },
+    {
+      "id": "aegis-visual-studio",
+      "name": "Aegis Local Agent for Visual Studio",
+      "kind": "visual-studio-extension",
+      "uses_core": true,
+      "register_endpoint": "/v1/clients/register"
+    },
+    {
+      "id": "auralith-website",
+      "name": "Auralith Website",
+      "kind": "website",
+      "uses_core": "local-dev-only",
+      "register_endpoint": "/v1/clients/register"
+    }
+  ],
+  "shared_configuration": {
+    "endpoint": "/v1/settings",
+    "workspace_file": ".aegis/config.json"
+  },
+  "shared_memory": {
+    "endpoint": "/v1/memory",
+    "workspace_folder": ".aegis"
+  },
+  "shared_tasks": {
+    "endpoint": "/v1/tasks",
+    "workspace_file": ".aegis/tasks.json"
+  },
+  "diagnostics": {
+    "endpoint": "/v1/diagnostics",
+    "workspace_files": [
+      ".aegis/core-log.md",
+      ".aegis/validation-log.md",
+      ".aegis/agent-history.json"
+    ]
+  },
+  "update_policy": {
+    "channel": "local",
+    "rollback_required": true,
+    "install_order": [
+      "ollama",
+      "aegis-core",
+      "desktop-app",
+      "vscode-extension",
+      "visual-studio-extension",
+      "website-local-dev"
+    ]
+  }
+}

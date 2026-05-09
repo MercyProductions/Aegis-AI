@@ -1,0 +1,4 @@
+This extension is private internal project tooling for the Aegis workspace.
+
+No license is granted for external distribution unless the Aegis project owner
+adds an explicit license later.

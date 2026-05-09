@@ -1,0 +1,307 @@
+{
+  "name": "aegis-local-autopilot",
+  "displayName": "Aegis Local Agent",
+  "description": "Local-first Ollama coding agent for safe workspace analysis, planning, diffs, validation, rollback, and project memory.",
+  "version": "0.1.1",
+  "publisher": "aegis",
+  "license": "UNLICENSED",
+  "icon": "media/aegis.png",
+  "repository": {
+    "type": "git",
+    "url": "file:../.."
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "AI",
+    "Other"
+  ],
+  "keywords": [
+    "aegis",
+    "ollama",
+    "local models",
+    "autopilot",
+    "coding assistant"
+  ],
+  "main": "./extension.js",
+  "extensionKind": [
+    "workspace"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onView:aegisLocalAutopilot.panel",
+    "onCommand:aegisLocalAutopilot.openPanel",
+    "onCommand:aegisLocalAutopilot.runFirstRunSetup",
+    "onCommand:aegisLocalAutopilot.chatWithLocalModel",
+    "onCommand:aegisLocalAutopilot.runHealthCheck",
+    "onCommand:aegisLocalAutopilot.runValidation",
+    "onCommand:aegisLocalAutopilot.scanModels",
+    "onCommand:aegisLocalAutopilot.explainActiveFile",
+    "onCommand:aegisLocalAutopilot.explainProject",
+    "onCommand:aegisLocalAutopilot.fixBuildErrors",
+    "onCommand:aegisLocalAutopilot.reviewActiveFile",
+    "onCommand:aegisLocalAutopilot.improveSelectedCode",
+    "onCommand:aegisLocalAutopilot.generateTodoRoadmap",
+    "onCommand:aegisLocalAutopilot.generateProjectRoadmap",
+    "onCommand:aegisLocalAutopilot.continueFromRoadmap",
+    "onCommand:aegisLocalAutopilot.createFeature",
+    "onCommand:aegisLocalAutopilot.runAgentMode",
+    "onCommand:aegisLocalAutopilot.proposePatch",
+    "onCommand:aegisLocalAutopilot.continueProject",
+    "onCommand:aegisLocalAutopilot.workOnCurrentFolder",
+    "onCommand:aegisLocalAutopilot.previewLastProposal",
+    "onCommand:aegisLocalAutopilot.applyLastProposal",
+    "onCommand:aegisLocalAutopilot.rollbackLastChange",
+    "onCommand:aegisLocalAutopilot.runAutopilot",
+    "onCommand:aegisLocalAutopilot.startAutopilot",
+    "onCommand:aegisLocalAutopilot.stopAutopilot"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "aegis-local-ai",
+          "title": "Aegis Local Agent",
+          "icon": "media/aegis.svg"
+        }
+      ]
+    },
+    "views": {
+      "aegis-local-ai": [
+        {
+          "id": "aegisLocalAutopilot.panel",
+          "name": "Aegis Local Agent",
+          "type": "webview"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "aegisLocalAutopilot.openPanel",
+        "title": "Aegis: Open Local Agent"
+      },
+      {
+        "command": "aegisLocalAutopilot.runFirstRunSetup",
+        "title": "Aegis: Run First-Run Setup"
+      },
+      {
+        "command": "aegisLocalAutopilot.chatWithLocalModel",
+        "title": "Aegis: Chat With Local Model"
+      },
+      {
+        "command": "aegisLocalAutopilot.runHealthCheck",
+        "title": "Aegis: Run Health Check"
+      },
+      {
+        "command": "aegisLocalAutopilot.runValidation",
+        "title": "Aegis: Run Validation"
+      },
+      {
+        "command": "aegisLocalAutopilot.scanModels",
+        "title": "Aegis: Scan Local Models"
+      },
+      {
+        "command": "aegisLocalAutopilot.explainActiveFile",
+        "title": "Aegis: Explain Active File"
+      },
+      {
+        "command": "aegisLocalAutopilot.explainProject",
+        "title": "Aegis: Explain This Project"
+      },
+      {
+        "command": "aegisLocalAutopilot.fixBuildErrors",
+        "title": "Aegis: Fix Build Errors"
+      },
+      {
+        "command": "aegisLocalAutopilot.reviewActiveFile",
+        "title": "Aegis: Review Current File"
+      },
+      {
+        "command": "aegisLocalAutopilot.improveSelectedCode",
+        "title": "Aegis: Improve Selected Code"
+      },
+      {
+        "command": "aegisLocalAutopilot.generateTodoRoadmap",
+        "title": "Aegis: Generate TODO Roadmap"
+      },
+      {
+        "command": "aegisLocalAutopilot.generateProjectRoadmap",
+        "title": "Aegis: Generate/Update Project Roadmap"
+      },
+      {
+        "command": "aegisLocalAutopilot.continueFromRoadmap",
+        "title": "Aegis: Continue From Roadmap"
+      },
+      {
+        "command": "aegisLocalAutopilot.createFeature",
+        "title": "Aegis: Create Feature In Current Project"
+      },
+      {
+        "command": "aegisLocalAutopilot.runAgentMode",
+        "title": "Aegis: Run Agent Mode"
+      },
+      {
+        "command": "aegisLocalAutopilot.proposePatch",
+        "title": "Aegis: Draft Project Patch"
+      },
+      {
+        "command": "aegisLocalAutopilot.continueProject",
+        "title": "Aegis: Continue Working On This Project"
+      },
+      {
+        "command": "aegisLocalAutopilot.workOnCurrentFolder",
+        "title": "Aegis: Do Task From Current Folder"
+      },
+      {
+        "command": "aegisLocalAutopilot.previewLastProposal",
+        "title": "Aegis: Preview Last Local Proposal"
+      },
+      {
+        "command": "aegisLocalAutopilot.applyLastProposal",
+        "title": "Aegis: Apply Last Local Proposal"
+      },
+      {
+        "command": "aegisLocalAutopilot.rollbackLastChange",
+        "title": "Aegis: Rollback Last Agent Change"
+      },
+      {
+        "command": "aegisLocalAutopilot.runAutopilot",
+        "title": "Aegis: Run Local Autopilot Once"
+      },
+      {
+        "command": "aegisLocalAutopilot.startAutopilot",
+        "title": "Aegis: Start Local Autopilot"
+      },
+      {
+        "command": "aegisLocalAutopilot.stopAutopilot",
+        "title": "Aegis: Stop Local Autopilot"
+      }
+    ],
+    "configuration": {
+      "title": "Aegis Local Agent",
+      "properties": {
+        "aegisLocalAutopilot.ollamaUrl": {
+          "type": "string",
+          "default": "http://127.0.0.1:11434",
+          "description": "Base URL for the local Ollama server."
+        },
+        "aegisLocalAutopilot.coreUrl": {
+          "type": "string",
+          "default": "http://127.0.0.1:8788",
+          "description": "Base URL for Aegis Core, used for shared memory, diagnostics, tasks, settings, and cross-client registration."
+        },
+        "aegisLocalAutopilot.chatModel": {
+          "type": "string",
+          "default": "qwen3-coder:30b",
+          "description": "Primary local model for coding, planning, and review."
+        },
+        "aegisLocalAutopilot.fastModel": {
+          "type": "string",
+          "default": "qwen2.5-coder:7b",
+          "description": "Faster local model for quick explanations and smaller tasks."
+        },
+        "aegisLocalAutopilot.fallbackModels": {
+          "type": "array",
+          "default": [
+            "qwen2.5-coder:7b",
+            "granite-code:8b"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "description": "Fallback local Ollama models used if the selected model fails."
+        },
+        "aegisLocalAutopilot.embeddingModel": {
+          "type": "string",
+          "default": "mxbai-embed-large:latest",
+          "description": "Installed local embedding model reserved for future workspace indexing."
+        },
+        "aegisLocalAutopilot.autopilotIntervalMinutes": {
+          "type": "number",
+          "default": 15,
+          "minimum": 2,
+          "description": "Minutes between background autopilot passes."
+        },
+        "aegisLocalAutopilot.autopilotWriteMode": {
+          "type": "string",
+          "enum": [
+            "preview",
+            "apply"
+          ],
+          "default": "preview",
+          "description": "Preview drafts JSON proposals, or apply generated file edits after checkpointing."
+        },
+        "aegisLocalAutopilot.maxContextFiles": {
+          "type": "number",
+          "default": 12,
+          "minimum": 3,
+          "maximum": 40,
+          "description": "Maximum workspace files included in an autopilot prompt."
+        },
+        "aegisLocalAutopilot.maxContextChars": {
+          "type": "number",
+          "default": 62000,
+          "minimum": 16000,
+          "maximum": 200000,
+          "description": "Maximum focused context characters sent to the local model."
+        },
+        "aegisLocalAutopilot.autoScanOnOpen": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically scan and update .aegis project memory when a workspace opens."
+        },
+        "aegisLocalAutopilot.validationCommandPreferences": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "description": "Optional validation command allow-list preferences, such as npm, pnpm, dotnet build, cargo check, or python -m pytest."
+        },
+        "aegisLocalAutopilot.safetyMode": {
+          "type": "string",
+          "enum": [
+            "standard",
+            "strict",
+            "review-only"
+          ],
+          "default": "standard",
+          "description": "Safety mode. review-only prevents applying generated edits."
+        },
+        "aegisLocalAutopilot.excludeGlob": {
+          "type": "string",
+          "default": "{**/node_modules/**,**/.git/**,**/.venv/**,**/x64/**,**/build/**,**/dist/**,**/.tmp/**,**/smoke-artifacts/**,**/stress-artifacts/**}",
+          "description": "Glob pattern excluded from autopilot context discovery."
+        }
+      }
+    },
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "aegisLocalAutopilot.workOnCurrentFolder",
+          "when": "explorerResourceIsFolder",
+          "group": "navigation@50"
+        },
+        {
+          "command": "aegisLocalAutopilot.continueProject",
+          "when": "explorerResourceIsFolder",
+          "group": "navigation@51"
+        },
+        {
+          "command": "aegisLocalAutopilot.createFeature",
+          "when": "explorerResourceIsFolder",
+          "group": "navigation@52"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "compile": "node --check extension.js",
+    "lint": "npm run compile && node scripts/lint-package.js",
+    "package": "node scripts/package-release.js",
+    "install-local": "npm run package && node scripts/install-local.js",
+    "check": "npm run compile",
+    "install:local": "npm run install-local"
+  }
+}

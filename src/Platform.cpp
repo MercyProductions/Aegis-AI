@@ -467,6 +467,8 @@ DesktopSettings LoadDesktopSettings()
         const std::string value = Trim(line.substr(eq + 1));
         if (key == "api_base_url") {
             settings.api_base_url = value;
+        } else if (key == "core_api_base_url") {
+            settings.core_api_base_url = value;
         } else if (key == "backend_root") {
             const std::filesystem::path configured_root = ResolveConfigPath(base, value);
             if (BackendRootLooksValid(configured_root)) {
@@ -488,6 +490,13 @@ DesktopSettings LoadDesktopSettings()
     if (settings.api_base_url.empty()) {
         settings.api_base_url = "http://127.0.0.1:8787";
     }
+    settings.core_api_base_url = Trim(settings.core_api_base_url);
+    while (!settings.core_api_base_url.empty() && settings.core_api_base_url.back() == '/') {
+        settings.core_api_base_url.pop_back();
+    }
+    if (settings.core_api_base_url.empty()) {
+        settings.core_api_base_url = "http://127.0.0.1:8788";
+    }
     return settings;
 }
 
@@ -504,6 +513,7 @@ bool SaveDesktopSettings(const DesktopSettings& settings, std::string& error)
     }
 
     file << "api_base_url=" << settings.api_base_url << "\n";
+    file << "core_api_base_url=" << settings.core_api_base_url << "\n";
     file << "backend_root=" << PathToUtf8(settings.backend_root) << "\n";
     file << "backend_start_script=" << settings.backend_start_script << "\n";
     file << "auto_start_backend=" << (settings.auto_start_backend ? "true" : "false") << "\n";

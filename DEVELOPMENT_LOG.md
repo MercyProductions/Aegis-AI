@@ -1,0 +1,29 @@
+# Development Log
+
+## 2026-05-08 - Autonomous Stabilization Start
+
+Focus:
+
+- Treat Auralith/Aegis as a real long-term local-first development ecosystem.
+- Prefer bug hunting, validation, documentation, and small reliability fixes over feature expansion.
+- Keep Desktop, VS Code, Visual Studio, Website, and Aegis Core connected through stable shared contracts.
+
+Actions:
+
+- Confirmed GitHub remote: `https://github.com/MercyProductions/Aegis-AI.git`.
+- Added regression tests around the Aegis Core contracts that every client is beginning to depend on.
+- Kept unrelated dirty worktree changes out of scope.
+- Recorded workflow friction in `WORKFLOW_NOTES.md`.
+
+Validation completed:
+
+- Aegis Core pytest suite: pass.
+- Aegis Core compile check: pass.
+- VS Code extension lint and package: pass.
+- Desktop app build: pass.
+- Visual Studio extension build/package: pass.
+- Website frontend tests/build and backend tests: pass.
+
+Known next checks:
+
+- Perform manual live UI click-through in Desktop, VS Code, and Visual Studio when an interactive session is available.
