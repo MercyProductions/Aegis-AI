@@ -228,3 +228,25 @@ Validation completed:
 - Website launcher PowerShell syntax check: pass.
 - Website launch script: pass; Auralith OS reported ready at `http://127.0.0.1:5173`.
 - Website smoke test without chat: pass; frontend/backend identity, partial config, workspace setup, diff/apply/readback, validation, and readiness checks completed.
+
+## 2026-05-09 - Aegis Core Starter Hardening
+
+Focus:
+
+- Make the shared Core runtime starter fail clearly when port `8788` is occupied by the wrong service.
+- Prefer the project virtual environment when one exists.
+
+Actions:
+
+- Updated `aegis-core/scripts/start-core.ps1` to verify the `/v1/health` envelope has `api_version: v1` and `kind: health` before accepting an already-running service.
+- Added contract-version reporting for already-running Core instances.
+- Added Python resolution that prefers `.venv\Scripts\python.exe` and falls back to `python` on PATH with clearer setup errors.
+- Added an import preflight for `aegis_core.server` and `uvicorn` before starting the server.
+
+Validation completed:
+
+- Aegis Core start script syntax check: pass.
+- Aegis Core import preflight: pass.
+- Aegis Core start script against an already-running Core instance: pass; reported contract `2026.05.09`.
+- Aegis Core contract tests: pass, 51 tests.
+- Aegis Core compile check: pass.

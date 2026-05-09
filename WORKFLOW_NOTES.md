@@ -101,6 +101,21 @@ Fixes applied:
 - Added short HTTP timeouts to launcher readiness and JSON probes.
 - Kept the existing service ownership and route-contract checks intact.
 
+### 2026-05-09 - Aegis Core Starter Hardening
+
+Context:
+- Core is the shared runtime, so the starter should not mistake an arbitrary service on port `8788` for Aegis Core.
+- The starter also used whichever `python` was first on PATH, even if a project virtualenv existed.
+
+What worked:
+- The script detected the currently running Core instance and reported contract `2026.05.09`.
+- Core contract tests and compile checks passed after the change.
+
+Fixes applied:
+- Verified the `/v1/health` envelope before accepting an existing service.
+- Preferred `.venv\Scripts\python.exe` when available.
+- Added a dependency import preflight with a setup-oriented error.
+
 ### 2026-05-08 - Product Utilization Kickoff
 
 Context:
@@ -141,6 +156,7 @@ Fixes applied:
 | 2026-05-09 | VS Code release scripts | Package/install commands broke when the workspace path contained spaces and `&`. | Medium | Replaced shell command strings with a shared command runner and relative VSIX args. |
 | 2026-05-09 | VS Code installer | PowerShell installer duplicated the npm/Node install path. | Low | Made it delegate to `npm run install-local` and validated the wrapper. |
 | 2026-05-09 | Website launcher | HTTP readiness probes had no explicit timeout, so half-responsive local services could stall startup. | Medium | Added short launch probe timeouts and validated launch/smoke. |
+| 2026-05-09 | Aegis Core startup | Core starter accepted any HTTP 200 at `/v1/health` and did not prefer a project virtualenv. | Medium | Verify the Core health envelope, report contract version, and resolve Python predictably. |
 
 ## Daily Workflow Checklist
 
