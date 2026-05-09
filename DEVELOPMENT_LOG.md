@@ -564,3 +564,24 @@ Actions:
 Validation completed:
 
 - Aegis Core contract tests: pass, 69 tests including job dashboard, safe job run logs, due scheduled jobs, trigger execution, approval-gated build health, and broken-reference reporting.
+
+## 2026-05-09 - Aegis Core Observability and Quality Intelligence
+
+Focus:
+
+- Make Core aware of local project health over time without adding unsafe automation.
+- Use quality trends to guide supervised Planner Agent decisions before future work starts.
+
+Actions:
+
+- Added the `quality.dashboard` and `quality.snapshot` Core contracts.
+- Added `/v1/quality`, `/v1/quality/snapshot`, and `aegis quality`.
+- Added `.aegis/health-history.json` snapshot tracking plus generated daily and weekly quality reports.
+- Added health scoring, validation/build/test/lint status extraction, dependency drift, TODO/known-bug counts, stale documentation checks, complexity hotspots, risky diff detection, repeated repair/model failure signals, and frequently changed file tracking.
+- Added a safe `quality-intelligence-snapshot` maintenance job that writes only generated `.aegis` health artifacts.
+- Wired Planner Agent orchestration planning to read quality data and surface risk-aware guidance.
+- Updated API, architecture, runtime consolidation, client responsibility, and compatibility docs.
+
+Validation completed:
+
+- Aegis Core contract tests: pass, 74 tests including quality dashboard, read-only dashboard behavior, snapshot history, trend detection, quality job execution, and Planner integration.

@@ -21,6 +21,7 @@
 - Added experimental Aegis Core autonomous task orchestration with supervised goal planning, local queue state, approval gates, validation state, rollback metadata, and memory updates without uncontrolled file editing.
 - Added experimental Aegis Core multi-agent specialization with Planner, Architect, Coder, Reviewer, Tester, Repair, and Documentation roles assigned to orchestration tasks.
 - Added experimental Aegis Core workflow automation with safe scheduled/triggered maintenance jobs, `/v1/jobs`, `aegis jobs`, generated project health reports, and `.aegis/jobs-log.md` history while preserving approval gates for risky actions.
+- Added experimental Aegis Core observability and quality intelligence with `/v1/quality`, `/v1/quality/snapshot`, `aegis quality`, `.aegis/health-history.json`, daily/weekly quality reports, risk detection, and Planner Agent guidance.
 - Improved `/v1/tasks/{task_id}/status` error responses for missing tasks and unsupported statuses.
 - Hardened shared task loading so malformed local task records do not break task listing, dashboard sorting, or status summary updates.
 - Hardened shared client registry loading so malformed local client records do not break cross-client dashboard sorting.

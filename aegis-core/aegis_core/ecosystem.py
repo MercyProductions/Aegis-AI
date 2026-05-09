@@ -23,6 +23,8 @@ MEMORY_FILES = {
     "known_issues": "known-issues.md",
     "validation_log": "validation-log.md",
     "jobs_log": "jobs-log.md",
+    "daily_health_report": "daily-health-report.md",
+    "weekly_quality_summary": "weekly-quality-summary.md",
 }
 
 
@@ -48,6 +50,7 @@ def diagnostics_summary(workspace: str | Path) -> dict[str, Any]:
         "extension_log": "extension-log.md",
         "validation_log": "validation-log.md",
         "jobs_log": "jobs-log.md",
+        "health_history": "health-history.json",
         "agent_history": "agent-history.json",
     }
     logs: dict[str, dict[str, Any]] = {}

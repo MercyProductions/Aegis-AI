@@ -11,6 +11,7 @@ from typing import Any
 from .diagnostics import scrub
 from .ecosystem import shared_memory_summary
 from .memory import ProjectMemory, utc_now
+from .quality import record_quality_snapshot
 from .roadmap import generate_roadmap, next_best_tasks
 from .safety import is_ignored_path, is_safe_to_read
 from .validation import detect_validation_commands, run_validation, validation_summary
@@ -123,6 +124,15 @@ DEFAULT_JOBS: list[MaintenanceJob] = [
         schedule="daily",
         triggers=["project_opened", "build_failed", "test_failed", "many_files_changed"],
         description="Generate a project health snapshot with warnings and recommended actions.",
+        approval_gates=[],
+    ),
+    MaintenanceJob(
+        id="quality-intelligence-snapshot",
+        title="Quality Intelligence Snapshot",
+        workflow="quality_intelligence_snapshot",
+        schedule="daily",
+        triggers=["project_opened", "build_failed", "test_failed", "many_files_changed"],
+        description="Record health history and generate daily/weekly quality reports.",
         approval_gates=[],
     ),
     MaintenanceJob(
@@ -249,6 +259,8 @@ def _run_workflow(root: Path, job: MaintenanceJob, *, approval: bool) -> dict[st
         return _workflow_broken_references_check(root)
     if job.workflow == "project_health_report":
         return _workflow_project_health_report(root)
+    if job.workflow == "quality_intelligence_snapshot":
+        return _workflow_quality_intelligence_snapshot(root)
     if job.workflow == "next_best_task":
         return _workflow_next_best_task(root)
     if job.workflow == "validation_status_check":
@@ -421,6 +433,24 @@ def _workflow_project_health_report(root: Path) -> dict[str, Any]:
         suggested_actions=actions,
         artifacts={"project_health_report": str(report_path)},
         metrics={"scan": _scan_metrics(scan), "validation_commands": validation.get("commands", [])},
+    )
+
+
+def _workflow_quality_intelligence_snapshot(root: Path) -> dict[str, Any]:
+    quality = record_quality_snapshot(root)
+    return _result(
+        "completed",
+        f"Recorded quality snapshot: score {quality.get('score')} ({quality.get('grade')}).",
+        warnings=quality.get("warnings", []),
+        suggested_actions=[quality.get("recommended_next_improvement", "Review quality dashboard.")],
+        artifacts=quality.get("report_paths", {}),
+        metrics={
+            "score": quality.get("score"),
+            "grade": quality.get("grade"),
+            "trend": quality.get("trend"),
+            "top_risks": quality.get("top_risks", [])[:5],
+            "high_risk_files": quality.get("high_risk_files", [])[:5],
+        },
     )
 
 

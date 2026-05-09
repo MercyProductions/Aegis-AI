@@ -16,6 +16,7 @@ from .multi_agent import (
     append_agent_decision,
     coordination_state,
 )
+from .quality import planner_guidance, planner_quality_summary, quality_dashboard
 from .safety import is_safe_to_read
 from .validation import detect_validation_commands, run_validation
 from .workspace import WorkspaceScanner
@@ -52,7 +53,11 @@ def create_orchestration_plan(
     context = _collect_context_files(root, context_files or [])
     required_files = _required_files(scan, context)
     affected_systems = _affected_systems(scan, objective, required_files)
+    quality = quality_dashboard(root, scan=scan)
     risk = _risk_level(objective, affected_systems, required_files)
+    risk = _risk_with_quality(risk, quality, required_files)
+    quality_summary = planner_quality_summary(quality)
+    guidance = planner_guidance(quality)
     gates = _approval_gates(objective, commands)
     validation_plan = _validation_plan(commands)
     rollback_plan = _rollback_plan(root, required_files)
@@ -77,6 +82,8 @@ def create_orchestration_plan(
         "objective": objective,
         "status": "in_progress",
         "risk": risk,
+        "quality": quality_summary,
+        "planner_guidance": guidance,
         "source_client": source_client,
         "affected_systems": affected_systems,
         "required_files": required_files,
@@ -106,7 +113,7 @@ def create_orchestration_plan(
         task_id=queue_tasks[0]["id"] if queue_tasks else None,
         plan_id=plan_id,
         summary="Created supervised multi-agent orchestration plan.",
-        details={"risk": risk, "affected_systems": affected_systems, "validation_commands": commands},
+        details={"risk": risk, "affected_systems": affected_systems, "validation_commands": commands, "quality": quality_summary, "planner_guidance": guidance},
     )
     _write_state(memory, state)
     _append_history(memory, {"event": "orchestration_created", "plan": plan})
@@ -421,6 +428,24 @@ def _risk_level(objective: str, affected_systems: list[str], required_files: lis
     return "low"
 
 
+def _risk_with_quality(risk: str, quality: dict[str, Any], required_files: list[str]) -> str:
+    if risk == "high":
+        return risk
+    score = int(quality.get("score") or 100)
+    statuses = quality.get("statuses", {})
+    high_risk_paths = {str(item.get("path") or "") for item in quality.get("high_risk_files", []) if isinstance(item, dict)}
+    touches_high_risk = bool(high_risk_paths.intersection(required_files))
+    validation_failed = any(
+        isinstance(statuses.get(name), dict) and statuses[name].get("status") == "failed"
+        for name in ("build", "test", "lint", "validation")
+    )
+    if score < 50 or validation_failed or touches_high_risk:
+        return "high"
+    if score < 70 and risk == "low":
+        return "medium"
+    return risk
+
+
 def _approval_gates(objective: str, validation_commands: list[dict[str, Any]]) -> list[dict[str, str]]:
     text = objective.lower()
     gates = [{"id": "file_edit", "label": APPROVAL_GATE_LABELS["file_edit"]}]
@@ -552,10 +577,19 @@ def _write_orchestration_roadmap(memory: ProjectMemory, state: dict[str, Any]) -
         f"- Risk: {plan.get('risk')}",
         f"- Status: {plan.get('status')}",
         f"- Active step: {plan.get('active_step')}",
-        "",
-        "## Task Queue",
-        "",
     ]
+    quality = plan.get("quality") if isinstance(plan.get("quality"), dict) else {}
+    if quality:
+        lines.extend(
+            [
+                f"- Health score: {quality.get('score')} ({quality.get('grade')})",
+                f"- Recommended improvement: {quality.get('recommended_next_improvement')}",
+            ]
+        )
+    guidance = plan.get("planner_guidance") if isinstance(plan.get("planner_guidance"), list) else []
+    if guidance:
+        lines.extend(["", "## Planner Health Guidance", "", *[f"- {item}" for item in guidance]])
+    lines.extend(["", "## Task Queue", ""])
     for task in state.get("tasks", []):
         lines.append(f"{task.get('order')}. {task.get('title')} [{task.get('status')}]")
         lines.append(f"   - Agent: {task.get('owner_agent_label') or task.get('owner_agent')}")

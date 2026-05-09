@@ -266,6 +266,7 @@ def test_v1_endpoint_family_smoke_contracts(tmp_path: Path) -> None:
         ("/v1/agents", {}, "agents.roster"),
         ("/v1/orchestration", {"workspace": str(workspace)}, "orchestration.dashboard"),
         ("/v1/jobs", {"workspace": str(workspace)}, "jobs.dashboard"),
+        ("/v1/quality", {"workspace": str(workspace)}, "quality.dashboard"),
         ("/v1/ecosystem/dashboard", {"workspace": str(workspace)}, "ecosystem.dashboard"),
     ]
 
@@ -327,6 +328,7 @@ def test_v1_endpoint_family_smoke_contracts(tmp_path: Path) -> None:
             "jobs.run",
             True,
         ),
+        ("/v1/quality/snapshot", {"workspace": str(workspace)}, "quality.snapshot", True),
     ]
 
     created_task_id = None
@@ -376,6 +378,8 @@ def test_contract_catalog_covers_unified_phase_runtime_shapes() -> None:
         "orchestration.step",
         "jobs.dashboard",
         "jobs.run",
+        "quality.dashboard",
+        "quality.snapshot",
         "patch.proposal",
         "rollback.entry",
         "rollback.result",
@@ -551,6 +555,91 @@ def test_broken_references_job_reports_missing_markdown_targets(tmp_path: Path) 
     assert result["metrics"]["broken_references"][0]["target"] == "missing-file.md"
 
 
+def test_quality_dashboard_reports_score_risks_and_statuses(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    (workspace / ".aegis").mkdir(exist_ok=True)
+    (workspace / ".aegis" / "validation-log.md").write_text(
+        "## 2026-05-09T00:00:00Z - failed\n\nCommand: `npm test`\n\n```text\nsrc/app.ts: failed assertion\n```\n\n",
+        encoding="utf-8",
+    )
+    (workspace / "src").mkdir()
+    (workspace / "src" / "app.ts").write_text("export function run() {\n  // FIXME: broken path\n}\n", encoding="utf-8")
+    client = TestClient(create_app())
+
+    response = client.get("/v1/quality", params={"workspace": str(workspace)})
+
+    assert response.status_code == 200
+    assert_core_contract(response.json(), "quality.dashboard")
+    data = response.json()["data"]
+    assert data["score"] < 100
+    assert data["statuses"]["test"]["status"] == "failed"
+    assert "validation" in data["failing_systems"]
+    assert any(item["path"].endswith("src/app.ts") for item in data["high_risk_files"])
+    assert data["recommended_next_improvement"]
+
+
+def test_quality_dashboard_does_not_record_history_without_snapshot(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    client = TestClient(create_app())
+
+    response = client.get("/v1/quality", params={"workspace": str(workspace)})
+
+    assert response.status_code == 200
+    assert_core_contract(response.json(), "quality.dashboard")
+    assert not (workspace / ".aegis" / "health-history.json").exists()
+    assert not (workspace / ".aegis" / "daily-health-report.md").exists()
+
+
+def test_quality_snapshot_records_history_and_reports(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    client = TestClient(create_app())
+
+    response = client.post("/v1/quality/snapshot", json={"workspace": str(workspace)})
+
+    assert response.status_code == 200
+    assert_core_contract(response.json(), "quality.snapshot")
+    data = response.json()["data"]
+    assert (workspace / ".aegis" / "health-history.json").is_file()
+    assert (workspace / ".aegis" / "daily-health-report.md").is_file()
+    assert (workspace / ".aegis" / "weekly-quality-summary.md").is_file()
+    history = json.loads((workspace / ".aegis" / "health-history.json").read_text(encoding="utf-8"))
+    assert history[-1]["score"] == data["score"]
+    assert data["report_paths"]["daily_health_report"].endswith("daily-health-report.md")
+
+
+def test_quality_trend_detects_degrading_snapshot(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    client = TestClient(create_app())
+
+    first = client.post("/v1/quality/snapshot", json={"workspace": str(workspace)})
+    assert first.status_code == 200
+    for index in range(20):
+        (workspace / f"todo_{index}.py").write_text(f"# TODO: cleanup {index}\n", encoding="utf-8")
+    second = client.post("/v1/quality/snapshot", json={"workspace": str(workspace)})
+
+    assert second.status_code == 200
+    trend = second.json()["data"]["trend"]
+    assert trend["direction"] in {"degrading", "stable"}
+    assert trend["score_delta"] <= 0
+
+
+def test_quality_job_records_snapshot_and_reports(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/v1/jobs/run",
+        json={"workspace": str(workspace), "job_id": "quality-intelligence-snapshot"},
+    )
+
+    assert response.status_code == 200
+    result = response.json()["data"]["results"][0]
+    assert result["id"] == "quality-intelligence-snapshot"
+    assert result["status"] == "completed"
+    assert "score" in result["metrics"]
+    assert (workspace / ".aegis" / "health-history.json").is_file()
+
+
 def test_known_client_contract_parsing_tolerates_missing_optional_fields() -> None:
     desktop_dashboard = make_envelope("ecosystem.dashboard", {}, "C:/workspace")
     vscode_task = make_envelope("task.created", {"id": "task-compat"}, "C:/workspace")
@@ -680,6 +769,9 @@ def test_orchestration_plan_creates_safe_queue_and_memory(tmp_path: Path) -> Non
     data = response.json()["data"]
     assert data["current_goal"].startswith("Install package")
     assert data["plan"]["risk"] == "high"
+    assert data["plan"]["quality"]["score"] <= 100
+    assert data["plan"]["quality"]["top_risks"]
+    assert data["plan"]["planner_guidance"]
     assert data["task_list"][0]["status"] == "in_progress"
     assert data["task_list"][0]["active_step"] == "inspect"
     assert len(data["task_list"]) == 7

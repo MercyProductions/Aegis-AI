@@ -29,6 +29,7 @@ from .model_router import complete_with_route, delete_provider_key, provider_inv
 from .multi_agent import agent_roster
 from .ollama import OllamaClient
 from .orchestration import advance_orchestration_step, create_orchestration_plan, orchestration_dashboard
+from .quality import quality_dashboard, record_quality_snapshot
 from .roadmap import generate_roadmap
 from .tasks import TaskStorePersistenceError, create_task, list_tasks, update_task_status
 from .validation import run_validation, validation_summary
@@ -276,6 +277,14 @@ def create_app():
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return envelope("jobs.run", data, request.workspace)
+
+    @app.get("/v1/quality")
+    def v1_quality(workspace: str) -> dict[str, Any]:
+        return envelope("quality.dashboard", quality_dashboard(workspace), workspace)
+
+    @app.post("/v1/quality/snapshot")
+    def v1_quality_snapshot(request: WorkspaceRequest) -> dict[str, Any]:
+        return envelope("quality.snapshot", record_quality_snapshot(request.workspace), request.workspace)
 
     @app.post("/v1/tasks")
     def v1_create_task(request: CreateTaskRequest) -> dict[str, Any]:

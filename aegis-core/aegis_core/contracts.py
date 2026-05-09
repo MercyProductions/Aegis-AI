@@ -412,6 +412,8 @@ class OrchestrationPlanData(ContractModel):
     objective: str | None = None
     status: str = "in_progress"
     risk: str = "unknown"
+    quality: dict[str, Any] = Field(default_factory=dict)
+    planner_guidance: list[str] = Field(default_factory=list)
     source_client: str = "unknown"
     affected_systems: list[str] = Field(default_factory=list)
     required_files: list[str] = Field(default_factory=list)
@@ -497,6 +499,54 @@ class JobRunData(ContractModel):
     run_due: bool = False
     results: list[JobResultData | dict[str, Any]] = Field(default_factory=list)
     dashboard: JobsDashboardData | dict[str, Any] = Field(default_factory=dict)
+
+
+class QualitySnapshotData(ContractModel):
+    timestamp: str = ""
+    score: int = 0
+    grade: str = ""
+    workspace_name: str = ""
+    file_count: int = 0
+    frameworks: list[str] = Field(default_factory=list)
+    todo_count: int = 0
+    known_bug_count: int = 0
+    dependency_manifest_count: int = 0
+    dependency_file_count: int = 0
+    dependency_changes: list[str] = Field(default_factory=list)
+    statuses: dict[str, Any] = Field(default_factory=dict)
+    failing_systems: list[str] = Field(default_factory=list)
+    failing_files: list[str] = Field(default_factory=list)
+    complexity_hotspots: list[dict[str, Any]] = Field(default_factory=list)
+    high_risk_files: list[dict[str, Any]] = Field(default_factory=list)
+    untested_core_modules: list[dict[str, Any]] = Field(default_factory=list)
+    repeated_repair_attempts: int = 0
+    repeated_model_failures: int = 0
+    slow_validation_commands: list[dict[str, Any]] = Field(default_factory=list)
+    files_changed_most_often: list[dict[str, Any]] = Field(default_factory=list)
+    large_risky_diff: dict[str, Any] = Field(default_factory=dict)
+    stale_documentation: dict[str, Any] = Field(default_factory=dict)
+    warnings: list[str] = Field(default_factory=list)
+    top_risks: list[dict[str, Any]] = Field(default_factory=list)
+    top_cleanup_tasks: list[dict[str, Any]] = Field(default_factory=list)
+    recommended_next_improvement: str = ""
+
+
+class QualityDashboardData(ContractModel):
+    workspace: str | None = None
+    score: int = 0
+    grade: str = ""
+    trend: dict[str, Any] = Field(default_factory=dict)
+    statuses: dict[str, Any] = Field(default_factory=dict)
+    warnings: list[str] = Field(default_factory=list)
+    failing_systems: list[str] = Field(default_factory=list)
+    high_risk_files: list[dict[str, Any]] = Field(default_factory=list)
+    top_risks: list[dict[str, Any]] = Field(default_factory=list)
+    top_cleanup_tasks: list[dict[str, Any]] = Field(default_factory=list)
+    recommended_next_improvement: str = ""
+    current_snapshot: QualitySnapshotData | dict[str, Any] = Field(default_factory=dict)
+    history: list[dict[str, Any]] = Field(default_factory=list)
+    report_paths: dict[str, str] = Field(default_factory=dict)
+    history_path: str | None = None
 
 
 class EcosystemDashboardData(ContractModel):
@@ -589,6 +639,8 @@ CONTRACTS: dict[str, ContractDescriptor] = {
     "orchestration.step": ContractDescriptor(kind="orchestration.step", stability="experimental", notes="Approval-gated orchestration step transition."),
     "jobs.dashboard": ContractDescriptor(kind="jobs.dashboard", stability="experimental", notes="Safe scheduled and trigger-based maintenance job dashboard."),
     "jobs.run": ContractDescriptor(kind="jobs.run", stability="experimental", notes="Explicit maintenance job run or trigger result with approval gates for risky actions."),
+    "quality.dashboard": ContractDescriptor(kind="quality.dashboard", stability="experimental", notes="Project health score, trends, risks, and recommended quality actions."),
+    "quality.snapshot": ContractDescriptor(kind="quality.snapshot", stability="experimental", notes="Recorded project health snapshot and generated quality reports."),
     "ecosystem.dashboard": ContractDescriptor(kind="ecosystem.dashboard", stability="stable", notes="Aggregated Core dashboard for desktop and website bridge."),
     "patch.proposal": ContractDescriptor(kind="patch.proposal", stability="experimental", owner="schema-only", notes="Shared shape for approved patch proposals."),
     "rollback.entry": ContractDescriptor(kind="rollback.entry", stability="experimental", owner="schema-only", notes="Shared rollback checkpoint listing shape."),
@@ -624,6 +676,8 @@ CONTRACT_DATA_MODELS: dict[str, type[BaseModel] | tuple[type[BaseModel], bool]] 
     "orchestration.step": OrchestrationDashboardData,
     "jobs.dashboard": JobsDashboardData,
     "jobs.run": JobRunData,
+    "quality.dashboard": QualityDashboardData,
+    "quality.snapshot": QualityDashboardData,
     "ecosystem.dashboard": EcosystemDashboardData,
     "patch.proposal": PatchProposalData,
     "rollback.entry": RollbackEntryData,

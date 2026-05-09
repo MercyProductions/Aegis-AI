@@ -20,6 +20,7 @@ This first pass is intentionally small. It consolidates common backend responsib
 - Autonomous task orchestration for large goals, stored as approval-gated local queues
 - Specialized local agent roles for planning, architecture, coding, review, testing, repair, and documentation
 - Safe scheduled and trigger-based maintenance jobs for scans, reports, roadmap refreshes, TODO review, documentation drift, and validation status
+- Project health scoring, trend tracking, risk detection, and quality reports
 - Validation command detection and safe opt-in execution
 - Agent planning placeholders that propose next steps without applying edits
 - Diagnostics and local logs
@@ -56,6 +57,7 @@ python -m aegis_core.cli providers --workspace ..
 python -m aegis_core.cli agents --workspace ..
 python -m aegis_core.cli jobs --workspace ..
 python -m aegis_core.cli jobs --workspace .. --run daily-project-scan
+python -m aegis_core.cli quality --workspace .. --record
 python -m aegis_core.cli route --workspace .. --task-type hard_debugging
 python -m aegis_core.cli orchestrate --workspace .. --goal "Stabilize the extension packaging flow"
 ```
@@ -74,6 +76,7 @@ aegis providers --workspace <path>
 aegis agents --workspace <path>
 aegis jobs --workspace <path>
 aegis jobs --workspace <path> --trigger project_opened
+aegis quality --workspace <path> --record
 aegis route --workspace <path> --task-type code_completion
 aegis orchestrate --workspace <path> --goal "Stabilize one workflow"
 ```
@@ -123,6 +126,8 @@ POST /v1/orchestration/plan
 POST /v1/orchestration/step
 GET  /v1/jobs
 POST /v1/jobs/run
+GET  /v1/quality
+POST /v1/quality/snapshot
 GET  /v1/ecosystem/dashboard
 ```
 
@@ -167,9 +172,17 @@ Orchestration state is written to `.aegis/orchestration-queue.json` and `.aegis/
 
 Core exposes safe maintenance jobs through `/v1/jobs`, `POST /v1/jobs/run`, and `aegis jobs`.
 
-Default jobs cover daily project scans, weekly roadmap updates, dependency review, build health checks, stale TODO scans, documentation drift checks, recent-change summaries, broken-reference checks, project health reports, next-best-task suggestions, and validation status checks.
+Default jobs cover daily project scans, weekly roadmap updates, dependency review, build health checks, stale TODO scans, documentation drift checks, recent-change summaries, broken-reference checks, project health reports, quality intelligence snapshots, next-best-task suggestions, and validation status checks.
 
 Jobs may automatically scan, summarize, report, recommend, and write generated `.aegis` memory/log files. They still require approval before editing project files, deleting files, installing packages, running build/test/lint commands, or sending context to cloud models. Job history is appended to `.aegis/jobs-log.md`.
+
+## Quality Intelligence
+
+Core exposes project health through `/v1/quality`, `POST /v1/quality/snapshot`, and `aegis quality`.
+
+Quality snapshots track build/test/lint status, TODO count, known bugs, dependency drift, complexity hotspots, failing files, stale documentation, repeated repair attempts, model failures, large risky diffs, and files that change most often. Recorded snapshots are stored in `.aegis/health-history.json` and generate `.aegis/daily-health-report.md` plus `.aegis/weekly-quality-summary.md`.
+
+Planner Agent reads the quality dashboard when creating an orchestration plan, so broken validation, repeated failures, untested areas, and high-risk files can influence task order and warnings.
 
 ## Memory
 
@@ -179,9 +192,9 @@ Workspace-local memory lives under:
 .aegis/
 ```
 
-Core writes generated files such as `project-summary.md`, `roadmap.md`, `file-index.json`, `dependency-graph.json`, `symbol-index.json`, `validation-log.md`, `jobs-log.md`, and `core-log.md`.
+Core writes generated files such as `project-summary.md`, `roadmap.md`, `daily-health-report.md`, `weekly-quality-summary.md`, `file-index.json`, `dependency-graph.json`, `symbol-index.json`, `validation-log.md`, `jobs-log.md`, and `core-log.md`.
 
-Shared ecosystem files include `clients.json` for connected client registrations, `tasks.json` for cross-client task visibility, `jobs-state.json` for maintenance job state, `orchestration-queue.json` for staged autonomous goals, and `scan-cache.json` for faster repeated workspace scans.
+Shared ecosystem files include `clients.json` for connected client registrations, `tasks.json` for cross-client task visibility, `health-history.json` for quality trends, `jobs-state.json` for maintenance job state, `orchestration-queue.json` for staged autonomous goals, and `scan-cache.json` for faster repeated workspace scans.
 
 ## Migration Direction
 

@@ -156,6 +156,8 @@ Endpoint families:
 | `POST /v1/orchestration/step` | `orchestration.step` | experimental | Advance an approval-gated orchestration step |
 | `GET /v1/jobs` | `jobs.dashboard` | experimental | Scheduled and trigger-based maintenance job dashboard |
 | `POST /v1/jobs/run` | `jobs.run` | experimental | Run one job, due scheduled jobs, or trigger-based jobs with approval gates |
+| `GET /v1/quality` | `quality.dashboard` | experimental | Project health score, trend, warnings, risks, cleanup tasks, and Planner guidance |
+| `POST /v1/quality/snapshot` | `quality.snapshot` | experimental | Record a project health snapshot and generated daily/weekly quality reports |
 | `POST /v1/validation` | `validation` | stable | Shared validation summary/run |
 | `POST /v1/agent/continue` | `agent.continue.plan` | experimental | Plan-only continue from roadmap |
 | `POST /v1/agent/repair` | `agent.repair.plan` | experimental | Plan-only repair from validation log |
@@ -184,6 +186,13 @@ Workflow automation:
 - Jobs may scan, summarize, report, recommend, and write generated `.aegis` memory/log files.
 - Jobs require approval before source edits, deletes, package installs, build/test/lint commands, or cloud context.
 - Job state is stored in `.aegis/jobs-state.json`; job history is appended to `.aegis/jobs-log.md`.
+
+Quality intelligence:
+
+- Core exposes a read-only quality dashboard at `/v1/quality` and an explicit snapshot writer at `/v1/quality/snapshot`.
+- Snapshots track validation status, TODOs, known bugs, dependency drift, risky diffs, stale docs, repeated repairs, repeated model failures, complexity hotspots, and frequently changed files.
+- Snapshot history is stored in `.aegis/health-history.json`; generated reports are written to `.aegis/daily-health-report.md` and `.aegis/weekly-quality-summary.md`.
+- Planner Agent uses the quality dashboard during orchestration planning so broken validation, repeated failures, high-risk files, and missing tests can influence task order.
 
 Release candidate notes:
 

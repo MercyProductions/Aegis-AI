@@ -9,6 +9,7 @@
 - Supervised orchestration queue state
 - Specialized agent roster and ownership metadata
 - Safe maintenance job catalog, schedule state, trigger mapping, and job logs
+- Project quality score, health trends, risk reports, and generated daily/weekly quality summaries
 - Validation command detection
 - Validation log normalization
 - Agent plan and repair plan contracts
@@ -42,6 +43,7 @@ It should call Aegis Core for:
 - supervised orchestration state
 - current owner agent and agent pipeline state
 - maintenance job dashboard and explicit job run/approval state
+- quality dashboard, health trend, high-risk file warnings, and explicit snapshot state
 - shared diagnostics
 
 Minimum integration:
@@ -52,6 +54,7 @@ Minimum integration:
 - Use `/v1/branding` for shared naming and visual tokens where practical.
 - Use `/v1/orchestration` for staged goal state, pending approvals, validation summaries, and rollback metadata when building autonomous workflow UI.
 - Use `/v1/jobs` for proactive maintenance visibility and `/v1/jobs/run` only from explicit user action, due-job runner, or known safe trigger.
+- Use `/v1/quality` for project health/risk visibility and `/v1/quality/snapshot` only for explicit or safe scheduled generated-report updates.
 
 ## VS Code Extension
 
@@ -79,6 +82,7 @@ It should call Aegis Core for:
 - supervised orchestration state
 - owner-agent metadata for staged tasks
 - maintenance triggers such as project opened and many files changed
+- quality dashboard and risk warnings before editing high-risk files
 - diagnostics
 
 ## Visual Studio Extension
@@ -107,6 +111,7 @@ It should call Aegis Core for:
 - supervised orchestration state
 - owner-agent metadata for staged tasks
 - maintenance triggers such as solution opened, build failed, and test failed
+- quality dashboard and risk warnings before changing unstable files
 - shared diagnostics
 
 ## Website
@@ -132,5 +137,6 @@ It can call Aegis Core only for local dashboard features when running on the use
 - Diff preview, patch apply, and rollback execution remain client-owned even when Core owns orchestration queue state.
 - Clients should display `owner_agent`, `active_agent`, and pending approval metadata instead of inventing separate agent ownership.
 - Clients should surface `jobs.run` results that return `needs_approval`; build/test/lint jobs must not run silently.
+- Clients should treat quality snapshots as generated `.aegis` health artifacts and must not infer permission to edit source files from a quality recommendation.
 - Core owns shared plan data, memory, diagnostics, model status, and settings.
 - Clients should not write directly to `.aegis/tasks.json` unless Core is unavailable and the user explicitly accepts degraded local mode.

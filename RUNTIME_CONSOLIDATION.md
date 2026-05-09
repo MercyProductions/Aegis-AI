@@ -22,6 +22,7 @@ This phase does not move Website chat, apply, project-builder, Creative Studio, 
 | Validation | Website command runner, validation profiles, repair loop, build logs | Safe validation detection/run, validation log | Core owns shared safe validation primitives. Website owns advanced validation/repair orchestration until command semantics converge. |
 | Tasks/orchestration | Website SQLite task graph, approvals, artifacts, timeline, rich autonomous engineering | `.aegis/tasks.json` cross-client tasks plus supervised `.aegis/orchestration-queue.json` goal queues with specialized owner agents | Core owns lightweight shared task records, agent roster metadata, and approval-gated orchestration state. Website owns rich app task graph, artifacts, apply/checkpoint workflows, and product autonomous engineering. |
 | Workflow automation/jobs | Website benchmark/media/background jobs and rich app workflows | `.aegis/jobs-state.json`, `.aegis/jobs-log.md`, `/v1/jobs`, and safe maintenance workflows | Core owns local maintenance scans, reports, due/trigger state, and approval-gated job execution. Website owns product jobs, cloud/background services, and advanced workflow scheduling. |
+| Observability/quality intelligence | Website telemetry, product health, adaptive intelligence, and app observability dashboards | `/v1/quality`, `/v1/quality/snapshot`, `.aegis/health-history.json`, daily/weekly quality reports, and Planner guidance | Core owns local project health trends and risk detection. Website owns product telemetry and rich app dashboards. |
 | Client registry/dashboard | Website ecosystem/product surfaces | `/v1/clients/*`, `/v1/ecosystem/dashboard` | Core owns shared client registry and ecosystem dashboard data. |
 | Auth/UI/session | Website account/session APIs and frontend state | none | Website only. Do not move to Core. |
 | Creative/media | Creative Studio jobs/assets/providers | none | Website only until there is a non-UI shared media runtime need. |
@@ -50,6 +51,7 @@ This phase does not move Website chat, apply, project-builder, Creative Studio, 
 | Specialized local agent roles | Aegis Core | Aegis Core | API-only |
 | Supervised orchestration queue | Aegis Core | Aegis Core | shared runtime |
 | Safe maintenance jobs | Aegis Core | Aegis Core | shared runtime |
+| Project quality intelligence | Aegis Core | Aegis Core | shared runtime |
 | Website task graph | Website backend | Website backend, possibly linked to Core tasks | adapter later |
 | Shared validation primitive | Aegis Core | Aegis Core | shared runtime |
 | Repair orchestration | Website backend | Website backend | hold |
@@ -67,6 +69,7 @@ This phase does not move Website chat, apply, project-builder, Creative Studio, 
 | Validation | Safe command detection/run primitive | Validation profile, repair loop, verify pipeline | IDE terminal/build validation UX | Core validation is a primitive; Website validation remains native. |
 | Tasks/orchestration | Cross-client lightweight task records, specialized owner-agent roles, supervised goal queue state | SQLite task graph, artifacts, timeline, approvals, apply/checkpoint flows | Client task UI/sync, approval surfaces, diff/apply UX | Core orchestration is stateful and approval-gated; clients still own file mutation UX. |
 | Workflow automation/jobs | Safe scheduled and trigger-based maintenance jobs, generated `.aegis` reports, approval-gated build health | Product jobs, benchmark jobs, media jobs, cloud/background scheduling | Job dashboard UI, trigger buttons, approval prompts | Core jobs are experimental and client-invoked; no hidden daemon. |
+| Observability/quality | Health score, trend snapshots, risk detection, generated daily/weekly quality reports, Planner guidance | Product telemetry, rich app observability, adaptive intelligence dashboards | Quality/risk UI, explicit snapshot buttons, high-risk edit warnings | Core quality is experimental and read/report-oriented; no source edits are implied. |
 | Rollback | Schema-only future contracts | Checkpoints/restore | IDE backups/rollback | Do not deprecate until active Core rollback exists. |
 
 ## Standard Contract Shapes
@@ -91,9 +94,9 @@ Website `/api` responses remain product-specific Pydantic response models. When 
 
 The canonical contract package is `aegis-core/aegis_core/contracts.py`. It defines:
 
-- shared request models for workspace, settings, model routing/completion, provider key status, client registration, tasks, orchestration, jobs, validation, continue, and repair;
+- shared request models for workspace, settings, model routing/completion, provider key status, client registration, tasks, orchestration, jobs, quality snapshots, validation, continue, and repair;
 - stable response data models for health, models, settings, workspace scan, roadmap, memory, diagnostics, tasks, validation, and dashboard;
-- experimental response data models for hybrid model providers/routes/completions, supervised orchestration, workflow jobs, and agent continue/repair;
+- experimental response data models for hybrid model providers/routes/completions, supervised orchestration, workflow jobs, quality dashboards/snapshots, and agent continue/repair;
 - schema-only experimental patch proposal and rollback models for future migration.
 
 Compatibility rules:
@@ -120,6 +123,7 @@ Shared request bodies should follow these names:
 | Orchestration plan | `workspace`, `goal`, optional `source_client`, optional `context_files` | Creates a supervised local queue with one owner agent per task; no file edits are applied. |
 | Orchestration step | `workspace`, optional `task_id`, `action`, optional `approval`, `summary`, `affected_files`, `validation_command` | File edits, build/test/lint commands, package installs, and cloud context remain approval-gated. |
 | Jobs run | `workspace`, optional `job_id`, optional `trigger`, optional `run_due`, optional `approval` | Jobs scan, summarize, report, and recommend automatically; build/test/lint commands and other risky actions require approval. |
+| Quality snapshot | `workspace` | Records `.aegis/health-history.json` and generated quality reports only; no source edits, build commands, package installs, or cloud calls. |
 | Validation | `workspace`, optional `run`, optional `command` | Core executes only safe validation commands. |
 | Continue/repair | `workspace`, optional `request` for continue | Plan-only; no file edits. |
 

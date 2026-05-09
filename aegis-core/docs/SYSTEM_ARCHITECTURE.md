@@ -25,6 +25,7 @@ Aegis Core owns reusable intelligence and workflow services:
 - Supervised autonomous task orchestration
 - Specialized local agent roles
 - Safe workflow automation and scheduled maintenance jobs
+- Project quality intelligence, health trends, and risk reports
 - Validation command detection and safe execution
 - Agent planning, repair planning, rollback metadata, and approval contracts
 - Diagnostics and logs
@@ -57,6 +58,7 @@ Default assumptions:
 - Validation commands are explicit and non-destructive.
 - Autonomous orchestration means staged queues, specialized owner agents, and approval gates, not uncontrolled edits.
 - Scheduled jobs can scan, summarize, report, and recommend, but risky actions still require approval.
+- Quality snapshots write generated `.aegis` observability artifacts, not source changes.
 
 ## Migration Strategy
 
@@ -70,8 +72,9 @@ Default assumptions:
 8. Specialized agent roles are exposed through `/v1/agents`.
 9. Supervised goal queues flow through `.aegis/orchestration-queue.json` and `/v1/orchestration/*`.
 10. Maintenance jobs flow through `.aegis/jobs-state.json`, `.aegis/jobs-log.md`, and `/v1/jobs`.
-11. Agent planning and repair loops move into Core.
-12. Clients keep UI approvals, diff/apply/rollback, and editor-native affordances.
+11. Project health trends flow through `.aegis/health-history.json`, generated quality reports, and `/v1/quality`.
+12. Agent planning and repair loops move into Core.
+13. Clients keep UI approvals, diff/apply/rollback, and editor-native affordances.
 
 ## Shared API Layer
 
@@ -131,9 +134,22 @@ GET  /v1/jobs?workspace=C:/path/to/project
 POST /v1/jobs/run
 ```
 
-Default jobs cover daily project scan, weekly roadmap update, dependency review, build health check, stale TODO scan, documentation drift check, recent changes summary, broken references check, project health report, next best task, and validation status check.
+Default jobs cover daily project scan, weekly roadmap update, dependency review, build health check, stale TODO scan, documentation drift check, recent changes summary, broken references check, project health report, quality intelligence snapshot, next best task, and validation status check.
 
 Jobs may write generated `.aegis` memory and logs, including `.aegis/jobs-log.md`. They do not edit source files, delete files, install packages, run build/test/lint commands, or send cloud context without explicit approval. Clients or a local host invoke due jobs and triggers; Core does not run a hidden background daemon.
+
+## Quality Intelligence
+
+Project quality state is stored in `.aegis/health-history.json` and surfaced through:
+
+```text
+GET  /v1/quality?workspace=C:/path/to/project
+POST /v1/quality/snapshot
+```
+
+The dashboard reports current health score, trend, warnings, failing systems, high-risk files, complexity hotspots, cleanup tasks, and recommended next improvement. Snapshots generate `.aegis/daily-health-report.md` and `.aegis/weekly-quality-summary.md`.
+
+Planner Agent reads this dashboard when planning supervised work, so repeated validation failures, risky files, stale docs, and untested core modules can influence task order.
 
 ## Desktop Ecosystem Dashboard Contract
 

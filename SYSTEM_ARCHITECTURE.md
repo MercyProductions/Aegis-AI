@@ -73,6 +73,7 @@ Aegis Core is the shared local runtime contract. It must stay small, stable, loc
 - Shared tasks, task status, and dashboard aggregation.
 - Supervised autonomous task orchestration: goal planning, local queue state, specialized owner agents, approval gates, validation state, and memory updates.
 - Safe scheduled and trigger-based maintenance jobs for proactive scans, summaries, reports, roadmap refreshes, TODO review, documentation drift, and validation status.
+- Project quality intelligence: health scoring, trend snapshots, risk detection, daily/weekly quality reports, and Planner Agent guidance.
 - Validation summary/run.
 - Plan-only continue and repair flows.
 - Branding tokens shared by clients.
@@ -98,6 +99,14 @@ Workflow automation is safe by default:
 - Jobs may scan, summarize, report, recommend, and write generated `.aegis` memory/log files.
 - Jobs do not edit project source, delete files, install packages, run build/test/lint commands, or send cloud context without explicit approval.
 - Job state is stored in `.aegis/jobs-state.json`; job history is appended to `.aegis/jobs-log.md`.
+
+Quality intelligence is observability for local projects:
+
+- Core exposes the current health dashboard through `/v1/quality` and records history through `/v1/quality/snapshot`.
+- Snapshots are stored in `.aegis/health-history.json`.
+- Generated reports are written to `.aegis/daily-health-report.md` and `.aegis/weekly-quality-summary.md`.
+- The dashboard combines validation status, dependency drift, TODOs, known bugs, stale docs, complexity hotspots, repeated repairs, model failures, risky diffs, and frequently changed files.
+- Planner Agent reads this data while creating orchestration plans so broken builds, repeated failures, high-risk files, and missing tests can be prioritized before speculative work.
 
 Core `/v1` responses use the shared envelope from `aegis-core/aegis_core/contracts.py`:
 

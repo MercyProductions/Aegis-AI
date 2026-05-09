@@ -14,6 +14,7 @@ from .model_router import provider_inventory, route_model
 from .multi_agent import agent_roster
 from .ollama import OllamaClient
 from .orchestration import advance_orchestration_step, create_orchestration_plan, orchestration_dashboard
+from .quality import quality_dashboard, record_quality_snapshot
 from .roadmap import generate_roadmap
 from .tasks import TaskStorePersistenceError, create_task, list_tasks
 from .validation import run_validation, validation_summary
@@ -45,6 +46,7 @@ def main(argv: list[str] | None = None) -> int:
         "providers",
         "agents",
         "jobs",
+        "quality",
         "route",
         "orchestrate",
     ):
@@ -75,6 +77,8 @@ def main(argv: list[str] | None = None) -> int:
             sub.add_argument("--trigger", help="Run all maintenance jobs for a trigger such as project_opened or build_failed.")
             sub.add_argument("--due", action="store_true", help="Run all due scheduled maintenance jobs.")
             sub.add_argument("--approval", action="store_true", help="Approve risky job actions such as build/test commands.")
+        if name == "quality":
+            sub.add_argument("--record", action="store_true", help="Record a health snapshot and update quality reports.")
 
     args = parser.parse_args(raw_args)
     args.json = args.json or json_requested
@@ -122,6 +126,8 @@ def main(argv: list[str] | None = None) -> int:
                 )
             else:
                 result = jobs_dashboard(workspace)
+        elif args.command == "quality":
+            result = record_quality_snapshot(workspace) if args.record else quality_dashboard(workspace)
         elif args.command == "route":
             result = route_model(
                 workspace,
