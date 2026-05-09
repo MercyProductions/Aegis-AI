@@ -8,6 +8,7 @@
 - Improved the Aegis Core CLI so `--json` works before or after the subcommand.
 - Hardened Aegis Core path safety so ignored folders and secret-like filenames are handled case-insensitively and relative to the workspace before scanning.
 - Hardened Aegis Core config loading so malformed shared settings fall back safely instead of breaking startup/health checks.
+- Improved `/v1/tasks/{task_id}/status` error responses for missing tasks and unsupported statuses.
 - Added product-utilization workflow notes for daily Auralith dogfooding.
 - Documented the current stabilization and validation pass.
 

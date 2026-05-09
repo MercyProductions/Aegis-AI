@@ -272,6 +272,8 @@ Body:
 
 Supported statuses: `planned`, `running`, `waiting_for_approval`, `blocked`, `completed`, `cancelled`, `rolled_back`.
 
+Returns `400` for unsupported statuses and `404` when the task ID does not exist.
+
 ## POST /v1/validation
 
 Detects validation commands or runs a requested safe command, matching `/validation` behavior.

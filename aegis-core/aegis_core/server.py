@@ -16,7 +16,7 @@ from .workspace import WorkspaceScanner
 
 def create_app():
     try:
-        from fastapi import FastAPI
+        from fastapi import FastAPI, HTTPException
         from pydantic import BaseModel
     except ImportError as exc:
         raise RuntimeError("Install Aegis Core API dependencies with `pip install -e .`.") from exc
@@ -189,7 +189,12 @@ def create_app():
 
     @app.post("/v1/tasks/{task_id}/status")
     def v1_update_task(task_id: str, request: TaskStatusRequest) -> dict[str, Any]:
-        task = update_task_status(request.workspace, task_id, request.status, request.summary)
+        try:
+            task = update_task_status(request.workspace, task_id, request.status, request.summary)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
         return envelope("task.updated", task, request.workspace)
 
     @app.post("/v1/validation")

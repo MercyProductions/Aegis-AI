@@ -24,6 +24,7 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 | Workspace scan performance | Improved | Core scan results are cached when the workspace fingerprint is unchanged, skipping repeated expensive symbol/dependency/TODO passes. |
 | Path safety | Improved | Core now evaluates ignored folders relative to the workspace and blocks secret-like filenames case-insensitively. |
 | Shared settings | Improved | Core config loading falls back to defaults for malformed numeric, boolean, string-list, and blank string settings. |
+| Shared task API | Improved | Bad task status updates return `400`; missing task IDs return `404`. |
 | Diagnostics | Improved | Core dashboard now surfaces stale tasks and suggested actions. |
 
 ## Verification Run

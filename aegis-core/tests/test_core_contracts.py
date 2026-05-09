@@ -104,6 +104,18 @@ def test_v1_client_task_dashboard_contract(tmp_path: Path) -> None:
     assert updated.status_code == 200
     assert updated.json()["data"]["status"] == "completed"
 
+    invalid_status = client.post(
+        f"/v1/tasks/{task_id}/status",
+        json={"workspace": str(workspace), "status": "definitely-not-real"},
+    )
+    assert invalid_status.status_code == 400
+
+    missing_task = client.post(
+        "/v1/tasks/task-missing/status",
+        json={"workspace": str(workspace), "status": "completed"},
+    )
+    assert missing_task.status_code == 404
+
 
 def test_safety_rules_are_case_insensitive_and_secret_aware(tmp_path: Path) -> None:
     assert is_ignored_path(tmp_path / "Node_Modules" / "package" / "index.js", tmp_path)

@@ -14,6 +14,7 @@ Actions:
 - Added regression tests around the Aegis Core contracts that every client is beginning to depend on.
 - Hardened shared Core safety checks for mixed-case ignored folders, token/password/auth-like files, and Windows temp-parent workspaces.
 - Hardened shared Core config parsing so malformed settings degrade to defaults.
+- Added explicit Core task-status API errors for bad statuses and missing task IDs.
 - Kept unrelated dirty worktree changes out of scope.
 - Recorded workflow friction in `WORKFLOW_NOTES.md`.
 
