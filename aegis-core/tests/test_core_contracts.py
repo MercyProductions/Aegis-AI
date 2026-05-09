@@ -971,6 +971,7 @@ def test_personal_intelligence_learns_style_preferences_and_resets_profile(tmp_p
             "preferences": {
                 "planning_depth": "deep",
                 "validation_detail": "detailed",
+                "keyboard_layout": "default",
                 "preferred_models": {"local": "qwen2.5-coder"},
                 "api_key": "should-not-be-stored",
             },
@@ -984,6 +985,7 @@ def test_personal_intelligence_learns_style_preferences_and_resets_profile(tmp_p
     preferences = data["preference_memory"]["stored_preferences"]
     assert preferences["planning_depth"] == "deep"
     assert preferences["validation_detail"] == "detailed"
+    assert preferences["keyboard_layout"] == "default"
     assert preferences["preferred_models"]["local"] == "qwen2.5-coder"
     assert "api_key" not in preferences
     assert data["learned_signals"]["preferred_frameworks"]

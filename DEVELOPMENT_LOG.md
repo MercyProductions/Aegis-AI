@@ -67,6 +67,7 @@ Actions:
 - Added Core predictive planning and change simulation so planned edits can be scored for impacted files, affected systems, dependency ripple, architecture drift, validation cost, rollback complexity, and safer scenario choices before implementation.
 - Added Core engineering operations so release readiness, technical debt, lifecycle stage, risk monitoring, maintenance scheduling, productivity bottlenecks, and cross-project coordination can be reviewed from a single read-only dashboard.
 - Added Core adaptive personal engineering intelligence so local workflow/style preferences, recurring project patterns, habit signals, context personalization, and resettable inspectable preference memory can guide clients without cloud calls or hidden persistence.
+- Tightened personal preference filtering so token-like secret fields stay blocked while harmless preference names containing `key`, such as `keyboard_layout`, still persist.
 
 Validation completed:
 
@@ -74,6 +75,7 @@ Validation completed:
 - Aegis Core simulate CLI smoke test: pass for single forecast and scenario comparison.
 - Aegis Core operations endpoint regressions: pass for single-project coordination and cross-project awareness.
 - Aegis Core personal intelligence endpoint regressions: pass for read-only default behavior, explicit profile persistence, secret-like preference filtering, reset behavior, and cross-project pattern detection.
+- Aegis Core personal preference filtering regression: pass for preserving safe `keyboard_layout` while dropping `api_key`.
 - Aegis Core personal CLI smoke/reset: pass.
 - Aegis Core compile check: pass.
 - Aegis Core BOM-prefixed package framework detection regression test: pass.
