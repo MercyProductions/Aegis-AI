@@ -382,7 +382,7 @@ def _local_candidate(
     if provider_id == "lm_studio":
         model = preferred_model or config.default_local_model or config.default_model
         return _candidate(provider, model, "selected", f"Preferred local LM Studio route for {role}.")
-    model = preferred_model or _local_model_for_role(config, role, installed)
+    model = _local_model_for_role(config, role, installed)
     return _candidate(provider, model, "selected", f"Local-first route for {role}.")
 
 

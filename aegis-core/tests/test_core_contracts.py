@@ -2340,6 +2340,36 @@ def test_model_router_unsupported_provider_override_stays_local(tmp_path: Path, 
     assert any("unsupported" in warning.lower() for warning in route["warnings"])
 
 
+def test_model_router_ignores_cloud_model_override_for_local_fallback(tmp_path: Path, monkeypatch) -> None:
+    workspace = tmp_path / "router-local-model-override-project"
+    aegis_dir = workspace / ".aegis"
+    aegis_dir.mkdir(parents=True)
+    (aegis_dir / "config.json").write_text(
+        json.dumps({"model_routing_mode": "local_only", "preferred_cloud_provider": "openai"}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "aegis_core.model_router.OllamaClient.health",
+        lambda self: OllamaStatus(True, 4, ["qwen3-coder:30b"], "qwen3-coder:30b", []),
+    )
+
+    route = route_model(
+        workspace,
+        "hard_debugging",
+        allow_cloud=True,
+        cloud_approved=True,
+        preferred_provider="openai",
+        preferred_model="gpt-4.1",
+        credentials=DummyCredentialStore({"openai": "stored"}),
+    )
+
+    assert route["selected"]["provider_id"] == "ollama"
+    assert route["selected"]["model"] == "qwen3-coder:30b"
+    assert route["fallback_order"][1]["provider_id"] == "openai"
+    assert route["fallback_order"][1]["model"] == "gpt-4.1"
+    assert route["cloud_reason"] == "local_only"
+
+
 def test_model_router_requires_cloud_approval_in_hybrid_mode(tmp_path: Path, monkeypatch) -> None:
     workspace = tmp_path / "router-hybrid-project"
     aegis_dir = workspace / ".aegis"

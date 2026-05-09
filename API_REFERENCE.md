@@ -183,6 +183,7 @@ Hybrid model routing:
 - Provider IDs and cloud provider settings accept common casing, spacing, and hyphen aliases such as `LM Studio`, `lm-studio`, `open-router`, and `open router`, and key mutations store under canonical provider IDs.
 - LM Studio settings normalize to the local server base, and completions call its OpenAI-compatible `/v1/chat/completions` endpoint.
 - Cloud routes require client-visible warnings, explicit approval, sanitized context metadata, and provider keys stored in OS credential storage.
+- Cloud model overrides stay attached to cloud fallback candidates; Ollama local fallback continues to use configured local models unless a local provider is explicitly selected.
 - `preferred_cloud_provider` is restricted to OpenAI, Anthropic, Google, or OpenRouter.
 - Provider key storage is only accepted for cloud providers; local providers such as Ollama and LM Studio do not use stored API keys.
 - Secret-like, ignored, and outside-workspace files are excluded from cloud context.

@@ -186,6 +186,25 @@ Validation completed:
 - Aegis Core contract test suite: pass, 118 tests.
 - Repository whitespace check: pass.
 
+## 2026-05-09 - Local Fallback Model Override Guard
+
+Focus:
+
+- Keep local-first routing from accidentally using cloud model names when cloud routing is blocked or not selected.
+- Preserve explicit local LM Studio model overrides for users who choose the local OpenAI-compatible server.
+
+Actions:
+
+- Restricted generic model overrides from replacing the Ollama local fallback model.
+- Kept cloud model overrides attached to cloud fallback candidates, where approval and credential gates still apply.
+- Added a regression proving a cloud OpenAI model override does not replace the selected Ollama model in `local_only` mode.
+
+Validation completed:
+
+- Aegis Core routing model override regression slice: pass, 7 tests.
+- Aegis Core contract test suite: pass, 131 tests.
+- Repository whitespace check: pass.
+
 ## 2026-05-09 - Settings Provider Alias Consistency
 
 Focus:

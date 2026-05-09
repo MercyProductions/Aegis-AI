@@ -258,7 +258,7 @@ Experimental gated completion endpoint. It uses the same route request fields pl
 }
 ```
 
-Cloud calls return `403` unless `allow_cloud` and `cloud_approved` are true, the Core routing mode allows cloud, and the provider has a key in OS credential storage. `local_only` mode blocks cloud calls even if the request asks for them.
+Cloud calls return `403` unless `allow_cloud` and `cloud_approved` are true, the Core routing mode allows cloud, and the provider has a key in OS credential storage. `local_only` mode blocks cloud calls even if the request asks for them. Cloud model overrides stay attached to cloud fallback candidates; Ollama local fallback continues to use configured local models unless a local provider is explicitly selected.
 
 Malformed provider responses, including invalid JSON, non-object payloads, or missing completion text, return bounded provider failures instead of leaking internal parser exceptions or false-success empty completions to clients. Provider and credential diagnostics redact common provider/OAuth secret fields such as `api_key`, `x-api-key`, `client_secret`, `access_token`, `refresh_token`, `private_key`, and `token` across JSON, query-string, and assignment-style errors while preserving actionable context. Bare `token:` parser diagnostics are preserved unless the value looks secret-like, so ordinary errors such as `unexpected token: <` remain readable.
 
