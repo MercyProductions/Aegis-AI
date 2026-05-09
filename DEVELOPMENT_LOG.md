@@ -15,6 +15,7 @@ Actions:
 - Hardened shared Core safety checks for mixed-case ignored folders, token/password/auth-like files, and Windows temp-parent workspaces.
 - Hardened shared Core config parsing so malformed settings degrade to defaults.
 - Hardened shared Ollama URL parsing and model health diagnostics for malformed local endpoint settings, pasted API paths, and credential-like URL text.
+- Hardened Ollama model inventory parsing so malformed `/api/tags` payloads do not break shared health/model endpoints.
 - Added explicit Core task-status API errors for bad statuses and missing task IDs.
 - Hardened dashboard/task memory reads so corrupted or unreadable `.aegis` files do not crash shared clients.
 - Tightened Core JavaScript validation detection to avoid hallucinated npm/pnpm/yarn test/build commands.
@@ -38,9 +39,10 @@ Actions:
 
 Validation completed:
 
-- Aegis Core contract test suite: pass, 28 tests.
+- Aegis Core contract test suite: pass, 30 tests.
 - Aegis Core compile check: pass.
 - Aegis Core Ollama URL normalization and malformed-health regression tests: pass.
+- Aegis Core malformed Ollama model inventory regression tests: pass.
 - Aegis Core validation startup-failure regression test: pass.
 - VS Code extension lint and package: pass.
 - VS Code extension memory-write hardening lint: pass.

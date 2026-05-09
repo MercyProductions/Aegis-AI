@@ -196,6 +196,41 @@ def test_ollama_health_handles_malformed_direct_url() -> None:
     assert status.error
 
 
+def test_ollama_model_listing_ignores_malformed_entries(monkeypatch) -> None:
+    client = OllamaClient(AegisConfig())
+
+    def malformed_entries(*args, **kwargs):
+        return {
+            "models": [
+                {"name": " qwen3-coder:30b "},
+                {"name": "granite-code:8b"},
+                {"name": ""},
+                {"name": 123},
+                "not-a-model",
+            ]
+        }
+
+    monkeypatch.setattr(client, "_request_json", malformed_entries)
+
+    assert client.list_models() == ["granite-code:8b", "qwen3-coder:30b"]
+    assert client.health().selected_model == "qwen3-coder:30b"
+
+
+def test_ollama_health_handles_malformed_model_payload(monkeypatch) -> None:
+    client = OllamaClient(AegisConfig())
+
+    def malformed_payload(*args, **kwargs):
+        return {"models": "not-a-list"}
+
+    monkeypatch.setattr(client, "_request_json", malformed_payload)
+    status = client.health()
+
+    assert status.reachable is False
+    assert status.selected_model is None
+    assert AegisConfig.default_model in status.missing_models
+    assert "models array" in (status.error or "")
+
+
 def test_memory_dir_name_is_restricted_to_workspace_local_folder(tmp_path: Path) -> None:
     workspace = tmp_path / "memory-dir-project"
     aegis_dir = workspace / ".aegis"

@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .config import AegisConfig
+from .diagnostics import scrub
 
 
 @dataclass
@@ -25,7 +26,7 @@ class OllamaClient:
         self.config = config
         self.base_url = config.ollama_url.rstrip("/")
 
-    def _request_json(self, path: str, payload: dict[str, Any] | None = None, timeout: int = 20) -> dict[str, Any]:
+    def _request_json(self, path: str, payload: dict[str, Any] | None = None, timeout: int = 20) -> Any:
         url = f"{self.base_url}{path}"
         data = None
         headers = {"Content-Type": "application/json"}
@@ -39,7 +40,19 @@ class OllamaClient:
 
     def list_models(self) -> list[str]:
         data = self._request_json("/api/tags", timeout=5)
-        return sorted(model.get("name", "") for model in data.get("models", []) if model.get("name"))
+        if not isinstance(data, dict):
+            raise ValueError("Ollama model list response was not a JSON object.")
+        models = data.get("models", [])
+        if not isinstance(models, list):
+            raise ValueError("Ollama model list response did not include a models array.")
+        names = {
+            name.strip()
+            for model in models
+            if isinstance(model, dict)
+            for name in [model.get("name")]
+            if isinstance(name, str) and name.strip()
+        }
+        return sorted(names)
 
     def health(self) -> OllamaStatus:
         started = time.perf_counter()
@@ -51,7 +64,7 @@ class OllamaClient:
             missing = [model for model in desired if model not in models]
             return OllamaStatus(True, latency, models, selected, missing)
         except (urllib.error.URLError, TimeoutError, OSError, ValueError, json.JSONDecodeError) as exc:
-            return OllamaStatus(False, None, [], None, [self.config.default_model, *self.config.fallback_models], str(exc))
+            return OllamaStatus(False, None, [], None, [self.config.default_model, *self.config.fallback_models], scrub(str(exc)))
 
     def chat(self, prompt: str, model: str | None = None, timeout: int = 120) -> str:
         selected = model or self.config.default_model

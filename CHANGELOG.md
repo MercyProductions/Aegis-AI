@@ -9,6 +9,7 @@
 - Hardened Aegis Core path safety so ignored folders and secret-like filenames are handled case-insensitively and relative to the workspace before scanning.
 - Hardened Aegis Core config loading so malformed shared settings fall back safely instead of breaking startup/health checks.
 - Hardened shared Ollama URL settings so common local URLs are normalized, API-path pastes are reduced to base URLs, credential-like endpoint text is rejected, and malformed URLs report model health failures instead of breaking diagnostics.
+- Hardened Ollama model inventory parsing so malformed `/api/tags` payloads become health diagnostics instead of client-visible exceptions.
 - Improved `/v1/tasks/{task_id}/status` error responses for missing tasks and unsupported statuses.
 - Made Core dashboard/task memory reads resilient when `.aegis` JSON or markdown files are unreadable.
 - Improved Core JavaScript validation detection so npm/pnpm/yarn test/build commands are listed only when matching package scripts exist.
