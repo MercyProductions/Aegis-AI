@@ -66,6 +66,21 @@ class ApprovalAndCommandTests(unittest.TestCase):
         )
         self.assertEqual([item[0].path for item in blocked], ["settings.toml"])
 
+    def test_guided_auto_apply_blocks_package_lockfile_changes(self) -> None:
+        manager = ApprovalManager("guided", "standard")
+        approved, blocked = manager.partition_auto_apply_changes(
+            [
+                FileChange(action="update", path="package-lock.json", content="{}\n"),
+                FileChange(action="update", path="yarn.lock", content="# lock\n"),
+                FileChange(action="update", path="bun.lock", content="# lock\n"),
+                FileChange(action="update", path="bun.lockb", content=""),
+            ]
+        )
+
+        self.assertEqual(approved, [])
+        self.assertEqual([item[0].path for item in blocked], ["package-lock.json", "yarn.lock", "bun.lock", "bun.lockb"])
+        self.assertTrue(all(item[1].risk_level >= 5 for item in blocked))
+
     def test_prompt_tier_keeps_auto_validation_manual(self) -> None:
         manager = ApprovalManager("prompt", "standard")
         allowed, reason = manager.should_auto_run_command("python -m compileall .", manual=False)

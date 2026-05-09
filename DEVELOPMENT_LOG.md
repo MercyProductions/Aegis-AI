@@ -89,6 +89,7 @@ Actions:
 - Improved Website scaffold validation-plan parity so Bun build/test commands are classified and labeled as normal web build/test steps, with dependency profile and validation-manager regressions covering Bun discovery.
 - Improved Aegis Core package-manager parity so Bun `packageManager` metadata and lockfiles feed validation detection, build-file scans, dependency manifests, and simulation risk signals.
 - Improved Website workspace operations so Bun lockfile changes participate in dependency-drift fingerprints and aligned the related validation documentation.
+- Improved lockfile safety parity so Core includes `package-lock.json` in build-file and maintenance dependency manifests while Website guided approval blocks Yarn and Bun lockfile changes.
 
 Validation completed:
 
@@ -110,6 +111,7 @@ Validation completed:
 - Aegis Core validation startup-failure regression test: pass.
 - Aegis Core Bun package-manager validation and scan regressions: pass, focused contract tests.
 - Website workspace-operations Bun dependency-drift regression: pass, focused test.
+- Core package-lock scan regression and Website lockfile approval regression: pass, focused tests.
 - VS Code extension lint and package: pass.
 - VS Code extension memory-write hardening lint: pass.
 - VS Code rollback manifest hardening lint and package: pass.

@@ -714,6 +714,7 @@ def _scan_actions(scan: dict[str, Any]) -> list[str]:
 def _dependency_manifests(root: Path) -> list[str]:
     names = {
         "package.json",
+        "package-lock.json",
         "pnpm-lock.yaml",
         "yarn.lock",
         "bun.lock",

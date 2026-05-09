@@ -127,7 +127,17 @@ class ApprovalManager:
             return 8, "Deleting files is treated as a high-risk change."
         if suffix in {".sh", ".bat", ".cmd", ".ps1"}:
             return 7, "Script files can execute commands and require manual confirmation."
-        if name in {".env", ".env.local", "docker-compose.yml", "package-lock.json", "pnpm-lock.yaml", "cargo.lock"}:
+        if name in {
+            ".env",
+            ".env.local",
+            "docker-compose.yml",
+            "package-lock.json",
+            "pnpm-lock.yaml",
+            "yarn.lock",
+            "bun.lock",
+            "bun.lockb",
+            "cargo.lock",
+        }:
             return 6, "Environment and lockfile changes can affect the whole workspace."
         if action == "create" and name in {
             "package.json",

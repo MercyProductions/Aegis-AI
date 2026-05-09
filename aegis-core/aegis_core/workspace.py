@@ -98,6 +98,7 @@ LANGUAGE_BY_SUFFIX = {
 
 BUILD_FILE_NAMES = {
     "package.json",
+    "package-lock.json",
     "pnpm-lock.yaml",
     "yarn.lock",
     "bun.lock",
