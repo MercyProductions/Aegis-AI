@@ -77,7 +77,7 @@ The desktop app also has an Auralith Ecosystem card that can read Aegis Core fro
 http://127.0.0.1:8788
 ```
 
-Set `core_api_base_url` in `AegisChatBot.config.ini` if Core runs on another local port. The desktop app normalizes common local inputs such as `127.0.0.1:8788` or pasted `/v1/...` endpoint URLs back to the Core base URL.
+Set `core_api_base_url` in `AegisChatBot.config.ini` if Core runs on another local port. The desktop app normalizes common local inputs such as `127.0.0.1:8788`, pasted `/v1/...` endpoint URLs, and legacy `/health` or `/models` endpoints. Reverse-proxy prefixes such as `https://proxy.local/aegis` are preserved.
 
 ## Web Workspace
 

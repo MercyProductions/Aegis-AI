@@ -568,6 +568,86 @@ std::string Lower(std::string value)
     return value;
 }
 
+std::vector<std::string> UrlPathSegments(const std::string& path)
+{
+    std::vector<std::string> segments;
+    std::string current;
+    for (const char c : path) {
+        if (c == '/') {
+            if (!current.empty()) {
+                segments.push_back(current);
+                current.clear();
+            }
+            continue;
+        }
+        current.push_back(c);
+    }
+    if (!current.empty()) {
+        segments.push_back(current);
+    }
+    return segments;
+}
+
+std::string JoinUrlPathPrefix(const std::vector<std::string>& segments, const std::size_t count)
+{
+    if (count == 0 || segments.empty()) {
+        return {};
+    }
+
+    std::string path;
+    const std::size_t limit = std::min(count, segments.size());
+    for (std::size_t index = 0; index < limit; ++index) {
+        path += "/";
+        path += segments[index];
+    }
+    return path;
+}
+
+std::string StripKnownServiceEndpointPath(const std::string& path)
+{
+    std::string cleaned = path;
+    while (!cleaned.empty() && cleaned.back() == '/') {
+        cleaned.pop_back();
+    }
+    if (cleaned.empty() || cleaned == "/") {
+        return {};
+    }
+
+    const std::vector<std::string> segments = UrlPathSegments(cleaned);
+    std::vector<std::string> lowered;
+    lowered.reserve(segments.size());
+    for (const std::string& segment : segments) {
+        lowered.push_back(Lower(segment));
+    }
+
+    const auto v1 = std::find(lowered.begin(), lowered.end(), "v1");
+    if (v1 != lowered.end()) {
+        return JoinUrlPathPrefix(segments, static_cast<std::size_t>(std::distance(lowered.begin(), v1)));
+    }
+
+    const auto api = std::find(lowered.begin(), lowered.end(), "api");
+    if (api != lowered.end()) {
+        const std::size_t api_index = static_cast<std::size_t>(std::distance(lowered.begin(), api));
+        const std::string endpoint = api_index + 1 < lowered.size() ? lowered[api_index + 1] : "";
+        const std::vector<std::string> api_endpoints = {
+            "apply", "chat", "config", "embeddings", "feedback", "files", "generate",
+            "health", "media", "memory", "model-benchmarks", "model-manager",
+            "model-registry", "models", "project-builder", "ps", "restore-checkpoint",
+            "routing", "show", "tags", "validate", "validation-profile", "verify", "version"
+        };
+        if (std::find(api_endpoints.begin(), api_endpoints.end(), endpoint) != api_endpoints.end()) {
+            return JoinUrlPathPrefix(segments, api_index);
+        }
+    }
+
+    const std::string last = lowered.empty() ? "" : lowered.back();
+    if (last == "health" || last == "models") {
+        return JoinUrlPathPrefix(segments, segments.size() - 1);
+    }
+
+    return cleaned;
+}
+
 std::string NormalizeHttpBaseUrl(const std::string& value, const std::string& fallback)
 {
     std::string base = Trim(value);
@@ -601,13 +681,20 @@ std::string NormalizeHttpBaseUrl(const std::string& value, const std::string& fa
         return default_base;
     }
 
+    std::string path_prefix;
     if (authority_end != std::string::npos) {
+        const size_t path_end = base.find_first_of("?#", authority_end);
+        if (path_end == std::string::npos) {
+            path_prefix = StripKnownServiceEndpointPath(base.substr(authority_end));
+        } else if (path_end > authority_end) {
+            path_prefix = StripKnownServiceEndpointPath(base.substr(authority_end, path_end - authority_end));
+        }
         base = base.substr(0, authority_end);
     }
     while (!base.empty() && base.back() == '/') {
         base.pop_back();
     }
-    return base.empty() ? default_base : base;
+    return base.empty() ? default_base : base + path_prefix;
 }
 
 std::string EscapeJson(const std::string& value)

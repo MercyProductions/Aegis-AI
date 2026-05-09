@@ -249,6 +249,26 @@ Validation completed:
 - Visual Studio URL normalization build guard: pass.
 - Repository whitespace check: pass.
 
+## 2026-05-09 - Desktop Core URL Prefix Preservation
+
+Focus:
+
+- Align Desktop backend/Core URL handling with Website, VS Code, and Visual Studio normalization.
+- Preserve reverse-proxy path prefixes while still tolerating pasted endpoint URLs.
+
+Actions:
+
+- Updated the Desktop C++ URL normalizer to strip known Core and backend/Ollama endpoint suffixes without discarding proxy prefixes.
+- Kept Desktop request construction on the existing `NormalizeHttpBaseUrl` plus `JoinUrl` path.
+- Added a root build-time URL normalization guard before the Desktop MSBuild step.
+- Updated Desktop and root troubleshooting docs.
+
+Validation completed:
+
+- Desktop URL normalization build guard: pass.
+- Desktop Release build: pass.
+- Repository whitespace check: pass.
+
 ## 2026-05-09 - Completion Selected Model Guard
 
 Focus:

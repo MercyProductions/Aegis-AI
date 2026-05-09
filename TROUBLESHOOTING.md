@@ -20,7 +20,7 @@ If `aegis tasks --create ... --json` returns `ok: false` with a persistence erro
 
 If validation reports `Validation command failed to start`, the command passed the safety allow-list but the OS could not launch it. Check that the tool is installed, available on `PATH`, and allowed by local permissions, then rerun the health check or validation command.
 
-Desktop, Website, VS Code, and Visual Studio backend/Core URL settings are normalized before use. Inputs like `127.0.0.1:8788`, pasted `/v1/ecosystem/dashboard` URLs, and legacy Core endpoints such as `/health` or `/models` are reduced to a clean Core base URL, while empty values fall back to the local defaults. Website, VS Code, and Visual Studio preserve reverse-proxy path prefixes such as `https://proxy.local/aegis` and append Core API paths under that prefix.
+Desktop, Website, VS Code, and Visual Studio backend/Core URL settings are normalized before use. Inputs like `127.0.0.1:8788`, pasted `/v1/ecosystem/dashboard` URLs, and legacy Core endpoints such as `/health` or `/models` are reduced to a clean Core base URL, while empty values fall back to the local defaults. All local clients preserve reverse-proxy path prefixes such as `https://proxy.local/aegis` and append Core API paths under that prefix.
 
 If saving Core settings returns `Could not persist Aegis Core settings`, inspect the project `.aegis` path. The settings file must be a writable `.aegis/config.json` file, not a directory or a blocked path.
 
@@ -62,7 +62,7 @@ If model calls fail:
 
 - Confirm `ollama list` works.
 - Confirm the configured model is installed.
-- Confirm the configured Ollama URL includes a valid host and port. `127.0.0.1:11434` is normalized to `http://127.0.0.1:11434`, and pasted paths such as `/api/tags` are trimmed to the base URL. VS Code and Visual Studio preserve reverse-proxy prefixes such as `https://proxy.local/ollama`.
+- Confirm the configured Ollama URL includes a valid host and port. `127.0.0.1:11434` is normalized to `http://127.0.0.1:11434`, and pasted paths such as `/api/tags` are trimmed to the base URL. VS Code, Visual Studio, and Desktop preserve reverse-proxy prefixes such as `https://proxy.local/ollama`.
 - Run the relevant client health check.
 - Check `.aegis/core-log.md`, `.aegis/extension-log.md`, and `.aegis/validation-log.md`.
 
