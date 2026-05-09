@@ -23,13 +23,14 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 | Website integration | Partial | Website has its own mature local backend. For this phase it remains documented as a client and should migrate incrementally to `/v1` Core contracts. |
 | Workspace scan performance | Improved | Core scan results are cached when the workspace fingerprint is unchanged, skipping repeated expensive symbol/dependency/TODO passes. |
 | Path safety | Improved | Core now evaluates ignored folders relative to the workspace and blocks secret-like filenames case-insensitively. |
+| Shared settings | Improved | Core config loading falls back to defaults for malformed numeric, boolean, string-list, and blank string settings. |
 | Diagnostics | Improved | Core dashboard now surfaces stale tasks and suggested actions. |
 
 ## Verification Run
 
 Ran during this pass:
 
-- `python -m pytest tests -q` in Aegis Core: 4 tests passed
+- `python -m pytest tests -q` in Aegis Core: 5 tests passed
 - `python -m compileall aegis_core`: pass
 - Aegis Core `/v1` TestClient smoke for settings, memory, diagnostics, roadmap, tasks, task status: pass
 - Core scan twice: second scan returned `cache_hit: true`

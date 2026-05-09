@@ -34,6 +34,46 @@ def memory_dir(workspace: str | Path | None = None, config: AegisConfig | None =
     return workspace_root(workspace) / cfg.memory_dir_name
 
 
+def _clean_string(value: Any, default: str) -> str:
+    text = str(value).strip() if value is not None else ""
+    return text or default
+
+
+def _clean_string_list(value: Any, default: tuple[str, ...]) -> tuple[str, ...]:
+    if isinstance(value, str):
+        candidates = value.split(",")
+    elif isinstance(value, (list, tuple)):
+        candidates = value
+    else:
+        candidates = default
+    cleaned = [str(item).strip() for item in candidates if str(item).strip()]
+    return tuple(cleaned) if cleaned else tuple(default)
+
+
+def _clean_int(value: Any, default: int, minimum: int | None = None) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    if minimum is not None and parsed < minimum:
+        return default
+    return parsed
+
+
+def _clean_bool(value: Any, default: bool) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"1", "true", "yes", "on"}:
+            return True
+        if lowered in {"0", "false", "no", "off"}:
+            return False
+    if isinstance(value, int):
+        return bool(value)
+    return default
+
+
 def load_config(workspace: str | Path | None = None) -> AegisConfig:
     root = workspace_root(workspace)
     config_path = root / ".aegis" / "config.json"
@@ -48,23 +88,17 @@ def load_config(workspace: str | Path | None = None) -> AegisConfig:
     if env_url:
         data["ollama_url"] = env_url
 
-    fallbacks = data.get("fallback_models", AegisConfig.fallback_models)
-    if isinstance(fallbacks, str):
-        fallbacks = [item.strip() for item in fallbacks.split(",") if item.strip()]
-
-    preferences = data.get("validation_preferences", AegisConfig.validation_preferences)
-    if isinstance(preferences, str):
-        preferences = [item.strip() for item in preferences.split(",") if item.strip()]
+    ollama_url = _clean_string(data.get("ollama_url"), AegisConfig.ollama_url).rstrip("/") or AegisConfig.ollama_url
 
     return AegisConfig(
-        ollama_url=str(data.get("ollama_url", AegisConfig.ollama_url)).rstrip("/"),
-        default_model=str(data.get("default_model", AegisConfig.default_model)),
-        fallback_models=tuple(fallbacks),
-        max_context_chars=int(data.get("max_context_chars", AegisConfig.max_context_chars)),
-        safety_mode=str(data.get("safety_mode", AegisConfig.safety_mode)),
-        auto_scan_on_open=bool(data.get("auto_scan_on_open", AegisConfig.auto_scan_on_open)),
-        validation_preferences=tuple(preferences),
-        memory_dir_name=str(data.get("memory_dir_name", AegisConfig.memory_dir_name)),
+        ollama_url=ollama_url,
+        default_model=_clean_string(data.get("default_model"), AegisConfig.default_model),
+        fallback_models=_clean_string_list(data.get("fallback_models"), AegisConfig.fallback_models),
+        max_context_chars=_clean_int(data.get("max_context_chars"), AegisConfig.max_context_chars, minimum=1000),
+        safety_mode=_clean_string(data.get("safety_mode"), AegisConfig.safety_mode),
+        auto_scan_on_open=_clean_bool(data.get("auto_scan_on_open"), AegisConfig.auto_scan_on_open),
+        validation_preferences=_clean_string_list(data.get("validation_preferences"), AegisConfig.validation_preferences),
+        memory_dir_name=_clean_string(data.get("memory_dir_name"), AegisConfig.memory_dir_name),
     )
 
 

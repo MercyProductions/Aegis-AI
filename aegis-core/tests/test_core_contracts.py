@@ -7,6 +7,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from aegis_core.config import AegisConfig, load_config
 from aegis_core.safety import is_ignored_path, is_safe_to_read, is_secret_like
 from aegis_core.server import create_app
 
@@ -112,3 +113,33 @@ def test_safety_rules_are_case_insensitive_and_secret_aware(tmp_path: Path) -> N
     assert is_secret_like(tmp_path / "prod.password.txt")
     assert is_safe_to_read(tmp_path / "src" / "tokenizer.py", tmp_path)
     assert not is_safe_to_read(tmp_path / "Temp" / "cache.json", tmp_path)
+
+
+def test_invalid_config_values_fall_back_safely(tmp_path: Path) -> None:
+    workspace = tmp_path / "config-project"
+    aegis_dir = workspace / ".aegis"
+    aegis_dir.mkdir(parents=True)
+    (aegis_dir / "config.json").write_text(
+        json.dumps(
+            {
+                "ollama_url": "",
+                "default_model": "  ",
+                "fallback_models": "",
+                "max_context_chars": "not-a-number",
+                "auto_scan_on_open": "false",
+                "validation_preferences": "npm test, npm run build",
+                "memory_dir_name": "",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    config = load_config(workspace)
+
+    assert config.ollama_url == AegisConfig.ollama_url
+    assert config.default_model == AegisConfig.default_model
+    assert config.fallback_models == AegisConfig.fallback_models
+    assert config.max_context_chars == AegisConfig.max_context_chars
+    assert config.auto_scan_on_open is False
+    assert config.validation_preferences == ("npm test", "npm run build")
+    assert config.memory_dir_name == AegisConfig.memory_dir_name
