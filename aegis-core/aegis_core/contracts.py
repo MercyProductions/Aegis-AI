@@ -390,6 +390,7 @@ class AgentPlanData(ContractModel):
     summary: str | None = None
     latest_validation_excerpt: str | None = None
     repair_attempt_limit: int | None = None
+    memory_warning: str | None = None
 
 
 class AgentTaskEnvelopeData(ContractModel):

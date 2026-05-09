@@ -1232,3 +1232,22 @@ Validation completed:
 - Core validation focused tests: pass, 12 tests.
 - Aegis Core contract tests: pass, 109 tests.
 - Git diff whitespace check: pass.
+
+## 2026-05-09 - Core Agent Plan Persistence Warnings
+
+Focus:
+
+- Avoid silent loss of active continue/repair plan handoffs when their `.aegis` JSON paths are damaged.
+- Preserve safe plan-only behavior while making memory persistence issues visible to clients.
+
+Actions:
+
+- Added verified active-plan writes for continue and repair agent plans.
+- Surfaced damaged `active-agent-plan.json` and `active-repair-plan.json` paths as plan memory warnings.
+- Updated contract metadata, troubleshooting, changelog, and regression coverage for damaged active-plan paths.
+
+Validation completed:
+
+- Core continue/repair agent focused tests: pass, 6 tests.
+- Aegis Core contract tests: pass, 111 tests.
+- Git diff whitespace check: pass.

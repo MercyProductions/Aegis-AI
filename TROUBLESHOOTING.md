@@ -38,6 +38,8 @@ If roadmap generation reports `Could not persist roadmap`, repair `.aegis/roadma
 
 If validation results include a `validation_log.persisted: false` status or a `Could not persist validation log` warning, repair `.aegis/validation-log.md` so it is a writable Markdown file. The command result is still useful, but repair planning, quality trends, and historical failure analysis will miss that run until logging is fixed.
 
+If continue or repair agent responses include `Could not persist agent plan`, repair `.aegis/active-agent-plan.json` or `.aegis/active-repair-plan.json` so they are writable JSON files. The returned plan is still plan-only and approval-gated, but later clients may not find the saved handoff until the damaged path is fixed.
+
 ## Ollama
 
 Default local endpoint:

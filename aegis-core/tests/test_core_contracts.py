@@ -2553,6 +2553,25 @@ def test_continue_agent_survives_damaged_roadmap_path(tmp_path: Path) -> None:
     assert data["task"]["status"] == "planned"
 
 
+def test_continue_agent_surfaces_active_plan_persistence_warning(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    aegis_dir = workspace / ".aegis"
+    aegis_dir.mkdir()
+    active_plan_path = aegis_dir / "active-agent-plan.json"
+    active_plan_path.mkdir()
+
+    client = TestClient(create_app())
+    response = client.post("/v1/agent/continue", json={"workspace": str(workspace), "request": "Continue safely"})
+
+    assert response.status_code == 200
+    assert_core_contract(response.json(), "agent.continue.plan")
+    data = response.json()["data"]
+    assert data["plan"]["mode"] == "plan-only"
+    assert "Could not persist agent plan" in data["plan"]["memory_warning"]
+    assert data["task"]["status"] == "planned"
+    assert active_plan_path.is_dir()
+
+
 def test_continue_agent_survives_memory_root_file(tmp_path: Path) -> None:
     workspace = make_workspace(tmp_path)
     (workspace / ".aegis").write_text("not a directory", encoding="utf-8")
@@ -2600,3 +2619,23 @@ def test_repair_agent_redacts_validation_excerpt(tmp_path: Path) -> None:
     assert "normal failure" in excerpt
     assert "[redacted secret-like log line]" in excerpt
     assert "abc123" not in excerpt
+
+
+def test_repair_agent_surfaces_active_plan_persistence_warning(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    aegis_dir = workspace / ".aegis"
+    aegis_dir.mkdir()
+    (aegis_dir / "validation-log.md").write_text("normal failure\n", encoding="utf-8")
+    active_plan_path = aegis_dir / "active-repair-plan.json"
+    active_plan_path.mkdir()
+
+    client = TestClient(create_app())
+    response = client.post("/v1/agent/repair", json={"workspace": str(workspace)})
+
+    assert response.status_code == 200
+    assert_core_contract(response.json(), "agent.repair.plan")
+    data = response.json()["data"]
+    assert data["plan"]["mode"] == "repair-plan-only"
+    assert "Could not persist agent plan" in data["plan"]["memory_warning"]
+    assert data["task"]["status"] == "planned"
+    assert active_plan_path.is_dir()
