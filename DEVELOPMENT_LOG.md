@@ -1,5 +1,24 @@
 # Development Log
 
+## 2026-05-09 - VS Code Python Lockfile Parity
+
+Focus:
+
+- Keep the VS Code local fallback aligned with Core and Website Python lockfile safety.
+- Avoid silent local proposal drift for `uv.lock`, `poetry.lock`, and `pdm.lock`.
+
+Actions:
+
+- Added `uv.lock` and `pdm.lock` to the VS Code lockfile edit guard alongside existing Poetry coverage.
+- Marked Python lockfiles as important project metadata so local snapshots keep them visible for context.
+- Updated local project language/package-manager inference so Python lockfiles surface Python, `uv`, `poetry`, and `pdm` in project summaries.
+- Extended package lint regressions to cover Python lockfile detection and safety patterns.
+
+Validation completed:
+
+- VS Code package lint: pass.
+- VS Code extension syntax check: pass.
+
 ## 2026-05-09 - Python Lockfile Metadata Safety
 
 Focus:

@@ -170,6 +170,7 @@ assertProjectCommandInference(projectCommandInferrer);
 const buildFileClassifier = loadExtensionFunction(extensionText, 'isLikelyBuildFile', { path });
 assertBuildFileDetection(buildFileClassifier);
 assertProjectRiskPattern(extensionText);
+assertPythonLockfilePatterns(extensionText);
 const sourceIndexing = loadExtensionFunctions(
   extensionText,
   [
@@ -436,6 +437,23 @@ function assertProjectLanguageInference(inferrer) {
       fail(`inferProjectLanguages must detect ${expected} workspaces from project/source files.`);
     }
   }
+
+  const pythonLockResult = inferrer(
+    [
+      { relative: 'uv.lock' },
+      { relative: 'poetry.lock' },
+      { relative: 'pdm.lock' }
+    ],
+    []
+  );
+  if (!pythonLockResult.languages.includes('Python')) {
+    fail('inferProjectLanguages must detect Python workspaces from Python lockfiles.');
+  }
+  for (const expected of ['uv', 'poetry', 'pdm']) {
+    if (!pythonLockResult.packageManagers.includes(expected)) {
+      fail(`inferProjectLanguages must detect ${expected} from Python lockfiles.`);
+    }
+  }
 }
 
 function assertProjectCommandInference(inferrer) {
@@ -472,6 +490,15 @@ function assertBuildFileDetection(classifier) {
 function assertProjectRiskPattern(source) {
   if (!source.includes('csproj|fsproj|vbproj|vcxproj|vcxproj\\\\.filters|sln|slnx')) {
     fail('webview risk badge must cover .slnx, F#/VB, and Visual Studio project files.');
+  }
+}
+
+function assertPythonLockfilePatterns(source) {
+  for (const lockfile of ['uv', 'poetry', 'pdm']) {
+    const escaped = lockfile.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (!source.includes(`^${escaped}\\.lock$`)) {
+      fail(`extension lockfile safety patterns must include ${lockfile}.lock.`);
+    }
   }
 }
 

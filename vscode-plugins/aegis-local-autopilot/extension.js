@@ -83,7 +83,9 @@ const LOCKFILE_PATTERNS = [
   /^bun\.lock$/i,
   /^bun\.lockb$/i,
   /^cargo\.lock$/i,
-  /^poetry\.lock$/i
+  /^uv\.lock$/i,
+  /^poetry\.lock$/i,
+  /^pdm\.lock$/i
 ];
 const IMPORTANT_FILE_PATTERNS = [
   /^readme(?:\..*)?$/i,
@@ -100,6 +102,9 @@ const IMPORTANT_FILE_PATTERNS = [
   /^next\.config\./i,
   /^webpack\.config\./i,
   /^pyproject\.toml$/i,
+  /^uv\.lock$/i,
+  /^poetry\.lock$/i,
+  /^pdm\.lock$/i,
   /^requirements.*\.txt$/i,
   /^setup\.py$/i,
   /^cmakelists\.txt$/i,
@@ -2190,10 +2195,11 @@ function inferProjectLanguages(files, importantContents) {
   const names = new Set(files.map((file) => file.relative.replace(/\\/g, '/').toLowerCase()));
   const extensions = new Set(files.map((file) => path.extname(file.relative).toLowerCase()));
   const hasUnityProject = names.has('projectsettings/projectversion.txt') || names.has('packages/manifest.json') || Array.from(names).some((name) => name.startsWith('assets/') && name.endsWith('.unity'));
+  const hasPythonLockfile = names.has('uv.lock') || names.has('poetry.lock') || names.has('pdm.lock');
 
   if (extensions.has('.ts') || extensions.has('.tsx')) languages.add('TypeScript');
   if (extensions.has('.js') || extensions.has('.jsx') || names.has('package.json')) languages.add('JavaScript');
-  if (extensions.has('.py') || names.has('pyproject.toml') || names.has('requirements.txt')) languages.add('Python');
+  if (extensions.has('.py') || names.has('pyproject.toml') || names.has('requirements.txt') || hasPythonLockfile) languages.add('Python');
   if (extensions.has('.cpp') || extensions.has('.cc') || extensions.has('.cxx') || extensions.has('.c') || extensions.has('.h') || extensions.has('.hpp')) languages.add('C/C++');
   if (extensions.has('.cs') || Array.from(names).some((name) => name.endsWith('.csproj') || name.endsWith('.sln') || name.endsWith('.slnx'))) languages.add('C#/.NET');
   if (extensions.has('.fs') || extensions.has('.fsi') || extensions.has('.fsx') || Array.from(names).some((name) => name.endsWith('.fsproj'))) languages.add('F#/.NET');
@@ -2210,6 +2216,9 @@ function inferProjectLanguages(files, importantContents) {
   if (names.has('yarn.lock')) packageManagers.add('yarn');
   if (names.has('package-lock.json')) packageManagers.add('npm');
   if (names.has('bun.lock') || names.has('bun.lockb')) packageManagers.add('bun');
+  if (names.has('uv.lock')) packageManagers.add('uv');
+  if (names.has('poetry.lock')) packageManagers.add('poetry');
+  if (names.has('pdm.lock')) packageManagers.add('pdm');
 
   for (const item of importantContents) {
     if (path.basename(item.path).toLowerCase() !== 'package.json') {

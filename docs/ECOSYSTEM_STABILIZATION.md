@@ -30,7 +30,7 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 | Desktop settings | Improved | Backend and Aegis Core URL fields normalize host:port inputs and pasted endpoint paths before config writes or runtime requests. |
 | VS Code settings | Improved | Ollama and Aegis Core URL fields normalize host:port inputs and pasted endpoint paths before model or shared-runtime requests. |
 | VS Code diagnostics | Improved | Local API HTTP failures now surface parsed, redacted details instead of raw JSON response bodies. |
-| VS Code packaging | Improved | Release lint now verifies command contribution/activation parity, release metadata, source-only helper exclusions, and package hygiene before VSIX creation. |
+| VS Code packaging | Improved | Release lint now verifies command contribution/activation parity, release metadata, source-only helper exclusions, package hygiene, and Python lockfile fallback safety before VSIX creation. |
 | Visual Studio settings | Improved | Ollama and Aegis Core URL fields normalize host:port inputs and pasted endpoint paths before model or shared-runtime requests. |
 | Shared task API | Improved | Bad task status updates return `400`, missing task IDs return `404`, and malformed local task records are normalized on read. |
 | Visual Studio packaging | Improved | VSIX packaging now validates manifest metadata, command resources, and VSCT/C# command table parity before producing the release archive. |
@@ -47,7 +47,7 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 | Website model manager | Improved | Damaged model-operation and pull-log JSON paths are skipped safely, invalid operation records are ignored, and operation history writes are atomic. |
 | Website model benchmarks | Improved | Damaged benchmark result/job stores are skipped safely, blank job records are ignored, and benchmark state writes are atomic. |
 | Website dependency profiling | Improved | Damaged marker directories and lockfile paths no longer distort onboarding stack, package-manager, entry-point, or database summaries, root `build.py` / `build.ps1` guard scripts are recorded before lower-level native validation fallbacks, and Python lockfile drift is tracked by watcher snapshots. |
-| Dependency lockfile safety | Improved | Core maintenance manifests and Website guided auto-apply scoring now treat `uv.lock`, `poetry.lock`, and `pdm.lock` as dependency-wide lockfile surfaces. |
+| Dependency lockfile safety | Improved | Core maintenance manifests, Website guided auto-apply scoring, and VS Code local fallback proposal guards now treat `uv.lock`, `poetry.lock`, and `pdm.lock` as dependency-wide lockfile surfaces. |
 | Website checkpoint restore | Improved | Restore now validates checkpoint IDs, damaged manifests, backup paths, and missing backup files before touching workspace files. |
 | Website safe apply | Improved | Apply refuses to edit when checkpoint creation fails and reports later write/delete failures with checkpoint context. |
 | Website frontend bundle | Improved | Production builds split React, icons, API calls, app utilities, and app styles into stable chunks, removing the default Vite large-chunk warning without raising the warning limit. |
