@@ -24,6 +24,7 @@
 - Improved the Aegis Core route CLI so provider/model overrides, context files, and local fallback reasons can be previewed with the same sanitized route planner used by `/v1/models/route`.
 - Fixed LM Studio completion calls so normalized local server URLs use the OpenAI-compatible `/v1/chat/completions` path.
 - Hardened provider completion parsing so invalid JSON or malformed provider response shapes return clean provider failures instead of internal parser exceptions.
+- Hardened Core hybrid settings so unsupported `preferred_cloud_provider` values fall back to the default provider instead of remaining as ambiguous route configuration.
 - Hardened hybrid provider key deletion so missing keys still return a harmless `removed: false`, while OS credential-store backend failures surface as `503` errors instead of being mistaken for absent keys.
 - Hardened Core diagnostic redaction so provider URLs containing query-string keys are scrubbed before cloud connection errors reach clients or logs.
 - Hardened Core provider error redaction so authorization headers, JSON key fields, and URL credentials are redacted inline while preserving actionable provider diagnostics.

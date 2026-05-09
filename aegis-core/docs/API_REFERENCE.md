@@ -320,6 +320,8 @@ Body:
 
 Only known safe configuration keys are applied. The file written is `.aegis/config.json`. `model_routing_mode` is restricted to `local_only`, `hybrid`, or `cloud_allowed`. URL settings are normalized to base HTTP(S) origins and reject credentials. `memory_dir_name` is restricted to one workspace-local folder name; absolute paths, nested paths, and parent traversal fall back to `.aegis`.
 
+`preferred_cloud_provider` is restricted to `openai`, `anthropic`, `google`, or `openrouter`; unsupported values fall back to the default `openai` provider.
+
 ## POST /v1/workspaces/scan
 
 Body:

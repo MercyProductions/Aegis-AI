@@ -8,6 +8,9 @@ from typing import Any
 from urllib.parse import urlparse
 
 
+SUPPORTED_CLOUD_PROVIDERS = {"openai", "anthropic", "google", "openrouter"}
+
+
 @dataclass
 class AegisConfig:
     ollama_url: str = "http://127.0.0.1:11434"
@@ -87,6 +90,11 @@ def _clean_routing_mode(value: Any) -> str:
     return text if text in {"local_only", "hybrid", "cloud_allowed"} else AegisConfig.model_routing_mode
 
 
+def _clean_cloud_provider(value: Any) -> str:
+    text = _clean_string(value, AegisConfig.preferred_cloud_provider).lower().replace("-", "_")
+    return text if text in SUPPORTED_CLOUD_PROVIDERS else AegisConfig.preferred_cloud_provider
+
+
 def _clean_memory_dir_name(value: Any) -> str:
     text = _clean_string(value, AegisConfig.memory_dir_name)
     if any(separator in text for separator in ("/", "\\", ":")):
@@ -149,7 +157,7 @@ def load_config(workspace: str | Path | None = None) -> AegisConfig:
         local_small_model=_clean_string(data.get("local_small_model"), AegisConfig.local_small_model),
         local_coder_model=_clean_string(data.get("local_coder_model", data.get("default_model")), AegisConfig.local_coder_model),
         local_embedding_model=_clean_string(data.get("local_embedding_model"), AegisConfig.local_embedding_model),
-        preferred_cloud_provider=_clean_string(data.get("preferred_cloud_provider"), AegisConfig.preferred_cloud_provider).lower(),
+        preferred_cloud_provider=_clean_cloud_provider(data.get("preferred_cloud_provider")),
         preferred_cloud_model=_clean_string(data.get("preferred_cloud_model"), AegisConfig.preferred_cloud_model),
         model_routing_mode=_clean_routing_mode(data.get("model_routing_mode")),
         fallback_models=_clean_string_list(data.get("fallback_models"), AegisConfig.fallback_models),

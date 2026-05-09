@@ -1849,6 +1849,7 @@ def test_invalid_config_values_fall_back_safely(tmp_path: Path) -> None:
                 "default_model": "  ",
                 "fallback_models": "",
                 "max_context_chars": "not-a-number",
+                "preferred_cloud_provider": "not-a-provider",
                 "auto_scan_on_open": "false",
                 "validation_preferences": "npm test, npm run build",
                 "memory_dir_name": "",
@@ -1865,6 +1866,7 @@ def test_invalid_config_values_fall_back_safely(tmp_path: Path) -> None:
     assert config.max_context_chars == AegisConfig.max_context_chars
     assert config.model_routing_mode == "local_only"
     assert config.lm_studio_url == AegisConfig.lm_studio_url
+    assert config.preferred_cloud_provider == AegisConfig.preferred_cloud_provider
     assert config.cloud_cost_warnings is True
     assert config.auto_scan_on_open is False
     assert config.validation_preferences == ("npm test", "npm run build")

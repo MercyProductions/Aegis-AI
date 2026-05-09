@@ -186,6 +186,24 @@ Validation completed:
 - Aegis Core contract test suite: pass, 118 tests.
 - Repository whitespace check: pass.
 
+## 2026-05-09 - Hybrid Provider Setting Sanitization
+
+Focus:
+
+- Keep hybrid routing settings explicit and predictable when users mistype provider names.
+- Avoid leaving unsupported provider IDs in effective Core config.
+
+Actions:
+
+- Restricted `preferred_cloud_provider` normalization to OpenAI, Anthropic, Google, and OpenRouter.
+- Added a regression proving unsupported cloud provider settings fall back to the default provider.
+
+Validation completed:
+
+- Aegis Core hybrid settings regression slice: pass, 2 tests.
+- Aegis Core contract test suite: pass, 118 tests.
+- Repository whitespace check: pass.
+
 ## 2026-05-09 - Autonomous Stabilization Tranche
 
 Focus:
