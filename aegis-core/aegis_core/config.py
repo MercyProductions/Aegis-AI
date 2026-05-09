@@ -31,12 +31,22 @@ def workspace_root(path: str | Path | None = None) -> Path:
 
 def memory_dir(workspace: str | Path | None = None, config: AegisConfig | None = None) -> Path:
     cfg = config or AegisConfig()
-    return workspace_root(workspace) / cfg.memory_dir_name
+    return workspace_root(workspace) / _clean_memory_dir_name(cfg.memory_dir_name)
 
 
 def _clean_string(value: Any, default: str) -> str:
     text = str(value).strip() if value is not None else ""
     return text or default
+
+
+def _clean_memory_dir_name(value: Any) -> str:
+    text = _clean_string(value, AegisConfig.memory_dir_name)
+    if any(separator in text for separator in ("/", "\\", ":")):
+        return AegisConfig.memory_dir_name
+    candidate = Path(text)
+    if candidate.is_absolute() or len(candidate.parts) != 1 or candidate.parts[0] in {".", ".."}:
+        return AegisConfig.memory_dir_name
+    return text
 
 
 def _clean_string_list(value: Any, default: tuple[str, ...]) -> tuple[str, ...]:
@@ -93,7 +103,7 @@ def load_config(workspace: str | Path | None = None) -> AegisConfig:
         safety_mode=_clean_string(data.get("safety_mode"), AegisConfig.safety_mode),
         auto_scan_on_open=_clean_bool(data.get("auto_scan_on_open"), AegisConfig.auto_scan_on_open),
         validation_preferences=_clean_string_list(data.get("validation_preferences"), AegisConfig.validation_preferences),
-        memory_dir_name=_clean_string(data.get("memory_dir_name"), AegisConfig.memory_dir_name),
+        memory_dir_name=_clean_memory_dir_name(data.get("memory_dir_name")),
     )
 
 
@@ -121,7 +131,7 @@ def update_config(workspace: str | Path | None, updates: dict[str, Any]) -> Aegi
     current = _read_config_data(path)
     for key, value in updates.items():
         if key in allowed:
-            current[key] = value
+            current[key] = _clean_memory_dir_name(value) if key == "memory_dir_name" else value
     _write_json_best_effort(path, current)
     return load_config(root)
 

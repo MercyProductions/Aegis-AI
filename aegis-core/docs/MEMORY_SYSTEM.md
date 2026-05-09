@@ -52,6 +52,8 @@ Core should not store:
 
 Diagnostics and validation output pass through a simple redaction layer before being written to `core-log.md` or `validation-log.md`.
 
+The shared memory directory setting is intentionally limited to a single workspace-local folder name. Absolute paths, nested paths, and parent-traversal values fall back to `.aegis`.
+
 ## Reset
 
 To reset memory for a project, delete `.aegis/` after confirming backups and logs are no longer needed.

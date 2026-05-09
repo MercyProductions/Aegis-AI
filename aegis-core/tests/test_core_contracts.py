@@ -8,7 +8,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 import aegis_core.validation as validation_module
-from aegis_core.config import AegisConfig, load_config, update_config, write_default_config
+from aegis_core.config import AegisConfig, load_config, memory_dir, update_config, write_default_config
 from aegis_core.memory import ProjectMemory
 from aegis_core.safety import is_ignored_path, is_safe_to_read, is_secret_like
 from aegis_core.server import create_app
@@ -159,6 +159,45 @@ def test_invalid_config_values_fall_back_safely(tmp_path: Path) -> None:
     assert config.auto_scan_on_open is False
     assert config.validation_preferences == ("npm test", "npm run build")
     assert config.memory_dir_name == AegisConfig.memory_dir_name
+
+
+def test_memory_dir_name_is_restricted_to_workspace_local_folder(tmp_path: Path) -> None:
+    workspace = tmp_path / "memory-dir-project"
+    aegis_dir = workspace / ".aegis"
+    aegis_dir.mkdir(parents=True)
+    config_path = aegis_dir / "config.json"
+    unsafe_names = ("..", ".", "../outside", "nested/path", r"nested\path", r"C:\temp\aegis", "/tmp/aegis", "")
+
+    for unsafe_name in unsafe_names:
+        config_path.write_text(json.dumps({"memory_dir_name": unsafe_name}), encoding="utf-8")
+        config = load_config(workspace)
+
+        assert config.memory_dir_name == AegisConfig.memory_dir_name
+        assert memory_dir(workspace, config) == workspace.resolve() / AegisConfig.memory_dir_name
+
+    assert memory_dir(workspace, AegisConfig(memory_dir_name="../outside")) == workspace.resolve() / AegisConfig.memory_dir_name
+
+    config_path.write_text(json.dumps({"memory_dir_name": ".aegis-local"}), encoding="utf-8")
+    config = load_config(workspace)
+
+    assert config.memory_dir_name == ".aegis-local"
+    assert memory_dir(workspace, config) == workspace.resolve() / ".aegis-local"
+
+
+def test_settings_api_sanitizes_memory_dir_name(tmp_path: Path) -> None:
+    workspace = tmp_path / "settings-memory-dir-project"
+    workspace.mkdir()
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/v1/settings",
+        json={"workspace": str(workspace), "settings": {"memory_dir_name": "../outside"}},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["data"]["memory_dir_name"] == AegisConfig.memory_dir_name
+    config_path = workspace / ".aegis" / "config.json"
+    assert json.loads(config_path.read_text(encoding="utf-8"))["memory_dir_name"] == AegisConfig.memory_dir_name
 
 
 def test_config_read_write_survives_damaged_paths(tmp_path: Path) -> None:

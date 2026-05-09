@@ -171,7 +171,7 @@ Body:
 }
 ```
 
-Only known safe configuration keys are applied. The file written is `.aegis/config.json`.
+Only known safe configuration keys are applied. The file written is `.aegis/config.json`. `memory_dir_name` is restricted to one workspace-local folder name; absolute paths, nested paths, and parent traversal fall back to `.aegis`.
 
 ## POST /v1/workspaces/scan
 
