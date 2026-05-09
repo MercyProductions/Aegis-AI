@@ -415,10 +415,12 @@ Actions:
 
 - Updated `docs/ECOSYSTEM_STABILIZATION.md` with the current Core, Website, Desktop, VS Code, and Visual Studio validation state.
 - Updated `VALIDATION_REPORT.md` so the main validation table reflects the latest package guards and the warning-free Website production build.
+- Clarified older migration-phase validation rows so superseded Website build warnings are clearly historical, not current regressions.
 
 Validation completed:
 
 - Aegis Core tests: pass, 51 tests.
 - VS Code extension lint/package: pass.
 - Website focused frontend API/runtime/task tests: pass, 40 tests.
+- Website frontend production build: pass, no Vite chunk-size warning.
 - Desktop Release build and quick smoke: pass.

@@ -155,6 +155,8 @@ Additional validation and documentation cleanup:
 - Visual Studio VSIX packaging passed with command table/handler parity validation.
 - Desktop Release build and quick smoke passed with backend reachable before and after launch.
 
+Historical phase tables below preserve the result at the time each migration phase ran. Superseded warnings are called out there as historical and should be read against this latest baseline.
+
 ## Runtime Consolidation Phase 1
 
 Date: 2026-05-09
@@ -176,7 +178,7 @@ Tests run:
 | Website focused config/health | `python -m pytest backend/tests/test_runtime_health.py backend/tests/test_config_update.py -q` | Passed: 3 tests |
 | Website backend suite | `npm run backend:test` | Passed: 768 tests, 155 subtests |
 | Website frontend tests | `npm test -- --run` | Passed: 21 files, 169 tests |
-| Website frontend build | `npm run build` | Passed, with existing Vite large-chunk warning |
+| Website frontend build | `npm run build` | Passed; this historical run still emitted the Vite large-chunk warning that was later resolved |
 | Live Core bridge | `GET /api/core-runtime` against running Website 8787 and Core 8788 | Passed: 200, `health`, `ecosystem.dashboard` envelopes present |
 
 No rich Website workflows were migrated in this phase.
@@ -201,7 +203,7 @@ Tests run:
 | Website Core bridge targeted tests | `python -m pytest backend/tests/test_core_bridge.py -q` | Passed: 5 tests |
 | Website backend suite | `npm run backend:test` from `website` | Passed: 769 tests, 155 subtests |
 | Website frontend tests | `npm test -- --run` from `website` | Passed: 21 files, 169 tests |
-| Website frontend build | `npm run build` from `website` | Passed, with existing Vite large-chunk warning |
+| Website frontend build | `npm run build` from `website` | Passed; this historical run still emitted the Vite large-chunk warning that was later resolved |
 | VS Code extension compile | `npm run compile` | Passed |
 | VS Code extension package | `npm run package` | Passed, produced `release/aegis-local-autopilot-0.1.1.vsix` |
 | Visual Studio extension package | `powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1` | Passed, produced `release/AegisLocalAgentVs.vsix` |
