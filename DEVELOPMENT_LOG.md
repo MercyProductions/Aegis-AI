@@ -682,6 +682,25 @@ Validation completed:
 - Aegis Core contract tests: pass, 89 tests.
 - VS Code extension compile smoke: pass.
 
+## 2026-05-09 - Desktop Diagnostic Redaction
+
+Focus:
+
+- Keep Desktop backend/Core health and API failure messages useful without exposing credential-like details.
+- Align Desktop diagnostics with the redaction behavior now shared by Core, Website, VS Code, and Visual Studio surfaces.
+
+Actions:
+
+- Added a native Desktop diagnostic redactor for query-string keys, bearer tokens, URL credentials, and assignment-style secrets.
+- Routed Desktop JSON error envelope extraction, backend health failures, transport errors, and Core `ok=false` envelope details through the redactor.
+- Kept diagnostic messages bounded to 240 characters.
+
+Validation completed:
+
+- Desktop Release build: pass, 0 warnings.
+- Aegis Core contract tests: pass, 89 tests.
+- VS Code extension compile smoke: pass.
+
 ## 2026-05-09 - Visual Studio Diagnostic Redaction
 
 Focus:

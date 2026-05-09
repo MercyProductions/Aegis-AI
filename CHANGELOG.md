@@ -80,6 +80,7 @@
 - Hardened Desktop backend/Core URL settings so local host:port inputs, trailing endpoint paths, and empty values normalize before runtime requests or config writes.
 - Hardened Desktop Core dashboard loading so a shared registration failure no longer blocks dashboard reads when Core is otherwise reachable.
 - Hardened Desktop HTTP diagnostics so backend/Core error envelopes using `error`, `message`, or nested `data` details surface as bounded user-facing messages.
+- Hardened Desktop backend/Core diagnostics so secret-like HTTP error details are redacted before display.
 - Hardened VS Code Ollama/Core URL settings so common local inputs normalize before model detection, health checks, and shared Core sync.
 - Hardened VS Code local API error reporting so Core/Ollama HTTP failures surface parsed, redacted detail text instead of raw JSON bodies.
 - Hardened VS Code request diagnostics so invalid JSON and timeout errors report endpoint paths without leaking workspace query strings.

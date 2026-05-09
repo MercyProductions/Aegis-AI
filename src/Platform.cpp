@@ -21,6 +21,7 @@
 #include <cwctype>
 #include <fstream>
 #include <iomanip>
+#include <regex>
 #include <sstream>
 #include <thread>
 
@@ -168,11 +169,7 @@ bool IsBackendRootMismatchMessage(const std::string& message)
 
 std::string CompactErrorDetail(std::string detail)
 {
-    std::replace(detail.begin(), detail.end(), '\r', ' ');
-    std::replace(detail.begin(), detail.end(), '\n', ' ');
-    std::replace(detail.begin(), detail.end(), '\t', ' ');
-    detail = Trim(detail);
-    return detail.size() <= 240 ? detail : detail.substr(0, 237) + "...";
+    return RedactDiagnosticText(detail);
 }
 
 HttpResponse SendWinHttpRequest(
@@ -671,6 +668,43 @@ std::string JoinUrl(const std::string& base, const std::string& path)
     return base + path;
 }
 
+std::string RedactDiagnosticText(const std::string& value, std::size_t max_length)
+{
+    std::string detail = value;
+    std::replace(detail.begin(), detail.end(), '\r', ' ');
+    std::replace(detail.begin(), detail.end(), '\n', ' ');
+    std::replace(detail.begin(), detail.end(), '\t', ' ');
+    detail = Trim(detail);
+
+    static const std::regex url_credentials(
+        R"(\b(https?://)[^/\s:@]+:[^@\s/]+@)",
+        std::regex_constants::icase);
+    static const std::regex query_secret(
+        R"(([?&](api[_-]?key|key|token|secret|password|passwd|credential)=)[^&#\s]+)",
+        std::regex_constants::icase);
+    static const std::regex assignment_secret(
+        R"(\b((api[_-]?key|token|secret|password|passwd|credential|authorization)\s*[:=]\s*)[^\s&]+)",
+        std::regex_constants::icase);
+    static const std::regex authorization_value(
+        R"(\b(Authorization\s*[:=]\s*)(Bearer|Basic|Digest)?\s*[A-Za-z0-9._~+/\-=]+)",
+        std::regex_constants::icase);
+    static const std::regex bearer_token(
+        R"(\b(Bearer\s+)[A-Za-z0-9._~+/\-=]+)",
+        std::regex_constants::icase);
+
+    detail = std::regex_replace(detail, url_credentials, "$1[redacted]@");
+    detail = std::regex_replace(detail, query_secret, "$1[redacted]");
+    detail = std::regex_replace(detail, authorization_value, "$1[redacted]");
+    detail = std::regex_replace(detail, bearer_token, "$1[redacted]");
+    detail = std::regex_replace(detail, assignment_secret, "$1[redacted]");
+
+    if (max_length == 0 || detail.size() <= max_length) {
+        return detail;
+    }
+    const std::size_t prefix = max_length > 3 ? max_length - 3 : 0;
+    return detail.substr(0, prefix) + "...";
+}
+
 std::string FormatBytes(long long size)
 {
     std::ostringstream stream;
@@ -771,7 +805,7 @@ HttpResponse HttpDelete(const std::string& url)
 std::string BackendHealthFailureMessage(const HttpResponse& response)
 {
     if (!response.error.empty()) {
-        return response.error;
+        return RedactDiagnosticText(response.error);
     }
 
     std::ostringstream message;

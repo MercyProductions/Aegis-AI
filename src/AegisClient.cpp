@@ -55,15 +55,15 @@ std::string CoreEnvelopeError(const JsonValue& envelope)
     const JsonValue& data = envelope["data"];
     const std::string error = data["error"].AsString();
     if (!error.empty()) {
-        return error;
+        return RedactDiagnosticText(error);
     }
     const std::string message = data["message"].AsString();
     if (!message.empty()) {
-        return message;
+        return RedactDiagnosticText(message);
     }
     const std::string detail = envelope["detail"].AsString();
     if (!detail.empty()) {
-        return detail;
+        return RedactDiagnosticText(detail);
     }
 
     const JsonValue& deprecations = envelope["deprecations"];
@@ -77,7 +77,7 @@ std::string CoreEnvelopeError(const JsonValue& envelope)
         }
         const std::string text = joined.str();
         if (!text.empty()) {
-            return text;
+            return RedactDiagnosticText(text);
         }
     }
 
@@ -4454,7 +4454,7 @@ std::string AegisClient::CoreEndpoint(const std::string& path) const
 std::string AegisClient::RequireJson(const HttpResponse& response, const std::string& action) const
 {
     if (!response.error.empty()) {
-        throw std::runtime_error("Could not " + action + ": " + response.error);
+        throw std::runtime_error("Could not " + action + ": " + RedactDiagnosticText(response.error));
     }
     if (response.status_code < 200 || response.status_code >= 300) {
         const std::string detail = FirstJsonErrorDetail(response.body);

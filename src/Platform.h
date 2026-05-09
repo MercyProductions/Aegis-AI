@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <filesystem>
 #include <functional>
 #include <string>
@@ -46,6 +47,7 @@ std::string NormalizeHttpBaseUrl(const std::string& value, const std::string& fa
 std::string EscapeJson(const std::string& value);
 std::string UrlEncode(const std::string& value);
 std::string JoinUrl(const std::string& base, const std::string& path);
+std::string RedactDiagnosticText(const std::string& value, std::size_t max_length = 240);
 std::string FormatBytes(long long size);
 std::string NowTimeLabel();
 std::string FirstJsonErrorDetail(const std::string& body);
