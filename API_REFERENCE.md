@@ -49,6 +49,12 @@ Product/advanced groups that stay Website-owned for now:
 - Creative Studio/media
 - auth/session APIs
 
+Deprecated/removal status:
+
+- No Website `/api` route is removed or formally deprecated in the current cleanup phase.
+- Low-risk runtime routes are adapter-backed where noted, but their `/api` response models remain backwards compatible.
+- See `DEPRECATION_PLAN.md` before removing any duplicate Website, Core, Desktop, VS Code, or Visual Studio runtime path.
+
 ## Website-to-Core Bridge
 
 `GET /api/core-runtime`
@@ -140,3 +146,13 @@ Endpoint families:
 Schema-only experimental contracts are defined in `aegis-core/aegis_core/contracts.py` for `patch.proposal`, `rollback.entry`, and `rollback.result`. They are intentionally not active write endpoints yet.
 
 See `aegis-core/docs/API_REFERENCE.md` for the Core-only details and examples.
+
+## Removal Gate
+
+Before any old route, fallback, or shim is removed:
+
+- the replacement Core endpoint must have contract tests;
+- the Website adapter must have online/offline and wrong-kind/wrong-version tests;
+- frontend and Desktop compatibility tests must still pass against the old `/api` shape;
+- IDE extension package/build checks must pass for affected workflows;
+- apply/rollback workflows must have explicit restore tests if files can be changed.

@@ -22,10 +22,10 @@ Canonical schemas: `aegis-core/aegis_core/contracts.py`
 
 | Core endpoint | Contract kind | Stability | Desktop App | Website backend | VS Code extension | Visual Studio extension |
 | --- | --- | --- | --- | --- | --- | --- |
-| `GET /v1/health` | `health` | stable | Not direct today | Read through `/api/core-runtime` | Direct health check | Direct health check |
-| `GET /v1/models` | `models` | stable | Via dashboard model status | Read through `/api/core-runtime` | Direct model inventory, Ollama fallback | Not direct today |
-| `GET /v1/settings` | `settings` | stable | Not direct today | Read through `/api/core-runtime` | Direct health/settings check | Not direct today |
-| `POST /v1/settings` | `settings.updated` | stable | Not direct today | Not direct today | Not direct today | Not direct today |
+| `GET /v1/health` | `health` | stable | Not direct today | `/api/core-runtime` and `/api/health` adapter | Direct health check | Direct health check |
+| `GET /v1/models` | `models` | stable | Via dashboard model status | `/api/core-runtime` and `/api/models` adapter | Direct model inventory, Ollama fallback | Not direct today |
+| `GET /v1/settings` | `settings` | stable | Not direct today | `/api/core-runtime` and `/api/config` adapter | Direct health/settings check | Not direct today |
+| `POST /v1/settings` | `settings.updated` | stable | Not direct today | Best-effort sync after `POST /api/config` | Not direct today | Not direct today |
 | `POST /v1/workspaces/scan` | `workspace.scan` | stable | Not direct today | Future bridge candidate | Direct scan metadata, local scan fallback | Not direct today |
 | `POST /v1/workspaces/roadmap` | `workspace.roadmap` | stable | Not direct today | Future bridge candidate | Direct project roadmap, local model fallback | Not direct today |
 | `GET /v1/memory` | `memory.summary` | stable | Via dashboard roadmap/diagnostics surface | Read through `/api/core-runtime` | Direct memory context, local `.aegis` fallback | Not direct today |
@@ -70,12 +70,17 @@ Compatibility expectation:
 Current Core bridge:
 
 - `GET /api/core-runtime` reads `health`, `models`, `settings`, `memory.summary`, `diagnostics.summary`, and `ecosystem.dashboard`.
+- `GET /api/health` and `GET /api/ready` read low-risk Core runtime status and preserve the Website health shape.
+- `GET /api/models` overlays Core model inventory with Website provider inventory and preserves the Website model shape.
+- `GET /api/config` reads Core settings adapter status and preserves Website `.env` config values.
+- `POST /api/config` saves Website config first, then best-effort syncs shared model settings to Core.
 
 Compatibility expectation:
 
 - Does not require Core for `/api/health`, `/api/chat`, `/api/apply`, `/api/validate`, or frontend startup.
 - Preserves Core envelopes in bridge output.
 - Uses adapter helpers for Core task, validation, and dashboard summaries before any `/api` format shim is added.
+- Additive Core adapter fields are optional and may be ignored by older frontend/Desktop clients.
 
 ### VS Code Extension
 
@@ -119,12 +124,12 @@ Compatibility expectation:
 
 Low-risk candidates:
 
-- Website `/api/models` can display Core `models` alongside Website provider registry state.
 - Website task graph can mirror or link Core `tasks.list` records without replacing SQLite task history.
 - Visual Studio can add read-only `workspace.scan`, `workspace.roadmap`, and `validation` calls.
 - Desktop smoke can assert Core dashboard loaded/degraded fields in the UI.
+- Website workspace scan and validation can consume Core summaries as hints without replacing Website orchestration.
 
 Hold candidates:
 
 - Chat, streaming, model routing, generated changes, apply, checkpoint restore, repair execution, project builder, Creative Studio, auth/session, and advanced product workflows remain Website or client-owned until their contracts stop changing.
-- Website migration should wait until VS Code and Visual Studio interactive host workflows have been manually smoke-tested against Core online/offline states.
+- Local client rollback/apply implementations remain active until Core rollback moves from schema-only to active tested endpoints.

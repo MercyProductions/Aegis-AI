@@ -52,7 +52,7 @@ The Website backend is the mature application runtime. It owns app-rich workflow
 - Creative Studio and media jobs.
 - Website auth/session APIs.
 - SQLite-backed application event/task/telemetry storage.
-- Optional read-only Core bridge at `/api/core-runtime`, used to surface shared Core status without moving app workflows.
+- Optional Core adapter at `/api/core-runtime` plus low-risk adapter reads for `/api/health`, `/api/ready`, `/api/models`, and `/api/config`.
 
 Default port: `http://127.0.0.1:8787`.
 
@@ -100,6 +100,13 @@ The VS Code extension owns IDE-specific UX, VS Code command registration, curren
 Current Core integrations:
 
 - `/v1/health`
+- `/v1/models`
+- `/v1/settings`
+- `/v1/workspaces/scan`
+- `/v1/workspaces/roadmap`
+- `/v1/memory`
+- `/v1/diagnostics`
+- `/v1/validation`
 - `/v1/clients/register`
 - `/v1/tasks`
 - `/v1/tasks/{task_id}/status`
@@ -138,6 +145,18 @@ Phase 1 adds a read-only Website-to-Core bridge instead of migrating workflows:
 
 See `RUNTIME_CONSOLIDATION.md` for the subsystem ownership matrix and migration order.
 
+## Website Runtime Adapter Phase
+
+The Website backend has started consuming Core through adapters while keeping frontend `/api` calls stable:
+
+- `GET /api/health` and `GET /api/ready` report Core adapter status and degrade cleanly when Core is offline.
+- `GET /api/models` overlays Core model inventory with Website provider inventory.
+- `GET /api/config` reports Core settings adapter status.
+- `POST /api/config` saves Website `.env` first, then best-effort syncs shared model settings to Core `/v1/settings`.
+- `GET /api/core-runtime` remains the full Core envelope bridge for health, models, settings, memory, diagnostics, and dashboard.
+
+The Website still owns chat, streaming, generated changes, apply, checkpoint restore, validation/repair orchestration, project builder, auth/session, Creative Studio, and advanced product workflows.
+
 ## Unified Contract Phase
 
 The current contract stabilization pass keeps every existing client URL intact and adds a shared schema layer:
@@ -148,3 +167,13 @@ The current contract stabilization pass keeps every existing client URL intact a
 - `CLIENT_COMPATIBILITY_MATRIX.md` tracks which clients call which Core endpoints and whether each contract is stable, experimental, or schema-only.
 
 The next consolidation candidates are low-risk read or record-oriented flows: Website model status reads, Website task mirroring, IDE roadmap reads, and IDE validation reads. Chat, file apply, checkpoint restore, project builder, auth, Creative Studio, and advanced product workflows remain Website-owned.
+
+## Post-Migration Cleanup Rule
+
+Duplicate logic is now tracked in `DEPRECATION_PLAN.md`. Removal is allowed only when:
+
+- the replacement Core contract is stable and tested;
+- every active client has a compatible parser/fallback path;
+- Website and frontend compatibility tests cover the old `/api` shape;
+- Core-offline behavior remains clear and non-crashing;
+- rollback/apply safety tests exist for any file-writing workflow.

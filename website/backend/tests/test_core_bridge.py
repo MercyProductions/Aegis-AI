@@ -113,6 +113,64 @@ def test_core_bridge_rejects_unexpected_contract_kind(tmp_path: Path) -> None:
     assert "kind mismatch" in result.error
 
 
+def test_low_risk_runtime_status_validates_all_expected_contracts(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    seen_paths: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_paths.append(request.url.path)
+        kind_by_path = {
+            "/v1/health": "health",
+            "/v1/models": "models",
+            "/v1/settings": "settings",
+            "/v1/diagnostics": "diagnostics.summary",
+        }
+        return httpx.Response(
+            200,
+            json={
+                "ok": True,
+                "api_version": "v1",
+                "contract_version": "2026.05.09",
+                "kind": kind_by_path[request.url.path],
+                "workspace": str(workspace.resolve()),
+                "data": {},
+            },
+        )
+
+    bridge = AegisCoreBridge("http://127.0.0.1:8788", transport=httpx.MockTransport(handler))
+    results = asyncio.run(bridge.low_risk_runtime_status(workspace))
+
+    assert set(results) == {"health", "models", "settings", "diagnostics"}
+    assert all(result.ok for result in results.values())
+    assert set(seen_paths) == {"/v1/health", "/v1/models", "/v1/settings", "/v1/diagnostics"}
+
+
+def test_core_bridge_surfaces_ok_false_error_detail(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "ok": False,
+                "api_version": "v1",
+                "contract_version": "2026.05.09",
+                "kind": "models",
+                "workspace": str(workspace.resolve()),
+                "data": {"error": "model inventory unavailable"},
+            },
+        )
+
+    bridge = AegisCoreBridge("http://127.0.0.1:8788", transport=httpx.MockTransport(handler))
+    result = asyncio.run(bridge.model_status(workspace))
+
+    assert result.reachable is True
+    assert result.ok is False
+    assert result.error == "model inventory unavailable"
+
+
 def test_core_runtime_endpoint_delegates_to_core_bridge(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()

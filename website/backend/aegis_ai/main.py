@@ -1349,7 +1349,17 @@ async def _sync_website_settings_to_core(default_workspace: str) -> CoreBridgeRe
     }
     if settings.aegis_model_api.strip().lower() == "ollama":
         core_updates["ollama_url"] = settings.aegis_model_endpoint.strip().rstrip("/")
-    return await core_bridge.update_settings(workspace, core_updates)
+    try:
+        return await core_bridge.update_settings(workspace, core_updates)
+    except Exception as exc:
+        return CoreBridgeResult(
+            reachable=False,
+            ok=False,
+            status_code=None,
+            kind="settings.updated",
+            data=None,
+            error=f"Aegis Core settings sync failed after Website config save: {exc}",
+        )
 
 
 async def config_snapshot() -> AppConfig:

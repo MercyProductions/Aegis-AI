@@ -65,8 +65,9 @@ def _app_config(settings: Settings, workspace: str) -> AppConfig:
 
 
 class FakeCoreBridge:
-    def __init__(self) -> None:
+    def __init__(self, *, fail_update: bool = False) -> None:
         self.updates: list[dict] = []
+        self.fail_update = fail_update
 
     async def settings_status(self, workspace: Path) -> CoreBridgeResult:
         return CoreBridgeResult(
@@ -85,6 +86,8 @@ class FakeCoreBridge:
         )
 
     async def update_settings(self, workspace: Path, settings: dict) -> CoreBridgeResult:
+        if self.fail_update:
+            raise RuntimeError("Core sync unavailable")
         self.updates.append({"workspace": str(workspace), "settings": settings})
         return CoreBridgeResult(
             True,
@@ -137,6 +140,27 @@ class ConfigUpdateTests(unittest.TestCase):
         self.assertEqual(captured["AEGIS_FEEDBACK_MAX_EXCERPT_CHARS"], "777")
         self.assertEqual(captured["AEGIS_FEEDBACK_HASH_CONTENT"], "false")
         self.assertEqual(fake_core.updates[0]["settings"]["default_model"], "existing-model")
+
+    def test_config_post_preserves_website_save_when_core_sync_raises(self) -> None:
+        settings = _settings()
+        captured: dict[str, str] = {}
+
+        async def fake_config_snapshot() -> AppConfig:
+            return _app_config(settings, captured.get("DEFAULT_WORKSPACE", settings.default_workspace))
+
+        with (
+            patch.object(main, "settings", settings),
+            patch.object(main, "update_env", lambda values: captured.update(values)),
+            patch.object(main, "refresh_runtime", lambda: None),
+            patch.object(main, "config_snapshot", fake_config_snapshot),
+            patch.object(main, "core_bridge", FakeCoreBridge(fail_update=True)),
+            TestClient(main.app) as client,
+        ):
+            response = client.post("/api/config", json={"default_workspace": "fallback-workspace"})
+
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["default_workspace"], "fallback-workspace")
+        self.assertEqual(captured["DEFAULT_WORKSPACE"], "fallback-workspace")
 
     def test_config_post_full_update_still_normalizes_strings(self) -> None:
         settings = _settings()

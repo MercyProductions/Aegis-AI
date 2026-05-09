@@ -49,6 +49,20 @@ This phase does not move chat, apply, project-builder, model routing, Creative S
 | Shared validation primitive | Aegis Core | Aegis Core | shared runtime |
 | Repair orchestration | Website backend | Website backend | hold |
 
+## Post-Migration Ownership Markers
+
+| Area | Core-owned | Website-owned | Client-owned | Deprecated adapter/shim status |
+| --- | --- | --- | --- | --- |
+| Models | Shared local model inventory and selected/fallback model status | Provider registry, model manager, benchmarks, routing policy | UI selection and direct fallback only where needed | Website `/api/models` is adapter-backed but remains stable. VS Code direct Ollama fallback stays for offline use. |
+| Settings | Cross-client `.aegis/config.json` settings | Website `.env` app/product settings | IDE/desktop UI preferences | Website model settings sync to Core is best-effort; no removal. |
+| Diagnostics | Shared `.aegis` log summaries | Website observability, telemetry, product diagnostics | IDE build/output diagnostics | Core diagnostics are read adapters only. |
+| Memory | Shared file-backed memory summaries | Website memory CRUD, SQLite telemetry, memory UX | IDE-local context selection and notes | No memory write deprecation yet. |
+| Indexing | Lightweight workspace scan/index | Rich project intelligence and workspace operations | Editor/solution context and local indexes | VS Code scan fallback remains. Website/VS still native. |
+| Roadmap | Shared `.aegis/roadmap.md` generation | Autopilot planning/orchestration | IDE roadmap UX and proposal flow | VS Code roadmap fallback remains. |
+| Validation | Safe command detection/run primitive | Validation profile, repair loop, verify pipeline | IDE terminal/build validation UX | Core validation is a primitive; Website validation remains native. |
+| Tasks | Cross-client lightweight task records | SQLite task graph, artifacts, timeline, approvals | Client task UI/sync | Core task mirror/link not started for Website. |
+| Rollback | Schema-only future contracts | Checkpoints/restore | IDE backups/rollback | Do not deprecate until active Core rollback exists. |
+
 ## Standard Contract Shapes
 
 Core `/v1` responses use a stable envelope:
@@ -140,6 +154,17 @@ The Website backend now uses the Core bridge for the first low-risk `/api` route
 Core offline or incompatible responses produce degraded adapter status instead of failing the frontend. The Website frontend continues to call existing `/api` routes and can ignore the additive Core status fields.
 
 This phase still holds workspace scan, roadmap, memory CRUD, validation/repair, task graph, chat, apply, checkpoint restore, project builder, model routing, auth, and Creative Studio in Website `/api`.
+
+## Cleanup Phase Decision
+
+No runtime code was removed in the cleanup pass. Remaining duplicate logic is either:
+
+- a backwards-compatible `/api` contract consumed by the React UI or Desktop app;
+- an offline fallback path used by a migrated client;
+- an IDE-specific context, apply, or rollback implementation;
+- a Website product workflow that is still too rich or UI-coupled to move safely.
+
+The removal path is now governed by `DEPRECATION_PLAN.md`.
 
 ## Migration Strategy
 
