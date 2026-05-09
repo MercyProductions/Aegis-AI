@@ -21,6 +21,7 @@
 - Improved Aegis Core symbol indexing so F# modules/functions/types and Visual Basic modules/functions are included in scan, graph, and intelligence metadata.
 - Improved Core, Website, and VS Code planning guardrails so F#, Visual Basic, XAML, and C++ path/language hints stay aligned with shared .NET/source suffix support.
 - Improved Visual Studio solution scanning and smart context indexing for F#/Visual Basic projects, `.slnx` files, Visual Basic XAML code-behind, and newer C++ source/header suffixes.
+- Improved Website scaffold install preflight so `.fsproj`, `.vbproj`, and `.slnx` projects receive the same missing-restore detection as `.csproj` projects.
 - Improved Website dependency profiling so root `build.py` and `build.ps1` guard scripts are recorded as validation commands before lower-level CMake/MSBuild native fallbacks.
 - Improved Website agent continuation so existing projects with root `build.ps1` guard scripts propose the same safe PowerShell validation command used by validation discovery.
 - Improved Website project-builder existing-project validation so root `build.ps1` guard scripts are selected before CMake/MSBuild fallback commands.

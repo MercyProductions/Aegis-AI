@@ -8,6 +8,10 @@ from pathlib import Path
 from .schemas import ProjectScaffoldPreset, ProjectScaffoldRequest
 
 
+DOTNET_PROJECT_GLOBS = ("*.csproj", "*.fsproj", "*.vbproj")
+DOTNET_SOLUTION_GLOBS = ("*.sln", "*.slnx")
+
+
 def visible_entries(target: Path) -> list[Path]:
     try:
         return [entry for entry in target.iterdir() if entry.name != ".aegis"]
@@ -74,6 +78,14 @@ def command_for_project(command: str, project_name: str) -> str:
     return command.replace("{project_name}", project_name).replace("{project_title}", title_from_name(project_name))
 
 
+def has_matching_path(target: Path, patterns: tuple[str, ...], *, recursive: bool = False) -> bool:
+    for pattern in patterns:
+        matches = target.rglob(pattern) if recursive else target.glob(pattern)
+        if next(matches, None) is not None:
+            return True
+    return False
+
+
 def should_install_before_validation(
     preset: ProjectScaffoldPreset,
     target: Path,
@@ -97,7 +109,11 @@ def should_install_before_validation(
         has_python_manifest = (target / "pyproject.toml").exists() or (target / "requirements.txt").exists()
         return (explicit_install_override or "pip install" in normalized_install) and has_python_manifest and not (target / ".venv").exists()
     if "dotnet" in package_manager:
-        has_dotnet_manifest = (target / f"{preset.id}.sln").exists() or any(target.rglob("*.csproj"))
+        has_dotnet_manifest = has_matching_path(target, DOTNET_SOLUTION_GLOBS) or has_matching_path(
+            target,
+            DOTNET_PROJECT_GLOBS,
+            recursive=True,
+        )
         has_restore_assets = any(target.rglob("project.assets.json"))
         return (explicit_install_override or "dotnet restore" in normalized_install) and has_dotnet_manifest and not has_restore_assets
     if package_manager == "go":

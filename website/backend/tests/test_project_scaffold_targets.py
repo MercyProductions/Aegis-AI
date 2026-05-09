@@ -131,6 +131,53 @@ class ProjectScaffoldTargetTests(unittest.TestCase):
                 )
             )
 
+    def test_should_install_before_validation_detects_supported_dotnet_manifests(self) -> None:
+        for manifest_name in ("App.csproj", "App.fsproj", "App.vbproj", "App.sln", "App.slnx"):
+            with self.subTest(manifest_name=manifest_name), tempfile.TemporaryDirectory() as raw:
+                target = Path(raw)
+                (target / "src" / "App").mkdir(parents=True)
+                manifest_parent = target if manifest_name.endswith((".sln", ".slnx")) else target / "src" / "App"
+                manifest_parent.mkdir(parents=True, exist_ok=True)
+                (manifest_parent / manifest_name).write_text("<Project></Project>\n", encoding="utf-8")
+                preset = scaffold_preset("dotnet-console-csharp", package_manager="dotnet")
+
+                self.assertTrue(
+                    should_install_before_validation(
+                        preset,
+                        target,
+                        install_command="dotnet restore",
+                        validation_command="dotnet build",
+                        request=scaffold_request(target, run_validation=True),
+                    )
+                )
+
+                (target / "obj").mkdir(exist_ok=True)
+                (target / "obj" / "project.assets.json").write_text("{}", encoding="utf-8")
+                self.assertFalse(
+                    should_install_before_validation(
+                        preset,
+                        target,
+                        install_command="dotnet restore",
+                        validation_command="dotnet build",
+                        request=scaffold_request(target, run_validation=True),
+                    )
+                )
+
+    def test_should_install_before_validation_skips_dotnet_without_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            target = Path(raw)
+            preset = scaffold_preset("dotnet-console-csharp", package_manager="dotnet")
+
+            self.assertFalse(
+                should_install_before_validation(
+                    preset,
+                    target,
+                    install_command="dotnet restore",
+                    validation_command="dotnet build",
+                    request=scaffold_request(target, run_validation=True),
+                )
+            )
+
 
 def scaffold_preset(preset_id: str, *, package_manager: str) -> ProjectScaffoldPreset:
     return ProjectScaffoldPreset(

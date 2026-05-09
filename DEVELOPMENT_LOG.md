@@ -73,6 +73,7 @@ Actions:
 - Tightened personal preference filtering so token-like secret fields stay blocked while harmless preference names containing `key`, such as `keyboard_layout`, still persist.
 - Improved cross-client source suffix parity so Core simulation path parsing, Website draft guardrails, and VS Code language summaries recognize F#, Visual Basic, XAML, and C++ source/project surfaces consistently.
 - Improved Visual Studio extension scan/intelligence parity so `.fsproj`, `.vbproj`, `.slnx`, F#/Visual Basic source symbols/imports, Visual Basic XAML code-behind, and newer C++ suffixes are represented in local solution context.
+- Improved Website scaffold install preflight parity so supported non-C# .NET manifests and `.slnx` files trigger `dotnet restore` before validation when assets are missing.
 
 Validation completed:
 
