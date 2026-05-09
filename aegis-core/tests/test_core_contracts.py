@@ -698,6 +698,20 @@ def test_quality_snapshot_records_history_and_reports(tmp_path: Path) -> None:
     assert data["report_paths"]["daily_health_report"].endswith("daily-health-report.md")
 
 
+def test_quality_snapshot_reports_history_persistence_failure(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    aegis_dir = workspace / ".aegis"
+    aegis_dir.mkdir()
+    (aegis_dir / "health-history.json").mkdir()
+    client = TestClient(create_app())
+
+    response = client.post("/v1/quality/snapshot", json={"workspace": str(workspace)})
+
+    assert response.status_code == 503
+    assert "Could not persist quality health history" in response.json()["detail"]
+    assert not (workspace / ".aegis" / "daily-health-report.md").exists()
+
+
 def test_quality_trend_detects_degrading_snapshot(tmp_path: Path) -> None:
     workspace = make_workspace(tmp_path)
     client = TestClient(create_app())
@@ -729,6 +743,24 @@ def test_quality_job_records_snapshot_and_reports(tmp_path: Path) -> None:
     assert result["status"] == "completed"
     assert "score" in result["metrics"]
     assert (workspace / ".aegis" / "health-history.json").is_file()
+
+
+def test_quality_job_reports_history_persistence_failure(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    aegis_dir = workspace / ".aegis"
+    aegis_dir.mkdir()
+    (aegis_dir / "health-history.json").mkdir()
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/v1/jobs/run",
+        json={"workspace": str(workspace), "job_id": "quality-intelligence-snapshot"},
+    )
+
+    assert response.status_code == 200
+    result = response.json()["data"]["results"][0]
+    assert result["status"] == "failed"
+    assert any("Could not persist quality health history" in warning for warning in result["warnings"])
 
 
 def test_knowledge_graph_links_files_apis_docs_and_validation(tmp_path: Path) -> None:

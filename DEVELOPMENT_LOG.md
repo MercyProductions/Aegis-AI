@@ -1134,3 +1134,22 @@ Validation completed:
 - Core credential/provider-key focused tests: pass, 9 tests.
 - Aegis Core contract tests: pass, 100 tests.
 - Git diff whitespace check: pass.
+
+## 2026-05-09 - Core Quality History Persistence Failure Handling
+
+Focus:
+
+- Avoid false successful quality snapshots when `.aegis/health-history.json` cannot be written.
+- Keep long-term health trends trustworthy before daily and weekly reports are generated.
+
+Actions:
+
+- Added `QualityPersistenceError` for failed health-history writes.
+- Verified health-history persistence before generating quality reports.
+- Updated API, CLI, scheduled quality job behavior, troubleshooting, and regression coverage.
+
+Validation completed:
+
+- Core quality focused tests: pass, 7 tests.
+- Aegis Core contract tests: pass, 102 tests.
+- Git diff whitespace check: pass.

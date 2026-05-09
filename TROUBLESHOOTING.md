@@ -28,6 +28,8 @@ If a scheduled job reports `Could not persist maintenance job state` or `Could n
 
 If orchestration planning or step advancement reports `Could not persist orchestration state`, repair `.aegis/orchestration-queue.json` and `.aegis/active-orchestration.json` so they are writable JSON files before continuing staged autonomous work.
 
+If recording quality snapshots reports `Could not persist quality health history`, repair `.aegis/health-history.json` so it is a writable JSON file before relying on health trends, daily reports, or weekly quality summaries.
+
 ## Ollama
 
 Default local endpoint:

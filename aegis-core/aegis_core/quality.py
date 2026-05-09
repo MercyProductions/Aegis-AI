@@ -20,6 +20,10 @@ DAILY_REPORT_FILE = "daily-health-report.md"
 WEEKLY_REPORT_FILE = "weekly-quality-summary.md"
 
 
+class QualityPersistenceError(RuntimeError):
+    """Raised when quality history cannot be persisted."""
+
+
 def quality_dashboard(
     workspace: str | Path,
     *,
@@ -629,8 +633,26 @@ def _append_history(memory: ProjectMemory, history: list[dict[str, Any]], snapsh
     }
     history.append(compact)
     history = history[-365:]
+    _ensure_json_target(memory.root / HEALTH_HISTORY_FILE)
     memory.write_json(HEALTH_HISTORY_FILE, history)
+    persisted = _load_history(memory)
+    if persisted != history:
+        raise QualityPersistenceError(
+            f"Could not persist quality health history at {memory.root / HEALTH_HISTORY_FILE}. "
+            "Check that the workspace .aegis path is a writable directory."
+        )
     return history
+
+
+def _ensure_json_target(path: Path) -> None:
+    if path.parent.exists() and not path.parent.is_dir():
+        raise QualityPersistenceError(
+            f"Could not persist quality health history because {path.parent} is not a directory."
+        )
+    if path.exists() and not path.is_file():
+        raise QualityPersistenceError(
+            f"Could not persist quality health history because {path} is not a writable file."
+        )
 
 
 def _write_quality_reports(

@@ -37,7 +37,7 @@ from .ollama import OllamaClient
 from .operations import engineering_operations_dashboard
 from .orchestration import OrchestrationPersistenceError, advance_orchestration_step, create_orchestration_plan, orchestration_dashboard
 from .personal_intelligence import adaptive_personal_intelligence, reset_personal_intelligence
-from .quality import quality_dashboard, record_quality_snapshot
+from .quality import QualityPersistenceError, quality_dashboard, record_quality_snapshot
 from .roadmap import generate_roadmap
 from .simulation import compare_scenarios, simulate_change
 from .tasks import TaskStorePersistenceError, create_task, list_tasks, update_task_status
@@ -302,7 +302,11 @@ def create_app():
 
     @app.post("/v1/quality/snapshot")
     def v1_quality_snapshot(request: WorkspaceRequest) -> dict[str, Any]:
-        return envelope("quality.snapshot", record_quality_snapshot(request.workspace), request.workspace)
+        try:
+            data = record_quality_snapshot(request.workspace)
+        except QualityPersistenceError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        return envelope("quality.snapshot", data, request.workspace)
 
     @app.get("/v1/knowledge/graph")
     def v1_knowledge_graph(workspace: str) -> dict[str, Any]:
