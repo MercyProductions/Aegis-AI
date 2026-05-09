@@ -80,6 +80,7 @@ const LOCKFILE_PATTERNS = [
   /^package-lock\.json$/i,
   /^pnpm-lock\.yaml$/i,
   /^yarn\.lock$/i,
+  /^bun\.lock$/i,
   /^bun\.lockb$/i,
   /^cargo\.lock$/i,
   /^poetry\.lock$/i
@@ -91,6 +92,8 @@ const IMPORTANT_FILE_PATTERNS = [
   /^package\.json$/i,
   /^pnpm-lock\.yaml$/i,
   /^yarn\.lock$/i,
+  /^bun\.lock$/i,
+  /^bun\.lockb$/i,
   /^package-lock\.json$/i,
   /^tsconfig(?:\..*)?\.json$/i,
   /^vite\.config\./i,
@@ -2206,8 +2209,7 @@ function inferProjectLanguages(files, importantContents) {
   if (names.has('pnpm-lock.yaml')) packageManagers.add('pnpm');
   if (names.has('yarn.lock')) packageManagers.add('yarn');
   if (names.has('package-lock.json')) packageManagers.add('npm');
-  if (names.has('bun.lockb')) packageManagers.add('bun');
-  if (names.has('package.json') && packageManagers.size === 0) packageManagers.add('npm');
+  if (names.has('bun.lock') || names.has('bun.lockb')) packageManagers.add('bun');
 
   for (const item of importantContents) {
     if (path.basename(item.path).toLowerCase() !== 'package.json') {
@@ -2215,6 +2217,8 @@ function inferProjectLanguages(files, importantContents) {
     }
     try {
       const pkg = parseJsonText(item.text);
+      const declaredPackageManager = normalizePackageManagerName(pkg.packageManager);
+      if (declaredPackageManager) packageManagers.add(declaredPackageManager);
       const deps = Object.assign({}, pkg.dependencies || {}, pkg.devDependencies || {});
       if (deps.react) frameworks.add('React');
       if (deps.next) frameworks.add('Next.js');
@@ -2228,6 +2232,8 @@ function inferProjectLanguages(files, importantContents) {
       // Ignore malformed package snippets; this is only a scan hint.
     }
   }
+
+  if (names.has('package.json') && packageManagers.size === 0) packageManagers.add('npm');
 
   if (names.has('vite.config.ts') || names.has('vite.config.js')) frameworks.add('Vite');
   if (names.has('next.config.js') || names.has('next.config.mjs') || names.has('next.config.ts')) frameworks.add('Next.js');
@@ -2250,9 +2256,10 @@ function inferProjectCommands(importantContents, files) {
       try {
         const pkg = parseJsonText(item.text);
         const scripts = pkg.scripts || {};
+        const packageManager = normalizePackageManagerName(pkg.packageManager) || pickPackageManagerFromNames(names, item.path) || 'npm';
         for (const name of ['build', 'test', 'lint', 'typecheck', 'type-check', 'check', 'dev']) {
           if (scripts[name]) {
-            commands.push(`npm run ${name}`);
+            commands.push(packageScriptCommand(packageManager, name));
           }
         }
       } catch (error) {
@@ -5227,17 +5234,17 @@ function detectValidationCommands(snapshot) {
     const relativeCwd = dir === '.' ? '' : dir;
     const packageManager = pickPackageManagerForPath(snapshot, item.path);
     if (scripts.test) {
-      commands.push(makeValidationCommand(packageManager === 'npm' ? 'npm test' : `${packageManager} test`, cwd, relativeCwd));
+      commands.push(makeValidationCommand(packageScriptCommand(packageManager, 'test'), cwd, relativeCwd));
     }
     if (scripts.lint) {
-      commands.push(makeValidationCommand(packageManager === 'npm' ? 'npm run lint' : `${packageManager} lint`, cwd, relativeCwd));
+      commands.push(makeValidationCommand(packageScriptCommand(packageManager, 'lint'), cwd, relativeCwd));
     }
     const typeScriptCheck = scripts.typecheck || scripts['type-check'];
     if (typeScriptCheck) {
-      commands.push(makeValidationCommand(packageManager === 'npm' ? `npm run ${scripts.typecheck ? 'typecheck' : 'type-check'}` : `${packageManager} ${scripts.typecheck ? 'typecheck' : 'type-check'}`, cwd, relativeCwd));
+      commands.push(makeValidationCommand(packageScriptCommand(packageManager, scripts.typecheck ? 'typecheck' : 'type-check'), cwd, relativeCwd));
     }
     if (scripts.build) {
-      commands.push(makeValidationCommand(packageManager === 'npm' ? 'npm run build' : `${packageManager} build`, cwd, relativeCwd));
+      commands.push(makeValidationCommand(packageScriptCommand(packageManager, 'build'), cwd, relativeCwd));
     }
   }
 
@@ -5276,12 +5283,41 @@ function pickPackageManagerForPath(snapshot, packagePath) {
   const dir = path.dirname(packagePath).replace(/\\/g, '/');
   const prefix = dir === '.' ? '' : `${dir}/`;
   const names = new Set(snapshot.files.map((file) => file.relative.replace(/\\/g, '/').toLowerCase()));
-  if (names.has(`${prefix}pnpm-lock.yaml`)) return 'pnpm';
-  if (names.has(`${prefix}yarn.lock`)) return 'yarn';
-  if (names.has(`${prefix}package-lock.json`)) return 'npm';
+  const fromNames = pickPackageManagerFromNames(names, packagePath);
+  if (fromNames) return fromNames;
+  if (snapshot.packageManagers.includes('bun')) return 'bun';
   if (snapshot.packageManagers.includes('pnpm')) return 'pnpm';
   if (snapshot.packageManagers.includes('yarn')) return 'yarn';
   return 'npm';
+}
+
+function pickPackageManagerFromNames(names, packagePath) {
+  const dir = path.dirname(packagePath).replace(/\\/g, '/');
+  const prefix = dir === '.' ? '' : `${dir}/`;
+  if (names.has(`${prefix}bun.lock`) || names.has(`${prefix}bun.lockb`)) return 'bun';
+  if (names.has(`${prefix}pnpm-lock.yaml`)) return 'pnpm';
+  if (names.has(`${prefix}yarn.lock`)) return 'yarn';
+  if (names.has(`${prefix}package-lock.json`)) return 'npm';
+  return '';
+}
+
+function normalizePackageManagerName(value) {
+  const text = String(value || '').trim().toLowerCase();
+  if (text.startsWith('bun@')) return 'bun';
+  if (text.startsWith('pnpm@')) return 'pnpm';
+  if (text.startsWith('yarn@')) return 'yarn';
+  if (text.startsWith('npm@')) return 'npm';
+  return '';
+}
+
+function packageScriptCommand(packageManager, script) {
+  if (packageManager === 'npm') {
+    return script === 'test' ? 'npm test' : `npm run ${script}`;
+  }
+  if (packageManager === 'bun') {
+    return `bun run ${script}`;
+  }
+  return `${packageManager} ${script}`;
 }
 
 function makeValidationCommand(command, cwd, relativeCwd) {
@@ -5289,7 +5325,7 @@ function makeValidationCommand(command, cwd, relativeCwd) {
 }
 
 function isSafeValidationCommand(command) {
-  return /^(npm test|npm run build|npm run lint|npm run typecheck|npm run type-check|pnpm test|pnpm build|pnpm lint|pnpm typecheck|pnpm type-check|yarn test|yarn build|yarn lint|yarn typecheck|yarn type-check|dotnet build|cargo check|go test \.\/\.\.\.|python -m pytest|cmake --build build)$/.test(command);
+  return /^(npm test|npm run build|npm run lint|npm run typecheck|npm run type-check|pnpm test|pnpm build|pnpm lint|pnpm typecheck|pnpm type-check|yarn test|yarn build|yarn lint|yarn typecheck|yarn type-check|bun run test|bun run build|bun run lint|bun run typecheck|bun run type-check|dotnet build|cargo check|go test \.\/\.\.\.|python -m pytest|cmake --build build)$/.test(command);
 }
 
 async function runDetectedValidation(target, snapshot) {

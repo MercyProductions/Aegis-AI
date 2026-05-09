@@ -257,7 +257,7 @@
           "items": {
             "type": "string"
           },
-          "description": "Optional validation command allow-list preferences, such as npm, pnpm, dotnet build, cargo check, or python -m pytest."
+          "description": "Optional validation command allow-list preferences, such as npm, pnpm, bun, dotnet build, cargo check, or python -m pytest."
         },
         "aegisLocalAutopilot.safetyMode": {
           "type": "string",

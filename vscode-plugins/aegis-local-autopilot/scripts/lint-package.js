@@ -142,7 +142,9 @@ const validationCommandDetector = loadExtensionFunctions(
     'stripUtf8Bom',
     'parseJsonText',
     'isSafeValidationCommand',
+    'pickPackageManagerFromNames',
     'pickPackageManagerForPath',
+    'packageScriptCommand',
     'makeValidationCommand',
     'detectValidationCommands'
   ],
@@ -153,14 +155,14 @@ assertValidationCommandDetection(validationCommandDetector);
 
 const projectLanguageInferrer = loadExtensionFunctions(
   extensionText,
-  ['parseJsonText', 'inferProjectLanguages'],
+  ['stripUtf8Bom', 'parseJsonText', 'normalizePackageManagerName', 'inferProjectLanguages'],
   'inferProjectLanguages',
   { path }
 );
 assertProjectLanguageInference(projectLanguageInferrer);
 const projectCommandInferrer = loadExtensionFunctions(
   extensionText,
-  ['parseJsonText', 'inferProjectCommands'],
+  ['stripUtf8Bom', 'parseJsonText', 'normalizePackageManagerName', 'pickPackageManagerFromNames', 'packageScriptCommand', 'inferProjectCommands'],
   'inferProjectCommands',
   { path }
 );
@@ -315,6 +317,7 @@ function assertValidationCommandGuard(guard) {
     'npm run build',
     'pnpm lint',
     'yarn typecheck',
+    'bun run build',
     'dotnet build',
     'cargo check',
     'go test ./...',
@@ -382,6 +385,21 @@ function assertValidationCommandDetection(detector) {
     importantContents: [],
     packageManagers: []
   };
+  const bunSnapshot = {
+    target: { root: 'C:/demo/bun' },
+    files: [
+      { relative: 'package.json' },
+      { relative: 'bun.lockb' }
+    ],
+    directories: [],
+    importantContents: [
+      {
+        path: 'package.json',
+        text: JSON.stringify({ scripts: { test: 'bun test', build: 'bun build ./src/index.ts' }, packageManager: 'bun@1.2.0' })
+      }
+    ],
+    packageManagers: ['bun']
+  };
 
   if (detector(nativeVisualStudioSnapshot).some((item) => item.command === 'dotnet build')) {
     fail('detectValidationCommands must not suggest dotnet build for native-only Visual Studio solutions.');
@@ -394,6 +412,10 @@ function assertValidationCommandDetection(detector) {
   }
   if (!detector(visualBasicSnapshot).some((item) => item.command === 'dotnet build')) {
     fail('detectValidationCommands must suggest dotnet build when a .vbproj is present.');
+  }
+  const bunCommands = detector(bunSnapshot).map((item) => item.command);
+  if (!bunCommands.includes('bun run test') || !bunCommands.includes('bun run build')) {
+    fail('detectValidationCommands must preserve Bun package-manager validation commands.');
   }
 }
 
@@ -417,15 +439,25 @@ function assertProjectLanguageInference(inferrer) {
 }
 
 function assertProjectCommandInference(inferrer) {
-  const result = inferrer(
+  const slnxResult = inferrer(
     [],
     [
       { relative: 'Modern.slnx' },
       { relative: 'src/App/App.fsproj' }
     ]
   );
-  if (!result.includes('msbuild <solution>.slnx')) {
+  if (!slnxResult.includes('msbuild <solution>.slnx')) {
     fail('inferProjectCommands must suggest MSBuild for .slnx workspaces.');
+  }
+  const bunResult = inferrer(
+    [{ path: 'package.json', text: JSON.stringify({ scripts: { build: 'bun build ./src/index.ts' }, packageManager: 'bun@1.2.0' }) }],
+    [
+      { relative: 'package.json' },
+      { relative: 'bun.lockb' }
+    ]
+  );
+  if (!bunResult.includes('bun run build')) {
+    fail('inferProjectCommands must preserve Bun package-manager commands.');
   }
 }
 

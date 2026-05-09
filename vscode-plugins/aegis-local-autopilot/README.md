@@ -229,6 +229,11 @@ Detected validation commands are limited to known safe checks:
 - `yarn lint`
 - `yarn typecheck`
 - `yarn type-check`
+- `bun run test`
+- `bun run build`
+- `bun run lint`
+- `bun run typecheck`
+- `bun run type-check`
 - `dotnet build`
 - `cargo check`
 - `go test ./...`
