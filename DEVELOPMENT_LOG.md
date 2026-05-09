@@ -186,6 +186,25 @@ Validation completed:
 - Aegis Core contract test suite: pass, 118 tests.
 - Repository whitespace check: pass.
 
+## 2026-05-09 - Completion Selected Model Guard
+
+Focus:
+
+- Keep completion execution aligned with the model chosen by the route planner.
+- Prevent raw cloud model overrides from reaching Ollama when cloud routing is blocked or local fallback is selected.
+
+Actions:
+
+- Changed completion execution to use `route["selected"]["model"]` instead of the raw request model.
+- Added a regression proving an OpenAI model override remains attached to the cloud fallback candidate while the actual local completion call uses the selected Ollama model.
+- Documented that route previews and completion execution use the selected route model.
+
+Validation completed:
+
+- Aegis Core completion model override regression slice: pass, 6 tests.
+- Aegis Core contract test suite: pass, 132 tests.
+- Repository whitespace check: pass.
+
 ## 2026-05-09 - Local Fallback Model Override Guard
 
 Focus:

@@ -24,6 +24,7 @@
 - Hardened hybrid model routing and provider key mutations so common provider aliases such as `LM Studio`, `lm-studio`, `open-router`, and `open router` resolve to canonical local/cloud provider IDs.
 - Hardened Core cloud provider settings so aliases such as `open-router` and `open router` persist as canonical `openrouter` instead of falling back to OpenAI.
 - Hardened hybrid model routing so cloud model overrides no longer replace the Ollama fallback model when cloud routing is blocked or not selected.
+- Hardened Core completion execution so cloud model overrides cannot be used for the actual Ollama call when local fallback is selected.
 - Improved the Aegis Core route CLI so provider/model overrides, context files, and local fallback reasons can be previewed with the same sanitized route planner used by `/v1/models/route`.
 - Fixed LM Studio completion calls so normalized local server URLs use the OpenAI-compatible `/v1/chat/completions` path.
 - Hardened provider completion parsing so invalid JSON or malformed provider response shapes return clean provider failures instead of internal parser exceptions.

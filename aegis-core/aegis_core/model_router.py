@@ -217,7 +217,7 @@ def complete_with_route(
     )
     selected = route["selected"]
     provider = selected["provider_id"]
-    selected_model = model or selected["model"]
+    selected_model = selected["model"]
     started = time.perf_counter()
 
     if provider in CLOUD_PROVIDER_IDS:

@@ -2288,6 +2288,48 @@ def test_model_completion_lm_studio_request_is_not_reinterpreted_as_cloud(tmp_pa
     assert result["route"]["selected"]["provider_id"] == "lm_studio"
 
 
+def test_model_completion_uses_selected_local_model_when_cloud_override_blocked(
+    tmp_path: Path, monkeypatch
+) -> None:
+    workspace = tmp_path / "completion-local-model-override-project"
+    aegis_dir = workspace / ".aegis"
+    aegis_dir.mkdir(parents=True)
+    (aegis_dir / "config.json").write_text(
+        json.dumps({"model_routing_mode": "local_only", "preferred_cloud_provider": "openai"}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "aegis_core.model_router.OllamaClient.health",
+        lambda self: OllamaStatus(True, 4, ["qwen3-coder:30b"], "qwen3-coder:30b", []),
+    )
+    called: dict[str, str] = {}
+
+    def fake_complete(provider_id, model, messages, config, credentials, timeout):
+        called["provider_id"] = provider_id
+        called["model"] = model
+        return "local response"
+
+    monkeypatch.setattr(model_router_module, "_complete", fake_complete)
+
+    result = model_router_module.complete_with_route(
+        workspace,
+        "Explain this locally",
+        "hard_debugging",
+        allow_cloud=True,
+        cloud_approved=True,
+        provider_id="openai",
+        model="gpt-4.1",
+        credentials=DummyCredentialStore({"openai": "stored"}),
+    )
+
+    assert called == {"provider_id": "ollama", "model": "qwen3-coder:30b"}
+    assert result["provider_id"] == "ollama"
+    assert result["model"] == "qwen3-coder:30b"
+    assert result["route"]["fallback_order"][1]["provider_id"] == "openai"
+    assert result["route"]["fallback_order"][1]["model"] == "gpt-4.1"
+    assert result["route"]["cloud_reason"] == "local_only"
+
+
 def test_lm_studio_completion_uses_openai_v1_chat_path(monkeypatch) -> None:
     captured: dict[str, str] = {}
 
