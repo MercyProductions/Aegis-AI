@@ -141,6 +141,12 @@ for (const guard of unsafeErrorMessagePatterns) {
     fail(guard.message);
   }
 }
+if (!/function validateAegisCoreEnvelope[\s\S]*redactDiagnosticText\(apiVersion\)[\s\S]*redactDiagnosticText\(kind\)/.test(extensionText)) {
+  fail('validateAegisCoreEnvelope must redact unexpected api_version and kind values before throwing.');
+}
+if (!/function coreEnvelopeError[\s\S]*redactDiagnosticText\(detail\)/.test(extensionText)) {
+  fail('coreEnvelopeError must redact Core error detail before returning user-visible text.');
+}
 
 for (const scriptFile of ['scripts/package-release.js', 'scripts/install-local.js', 'scripts/run-command.js']) {
   const scriptText = fs.readFileSync(path.join(root, scriptFile), 'utf8');

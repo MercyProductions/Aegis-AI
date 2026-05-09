@@ -969,3 +969,21 @@ Validation completed:
 
 - Visual Studio extension Release build/package: pass.
 - Desktop C++ Release build: pass, 0 warnings.
+
+## 2026-05-09 - VS Code Core Envelope Redaction Guard
+
+Focus:
+
+- Make VS Code Core envelope diagnostics redacted by construction, not only by caller-side error wrappers.
+- Keep Core contract mismatch and `ok=false` details safe if they are surfaced through health checks, fallbacks, or output-channel paths.
+
+Actions:
+
+- Redacted unexpected Core `api_version` and `kind` values inside `validateAegisCoreEnvelope`.
+- Redacted Core `ok=false` error/message/deprecation details inside `coreEnvelopeError`.
+- Added package-lint guards for both envelope mismatch redaction and Core envelope error-detail redaction.
+
+Validation completed:
+
+- VS Code package lint: pass via `node scripts/lint-package.js`.
+- VS Code VSIX package: pass; package lint ran before archive creation.

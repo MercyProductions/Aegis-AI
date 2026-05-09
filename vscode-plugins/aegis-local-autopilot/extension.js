@@ -2781,11 +2781,13 @@ function validateAegisCoreEnvelope(envelope, expectedKind) {
   if (!envelope || typeof envelope !== 'object') {
     throw new Error('Aegis Core response was not a JSON object.');
   }
-  if (envelope.api_version !== AEGIS_CORE_API_VERSION) {
-    throw new Error(`Aegis Core response used unexpected api_version: ${envelope.api_version || 'missing'}.`);
+  const apiVersion = typeof envelope.api_version === 'string' ? envelope.api_version : '';
+  if (apiVersion !== AEGIS_CORE_API_VERSION) {
+    throw new Error(`Aegis Core response used unexpected api_version: ${apiVersion ? redactDiagnosticText(apiVersion) : 'missing'}.`);
   }
-  if (expectedKind && envelope.kind !== expectedKind) {
-    throw new Error(`Aegis Core response kind mismatch: expected ${expectedKind}, got ${envelope.kind || 'missing'}.`);
+  const kind = typeof envelope.kind === 'string' ? envelope.kind : '';
+  if (expectedKind && kind !== expectedKind) {
+    throw new Error(`Aegis Core response kind mismatch: expected ${expectedKind}, got ${kind ? redactDiagnosticText(kind) : 'missing'}.`);
   }
   return envelope;
 }
@@ -2799,7 +2801,8 @@ function requireAegisCoreOk(envelope, action) {
 
 function coreEnvelopeError(envelope) {
   const data = coreEnvelopeData(envelope);
-  return data.error || data.message || (Array.isArray(envelope.deprecations) && envelope.deprecations.join('; ')) || 'Core returned ok=false.';
+  const detail = data.error || data.message || (Array.isArray(envelope.deprecations) && envelope.deprecations.join('; ')) || '';
+  return detail ? redactDiagnosticText(detail) || 'Core returned ok=false.' : 'Core returned ok=false.';
 }
 
 function coreEnvelopeData(envelope) {
