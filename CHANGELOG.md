@@ -19,6 +19,7 @@
 - Made Core dashboard/task memory reads resilient when `.aegis` JSON or markdown files are unreadable.
 - Improved Core JavaScript validation detection so npm/pnpm/yarn test/build commands are listed only when matching package scripts exist.
 - Hardened Core validation detection so `.csproj` files in ignored dependency/build folders do not create false `dotnet build` suggestions.
+- Hardened Core validation detection so damaged root build marker directories do not create false Cargo, Python, CMake, pnpm, or Yarn validation suggestions.
 - Reduced Core validation startup overhead by detecting the default validation command once per run.
 - Restricted Core validation execution to a safe command allow-list and added structured blocked/missing/timeout failure results.
 - Hardened Core validation startup failures so OS-level command launch errors return structured results instead of escaping to shared clients.

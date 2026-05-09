@@ -564,6 +564,19 @@ def test_validation_detection_ignores_project_files_in_ignored_folders(tmp_path:
     assert "dotnet build" in [item.name for item in detect_validation_commands(workspace)]
 
 
+def test_validation_detection_ignores_damaged_root_build_markers(tmp_path: Path) -> None:
+    workspace = tmp_path / "damaged-root-markers-project"
+    workspace.mkdir()
+    for name in ("Cargo.toml", "pyproject.toml", "requirements.txt", "CMakeLists.txt", "pnpm-lock.yaml", "yarn.lock"):
+        (workspace / name).mkdir()
+
+    assert [item.name for item in detect_validation_commands(workspace)] == []
+
+    (workspace / "package.json").write_text(json.dumps({"scripts": {"test": "vitest run"}}), encoding="utf-8")
+
+    assert [item.name for item in detect_validation_commands(workspace)] == ["npm test"]
+
+
 def test_validation_runner_blocks_unsafe_commands(tmp_path: Path) -> None:
     workspace = tmp_path / "validation-project"
     workspace.mkdir()

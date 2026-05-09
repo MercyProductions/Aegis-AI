@@ -32,18 +32,18 @@ def detect_validation_commands(workspace: str | Path) -> list[ValidationCommand]
             commands.append(_package_script_command(package_manager, "build"))
     if _has_root_file_with_suffix(root, {".sln", ".slnx"}) or _has_project_file(root, {".csproj"}):
         commands.append(ValidationCommand("dotnet build", ["dotnet", "build"], ".NET project or solution detected"))
-    if (root / "Cargo.toml").exists():
+    if _has_root_file_named(root, "Cargo.toml"):
         commands.append(ValidationCommand("cargo check", ["cargo", "check"], "Cargo.toml detected"))
-    if (root / "pyproject.toml").exists() or (root / "requirements.txt").exists():
+    if _has_root_file_named(root, "pyproject.toml") or _has_root_file_named(root, "requirements.txt"):
         commands.append(ValidationCommand("python -m pytest", ["python", "-m", "pytest"], "Python project detected"))
-    if (root / "CMakeLists.txt").exists():
+    if _has_root_file_named(root, "CMakeLists.txt"):
         commands.append(ValidationCommand("cmake build", ["cmake", "--build", "build"], "CMakeLists.txt detected"))
     return commands
 
 
 def _package_scripts(root: Path) -> dict[str, str]:
     package_json = root / "package.json"
-    if not package_json.exists():
+    if not _is_root_file(package_json, root):
         return {}
     try:
         package = json.loads(package_json.read_text(encoding="utf-8-sig"))
@@ -56,9 +56,9 @@ def _package_scripts(root: Path) -> dict[str, str]:
 
 
 def _detect_package_manager(root: Path) -> str:
-    if (root / "pnpm-lock.yaml").exists():
+    if _has_root_file_named(root, "pnpm-lock.yaml"):
         return "pnpm"
-    if (root / "yarn.lock").exists():
+    if _has_root_file_named(root, "yarn.lock"):
         return "yarn"
     return "npm"
 
@@ -81,13 +81,20 @@ def _has_root_file_with_suffix(root: Path, suffixes: set[str]) -> bool:
     except OSError:
         return False
     for child in children:
-        try:
-            is_file = child.is_file()
-        except OSError:
-            continue
-        if is_file and child.suffix.lower() in suffixes and is_safe_to_read(child, root):
+        if child.suffix.lower() in suffixes and _is_root_file(child, root):
             return True
     return False
+
+
+def _has_root_file_named(root: Path, name: str) -> bool:
+    return _is_root_file(root / name, root)
+
+
+def _is_root_file(path: Path, root: Path) -> bool:
+    try:
+        return path.is_file() and is_safe_to_read(path, root)
+    except OSError:
+        return False
 
 
 def _has_project_file(root: Path, suffixes: set[str], max_seen: int = 5000) -> bool:
