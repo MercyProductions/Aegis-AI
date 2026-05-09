@@ -883,3 +883,19 @@ Validation completed:
 
 - Visual Studio extension Release build/package: pass.
 - Stale release-folder cleanup smoke: pass for `DOGFOODING_NOTES.md`, `DETECTED_MODELS.md`, and `.gitignore`.
+
+## 2026-05-09 - Website E2E Wrapper Normalization
+
+Focus:
+
+- Keep the Website browser E2E wrapper aligned with the doctor and backend smoke wrappers.
+- Avoid confusing failures from relative project roots or trailing slashes in custom backend/frontend URLs.
+
+Actions:
+
+- Normalized `Root` with `Resolve-Path -LiteralPath` before deriving the Playwright script path, lock name, and environment variables.
+- Trimmed trailing slashes from `BackendUrl` and `FrontendUrl` before health probes and E2E environment setup.
+
+Validation completed:
+
+- Website UI E2E wrapper normalization smoke: pass with relative `Root` and trailing-slash backend/frontend URLs.

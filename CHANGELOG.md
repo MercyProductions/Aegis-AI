@@ -76,6 +76,7 @@
 - Fixed Website project-switch file previews so file reads use the current workspace root instead of stale React state after switching projects.
 - Split Website frontend API, utility, style, React, and icon code into explicit Vite chunks so production builds stay under the default chunk warning budget without raising the warning limit.
 - Fixed the Website acceptance gate so custom backend/frontend URLs are passed through to doctor, smoke, and browser e2e scripts instead of falling back to default ports.
+- Hardened the Website UI E2E wrapper so relative roots and trailing-slash backend/frontend URLs normalize consistently with doctor and smoke validation.
 - Hardened the Website-to-Core adapter so HTTP 200 responses with malformed JSON are reported as reachable degraded Core responses instead of being mistaken for offline Core.
 - Hardened the Website-to-Core adapter so Core error details and HTTP error URLs are redacted before reaching Website `/api` clients.
 - Hardened Website and Visual Studio diagnostic redactors so full `Authorization: Bearer/Basic/Digest ...` header values are redacted before generic assignment redaction can expose trailing credentials.

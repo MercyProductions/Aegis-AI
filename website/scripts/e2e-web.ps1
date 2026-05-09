@@ -51,6 +51,10 @@ function Test-HttpReady {
     }
 }
 
+$Root = (Resolve-Path -LiteralPath $Root).Path
+$BackendUrl = $BackendUrl.TrimEnd("/")
+$FrontendUrl = $FrontendUrl.TrimEnd("/")
+
 $Script = Join-Path $Root "scripts\e2e-web.mjs"
 $PlaywrightCore = Join-Path $Root "node_modules\playwright-core"
 if (-not (Test-Path -LiteralPath $Script)) {
