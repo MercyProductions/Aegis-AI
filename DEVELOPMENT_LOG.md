@@ -34,6 +34,7 @@ Actions:
 - Hardened Core generated-memory writes so damaged `.aegis` paths do not crash workspace scans.
 - Hardened Core workspace scans against malformed `package.json` dependency fields and file stat races.
 - Hardened Core framework detection so BOM-prefixed `package.json` files still preserve React/Vite/Next workspace intelligence.
+- Hardened Core framework detection so damaged `package.json`, `Assets`, or `ProjectSettings` marker shapes do not create false Node or Unity classifications.
 - Hardened Core settings read/write paths for damaged `.aegis/config.json` and `.aegis` paths.
 - Restricted shared memory directory settings to safe workspace-local folder names.
 - Hardened Core continue/repair agent endpoints against damaged roadmap and validation-log memory paths.
@@ -60,7 +61,7 @@ Actions:
 
 Validation completed:
 
-- Aegis Core contract test suite: pass, 43 tests.
+- Aegis Core contract test suite: pass, 44 tests.
 - Aegis Core compile check: pass.
 - Aegis Core BOM-prefixed package framework detection regression test: pass.
 - Aegis Core malformed client registry regression test: pass.

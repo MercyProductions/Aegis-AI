@@ -40,6 +40,21 @@ TEXT_SUFFIXES = {
     ".cmake",
 }
 
+
+def _is_safe_file(path: Path, workspace: str | Path) -> bool:
+    try:
+        return path.is_file() and is_safe_to_read(path, workspace)
+    except OSError:
+        return False
+
+
+def _is_safe_dir(path: Path, workspace: str | Path) -> bool:
+    try:
+        return path.is_dir() and not is_ignored_path(path, workspace)
+    except OSError:
+        return False
+
+
 LANGUAGE_BY_SUFFIX = {
     ".py": "Python",
     ".js": "JavaScript",
@@ -215,7 +230,7 @@ class WorkspaceScanner:
         rels = {self._rel(path) for path in files}
         frameworks: set[str] = set()
         package_json = self.workspace / "package.json"
-        if package_json.exists() and is_safe_to_read(package_json, self.workspace):
+        if _is_safe_file(package_json, self.workspace):
             try:
                 package = json.loads(package_json.read_text(encoding="utf-8-sig"))
                 dependencies = package.get("dependencies", {}) if isinstance(package, dict) else {}
@@ -240,7 +255,10 @@ class WorkspaceScanner:
             frameworks.add("C#/.NET")
         if any(item.endswith(".vcxproj") for item in rels):
             frameworks.add("C++/MSBuild")
-        if "ProjectSettings.asset" in names or (self.workspace / "Assets").exists() and (self.workspace / "ProjectSettings").exists():
+        if "ProjectSettings.asset" in names or (
+            _is_safe_dir(self.workspace / "Assets", self.workspace)
+            and _is_safe_dir(self.workspace / "ProjectSettings", self.workspace)
+        ):
             frameworks.add("Unity")
         if "pyproject.toml" in names or "requirements.txt" in names:
             frameworks.add("Python")

@@ -24,7 +24,7 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 | Visual Studio health check | Improved | Health check now reports Core reachability separately from shared client registration and preserves useful Core error details. |
 | Website integration | Partial | Website has its own mature local backend. For this phase it remains documented as a client and should migrate incrementally to `/v1` Core contracts. |
 | Workspace scan performance | Improved | Core scan results are cached when the workspace fingerprint is unchanged, skipping repeated expensive symbol/dependency/TODO passes. |
-| Workspace scan resilience | Improved | Core scans tolerate malformed package dependency metadata, BOM-prefixed `package.json` files, and files disappearing during scan sorting. |
+| Workspace scan resilience | Improved | Core scans tolerate malformed package dependency metadata, BOM-prefixed `package.json` files, damaged framework marker paths, and files disappearing during scan sorting. |
 | Path safety | Improved | Core now evaluates ignored folders relative to the workspace, blocks secret-like filenames case-insensitively, and rejects paths resolving outside the workspace. |
 | Shared settings | Improved | Core config loading falls back to defaults for malformed values, unsafe memory directory names, and damaged `.aegis/config.json` paths. |
 | Desktop settings | Improved | Backend and Aegis Core URL fields normalize host:port inputs and pasted endpoint paths before config writes or runtime requests. |
@@ -50,7 +50,7 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 
 Ran during this pass:
 
-- `python -m pytest tests/test_core_contracts.py -q` in Aegis Core: 43 tests passed
+- `python -m pytest tests/test_core_contracts.py -q` in Aegis Core: 44 tests passed
 - `python -m compileall aegis_core`: pass
 - Core BOM-prefixed package framework detection regression test: pass
 - Core malformed client registry regression test: pass
@@ -95,6 +95,7 @@ Ran during this pass:
 - Hardened Core read/edit safety so files resolving outside the workspace, including symlinked files, are excluded from scans.
 - Hardened Core workspace scans against malformed `package.json` dependency shapes and file stat races during recent-file sorting.
 - Hardened Core framework detection so UTF-8 BOM-prefixed `package.json` files still detect React/Vite/Next dependencies.
+- Hardened Core framework detection so damaged `package.json`, `Assets`, or `ProjectSettings` marker shapes do not create false Node or Unity classifications.
 - Hardened Core validation detection so ignored dependency/build folders do not trigger false `.NET` build suggestions.
 - Hardened Core validation detection so damaged root build-marker directories do not trigger false Cargo, Python, CMake, pnpm, or Yarn suggestions.
 - Reduced Core validation startup overhead by avoiding duplicate validation-command detection.

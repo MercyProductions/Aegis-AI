@@ -122,6 +122,30 @@ def test_workspace_scan_detects_frameworks_from_bom_package_json(tmp_path: Path)
     assert "Vite" in result["frameworks"]
 
 
+def test_workspace_scan_framework_detection_ignores_damaged_marker_shapes(tmp_path: Path) -> None:
+    workspace = tmp_path / "damaged-framework-marker-project"
+    workspace.mkdir()
+    (workspace / "package.json").mkdir()
+    (workspace / "Assets").write_text("not a Unity assets directory", encoding="utf-8")
+    (workspace / "ProjectSettings").write_text("not a Unity settings directory", encoding="utf-8")
+
+    result = WorkspaceScanner(workspace).scan(persist=False)
+
+    assert result["frameworks"] == ["Unknown"]
+
+    (workspace / "package.json").rmdir()
+    (workspace / "package.json").write_text(json.dumps({"dependencies": {"react": "^19.0.0"}}), encoding="utf-8")
+    (workspace / "Assets").unlink()
+    (workspace / "ProjectSettings").unlink()
+    (workspace / "Assets").mkdir()
+    (workspace / "ProjectSettings").mkdir()
+
+    result = WorkspaceScanner(workspace).scan(persist=False)
+
+    assert "React" in result["frameworks"]
+    assert "Unity" in result["frameworks"]
+
+
 def test_workspace_scan_recent_files_survives_stat_race(tmp_path: Path, monkeypatch) -> None:
     workspace = tmp_path / "stat-race-project"
     workspace.mkdir()
