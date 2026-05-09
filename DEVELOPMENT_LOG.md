@@ -1,5 +1,24 @@
 # Development Log
 
+## 2026-05-09 - Website Memory API Base Alignment
+
+Focus:
+
+- Keep the memory editor aligned with the Website API client's active-backend discovery.
+- Avoid memory-note operations failing when dogfooding uses the Vite proxy or an alternate backend port such as `8793`.
+
+Actions:
+
+- Added shared frontend API helpers for memory note list, update, and delete operations.
+- Refactored `MemoryEditor` to use the shared API client and typed memory-note contracts instead of direct hardcoded fetch URLs.
+- Added a frontend regression proving memory list/create/update/delete calls discover the active Auralith backend before hitting `/api/memory`.
+
+Validation completed:
+
+- Website frontend API tests: pass.
+- Website frontend full test suite: pass.
+- Website frontend production build: pass.
+
 ## 2026-05-09 - Visual Studio Release Bundle License Guard
 
 Focus:

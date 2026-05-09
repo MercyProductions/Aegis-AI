@@ -43,7 +43,7 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 | Website workspace setup | Improved | Damaged `.aegis` project and validation profile paths now return warnings instead of breaking setup. |
 | Website validation discovery | Improved | Damaged project marker directories such as `package.json`, `build.py`, or `CMakeLists.txt` no longer create false validation or install suggestions, root `build.ps1` guard scripts are preferred over lower-level native build fallbacks, agent/project-builder continuation proposes the same safe PowerShell guard command, and command execution blocks broader PowerShell invocations. |
 | Website validation profiles | Improved | Manual validation profile updates now use atomic writes, clean failed temp files, and report damaged profile paths as clear API errors. |
-| Website memory notes | Improved | Memory-note files are confined to the memory directory, damaged memory paths degrade with clear API errors, writes are atomic, malformed confidence input is tolerated, and rapid note IDs are collision-safe. |
+| Website memory notes | Improved | Memory-note files are confined to the memory directory, damaged memory paths degrade with clear API errors, writes are atomic, malformed confidence input is tolerated, rapid note IDs are collision-safe, and the memory editor uses shared API base discovery for note operations. |
 | Website model manager | Improved | Damaged model-operation and pull-log JSON paths are skipped safely, invalid operation records are ignored, and operation history writes are atomic. |
 | Website model benchmarks | Improved | Damaged benchmark result/job stores are skipped safely, blank job records are ignored, and benchmark state writes are atomic. |
 | Website dependency profiling | Improved | Damaged marker directories and lockfile paths no longer distort onboarding stack, package-manager, entry-point, or database summaries, root `build.py` / `build.ps1` guard scripts are recorded before lower-level native validation fallbacks, and Python lockfile drift is tracked by watcher snapshots. |
@@ -83,7 +83,8 @@ Ran during this pass:
 - Visual Studio extension `.\build.ps1`: pass, command table parity checked, regenerated `release/AegisLocalAgentVs.vsix`
 - Visual Studio rollback hardening `.\build.ps1`: pass, regenerated `release/AegisLocalAgentVs.vsix`
 - Visual Studio rollback cross-solution/path hardening `.\build.ps1`: pass, regenerated `release/AegisLocalAgentVs.vsix`
-- Website frontend tests: 21 files / 169 tests passed
+- Website frontend API tests: pass, including memory API base discovery regression
+- Website frontend tests: 21 files / 170 tests passed
 - Website frontend production build: pass, no Vite chunk-size warning
 - Website focused frontend API/runtime/task tests: 40 tests passed
 - Website acceptance gate with explicit backend/frontend URLs: pass

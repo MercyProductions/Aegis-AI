@@ -42,6 +42,7 @@
 - Consolidated the Website PowerShell validation guard command and matchers so discovery, profiling, agent continuation, project builder, and command execution share one contract.
 - Fixed Website command execution so the documented Windows-style `.\build.ps1` PowerShell guard command is accepted and normalized to the same root validation script.
 - Fixed Website validation history recovery so successful exact root PowerShell `build.ps1` guard commands can be remembered while broader PowerShell commands remain blocked.
+- Fixed the Website memory editor so memory list/create/update/delete calls use the shared API base discovery and proxy fallback instead of a fixed backend URL.
 - Hardened Website validation history recovery so Windows launcher aliases such as `cmd.exe`, `npm.cmd`, and `git.exe` cannot bypass install/destructive-command filtering.
 - Hardened Website agent draft validation promotion so Windows launcher aliases cannot bypass the same install/destructive-command filter through validation-like command reasons.
 - Hardened Website readiness and autopilot summaries so unsafe remembered validation commands are not surfaced as runnable next actions.

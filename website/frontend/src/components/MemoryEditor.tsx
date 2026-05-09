@@ -11,17 +11,8 @@ import {
   Zap
 } from 'lucide-react';
 import type { CSSProperties } from 'react';
-
-interface MemoryNote {
-  id: string;
-  title: string;
-  content: string;
-  category: 'fix' | 'pattern' | 'insight' | 'bug' | 'feature';
-  created_at: string;
-  pinned: boolean;
-  tags: string[];
-  confidence: number;
-}
+import { createMemoryNote, deleteMemoryNote, listMemoryNotes, updateMemoryNote } from '../api';
+import type { CreateMemoryNoteRequest, MemoryNoteCategory, MemoryNoteResponse } from '../types';
 
 interface MemoryEditorProps {
   workspaceRoot: string;
@@ -29,15 +20,17 @@ interface MemoryEditorProps {
   palette: any;
 }
 
-const API_BASE = (import.meta.env.VITE_API_BASE ?? 'http://127.0.0.1:8787').replace(/\/+$/, '');
-
 export function MemoryEditor({ workspaceRoot, onClose, palette }: MemoryEditorProps) {
   const [viewportWidth, setViewportWidth] = useState(() => (typeof window === 'undefined' ? 1200 : window.innerWidth));
-  const [notes, setNotes] = useState<MemoryNote[]>([]);
-  const [selectedNote, setSelectedNote] = useState<MemoryNote | null>(null);
+  const [notes, setNotes] = useState<MemoryNoteResponse[]>([]);
+  const [selectedNote, setSelectedNote] = useState<MemoryNoteResponse | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isCreating, setIsCreating] = useState(false);
-  const [newNote, setNewNote] = useState({ title: '', content: '', category: 'insight' });
+  const [newNote, setNewNote] = useState<CreateMemoryNoteRequest>({
+    title: '',
+    content: '',
+    category: 'insight'
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -58,11 +51,7 @@ export function MemoryEditor({ workspaceRoot, onClose, palette }: MemoryEditorPr
     try {
       setLoading(true);
       setError('');
-      const response = await fetch(`${API_BASE}/api/memory?workspace_root=${encodeURIComponent(workspaceRoot)}`);
-      if (!response.ok) {
-        throw new Error(await response.text());
-      }
-      const data = await response.json();
+      const data = await listMemoryNotes(workspaceRoot);
       setNotes(data.notes || []);
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Failed to load notes');
@@ -76,25 +65,16 @@ export function MemoryEditor({ workspaceRoot, onClose, palette }: MemoryEditorPr
 
     try {
       setError('');
-      const response = await fetch(`${API_BASE}/api/memory?workspace_root=${encodeURIComponent(workspaceRoot)}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: newNote.title,
-          content: newNote.content,
-          category: newNote.category,
-          tags: [],
-          related_files: []
-        })
+      await createMemoryNote(workspaceRoot, {
+        title: newNote.title,
+        content: newNote.content,
+        category: newNote.category,
+        tags: [],
+        related_files: []
       });
-
-      if (response.ok) {
-        setNewNote({ title: '', content: '', category: 'insight' });
-        setIsCreating(false);
-        await loadNotes();
-      } else {
-        throw new Error(await response.text());
-      }
+      setNewNote({ title: '', content: '', category: 'insight' });
+      setIsCreating(false);
+      await loadNotes();
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Failed to create note');
     }
@@ -105,12 +85,7 @@ export function MemoryEditor({ workspaceRoot, onClose, palette }: MemoryEditorPr
 
     try {
       setError('');
-      const response = await fetch(`${API_BASE}/api/memory/${noteId}?workspace_root=${encodeURIComponent(workspaceRoot)}`, {
-        method: 'DELETE'
-      });
-      if (!response.ok) {
-        throw new Error(await response.text());
-      }
+      await deleteMemoryNote(workspaceRoot, noteId);
       setSelectedNote(null);
       await loadNotes();
     } catch (error) {
@@ -124,15 +99,7 @@ export function MemoryEditor({ workspaceRoot, onClose, palette }: MemoryEditorPr
       if (!note) return;
 
       setError('');
-      const response = await fetch(`${API_BASE}/api/memory/${noteId}?workspace_root=${encodeURIComponent(workspaceRoot)}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pinned: !note.pinned })
-      });
-      if (!response.ok) {
-        throw new Error(await response.text());
-      }
-
+      await updateMemoryNote(workspaceRoot, noteId, { pinned: !note.pinned });
       await loadNotes();
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Failed to update note');
@@ -363,7 +330,7 @@ export function MemoryEditor({ workspaceRoot, onClose, palette }: MemoryEditorPr
                 />
                 <select
                   value={newNote.category}
-                  onChange={(e) => setNewNote({ ...newNote, category: e.target.value })}
+                  onChange={(e) => setNewNote({ ...newNote, category: e.target.value as MemoryNoteCategory })}
                   style={{ ...styles.searchInput, marginBottom: 12 }}
                 >
                   <option value="insight">Insight</option>

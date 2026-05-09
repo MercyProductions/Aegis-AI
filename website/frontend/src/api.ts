@@ -33,6 +33,7 @@ import type {
   ChatStreamPayload,
   ConfigUpdateRequest,
   CreateMemoryNoteRequest,
+  DeleteMemoryNoteResponse,
   DiffCompareRequest,
   DiffCompareResponse,
   DistributedRuntimeSnapshot,
@@ -79,6 +80,7 @@ import type {
   ModelInventoryResponse,
   ModelManagerResponse,
   MemoryNoteResponse,
+  MemoryNotesResponse,
   ModelOperationInfo,
   ModelPullRequest,
   ModelRegistryResponse,
@@ -137,6 +139,7 @@ import type {
   UnifiedContextSearchResponse,
   UnifiedContextSnapshot,
   UnifiedRuntimeSnapshot,
+  UpdateMemoryNoteRequest,
   UpdateApprovalSettingsRequest,
   ValidationProfileResponse,
   ValidationProfileUpdateRequest,
@@ -1743,5 +1746,50 @@ export function createMemoryNote(
   return jsonFetch<MemoryNoteResponse>(`/api/memory?${query.toString()}`, {
     method: 'POST',
     body: JSON.stringify(request)
+  });
+}
+
+export function listMemoryNotes(workspaceRoot?: string, category?: string): Promise<MemoryNotesResponse> {
+  const query = new URLSearchParams();
+
+  if (workspaceRoot?.trim()) {
+    query.set('workspace_root', workspaceRoot.trim());
+  }
+  if (category?.trim()) {
+    query.set('category', category.trim());
+  }
+
+  return jsonFetch<MemoryNotesResponse>(`/api/memory?${query.toString()}`);
+}
+
+export function updateMemoryNote(
+  workspaceRoot: string | undefined,
+  noteId: string,
+  request: UpdateMemoryNoteRequest
+): Promise<MemoryNoteResponse> {
+  const query = new URLSearchParams();
+
+  if (workspaceRoot?.trim()) {
+    query.set('workspace_root', workspaceRoot.trim());
+  }
+
+  return jsonFetch<MemoryNoteResponse>(`/api/memory/${encodeURIComponent(noteId)}?${query.toString()}`, {
+    method: 'PUT',
+    body: JSON.stringify(request)
+  });
+}
+
+export function deleteMemoryNote(
+  workspaceRoot: string | undefined,
+  noteId: string
+): Promise<DeleteMemoryNoteResponse> {
+  const query = new URLSearchParams();
+
+  if (workspaceRoot?.trim()) {
+    query.set('workspace_root', workspaceRoot.trim());
+  }
+
+  return jsonFetch<DeleteMemoryNoteResponse>(`/api/memory/${encodeURIComponent(noteId)}?${query.toString()}`, {
+    method: 'DELETE'
   });
 }

@@ -10,11 +10,13 @@ import {
   createExecutionQueueItem,
   createAutonomousObjective,
   createCreativeJob,
+  createMemoryNote,
   createReproducibilityRecord,
   createRemoteSyncManifest,
   dispatchExecutionQueue,
   disableEcosystemPackage,
   disablePlugin,
+  deleteMemoryNote,
   dismissWorkspaceRecommendation,
   enableEcosystemPackage,
   enablePlugin,
@@ -53,6 +55,7 @@ import {
   listEcosystemMarketplace,
   listEcosystemPackages,
   listEcosystemWorkflows,
+  listMemoryNotes,
   listReproducibilityRecords,
   listSharedIntelligenceProfiles,
   listPlugins,
@@ -96,6 +99,7 @@ import {
   streamAgentMessage,
   trustEcosystemPackage,
   trustPlugin,
+  updateMemoryNote,
   updateOrganizationPolicy,
   updateEnterprisePolicy,
   validateEcosystemPackage,
@@ -312,6 +316,68 @@ describe('auth api', () => {
     expect(fetchMock.mock.calls[2]?.[1]?.headers).toMatchObject({ Authorization: 'Bearer aegis_test_token' });
     expect(fetchMock.mock.calls[3]?.[1]?.headers).toMatchObject({ Authorization: 'Bearer aegis_test_token' });
     expect(String(fetchMock.mock.calls[4]?.[0])).toContain('/api/auth/forgot-password');
+  });
+});
+
+describe('memory api', () => {
+  it('uses shared API base discovery for list, create, update, and delete calls', async () => {
+    __setApiDiscoveryForTests(true);
+    const note = {
+      id: 'note-1',
+      title: 'Known fix',
+      content: 'Keep the memory editor on the active backend.',
+      category: 'insight',
+      created_at: '2026-05-09T00:00:00Z',
+      updated_at: '2026-05-09T00:00:00Z',
+      pinned: false,
+      tags: [],
+      related_files: [],
+      confidence: 0.8
+    };
+    const createPayload = {
+      title: 'Known fix',
+      content: 'Keep the memory editor on the active backend.',
+      category: 'insight',
+      tags: [],
+      related_files: []
+    };
+
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ ok: true, ready: true, app: 'Aegis Coding AI' }))
+      .mockResolvedValueOnce(jsonResponse({ ok: true, ready: true, app: 'Aegis Coding AI' }))
+      .mockResolvedValueOnce(jsonResponse({ ok: true, ready: true, app: 'Auralith OS' }))
+      .mockResolvedValueOnce(jsonResponse({ workspace_root: 'C:/project root', warnings: [], notes: [note] }))
+      .mockResolvedValueOnce(jsonResponse(note))
+      .mockResolvedValueOnce(jsonResponse({ ...note, pinned: true }))
+      .mockResolvedValueOnce(jsonResponse({ deleted: 'note-1' }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(listMemoryNotes('C:/project root')).resolves.toMatchObject({ notes: [note] });
+    await expect(createMemoryNote('C:/project root', createPayload)).resolves.toMatchObject({ id: 'note-1' });
+    await expect(updateMemoryNote('C:/project root', 'note-1', { pinned: true })).resolves.toMatchObject({
+      pinned: true
+    });
+    await expect(deleteMemoryNote('C:/project root', 'note-1')).resolves.toEqual({ deleted: 'note-1' });
+
+    expect(fetchMock.mock.calls.map((call) => String(call[0]))).toEqual([
+      '/api/health',
+      'http://127.0.0.1:8787/api/health',
+      'http://127.0.0.1:8793/api/health',
+      'http://127.0.0.1:8793/api/memory?workspace_root=C%3A%2Fproject+root',
+      'http://127.0.0.1:8793/api/memory?workspace_root=C%3A%2Fproject+root',
+      'http://127.0.0.1:8793/api/memory/note-1?workspace_root=C%3A%2Fproject+root',
+      'http://127.0.0.1:8793/api/memory/note-1?workspace_root=C%3A%2Fproject+root'
+    ]);
+    expect(fetchMock.mock.calls[4]?.[1]).toMatchObject({
+      method: 'POST',
+      body: JSON.stringify(createPayload)
+    });
+    expect(fetchMock.mock.calls[5]?.[1]).toMatchObject({
+      method: 'PUT',
+      body: JSON.stringify({ pinned: true })
+    });
+    expect(fetchMock.mock.calls[6]?.[1]).toMatchObject({ method: 'DELETE' });
   });
 });
 

@@ -1370,6 +1370,12 @@ export interface MemoryNoteResponse {
   confidence: number;
 }
 
+export interface MemoryNotesResponse {
+  workspace_root: string;
+  warnings: string[];
+  notes: MemoryNoteResponse[];
+}
+
 export interface CreateMemoryNoteRequest {
   title: string;
   content: string;
@@ -1378,6 +1384,12 @@ export interface CreateMemoryNoteRequest {
   related_files?: string[];
   pinned?: boolean;
   confidence?: number;
+}
+
+export type UpdateMemoryNoteRequest = Partial<CreateMemoryNoteRequest>;
+
+export interface DeleteMemoryNoteResponse {
+  deleted: string;
 }
 
 export interface RepairAttempt {
