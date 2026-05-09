@@ -164,6 +164,7 @@ Contract stability:
 | `quality.dashboard`, `quality.snapshot` | experimental | Project health scoring, trend snapshots, risk detection, quality reports, and Planner guidance. |
 | `knowledge.graph`, `knowledge.query` | experimental | Local semantic project graph and deterministic relationship queries. |
 | `simulation.change`, `simulation.compare` | experimental | Read-only predictive planning, impact forecasting, architecture drift warnings, and scenario comparison. |
+| `operations.dashboard` | experimental | Read-only engineering operations dashboard for release planning, technical debt, lifecycle, maintenance, productivity, and cross-project coordination. |
 | `patch.proposal`, `rollback.entry`, `rollback.result` | experimental schema-only | Defined for future compatibility; not active Core endpoints yet. |
 
 Shared request body conventions:
@@ -181,6 +182,7 @@ Shared request body conventions:
 - Knowledge queries use `workspace`, `query`, and optional `focus` for a file path, API route, or system name.
 - Change simulations use `workspace`, `objective`, optional `files`, and optional `approach`. They are read-only and do not write source files.
 - Scenario comparison uses `workspace`, `objective`, `approaches`, and optional `files`.
+- Engineering operations uses `workspace` and optional `project_roots` for additional local project roots. It is read-only and coordinates recommendations rather than executing work.
 
 ## GET /v1/health
 
@@ -687,6 +689,46 @@ Body:
 ```
 
 Ranks implementation approaches by predicted risk, affected systems, impacted file count, validation cost, and rollback complexity. The recommended approach is the lowest-risk forecast, not an automatic edit.
+
+## GET /v1/operations
+
+Query:
+
+- `workspace`: required workspace path
+
+Returns the read-only engineering operations dashboard for a project:
+
+- project health and validation status
+- release readiness, release milestones, implementation phases, and validation checkpoints
+- technical debt signals, cleanup recommendations, refactor priorities, and stability tasks
+- lifecycle stage: `prototype`, `active_development`, `stabilization`, `release_candidate`, or `maintenance_mode`
+- long-term risk monitoring for validation failures, dependency risk, complexity spikes, slow validation, and growing instability
+- maintenance scheduling recommendations
+- productivity intelligence for recurring pain points, bottlenecks, manual tasks, bug categories, and automation opportunities
+- suggested next actions and approval policy
+
+Operations may recommend scans, validation sweeps, docs refreshes, refactor windows, and release checkpoints. It does not edit files, run build/test commands, install packages, call cloud providers, or make release decisions.
+
+## POST /v1/operations/dashboard
+
+Body:
+
+```json
+{
+  "workspace": "C:/path/to/project",
+  "project_roots": [
+    "C:/path/to/another/project"
+  ]
+}
+```
+
+Returns the same operations dashboard plus cross-project awareness for additional local project roots:
+
+- shared libraries
+- shared tooling
+- repeated architecture patterns
+- repeated systems
+- unavailable project roots and coordination notes
 
 ## POST /v1/validation
 

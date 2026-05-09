@@ -28,6 +28,7 @@ Aegis Core owns reusable intelligence and workflow services:
 - Project quality intelligence, health trends, and risk reports
 - Knowledge graph and semantic project relationship queries
 - Predictive planning, change simulation, architecture drift warnings, and scenario comparison
+- Engineering operations for release readiness, debt, lifecycle, maintenance, productivity, and cross-project coordination
 - Validation command detection and safe execution
 - Agent planning, repair planning, rollback metadata, and approval contracts
 - Diagnostics and logs
@@ -63,6 +64,7 @@ Default assumptions:
 - Quality snapshots write generated `.aegis` observability artifacts, not source changes.
 - Knowledge graph refreshes write generated `.aegis` relationship artifacts, not source changes.
 - Change simulations are advisory and read-only; they do not apply edits, run risky commands, or send cloud context.
+- Engineering operations dashboards recommend coordination work but do not make release decisions or run risky actions.
 
 ## Migration Strategy
 
@@ -79,8 +81,9 @@ Default assumptions:
 11. Project health trends flow through `.aegis/health-history.json`, generated quality reports, and `/v1/quality`.
 12. Semantic project relationships flow through `.aegis/knowledge-graph.json`, generated graph summaries, and `/v1/knowledge/*`.
 13. Predictive planning forecasts flow through `/v1/simulation/*` and feed Planner Agent task ordering.
-14. Agent planning and repair loops move into Core.
-15. Clients keep UI approvals, diff/apply/rollback, and editor-native affordances.
+14. Engineering operations dashboards flow through `/v1/operations/*`.
+15. Agent planning and repair loops move into Core.
+16. Clients keep UI approvals, diff/apply/rollback, and editor-native affordances.
 
 ## Shared API Layer
 
@@ -191,6 +194,27 @@ The engine combines workspace scan data, the knowledge graph, quality intelligen
 The response includes UI-ready fields for impact, confidence, validation cost, rollback complexity, and top warnings. Planner Agent consumes the simulation summary during orchestration planning and adds a dedicated split-planning task when high-risk or drift-prone work should be broken down before implementation.
 
 Simulation is advisory. Clients still own approvals, diff previews, patch application, validation execution, and rollback.
+
+## Autonomous Engineering Operations
+
+Engineering operations coordinates long-term project work without taking control away from humans. It is surfaced through:
+
+```text
+GET  /v1/operations?workspace=C:/path/to/project
+POST /v1/operations/dashboard
+```
+
+Operations combines current Core signals from quality intelligence, knowledge graph relationships, shared tasks, scheduled jobs, validation, roadmap memory, dependencies, and agent history. It reports:
+
+- release readiness, milestones, implementation phases, validation checkpoints, and release notes focus
+- technical debt signals, cleanup recommendations, refactor priorities, and stability tasks
+- lifecycle stage and recommendation mode
+- long-term risk monitoring for instability, validation failures, architecture complexity, dependency risk, and performance regressions
+- maintenance scheduling for refactor windows, dependency review, validation sweeps, optimization passes, and docs refreshes
+- productivity intelligence for recurring pain points, slow workflows, repeated manual tasks, bottlenecks, repeated bug categories, and automation opportunities
+- cross-project awareness for shared libraries, shared tooling, architecture patterns, and repeated systems
+
+Operations is read-only and recommendation-first. It may coordinate what should happen next, but file edits, deletions, validation/build commands, dependency installs, cloud context, and release decisions remain approval-gated.
 
 ## Desktop Ecosystem Dashboard Contract
 

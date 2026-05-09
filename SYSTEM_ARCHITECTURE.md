@@ -76,6 +76,7 @@ Aegis Core is the shared local runtime contract. It must stay small, stable, loc
 - Project quality intelligence: health scoring, trend snapshots, risk detection, daily/weekly quality reports, and Planner Agent guidance.
 - Knowledge graph and deep project understanding: semantic relationships between files, systems, APIs, UI components, services, tasks, roadmap items, decisions, bugs, validation failures, and history.
 - Predictive planning and change simulation: read-only forecasts for impacted files, affected systems, build/test risk, dependency ripple, architecture drift, validation cost, rollback complexity, and scenario comparison.
+- Autonomous engineering operations: release planning, technical debt tracking, lifecycle awareness, long-term risk monitoring, maintenance scheduling, productivity intelligence, and cross-project coordination.
 - Validation summary/run.
 - Plan-only continue and repair flows.
 - Branding tokens shared by clients.
@@ -125,6 +126,14 @@ Predictive simulation is the planning guardrail before edits:
 - The response is UI-ready: predicted impact, confidence score, affected systems, validation cost, rollback complexity, build/test risks, and architecture drift warnings.
 - Planner Agent consumes the simulation summary while creating orchestration plans and inserts a dedicated risk-splitting task when a forecast is high risk.
 - Simulation is advisory and read-only; clients still own approval, diffs, patch application, validation execution, and rollback.
+
+Autonomous engineering operations is the long-term coordination layer:
+
+- Core exposes `/v1/operations` for a single project and `/v1/operations/dashboard` when clients want to include additional local project roots.
+- Operations reads existing Core intelligence: quality trends, knowledge graph, shared tasks, maintenance jobs, validation status, roadmap state, technical debt signals, and project history.
+- The dashboard returns release readiness, release milestones, implementation phases, validation checkpoints, debt signals, cleanup/refactor/stability priorities, lifecycle stage, risk monitoring, maintenance schedules, productivity bottlenecks, and suggested next actions.
+- Cross-project awareness is advisory: shared libraries, shared tooling, repeated architecture patterns, and unavailable project roots are surfaced so humans can coordinate updates safely.
+- Operations does not make release decisions or execute risky work. It may recommend; humans approve edits, commands, package updates, cloud calls, and major project decisions.
 
 Core `/v1` responses use the shared envelope from `aegis-core/aegis_core/contracts.py`:
 

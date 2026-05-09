@@ -14,6 +14,7 @@ from .knowledge import knowledge_graph, query_knowledge_graph
 from .model_router import provider_inventory, route_model
 from .multi_agent import agent_roster
 from .ollama import OllamaClient
+from .operations import engineering_operations_dashboard
 from .orchestration import advance_orchestration_step, create_orchestration_plan, orchestration_dashboard
 from .quality import quality_dashboard, record_quality_snapshot
 from .roadmap import generate_roadmap
@@ -51,6 +52,7 @@ def main(argv: list[str] | None = None) -> int:
         "quality",
         "knowledge",
         "simulate",
+        "operations",
         "route",
         "orchestrate",
     ):
@@ -91,6 +93,8 @@ def main(argv: list[str] | None = None) -> int:
             sub.add_argument("--objective", required=True, help="Planned change or roadmap item to simulate.")
             sub.add_argument("--file", dest="files", action="append", default=[], help="Optional focus file. Can be supplied more than once.")
             sub.add_argument("--approach", action="append", default=[], help="Implementation approach. Supply more than once to compare scenarios.")
+        if name == "operations":
+            sub.add_argument("--project", dest="project_roots", action="append", default=[], help="Additional local project root to include in cross-project operations awareness.")
 
     args = parser.parse_args(raw_args)
     args.json = args.json or json_requested
@@ -150,6 +154,8 @@ def main(argv: list[str] | None = None) -> int:
                 result = compare_scenarios(workspace, args.objective, args.approach, files=args.files)
             else:
                 result = simulate_change(workspace, args.objective, files=args.files, approach=args.approach[0] if args.approach else None)
+        elif args.command == "operations":
+            result = engineering_operations_dashboard(workspace, project_roots=args.project_roots)
         elif args.command == "route":
             result = route_model(
                 workspace,

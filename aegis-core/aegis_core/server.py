@@ -13,6 +13,7 @@ from .contracts import (
     KnowledgeQueryRequest,
     ModelCompletionRequest,
     ModelRouteRequest,
+    OperationsRequest,
     OrchestrationPlanRequest,
     OrchestrationStepRequest,
     ProviderKeyRequest,
@@ -32,6 +33,7 @@ from .knowledge import knowledge_graph, query_knowledge_graph
 from .model_router import complete_with_route, delete_provider_key, provider_inventory, route_model, store_provider_key
 from .multi_agent import agent_roster
 from .ollama import OllamaClient
+from .operations import engineering_operations_dashboard
 from .orchestration import advance_orchestration_step, create_orchestration_plan, orchestration_dashboard
 from .quality import quality_dashboard, record_quality_snapshot
 from .roadmap import generate_roadmap
@@ -328,6 +330,18 @@ def create_app():
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return envelope("simulation.compare", data, request.workspace)
+
+    @app.get("/v1/operations")
+    def v1_operations(workspace: str) -> dict[str, Any]:
+        return envelope("operations.dashboard", engineering_operations_dashboard(workspace), workspace)
+
+    @app.post("/v1/operations/dashboard")
+    def v1_operations_dashboard(request: OperationsRequest) -> dict[str, Any]:
+        return envelope(
+            "operations.dashboard",
+            engineering_operations_dashboard(request.workspace, project_roots=request.project_roots),
+            request.workspace,
+        )
 
     @app.post("/v1/tasks")
     def v1_create_task(request: CreateTaskRequest) -> dict[str, Any]:

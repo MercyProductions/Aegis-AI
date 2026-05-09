@@ -141,6 +141,11 @@ class SimulationCompareRequest(ContractModel):
     files: list[str] = Field(default_factory=list)
 
 
+class OperationsRequest(ContractModel):
+    workspace: str
+    project_roots: list[str] = Field(default_factory=list)
+
+
 class CoreEnvelope(ContractModel):
     ok: bool = True
     api_version: Literal["v1"] = CORE_API_VERSION
@@ -651,6 +656,24 @@ class SimulationComparisonData(ContractModel):
     ui: dict[str, Any] = Field(default_factory=dict)
 
 
+class OperationsDashboardData(ContractModel):
+    workspace: str | None = None
+    generated_at: str = ""
+    lifecycle: dict[str, Any] = Field(default_factory=dict)
+    project_health: dict[str, Any] = Field(default_factory=dict)
+    release_readiness: dict[str, Any] = Field(default_factory=dict)
+    release_plan: dict[str, Any] = Field(default_factory=dict)
+    technical_debt: dict[str, Any] = Field(default_factory=dict)
+    task_coordination: dict[str, Any] = Field(default_factory=dict)
+    risk_monitoring: dict[str, Any] = Field(default_factory=dict)
+    maintenance_schedule: dict[str, Any] = Field(default_factory=dict)
+    productivity_intelligence: dict[str, Any] = Field(default_factory=dict)
+    cross_project_awareness: dict[str, Any] = Field(default_factory=dict)
+    operations_dashboard: dict[str, Any] = Field(default_factory=dict)
+    suggested_next_actions: list[dict[str, Any]] = Field(default_factory=list)
+    approval_policy: dict[str, Any] = Field(default_factory=dict)
+
+
 class EcosystemDashboardData(ContractModel):
     workspace: str | None = None
     clients: list[ClientData] = Field(default_factory=list)
@@ -747,6 +770,7 @@ CONTRACTS: dict[str, ContractDescriptor] = {
     "knowledge.query": ContractDescriptor(kind="knowledge.query", stability="experimental", notes="Rule-based project knowledge graph query result."),
     "simulation.change": ContractDescriptor(kind="simulation.change", stability="experimental", notes="Read-only change impact simulation, risk forecast, validation estimate, and rollback complexity."),
     "simulation.compare": ContractDescriptor(kind="simulation.compare", stability="experimental", notes="Read-only comparison of implementation scenarios by predicted risk, impact, validation cost, and rollback complexity."),
+    "operations.dashboard": ContractDescriptor(kind="operations.dashboard", stability="experimental", notes="Read-only engineering operations dashboard for release planning, technical debt, lifecycle, scheduling, productivity, and cross-project coordination."),
     "ecosystem.dashboard": ContractDescriptor(kind="ecosystem.dashboard", stability="stable", notes="Aggregated Core dashboard for desktop and website bridge."),
     "patch.proposal": ContractDescriptor(kind="patch.proposal", stability="experimental", owner="schema-only", notes="Shared shape for approved patch proposals."),
     "rollback.entry": ContractDescriptor(kind="rollback.entry", stability="experimental", owner="schema-only", notes="Shared rollback checkpoint listing shape."),
@@ -788,6 +812,7 @@ CONTRACT_DATA_MODELS: dict[str, type[BaseModel] | tuple[type[BaseModel], bool]] 
     "knowledge.query": KnowledgeQueryData,
     "simulation.change": SimulationData,
     "simulation.compare": SimulationComparisonData,
+    "operations.dashboard": OperationsDashboardData,
     "ecosystem.dashboard": EcosystemDashboardData,
     "patch.proposal": PatchProposalData,
     "rollback.entry": RollbackEntryData,

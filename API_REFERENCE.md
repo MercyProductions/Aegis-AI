@@ -163,6 +163,8 @@ Endpoint families:
 | `POST /v1/knowledge/query` | `knowledge.query` | experimental | Query graph relationships for impacted systems, roadmap links, unstable areas, and API ties |
 | `POST /v1/simulation/change` | `simulation.change` | experimental | Predict affected systems, risks, validation cost, and rollback complexity before edits |
 | `POST /v1/simulation/compare` | `simulation.compare` | experimental | Compare implementation approaches by predicted risk, impact, validation, and rollback cost |
+| `GET /v1/operations` | `operations.dashboard` | experimental | Release planning, technical debt, lifecycle, risk monitoring, maintenance, and productivity dashboard |
+| `POST /v1/operations/dashboard` | `operations.dashboard` | experimental | Operations dashboard with optional cross-project awareness |
 | `POST /v1/validation` | `validation` | stable | Shared validation summary/run |
 | `POST /v1/agent/continue` | `agent.continue.plan` | experimental | Plan-only continue from roadmap |
 | `POST /v1/agent/repair` | `agent.repair.plan` | experimental | Plan-only repair from validation log |
@@ -214,6 +216,13 @@ Predictive planning and change simulation:
 - Forecasts return risk level, risk score, confidence, impacted files, affected systems, likely build/test risks, architecture drift warnings, validation cost, rollback complexity, and UI-ready summary fields.
 - Planner Agent uses the forecast during orchestration planning and inserts a risk-splitting task when a change is high risk or likely to create architecture drift.
 - Simulation endpoints never apply edits, run risky commands, send cloud context, or write project source files.
+
+Autonomous engineering operations:
+
+- Core exposes a read-only engineering operations dashboard through `/v1/operations`.
+- Operations combines quality, knowledge, tasks, jobs, validation, roadmap, and simulation-era risk signals into release readiness, milestones, debt tracking, lifecycle stage, maintenance scheduling, productivity intelligence, and suggested next actions.
+- `POST /v1/operations/dashboard` accepts additional local project roots for cross-project awareness: shared tooling, dependencies, architecture patterns, and coordination notes.
+- Operations may recommend scans, validation sweeps, docs refreshes, refactor windows, and release checkpoints, but file edits, build/test commands, dependency installs, cloud calls, and release decisions remain approval-gated.
 
 Release candidate notes:
 

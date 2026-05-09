@@ -65,11 +65,13 @@ Actions:
 - Kept unrelated dirty worktree changes out of scope.
 - Recorded workflow friction in `WORKFLOW_NOTES.md`.
 - Added Core predictive planning and change simulation so planned edits can be scored for impacted files, affected systems, dependency ripple, architecture drift, validation cost, rollback complexity, and safer scenario choices before implementation.
+- Added Core engineering operations so release readiness, technical debt, lifecycle stage, risk monitoring, maintenance scheduling, productivity bottlenecks, and cross-project coordination can be reviewed from a single read-only dashboard.
 
 Validation completed:
 
 - Aegis Core contract test suite: pass, 79 tests.
 - Aegis Core simulate CLI smoke test: pass for single forecast and scenario comparison.
+- Aegis Core operations endpoint regressions: pass for single-project coordination and cross-project awareness.
 - Aegis Core compile check: pass.
 - Aegis Core BOM-prefixed package framework detection regression test: pass.
 - Aegis Core malformed client registry regression test: pass.

@@ -268,6 +268,7 @@ def test_v1_endpoint_family_smoke_contracts(tmp_path: Path) -> None:
         ("/v1/jobs", {"workspace": str(workspace)}, "jobs.dashboard"),
         ("/v1/quality", {"workspace": str(workspace)}, "quality.dashboard"),
         ("/v1/knowledge/graph", {"workspace": str(workspace)}, "knowledge.graph"),
+        ("/v1/operations", {"workspace": str(workspace)}, "operations.dashboard"),
         ("/v1/ecosystem/dashboard", {"workspace": str(workspace)}, "ecosystem.dashboard"),
     ]
 
@@ -358,6 +359,12 @@ def test_v1_endpoint_family_smoke_contracts(tmp_path: Path) -> None:
             "simulation.compare",
             True,
         ),
+        (
+            "/v1/operations/dashboard",
+            {"workspace": str(workspace), "project_roots": []},
+            "operations.dashboard",
+            True,
+        ),
     ]
 
     created_task_id = None
@@ -413,6 +420,7 @@ def test_contract_catalog_covers_unified_phase_runtime_shapes() -> None:
         "knowledge.query",
         "simulation.change",
         "simulation.compare",
+        "operations.dashboard",
         "patch.proposal",
         "rollback.entry",
         "rollback.result",
@@ -835,6 +843,81 @@ def test_simulation_compare_ranks_incremental_approach_over_rewrite(tmp_path: Pa
     simulations = {item["approach"]: item for item in data["simulations"]}
     assert simulations["Large rewrite and replace the planning architecture"]["risk_score"] >= simulations["Minimal adapter with focused validation"]["risk_score"]
     assert data["comparison"][0]["approach"] == "Minimal adapter with focused validation"
+
+
+def test_operations_dashboard_coordinates_release_debt_and_lifecycle(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    src = workspace / "src"
+    src.mkdir()
+    for index in range(12):
+        (src / f"module_{index}.py").write_text(
+            f"def run_{index}():\n    return {index}\n# FIXME quick fix: stabilize this path\n",
+            encoding="utf-8",
+        )
+    append_validation_log(
+        workspace,
+        {
+            "ok": False,
+            "command": ["python", "-m", "pytest"],
+            "stderr": "src/module_1.py: failed validation",
+        },
+    )
+    (workspace / ".aegis" / "agent-history.json").write_text(
+        json.dumps(
+            [
+                {"event": "repair_attempt", "agent_id": "repair", "summary": "temporary workaround"},
+                {"event": "repair_attempt", "agent_id": "repair", "summary": "quick fix follow-up"},
+            ]
+        ),
+        encoding="utf-8",
+    )
+    client = TestClient(create_app())
+
+    response = client.get("/v1/operations", params={"workspace": str(workspace)})
+
+    assert response.status_code == 200
+    assert_core_contract(response.json(), "operations.dashboard")
+    data = response.json()["data"]
+    assert data["lifecycle"]["stage"] in {"prototype", "active_development", "stabilization", "release_candidate", "maintenance_mode"}
+    assert data["release_readiness"]["status"] in {"blocked", "not_ready", "nearly_ready", "ready"}
+    assert data["release_plan"]["milestones"]
+    assert data["release_plan"]["validation_checkpoints"]
+    assert data["technical_debt"]["signals"]
+    assert data["technical_debt"]["cleanup_recommendations"]
+    assert data["task_coordination"]["validation_tasks"]
+    assert data["maintenance_schedule"]["validation_sweeps"]
+    assert data["productivity_intelligence"]["automation_opportunities"]
+    assert data["operations_dashboard"]["next_action"]
+    assert data["approval_policy"]["uncontrolled_autonomy"] is False
+
+
+def test_operations_dashboard_surfaces_cross_project_awareness(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    other = tmp_path / "other-project"
+    other.mkdir()
+    (other / "README.md").write_text("# Other Project\n", encoding="utf-8")
+    (other / "package.json").write_text(
+        json.dumps({"scripts": {"test": "node smoke.js"}, "dependencies": {"vite": "^7.0.0", "react": "^19.0.0"}}, indent=2),
+        encoding="utf-8",
+    )
+    (other / "smoke.js").write_text("console.log('ok')\n", encoding="utf-8")
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/v1/operations/dashboard",
+        json={
+            "workspace": str(workspace),
+            "project_roots": [str(other), str(tmp_path / "missing-project")],
+        },
+    )
+
+    assert response.status_code == 200
+    assert_core_contract(response.json(), "operations.dashboard")
+    cross_project = response.json()["data"]["cross_project_awareness"]
+    assert len(cross_project["projects"]) == 2
+    assert cross_project["unavailable_projects"]
+    assert "Vite" in cross_project["shared_tooling"]
+    assert cross_project["coordination_notes"]
 
 
 def test_known_client_contract_parsing_tolerates_missing_optional_fields() -> None:
