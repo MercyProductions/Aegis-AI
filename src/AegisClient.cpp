@@ -4382,15 +4382,12 @@ MediaJobSummary AegisClient::CreateMediaJob(
 
 std::string AegisClient::Endpoint(const std::string& path) const
 {
-    return JoinUrl(settings_.api_base_url, path);
+    return JoinUrl(NormalizeHttpBaseUrl(settings_.api_base_url, "http://127.0.0.1:8787"), path);
 }
 
 std::string AegisClient::CoreEndpoint(const std::string& path) const
 {
-    const std::string base = Trim(settings_.core_api_base_url).empty()
-        ? "http://127.0.0.1:8788"
-        : settings_.core_api_base_url;
-    return JoinUrl(base, path);
+    return JoinUrl(NormalizeHttpBaseUrl(settings_.core_api_base_url, "http://127.0.0.1:8788"), path);
 }
 
 std::string AegisClient::RequireJson(const HttpResponse& response, const std::string& action) const

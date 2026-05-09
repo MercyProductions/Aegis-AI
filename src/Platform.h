@@ -42,6 +42,7 @@ std::string GetEnvUtf8(const wchar_t* name);
 
 std::string Trim(const std::string& value);
 std::string Lower(std::string value);
+std::string NormalizeHttpBaseUrl(const std::string& value, const std::string& fallback);
 std::string EscapeJson(const std::string& value);
 std::string UrlEncode(const std::string& value);
 std::string JoinUrl(const std::string& base, const std::string& path);

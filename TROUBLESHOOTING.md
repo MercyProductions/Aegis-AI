@@ -18,6 +18,8 @@ If `--json` appears to fail, update to the latest CLI. It should work before or 
 
 If validation reports `Validation command failed to start`, the command passed the safety allow-list but the OS could not launch it. Check that the tool is installed, available on `PATH`, and allowed by local permissions, then rerun the health check or validation command.
 
+Desktop backend and Core URL settings are normalized before use. Inputs like `127.0.0.1:8788` or pasted `/v1/ecosystem/dashboard` URLs are reduced to a clean `http://host:port` base URL, while empty values fall back to the local defaults.
+
 ## Ollama
 
 Default local endpoint:

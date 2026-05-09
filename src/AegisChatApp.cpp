@@ -8644,14 +8644,8 @@ AppConfig AegisChatApp::BuildConfigFromBuffers() const
 DesktopSettings AegisChatApp::BuildDesktopSettingsFromBuffers() const
 {
     DesktopSettings next = settings_;
-    next.api_base_url = BufferString(api_base_buffer_.data());
-    while (!next.api_base_url.empty() && next.api_base_url.back() == '/') {
-        next.api_base_url.pop_back();
-    }
-    next.core_api_base_url = BufferString(core_api_base_buffer_.data());
-    while (!next.core_api_base_url.empty() && next.core_api_base_url.back() == '/') {
-        next.core_api_base_url.pop_back();
-    }
+    next.api_base_url = NormalizeHttpBaseUrl(BufferString(api_base_buffer_.data()), "http://127.0.0.1:8787");
+    next.core_api_base_url = NormalizeHttpBaseUrl(BufferString(core_api_base_buffer_.data()), "http://127.0.0.1:8788");
     next.backend_root = std::filesystem::path(Utf8ToWide(BufferString(backend_root_buffer_.data())));
     next.backend_start_script = BufferString(backend_script_buffer_.data());
     next.max_files = std::max(20, std::min(500, next.max_files));

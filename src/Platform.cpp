@@ -483,20 +483,8 @@ DesktopSettings LoadDesktopSettings()
         }
     }
 
-    settings.api_base_url = Trim(settings.api_base_url);
-    while (!settings.api_base_url.empty() && settings.api_base_url.back() == '/') {
-        settings.api_base_url.pop_back();
-    }
-    if (settings.api_base_url.empty()) {
-        settings.api_base_url = "http://127.0.0.1:8787";
-    }
-    settings.core_api_base_url = Trim(settings.core_api_base_url);
-    while (!settings.core_api_base_url.empty() && settings.core_api_base_url.back() == '/') {
-        settings.core_api_base_url.pop_back();
-    }
-    if (settings.core_api_base_url.empty()) {
-        settings.core_api_base_url = "http://127.0.0.1:8788";
-    }
+    settings.api_base_url = NormalizeHttpBaseUrl(settings.api_base_url, "http://127.0.0.1:8787");
+    settings.core_api_base_url = NormalizeHttpBaseUrl(settings.core_api_base_url, "http://127.0.0.1:8788");
     return settings;
 }
 
@@ -512,8 +500,8 @@ bool SaveDesktopSettings(const DesktopSettings& settings, std::string& error)
         return false;
     }
 
-    file << "api_base_url=" << settings.api_base_url << "\n";
-    file << "core_api_base_url=" << settings.core_api_base_url << "\n";
+    file << "api_base_url=" << NormalizeHttpBaseUrl(settings.api_base_url, "http://127.0.0.1:8787") << "\n";
+    file << "core_api_base_url=" << NormalizeHttpBaseUrl(settings.core_api_base_url, "http://127.0.0.1:8788") << "\n";
     file << "backend_root=" << PathToUtf8(settings.backend_root) << "\n";
     file << "backend_start_script=" << settings.backend_start_script << "\n";
     file << "auto_start_backend=" << (settings.auto_start_backend ? "true" : "false") << "\n";
@@ -572,6 +560,48 @@ std::string Lower(std::string value)
         return static_cast<char>(std::tolower(c));
     });
     return value;
+}
+
+std::string NormalizeHttpBaseUrl(const std::string& value, const std::string& fallback)
+{
+    std::string base = Trim(value);
+    const std::string default_base = Trim(fallback);
+    if (base.empty()) {
+        return default_base;
+    }
+    if (std::any_of(base.begin(), base.end(), [](unsigned char c) { return std::isspace(c) != 0; })) {
+        return default_base;
+    }
+
+    std::string lowered = Lower(base);
+    if (lowered.rfind("http://", 0) != 0 && lowered.rfind("https://", 0) != 0) {
+        if (base.find("://") != std::string::npos) {
+            return default_base;
+        }
+        base = "http://" + base;
+        lowered = Lower(base);
+    }
+    if (lowered.rfind("http://", 0) != 0 && lowered.rfind("https://", 0) != 0) {
+        return default_base;
+    }
+
+    const size_t scheme_end = base.find("://");
+    const size_t authority_start = scheme_end == std::string::npos ? 0 : scheme_end + 3;
+    const size_t authority_end = base.find_first_of("/?#", authority_start);
+    const std::string authority = authority_end == std::string::npos
+        ? base.substr(authority_start)
+        : base.substr(authority_start, authority_end - authority_start);
+    if (Trim(authority).empty() || authority.find('@') != std::string::npos) {
+        return default_base;
+    }
+
+    if (authority_end != std::string::npos) {
+        base = base.substr(0, authority_end);
+    }
+    while (!base.empty() && base.back() == '/') {
+        base.pop_back();
+    }
+    return base.empty() ? default_base : base;
 }
 
 std::string EscapeJson(const std::string& value)
