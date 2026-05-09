@@ -171,10 +171,19 @@ def test_ollama_url_config_normalizes_common_local_values(tmp_path: Path) -> Non
     config_path.write_text(json.dumps({"ollama_url": "127.0.0.1:11434/"}), encoding="utf-8")
     assert load_config(workspace).ollama_url == "http://127.0.0.1:11434"
 
+    config_path.write_text(json.dumps({"ollama_url": "http://127.0.0.1:11434/api/tags"}), encoding="utf-8")
+    assert load_config(workspace).ollama_url == "http://127.0.0.1:11434"
+
     config_path.write_text(json.dumps({"ollama_url": "not a url"}), encoding="utf-8")
     assert load_config(workspace).ollama_url == AegisConfig.ollama_url
 
     config_path.write_text(json.dumps({"ollama_url": "ftp://127.0.0.1:11434"}), encoding="utf-8")
+    assert load_config(workspace).ollama_url == AegisConfig.ollama_url
+
+    config_path.write_text(json.dumps({"ollama_url": "http://user:secret@127.0.0.1:11434"}), encoding="utf-8")
+    assert load_config(workspace).ollama_url == AegisConfig.ollama_url
+
+    config_path.write_text(json.dumps({"ollama_url": "http://127.0.0.1:not-a-port"}), encoding="utf-8")
     assert load_config(workspace).ollama_url == AegisConfig.ollama_url
 
 

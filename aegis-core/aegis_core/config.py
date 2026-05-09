@@ -47,9 +47,18 @@ def _clean_ollama_url(value: Any) -> str:
     if not text.startswith(("http://", "https://")):
         text = f"http://{text}"
     parsed = urlparse(text)
-    if parsed.scheme not in {"http", "https"} or not parsed.netloc or any(char.isspace() for char in parsed.netloc):
+    try:
+        parsed.port
+    except ValueError:
         return AegisConfig.ollama_url
-    return text
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.hostname
+        or "@" in parsed.netloc
+        or any(char.isspace() for char in parsed.netloc)
+    ):
+        return AegisConfig.ollama_url
+    return f"{parsed.scheme}://{parsed.netloc}"
 
 
 def _clean_memory_dir_name(value: Any) -> str:

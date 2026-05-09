@@ -14,7 +14,7 @@ Actions:
 - Added regression tests around the Aegis Core contracts that every client is beginning to depend on.
 - Hardened shared Core safety checks for mixed-case ignored folders, token/password/auth-like files, and Windows temp-parent workspaces.
 - Hardened shared Core config parsing so malformed settings degrade to defaults.
-- Hardened shared Ollama URL parsing and model health diagnostics for malformed local endpoint settings.
+- Hardened shared Ollama URL parsing and model health diagnostics for malformed local endpoint settings, pasted API paths, and credential-like URL text.
 - Added explicit Core task-status API errors for bad statuses and missing task IDs.
 - Hardened dashboard/task memory reads so corrupted or unreadable `.aegis` files do not crash shared clients.
 - Tightened Core JavaScript validation detection to avoid hallucinated npm/pnpm/yarn test/build commands.
