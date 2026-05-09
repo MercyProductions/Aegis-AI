@@ -19,6 +19,7 @@
 - Hardened Website command execution so PowerShell validation is limited to the exact no-profile root `build.ps1` guard command instead of any allowlisted PowerShell command.
 - Consolidated the Website PowerShell validation guard command and matchers so discovery, profiling, agent continuation, project builder, and command execution share one contract.
 - Fixed Website command execution so the documented Windows-style `.\build.ps1` PowerShell guard command is accepted and normalized to the same root validation script.
+- Fixed Website validation history recovery so successful exact root PowerShell `build.ps1` guard commands can be remembered while broader PowerShell commands remain blocked.
 - Hardened VS Code Core/Ollama URL handling so reverse-proxy path prefixes are preserved while pasted `/v1`, `/health`, `/models`, and Ollama `/api/...` endpoint paths are trimmed.
 - Hardened Visual Studio Core/Ollama URL handling so reverse-proxy path prefixes are preserved while pasted `/v1`, `/health`, `/models`, and Ollama `/api/...` endpoint paths are trimmed.
 - Hardened Desktop backend/Core URL handling so reverse-proxy path prefixes are preserved while pasted `/api`, `/v1`, `/health`, or `/models` endpoint paths are trimmed.

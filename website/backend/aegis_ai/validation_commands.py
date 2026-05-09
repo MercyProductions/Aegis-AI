@@ -10,9 +10,15 @@ POWERSHELL_BUILD_COMMAND_MARKERS = (
     POWERSHELL_BUILD_COMMAND.lower(),
     "powershell -noprofile -executionpolicy bypass -file .\\build.ps1",
     "powershell -noprofile -executionpolicy bypass -file build.ps1",
+    "powershell.exe -noprofile -executionpolicy bypass -file ./build.ps1",
+    "powershell.exe -noprofile -executionpolicy bypass -file .\\build.ps1",
+    "powershell.exe -noprofile -executionpolicy bypass -file build.ps1",
     PWSH_BUILD_COMMAND.lower(),
     "pwsh -noprofile -executionpolicy bypass -file .\\build.ps1",
     "pwsh -noprofile -executionpolicy bypass -file build.ps1",
+    "pwsh.exe -noprofile -executionpolicy bypass -file ./build.ps1",
+    "pwsh.exe -noprofile -executionpolicy bypass -file .\\build.ps1",
+    "pwsh.exe -noprofile -executionpolicy bypass -file build.ps1",
 )
 
 

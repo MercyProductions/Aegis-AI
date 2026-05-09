@@ -223,6 +223,39 @@ class ValidationManagerTests(unittest.TestCase):
         self.assertEqual(suggestions[0].command, "python working_validator.py")
         self.assertEqual(suggestions[0].category, "build")
 
+    def test_command_history_recovers_safe_powershell_build_guard(self) -> None:
+        (self.workspace / "CMakeLists.txt").write_text(
+            "cmake_minimum_required(VERSION 3.20)\nproject(native_tool)\n",
+            encoding="utf-8",
+        )
+        (self.workspace / "build.ps1").write_text("Write-Host 'build'\n", encoding="utf-8")
+        command = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\\build.ps1"
+        self.write_command_history(
+            {
+                "schema": "aegis.command_history.v1",
+                "validation_command": command,
+                "commands": [
+                    {
+                        "kind": "validation",
+                        "command": command,
+                        "status": "passed",
+                        "category": "build",
+                        "exit_code": 0,
+                        "allowed": True,
+                    }
+                ],
+            }
+        )
+
+        suggestions = self.manager.discover_commands(self.workspace)
+
+        self.assertEqual(suggestions[0].command, command)
+        self.assertEqual(suggestions[0].label, "Remembered validation command")
+        self.assertIn(
+            "powershell -NoProfile -ExecutionPolicy Bypass -File ./build.ps1",
+            [item.command for item in suggestions],
+        )
+
     def test_command_history_failed_commands_do_not_override_detected_validation(self) -> None:
         (self.workspace / "CMakeLists.txt").write_text(
             "cmake_minimum_required(VERSION 3.20)\nproject(native_tool)\n",
@@ -275,6 +308,22 @@ class ValidationManagerTests(unittest.TestCase):
                         "exit_code": 0,
                         "allowed": True,
                     },
+                    {
+                        "kind": "validation",
+                        "command": "powershell.exe -NoProfile -Command Invoke-Build",
+                        "status": "passed",
+                        "category": "build",
+                        "exit_code": 0,
+                        "allowed": True,
+                    },
+                    {
+                        "kind": "validation",
+                        "command": "powershell -NoProfile -Command Invoke-Build",
+                        "status": "passed",
+                        "category": "build",
+                        "exit_code": 0,
+                        "allowed": True,
+                    },
                 ],
             }
         )
@@ -284,6 +333,14 @@ class ValidationManagerTests(unittest.TestCase):
         self.assertEqual(suggestions[0].command, "npm run build")
         self.assertNotIn("npm install", [item.command for item in suggestions])
         self.assertNotIn("Remove-Item -Recurse .", [item.command for item in suggestions])
+        self.assertNotIn(
+            "powershell -NoProfile -Command Invoke-Build",
+            [item.command for item in suggestions],
+        )
+        self.assertNotIn(
+            "powershell.exe -NoProfile -Command Invoke-Build",
+            [item.command for item in suggestions],
+        )
 
     def test_discovers_native_cmake_validation_commands(self) -> None:
         (self.workspace / "CMakeLists.txt").write_text(

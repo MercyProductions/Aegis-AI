@@ -7,6 +7,7 @@ from pathlib import Path
 from .schemas import ValidationProfileResponse, ValidationRecipe, ValidationSuggestion, VerificationStep
 from .storage import utc_now
 from .validation_commands import POWERSHELL_BUILD_COMMAND as DEFAULT_POWERSHELL_BUILD_COMMAND
+from .validation_commands import is_safe_powershell_build_guard_command
 
 
 @dataclass(frozen=True)
@@ -573,6 +574,9 @@ class ValidationManager:
                 return False
             index += 1
 
+        if normalized.startswith(("powershell ", "powershell.exe ", "pwsh ", "pwsh.exe ")):
+            return is_safe_powershell_build_guard_command(command)
+
         blocked_prefixes = (
             "npm install",
             "npm i ",
@@ -592,7 +596,9 @@ class ValidationManager:
             "irm ",
             "iex ",
             "powershell ",
+            "powershell.exe ",
             "pwsh ",
+            "pwsh.exe ",
             "cmd /c ",
             "reg ",
             "regedit",

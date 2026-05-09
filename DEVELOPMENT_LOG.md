@@ -1819,6 +1819,23 @@ Validation completed:
 - Aegis Core contract tests: pass, 138 tests.
 - Git diff whitespace check: pass.
 
+## 2026-05-09 - Website PowerShell Guard History Recovery
+
+Focus:
+
+- Keep validation-history recovery aligned with the narrowed Website PowerShell execution contract.
+- Preserve successful local-first `build.ps1` guard workflows without accepting broad PowerShell history entries.
+
+Actions:
+
+- Reused the shared PowerShell guard matcher when recovering validation commands from `.aegis/command_history.json`.
+- Kept `powershell`, `powershell.exe`, `pwsh`, and `pwsh.exe` history commands blocked unless they match the exact no-profile root `build.ps1` guard.
+- Added regression coverage for recovering a Windows-style `.\build.ps1` guard command and rejecting successful but broad `-Command` PowerShell entries.
+
+Validation completed:
+
+- Website validation manager regression suite: pass, 23 tests and 4 subtests.
+
 ## 2026-05-09 - Website PowerShell Guard Windows Path Compatibility
 
 Focus:
