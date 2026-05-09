@@ -1,5 +1,22 @@
 # Development Log
 
+## 2026-05-09 - Website Shared Core Runtime Envelope Redaction
+
+Focus:
+
+- Keep the actual Website `/api/core-runtime` response from returning raw Core envelopes that may contain provider/OAuth diagnostic details.
+- Preserve Core runtime contract structure and non-string readiness state while redacting string values recursively.
+
+Actions:
+
+- Redacted Core health, model, settings, memory, diagnostics, and dashboard envelopes before returning shared Website runtime status.
+- Redacted shared Core contract-version strings in the runtime status summary.
+- Added a regression covering all shared runtime envelope slots with provider URL credentials, authorization headers, query secrets, JSON secret fields, and assignment-style secrets.
+
+Validation completed:
+
+- Website Core bridge tests: 20 passed.
+
 ## 2026-05-09 - Website Core Dashboard Adapter Redaction
 
 Focus:

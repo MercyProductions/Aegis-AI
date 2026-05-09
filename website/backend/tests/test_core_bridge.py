@@ -78,6 +78,60 @@ def test_core_bridge_reads_shared_runtime_status(tmp_path: Path) -> None:
     assert status["errors"] == []
 
 
+def test_core_bridge_shared_runtime_status_redacts_returned_envelopes(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    secret = "shared-runtime-provider-token-12345"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        kind_by_path = {
+            "/v1/health": "health",
+            "/v1/models": "models",
+            "/v1/settings": "settings",
+            "/v1/memory": "memory.summary",
+            "/v1/diagnostics": "diagnostics.summary",
+            "/v1/ecosystem/dashboard": "ecosystem.dashboard",
+        }
+        data_by_path = {
+            "/v1/health": {"ready": True, "message": f"Authorization: Bearer {secret}"},
+            "/v1/models": {"providers": [{"url": f"https://user:{secret}@provider.test/v1"}]},
+            "/v1/settings": {"provider_url": f"https://provider.test/v1?api_key={secret}"},
+            "/v1/memory": {"notes": [f"client_secret={secret}"]},
+            "/v1/diagnostics": {"detail": f'Provider rejected {{"x-api-key":"{secret}"}}'},
+            "/v1/ecosystem/dashboard": {
+                "model_status": {"ready": False, "message": f"refresh_token: {secret}"},
+                "validation": {"stdout": f"access_token={secret}"},
+            },
+        }
+        return httpx.Response(
+            200,
+            json={
+                "ok": True,
+                "api_version": "v1",
+                "contract_version": f"2026.05.09?token={secret}",
+                "kind": kind_by_path[request.url.path],
+                "workspace": str(workspace.resolve()),
+                "data": data_by_path[request.url.path],
+            },
+        )
+
+    bridge = AegisCoreBridge("http://127.0.0.1:8788", transport=httpx.MockTransport(handler))
+    status = asyncio.run(bridge.shared_runtime_status(workspace))
+    serialized = json.dumps(status)
+
+    assert secret not in serialized
+    assert status["health"]["data"]["ready"] is True
+    assert status["dashboard"]["data"]["model_status"]["ready"] is False
+    assert "Authorization: [redacted]" in serialized
+    assert "https://[redacted]@provider.test/v1" in serialized
+    assert "api_key=[redacted]" in serialized
+    assert "client_secret=[redacted]" in serialized
+    assert '"x-api-key":"[redacted]"' in status["diagnostics"]["data"]["detail"]
+    assert "refresh_token: [redacted]" in serialized
+    assert "access_token=[redacted]" in serialized
+    assert status["contract_version"] == "2026.05.09?token=[redacted]"
+
+
 def test_core_bridge_degrades_when_core_is_unavailable(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()

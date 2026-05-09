@@ -168,7 +168,7 @@ class AegisCoreBridge:
         reachable = any(result.reachable for result in results.values())
         ok = bool(results["health"].ok)
         contract_versions = {
-            name: str(result.envelope.get(CORE_CONTRACT_VERSION_FIELD))
+            name: _redact_core_text(result.envelope.get(CORE_CONTRACT_VERSION_FIELD))
             for name, result in results.items()
             if isinstance(result.envelope, dict) and result.envelope.get(CORE_CONTRACT_VERSION_FIELD)
         }
@@ -187,12 +187,12 @@ class AegisCoreBridge:
                 "application_runtime": "website-backend",
                 "migration_phase": "unified-contract-client-compatibility-phase",
             },
-            "health": results["health"].envelope,
-            "models": results["models"].envelope,
-            "settings": results["settings"].envelope,
-            "memory": results["memory"].envelope,
-            "diagnostics": results["diagnostics"].envelope,
-            "dashboard": results["dashboard"].envelope,
+            "health": _redact_core_envelope(results["health"].envelope),
+            "models": _redact_core_envelope(results["models"].envelope),
+            "settings": _redact_core_envelope(results["settings"].envelope),
+            "memory": _redact_core_envelope(results["memory"].envelope),
+            "diagnostics": _redact_core_envelope(results["diagnostics"].envelope),
+            "dashboard": _redact_core_envelope(results["dashboard"].envelope),
             "errors": errors,
         }
 
@@ -312,6 +312,11 @@ def _redact_core_value(value: Any) -> Any:
             for key, item in value.items()
         }
     return value
+
+
+def _redact_core_envelope(envelope: dict[str, Any] | None) -> dict[str, Any] | None:
+    redacted = _redact_core_value(envelope) if isinstance(envelope, dict) else None
+    return redacted if isinstance(redacted, dict) else None
 
 
 def core_envelope_data(envelope: dict[str, Any] | None) -> dict[str, Any]:
