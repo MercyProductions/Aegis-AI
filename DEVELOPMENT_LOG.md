@@ -19,6 +19,7 @@ Actions:
 - Tightened Core JavaScript validation detection to avoid hallucinated npm/pnpm/yarn test/build commands.
 - Restricted Core validation execution to known safe commands and structured failure results.
 - Redacted validation logs before disk writes and made validation log write failures non-fatal.
+- Redacted returned validation output and made Core diagnostic log writes non-fatal.
 - Kept unrelated dirty worktree changes out of scope.
 - Recorded workflow friction in `WORKFLOW_NOTES.md`.
 

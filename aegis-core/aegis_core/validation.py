@@ -119,8 +119,8 @@ def run_validation(workspace: str | Path, command: list[str] | None = None, time
             "ok": False,
             "command": selected,
             "returncode": None,
-            "stdout": _decode_output(exc.stdout)[-12000:],
-            "stderr": f"Validation timed out after {timeout} seconds.\n{_decode_output(exc.stderr)[-12000:]}".strip(),
+            "stdout": _scrub_tail(exc.stdout),
+            "stderr": f"Validation timed out after {timeout} seconds.\n{_scrub_tail(exc.stderr)}".strip(),
             "timed_out": True,
         }
         append_validation_log(root, result)
@@ -129,8 +129,8 @@ def run_validation(workspace: str | Path, command: list[str] | None = None, time
         "ok": completed.returncode == 0,
         "command": selected,
         "returncode": completed.returncode,
-        "stdout": completed.stdout[-12000:],
-        "stderr": completed.stderr[-12000:],
+        "stdout": _scrub_tail(completed.stdout),
+        "stderr": _scrub_tail(completed.stderr),
     }
     append_validation_log(root, result)
     return result
@@ -164,6 +164,10 @@ def _decode_output(value: Any) -> str:
     if isinstance(value, bytes):
         return value.decode("utf-8", errors="replace")
     return str(value)
+
+
+def _scrub_tail(value: Any, limit: int = 12000) -> str:
+    return scrub(_decode_output(value)[-(limit * 2):])[-limit:]
 
 
 def append_validation_log(workspace: str | Path, result: dict[str, Any]) -> None:

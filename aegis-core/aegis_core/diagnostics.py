@@ -40,10 +40,13 @@ class CoreLogger:
         self.path = memory_dir(self.root) / "core-log.md"
 
     def log(self, event: str, detail: str = "") -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        body = f"- `{stamp}` **{scrub(event)}**"
-        if detail:
-            body += f"\n  {scrub(detail).replace(chr(10), chr(10) + '  ')}"
-        with self.path.open("a", encoding="utf-8") as handle:
-            handle.write(body + "\n")
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            body = f"- `{stamp}` **{scrub(event)}**"
+            if detail:
+                body += f"\n  {scrub(detail).replace(chr(10), chr(10) + '  ')}"
+            with self.path.open("a", encoding="utf-8") as handle:
+                handle.write(body + "\n")
+        except OSError:
+            return

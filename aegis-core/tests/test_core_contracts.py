@@ -254,6 +254,29 @@ def test_validation_runner_handles_timeout(tmp_path: Path, monkeypatch) -> None:
     assert "partial stderr" in result["stderr"]
 
 
+def test_validation_result_redacts_secret_like_output(tmp_path: Path, monkeypatch) -> None:
+    workspace = tmp_path / "redacted-result-project"
+    workspace.mkdir()
+
+    def return_secret_output(*args, **kwargs):
+        return subprocess.CompletedProcess(
+            args[0],
+            1,
+            stdout="normal stdout\nAPI_TOKEN=abc123",
+            stderr="normal stderr\nAuthorization: Bearer abc123",
+        )
+
+    monkeypatch.setattr(validation_module.subprocess, "run", return_secret_output)
+    result = run_validation(workspace, command=[sys.executable, "-m", "pytest"])
+
+    assert "normal stdout" in result["stdout"]
+    assert "normal stderr" in result["stderr"]
+    assert "[redacted secret-like log line]" in result["stdout"]
+    assert "[redacted secret-like log line]" in result["stderr"]
+    assert "abc123" not in result["stdout"]
+    assert "abc123" not in result["stderr"]
+
+
 def test_validation_log_redacts_secret_like_lines(tmp_path: Path) -> None:
     workspace = tmp_path / "redaction-project"
     workspace.mkdir()
@@ -282,3 +305,16 @@ def test_validation_log_write_failures_do_not_crash(tmp_path: Path) -> None:
     (aegis_dir / "validation-log.md").mkdir()
 
     append_validation_log(workspace, {"ok": False, "command": ["npm", "test"], "stderr": "still returns"})
+
+
+def test_health_survives_unwritable_core_log_path(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    aegis_dir = workspace / ".aegis"
+    aegis_dir.mkdir()
+    (aegis_dir / "core-log.md").mkdir()
+
+    client = TestClient(create_app())
+    response = client.get("/v1/health", params={"workspace": str(workspace)})
+
+    assert response.status_code == 200
+    assert response.json()["ok"] is True

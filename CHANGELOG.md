@@ -13,6 +13,7 @@
 - Improved Core JavaScript validation detection so npm/pnpm/yarn test/build commands are listed only when matching package scripts exist.
 - Restricted Core validation execution to a safe command allow-list and added structured blocked/missing/timeout failure results.
 - Redacted secret-like validation output before writing `.aegis/validation-log.md` and made validation log write failures non-fatal.
+- Redacted validation API output before returning it to clients and made Core diagnostic log writes non-fatal.
 - Added product-utilization workflow notes for daily Auralith dogfooding.
 - Documented the current stabilization and validation pass.
 
