@@ -154,6 +154,8 @@ Endpoint families:
 | `POST /v1/orchestration/plan` | `orchestration.plan` | experimental | Create supervised autonomous goal plan and local queue |
 | `GET /v1/orchestration` | `orchestration.dashboard` | experimental | Current goal, task list, active step, approvals, validation, rollback state |
 | `POST /v1/orchestration/step` | `orchestration.step` | experimental | Advance an approval-gated orchestration step |
+| `GET /v1/jobs` | `jobs.dashboard` | experimental | Scheduled and trigger-based maintenance job dashboard |
+| `POST /v1/jobs/run` | `jobs.run` | experimental | Run one job, due scheduled jobs, or trigger-based jobs with approval gates |
 | `POST /v1/validation` | `validation` | stable | Shared validation summary/run |
 | `POST /v1/agent/continue` | `agent.continue.plan` | experimental | Plan-only continue from roadmap |
 | `POST /v1/agent/repair` | `agent.repair.plan` | experimental | Plan-only repair from validation log |
@@ -175,6 +177,13 @@ Autonomous task orchestration:
 - Queue statuses are `pending`, `in_progress`, `blocked`, `needs_approval`, `validating`, `completed`, and `failed`.
 - File edits, deletes, package installs, validation/build commands, and cloud context require explicit approval gates.
 - Core updates roadmap, decisions, validation log, and agent history, while clients still own diff display, patch apply, and rollback execution.
+
+Workflow automation:
+
+- Core exposes safe maintenance jobs for project scans, roadmap updates, dependency review, health reports, TODO scans, documentation drift checks, broken references, next-best-task suggestions, and validation status.
+- Jobs may scan, summarize, report, recommend, and write generated `.aegis` memory/log files.
+- Jobs require approval before source edits, deletes, package installs, build/test/lint commands, or cloud context.
+- Job state is stored in `.aegis/jobs-state.json`; job history is appended to `.aegis/jobs-log.md`.
 
 Release candidate notes:
 

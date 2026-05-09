@@ -9,6 +9,7 @@ from typing import Any
 from .agent import continue_from_roadmap, repair_from_last_validation
 from .config import load_config, write_default_config
 from .ecosystem import dashboard_summary, diagnostics_summary, shared_memory_summary
+from .jobs import jobs_dashboard, run_job
 from .model_router import provider_inventory, route_model
 from .multi_agent import agent_roster
 from .ollama import OllamaClient
@@ -43,6 +44,7 @@ def main(argv: list[str] | None = None) -> int:
         "tasks",
         "providers",
         "agents",
+        "jobs",
         "route",
         "orchestrate",
     ):
@@ -68,6 +70,11 @@ def main(argv: list[str] | None = None) -> int:
             sub.add_argument("--task-id", help="Optional orchestration task id to advance.")
             sub.add_argument("--approval", action="store_true", help="Confirm approval for an approval-gated orchestration step.")
             sub.add_argument("--summary", help="Optional step summary.")
+        if name == "jobs":
+            sub.add_argument("--run", dest="job_id", help="Run one maintenance job by id.")
+            sub.add_argument("--trigger", help="Run all maintenance jobs for a trigger such as project_opened or build_failed.")
+            sub.add_argument("--due", action="store_true", help="Run all due scheduled maintenance jobs.")
+            sub.add_argument("--approval", action="store_true", help="Approve risky job actions such as build/test commands.")
 
     args = parser.parse_args(raw_args)
     args.json = args.json or json_requested
@@ -104,6 +111,17 @@ def main(argv: list[str] | None = None) -> int:
             result = provider_inventory(workspace)
         elif args.command == "agents":
             result = agent_roster()
+        elif args.command == "jobs":
+            if args.job_id or args.trigger or args.due:
+                result = run_job(
+                    workspace,
+                    job_id=args.job_id,
+                    trigger=args.trigger,
+                    approval=args.approval,
+                    run_due=args.due,
+                )
+            else:
+                result = jobs_dashboard(workspace)
         elif args.command == "route":
             result = route_model(
                 workspace,

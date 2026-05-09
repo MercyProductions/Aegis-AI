@@ -113,6 +113,14 @@ class OrchestrationStepRequest(ContractModel):
     validation_command: list[str] | None = None
 
 
+class JobRunRequest(ContractModel):
+    workspace: str
+    job_id: str | None = None
+    trigger: str | None = None
+    approval: bool = False
+    run_due: bool = False
+
+
 class CoreEnvelope(ContractModel):
     ok: bool = True
     api_version: Literal["v1"] = CORE_API_VERSION
@@ -438,6 +446,59 @@ class OrchestrationDashboardData(ContractModel):
     safety: dict[str, Any] = Field(default_factory=dict)
 
 
+class JobData(ContractModel):
+    id: str
+    title: str = ""
+    workflow: str = ""
+    schedule: str = "manual"
+    triggers: list[str] = Field(default_factory=list)
+    description: str = ""
+    approval_gates: list[dict[str, str]] = Field(default_factory=list)
+    enabled: bool = True
+    last_run: str | None = None
+    next_run: str | None = None
+    due: bool = False
+    last_result: dict[str, Any] | None = None
+    warnings: list[str] = Field(default_factory=list)
+    suggested_actions: list[str] = Field(default_factory=list)
+
+
+class JobResultData(ContractModel):
+    id: str = ""
+    title: str = ""
+    workflow: str = ""
+    status: str = "completed"
+    ok: bool = True
+    trigger: str | None = None
+    started_at: str = ""
+    finished_at: str = ""
+    approval_required: bool = False
+    approval_gates: list[dict[str, str]] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    suggested_actions: list[str] = Field(default_factory=list)
+    report: str = ""
+    artifacts: dict[str, Any] = Field(default_factory=dict)
+    metrics: dict[str, Any] = Field(default_factory=dict)
+
+
+class JobsDashboardData(ContractModel):
+    workspace: str | None = None
+    scheduled_jobs: list[JobData | dict[str, Any]] = Field(default_factory=list)
+    due_jobs: list[JobData | dict[str, Any]] = Field(default_factory=list)
+    triggers: list[dict[str, Any]] = Field(default_factory=list)
+    approval_rules: dict[str, Any] = Field(default_factory=dict)
+    history: list[dict[str, Any]] = Field(default_factory=list)
+    log_path: str | None = None
+
+
+class JobRunData(ContractModel):
+    workspace: str | None = None
+    trigger: str | None = None
+    run_due: bool = False
+    results: list[JobResultData | dict[str, Any]] = Field(default_factory=list)
+    dashboard: JobsDashboardData | dict[str, Any] = Field(default_factory=dict)
+
+
 class EcosystemDashboardData(ContractModel):
     workspace: str | None = None
     clients: list[ClientData] = Field(default_factory=list)
@@ -526,6 +587,8 @@ CONTRACTS: dict[str, ContractDescriptor] = {
     "orchestration.plan": ContractDescriptor(kind="orchestration.plan", stability="experimental", notes="Approval-gated autonomous goal plan and local task queue."),
     "orchestration.dashboard": ContractDescriptor(kind="orchestration.dashboard", stability="experimental", notes="Current orchestration goal, active step, approvals, validation, and rollback UI state."),
     "orchestration.step": ContractDescriptor(kind="orchestration.step", stability="experimental", notes="Approval-gated orchestration step transition."),
+    "jobs.dashboard": ContractDescriptor(kind="jobs.dashboard", stability="experimental", notes="Safe scheduled and trigger-based maintenance job dashboard."),
+    "jobs.run": ContractDescriptor(kind="jobs.run", stability="experimental", notes="Explicit maintenance job run or trigger result with approval gates for risky actions."),
     "ecosystem.dashboard": ContractDescriptor(kind="ecosystem.dashboard", stability="stable", notes="Aggregated Core dashboard for desktop and website bridge."),
     "patch.proposal": ContractDescriptor(kind="patch.proposal", stability="experimental", owner="schema-only", notes="Shared shape for approved patch proposals."),
     "rollback.entry": ContractDescriptor(kind="rollback.entry", stability="experimental", owner="schema-only", notes="Shared rollback checkpoint listing shape."),
@@ -559,6 +622,8 @@ CONTRACT_DATA_MODELS: dict[str, type[BaseModel] | tuple[type[BaseModel], bool]] 
     "orchestration.plan": OrchestrationDashboardData,
     "orchestration.dashboard": OrchestrationDashboardData,
     "orchestration.step": OrchestrationDashboardData,
+    "jobs.dashboard": JobsDashboardData,
+    "jobs.run": JobRunData,
     "ecosystem.dashboard": EcosystemDashboardData,
     "patch.proposal": PatchProposalData,
     "rollback.entry": RollbackEntryData,

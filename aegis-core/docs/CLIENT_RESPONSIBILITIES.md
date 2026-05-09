@@ -8,6 +8,7 @@
 - Roadmap generation
 - Supervised orchestration queue state
 - Specialized agent roster and ownership metadata
+- Safe maintenance job catalog, schedule state, trigger mapping, and job logs
 - Validation command detection
 - Validation log normalization
 - Agent plan and repair plan contracts
@@ -40,6 +41,7 @@ It should call Aegis Core for:
 - shared task visibility
 - supervised orchestration state
 - current owner agent and agent pipeline state
+- maintenance job dashboard and explicit job run/approval state
 - shared diagnostics
 
 Minimum integration:
@@ -49,6 +51,7 @@ Minimum integration:
 - Create user-visible tasks with `/v1/tasks`.
 - Use `/v1/branding` for shared naming and visual tokens where practical.
 - Use `/v1/orchestration` for staged goal state, pending approvals, validation summaries, and rollback metadata when building autonomous workflow UI.
+- Use `/v1/jobs` for proactive maintenance visibility and `/v1/jobs/run` only from explicit user action, due-job runner, or known safe trigger.
 
 ## VS Code Extension
 
@@ -75,6 +78,7 @@ It should call Aegis Core for:
 - shared tasks
 - supervised orchestration state
 - owner-agent metadata for staged tasks
+- maintenance triggers such as project opened and many files changed
 - diagnostics
 
 ## Visual Studio Extension
@@ -102,6 +106,7 @@ It should call Aegis Core for:
 - shared task status
 - supervised orchestration state
 - owner-agent metadata for staged tasks
+- maintenance triggers such as solution opened, build failed, and test failed
 - shared diagnostics
 
 ## Website
@@ -126,5 +131,6 @@ It can call Aegis Core only for local dashboard features when running on the use
 - Approval remains client-owned because each UI has different diff and editor affordances.
 - Diff preview, patch apply, and rollback execution remain client-owned even when Core owns orchestration queue state.
 - Clients should display `owner_agent`, `active_agent`, and pending approval metadata instead of inventing separate agent ownership.
+- Clients should surface `jobs.run` results that return `needs_approval`; build/test/lint jobs must not run silently.
 - Core owns shared plan data, memory, diagnostics, model status, and settings.
 - Clients should not write directly to `.aegis/tasks.json` unless Core is unavailable and the user explicitly accepts degraded local mode.

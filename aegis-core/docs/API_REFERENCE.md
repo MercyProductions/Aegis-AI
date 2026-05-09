@@ -160,6 +160,7 @@ Contract stability:
 | `agent.continue.plan`, `agent.repair.plan` | experimental | Plan-only agent contracts; no file edits are applied. |
 | `agents.roster` | experimental | Specialized local agent roles and coordination rules. |
 | `orchestration.plan`, `orchestration.dashboard`, `orchestration.step` | experimental | Supervised autonomous goal queues with approval gates; Core does not blindly edit files. |
+| `jobs.dashboard`, `jobs.run` | experimental | Safe scheduled and trigger-based maintenance jobs with approval gates for risky actions. |
 | `patch.proposal`, `rollback.entry`, `rollback.result` | experimental schema-only | Defined for future compatibility; not active Core endpoints yet. |
 
 Shared request body conventions:
@@ -171,6 +172,7 @@ Shared request body conventions:
 - Orchestration queue status values are `pending`, `in_progress`, `blocked`, `needs_approval`, `validating`, `completed`, and `failed`.
 - Continue and repair endpoints are plan-only and never apply file edits.
 - Orchestration endpoints plan, queue, validate, and update memory; clients still own diff display, approval UI, patch apply, and rollback execution.
+- Job run requests use `job_id`, `trigger`, or `run_due`. Jobs can scan, summarize, report, and recommend automatically, but risky actions require approval.
 
 ## GET /v1/health
 
@@ -490,6 +492,66 @@ Approval behavior:
 - `apply` does not proceed past approval gates unless `approval: true` or a previous approval is recorded.
 - `validate` requires `approval: true` when a build/test/lint command gate is attached.
 - Core records approved progress and validation output but does not apply arbitrary file edits itself.
+
+## GET /v1/jobs
+
+Query:
+
+- `workspace`: required workspace path
+
+Returns the maintenance job dashboard:
+
+- `scheduled_jobs`: default job catalog with `last_run`, `next_run`, `due`, last result, warnings, and suggested actions
+- `due_jobs`: scheduled jobs that should be run by a client or local host
+- `triggers`: trigger names and mapped job ids
+- `approval_rules`: what jobs may do automatically and what requires approval
+- `history`: recent job runs
+- `log_path`: `.aegis/jobs-log.md`
+
+Default jobs include daily project scan, weekly roadmap update, dependency review, build health check, stale TODO scan, documentation drift check, recent changes summary, broken references check, project health report, next best task, and validation status check.
+
+## POST /v1/jobs/run
+
+Runs one matching maintenance job group.
+
+Run one job:
+
+```json
+{
+  "workspace": "C:/path/to/project",
+  "job_id": "daily-project-scan"
+}
+```
+
+Run all jobs for a trigger:
+
+```json
+{
+  "workspace": "C:/path/to/project",
+  "trigger": "project_opened"
+}
+```
+
+Run due scheduled jobs:
+
+```json
+{
+  "workspace": "C:/path/to/project",
+  "run_due": true
+}
+```
+
+Approve a risky action such as build/test validation:
+
+```json
+{
+  "workspace": "C:/path/to/project",
+  "job_id": "build-health-check",
+  "approval": true
+}
+```
+
+Jobs may automatically scan, summarize, report, recommend, and write generated `.aegis` memory/log files. Jobs return `needs_approval` instead of running build/test/lint commands without approval. Source edits, file deletion, package installation, and cloud context also remain approval-gated. Job history is appended to `.aegis/jobs-log.md`.
 
 ## POST /v1/validation
 

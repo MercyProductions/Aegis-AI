@@ -265,6 +265,7 @@ def test_v1_endpoint_family_smoke_contracts(tmp_path: Path) -> None:
         ("/v1/tasks", {"workspace": str(workspace)}, "tasks.list"),
         ("/v1/agents", {}, "agents.roster"),
         ("/v1/orchestration", {"workspace": str(workspace)}, "orchestration.dashboard"),
+        ("/v1/jobs", {"workspace": str(workspace)}, "jobs.dashboard"),
         ("/v1/ecosystem/dashboard", {"workspace": str(workspace)}, "ecosystem.dashboard"),
     ]
 
@@ -320,6 +321,12 @@ def test_v1_endpoint_family_smoke_contracts(tmp_path: Path) -> None:
             "orchestration.plan",
             True,
         ),
+        (
+            "/v1/jobs/run",
+            {"workspace": str(workspace), "job_id": "validation-status-check"},
+            "jobs.run",
+            True,
+        ),
     ]
 
     created_task_id = None
@@ -367,6 +374,8 @@ def test_contract_catalog_covers_unified_phase_runtime_shapes() -> None:
         "orchestration.plan",
         "orchestration.dashboard",
         "orchestration.step",
+        "jobs.dashboard",
+        "jobs.run",
         "patch.proposal",
         "rollback.entry",
         "rollback.result",
@@ -412,6 +421,134 @@ def test_specialized_agent_roster_contract_lists_safe_roles() -> None:
     assert "file_edit" in coder["approval_gates"]
     assert "build_command" in tester["approval_gates"]
     assert "Agents may propose changes, but file edits require approval." in data["coordination_rules"]
+
+
+def test_jobs_dashboard_lists_scheduled_and_triggered_maintenance(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    client = TestClient(create_app())
+
+    response = client.get("/v1/jobs", params={"workspace": str(workspace)})
+
+    assert response.status_code == 200
+    assert_core_contract(response.json(), "jobs.dashboard")
+    data = response.json()["data"]
+    job_ids = {job["id"] for job in data["scheduled_jobs"]}
+    assert {
+        "daily-project-scan",
+        "weekly-roadmap-update",
+        "dependency-review",
+        "build-health-check",
+        "stale-todo-scan",
+        "documentation-drift-check",
+    }.issubset(job_ids)
+    assert any(job["id"] == "daily-project-scan" for job in data["due_jobs"])
+    assert "build_command" in {gate["id"] for gate in data["approval_rules"]["approval_required_for"]}
+    assert any(trigger["id"] == "project_opened" for trigger in data["triggers"])
+
+
+def test_safe_job_run_writes_jobs_log_and_scan_artifacts(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/v1/jobs/run",
+        json={"workspace": str(workspace), "job_id": "daily-project-scan"},
+    )
+
+    assert response.status_code == 200
+    assert_core_contract(response.json(), "jobs.run")
+    result = response.json()["data"]["results"][0]
+    assert result["id"] == "daily-project-scan"
+    assert result["status"] == "completed"
+    assert result["approval_required"] is False
+    assert (workspace / ".aegis" / "jobs-log.md").is_file()
+    assert "Daily Project Scan" in (workspace / ".aegis" / "jobs-log.md").read_text(encoding="utf-8")
+    assert (workspace / ".aegis" / "project-summary.md").is_file()
+
+
+def test_build_health_job_requires_approval_before_validation(tmp_path: Path, monkeypatch) -> None:
+    workspace = make_workspace(tmp_path)
+    client = TestClient(create_app())
+    calls: list[Path] = []
+
+    def fake_validation(root, command=None):
+        calls.append(Path(root))
+        return {"ok": True, "command": ["npm", "test"], "returncode": 0, "stdout": "ok", "stderr": ""}
+
+    monkeypatch.setattr("aegis_core.jobs.run_validation", fake_validation)
+
+    blocked = client.post(
+        "/v1/jobs/run",
+        json={"workspace": str(workspace), "job_id": "build-health-check"},
+    )
+    assert blocked.status_code == 200
+    blocked_result = blocked.json()["data"]["results"][0]
+    assert blocked_result["status"] == "needs_approval"
+    assert blocked_result["approval_required"] is True
+    assert "build_command" in {gate["id"] for gate in blocked_result["approval_gates"]}
+    assert calls == []
+
+    approved = client.post(
+        "/v1/jobs/run",
+        json={"workspace": str(workspace), "job_id": "build-health-check", "approval": True},
+    )
+    assert approved.status_code == 200
+    approved_result = approved.json()["data"]["results"][0]
+    assert approved_result["status"] == "completed"
+    assert calls == [workspace.resolve()]
+
+
+def test_triggered_jobs_run_project_opened_safe_workflows(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/v1/jobs/run",
+        json={"workspace": str(workspace), "trigger": "project_opened"},
+    )
+
+    assert response.status_code == 200
+    assert_core_contract(response.json(), "jobs.run")
+    data = response.json()["data"]
+    result_ids = {result["id"] for result in data["results"]}
+    assert {"daily-project-scan", "stale-todo-scan", "project-health-report", "next-best-task"}.issubset(result_ids)
+    assert data["trigger"] == "project_opened"
+    assert (workspace / ".aegis" / "jobs-log.md").is_file()
+
+
+def test_due_jobs_run_scheduled_workflows_without_risky_command_approval(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/v1/jobs/run",
+        json={"workspace": str(workspace), "run_due": True},
+    )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["run_due"] is True
+    by_id = {result["id"]: result for result in data["results"]}
+    assert by_id["daily-project-scan"]["status"] == "completed"
+    assert by_id["build-health-check"]["status"] == "needs_approval"
+    assert by_id["build-health-check"]["approval_required"] is True
+    assert (workspace / ".aegis" / "jobs-state.json").is_file()
+
+
+def test_broken_references_job_reports_missing_markdown_targets(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    (workspace / "docs.md").write_text("[Missing](missing-file.md)\n", encoding="utf-8")
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/v1/jobs/run",
+        json={"workspace": str(workspace), "job_id": "broken-references-check"},
+    )
+
+    assert response.status_code == 200
+    result = response.json()["data"]["results"][0]
+    assert result["status"] == "completed"
+    assert result["metrics"]["broken_references"][0]["target"] == "missing-file.md"
 
 
 def test_known_client_contract_parsing_tolerates_missing_optional_fields() -> None:

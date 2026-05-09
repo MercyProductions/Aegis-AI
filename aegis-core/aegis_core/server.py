@@ -9,6 +9,7 @@ from .contracts import (
     ClientRegistrationRequest,
     ContinueRequest,
     CreateTaskRequest,
+    JobRunRequest,
     ModelCompletionRequest,
     ModelRouteRequest,
     OrchestrationPlanRequest,
@@ -23,6 +24,7 @@ from .contracts import (
 from .credentials import CredentialStoreError
 from .diagnostics import CoreLogger
 from .ecosystem import dashboard_summary, diagnostics_summary, shared_memory_summary
+from .jobs import jobs_dashboard, run_job
 from .model_router import complete_with_route, delete_provider_key, provider_inventory, route_model, store_provider_key
 from .multi_agent import agent_roster
 from .ollama import OllamaClient
@@ -256,6 +258,24 @@ def create_app():
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return envelope("orchestration.step", data, request.workspace)
+
+    @app.get("/v1/jobs")
+    def v1_jobs(workspace: str) -> dict[str, Any]:
+        return envelope("jobs.dashboard", jobs_dashboard(workspace), workspace)
+
+    @app.post("/v1/jobs/run")
+    def v1_run_job(request: JobRunRequest) -> dict[str, Any]:
+        try:
+            data = run_job(
+                request.workspace,
+                job_id=request.job_id,
+                trigger=request.trigger,
+                approval=request.approval,
+                run_due=request.run_due,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return envelope("jobs.run", data, request.workspace)
 
     @app.post("/v1/tasks")
     def v1_create_task(request: CreateTaskRequest) -> dict[str, Any]:

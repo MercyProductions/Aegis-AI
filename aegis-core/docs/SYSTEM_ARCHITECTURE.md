@@ -24,6 +24,7 @@ Aegis Core owns reusable intelligence and workflow services:
 - Roadmap generation
 - Supervised autonomous task orchestration
 - Specialized local agent roles
+- Safe workflow automation and scheduled maintenance jobs
 - Validation command detection and safe execution
 - Agent planning, repair planning, rollback metadata, and approval contracts
 - Diagnostics and logs
@@ -55,6 +56,7 @@ Default assumptions:
 - Edits are proposal-first and approval-based.
 - Validation commands are explicit and non-destructive.
 - Autonomous orchestration means staged queues, specialized owner agents, and approval gates, not uncontrolled edits.
+- Scheduled jobs can scan, summarize, report, and recommend, but risky actions still require approval.
 
 ## Migration Strategy
 
@@ -67,8 +69,9 @@ Default assumptions:
 7. The Desktop App reads `/v1/ecosystem/dashboard` for connected clients, active projects, model status, diagnostics, roadmap summaries, and recent activity.
 8. Specialized agent roles are exposed through `/v1/agents`.
 9. Supervised goal queues flow through `.aegis/orchestration-queue.json` and `/v1/orchestration/*`.
-10. Agent planning and repair loops move into Core.
-11. Clients keep UI approvals, diff/apply/rollback, and editor-native affordances.
+10. Maintenance jobs flow through `.aegis/jobs-state.json`, `.aegis/jobs-log.md`, and `/v1/jobs`.
+11. Agent planning and repair loops move into Core.
+12. Clients keep UI approvals, diff/apply/rollback, and editor-native affordances.
 
 ## Shared API Layer
 
@@ -118,6 +121,19 @@ POST /v1/orchestration/step
 Core records the objective, task list, active step, pending approvals, validation results, and rollback metadata. Clients still own showing proposed diffs, collecting approval, applying files, and restoring checkpoints.
 
 Every orchestration task has an `owner_agent`. The current roles are Planner, Architect, Coder, Reviewer, Tester, Repair, and Documentation. Agent decisions are written to `agent-history.json`.
+
+## Workflow Automation
+
+Maintenance job state is stored in `.aegis/jobs-state.json` and surfaced through:
+
+```text
+GET  /v1/jobs?workspace=C:/path/to/project
+POST /v1/jobs/run
+```
+
+Default jobs cover daily project scan, weekly roadmap update, dependency review, build health check, stale TODO scan, documentation drift check, recent changes summary, broken references check, project health report, next best task, and validation status check.
+
+Jobs may write generated `.aegis` memory and logs, including `.aegis/jobs-log.md`. They do not edit source files, delete files, install packages, run build/test/lint commands, or send cloud context without explicit approval. Clients or a local host invoke due jobs and triggers; Core does not run a hidden background daemon.
 
 ## Desktop Ecosystem Dashboard Contract
 

@@ -546,3 +546,21 @@ Actions:
 Validation completed:
 
 - Aegis Core contract tests: pass, 63 tests including agent roster, owned orchestration tasks, approval gates, and coordination-conflict reporting.
+
+## 2026-05-09 - Aegis Core Workflow Automation
+
+Focus:
+
+- Let Core run safe recurring and trigger-based maintenance workflows without becoming an uncontrolled background editor.
+
+Actions:
+
+- Added `/v1/jobs`, `/v1/jobs/run`, and `aegis jobs`.
+- Added default maintenance jobs for daily project scans, weekly roadmap updates, dependency review, build health checks, stale TODO scans, documentation drift, recent changes, broken references, project health reports, next-best-task suggestions, and validation status checks.
+- Stored job state in `.aegis/jobs-state.json` and appended run history to `.aegis/jobs-log.md`.
+- Kept build/test/lint execution behind explicit approval; jobs may only scan, summarize, report, recommend, and write generated `.aegis` memory/log files automatically.
+- Updated contracts, API docs, architecture docs, runtime consolidation notes, and client compatibility guidance.
+
+Validation completed:
+
+- Aegis Core contract tests: pass, 69 tests including job dashboard, safe job run logs, due scheduled jobs, trigger execution, approval-gated build health, and broken-reference reporting.

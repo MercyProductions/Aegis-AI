@@ -72,6 +72,7 @@ Aegis Core is the shared local runtime contract. It must stay small, stable, loc
 - Client registration and client listing.
 - Shared tasks, task status, and dashboard aggregation.
 - Supervised autonomous task orchestration: goal planning, local queue state, specialized owner agents, approval gates, validation state, and memory updates.
+- Safe scheduled and trigger-based maintenance jobs for proactive scans, summaries, reports, roadmap refreshes, TODO review, documentation drift, and validation status.
 - Validation summary/run.
 - Plan-only continue and repair flows.
 - Branding tokens shared by clients.
@@ -90,6 +91,13 @@ Autonomous orchestration is supervised by design:
 - File edits, deletion, package installs, build/test/lint commands, and cloud context all require explicit approval gates.
 - Clients own the approval UI, diff display, patch application, and rollback execution.
 - Core records progress in `.aegis/orchestration-queue.json`, `.aegis/active-orchestration.json`, `roadmap.md`, `decisions.md`, `validation-log.md`, and `agent-history.json`.
+
+Workflow automation is safe by default:
+
+- Core exposes job state through `/v1/jobs` and job execution through `/v1/jobs/run`.
+- Jobs may scan, summarize, report, recommend, and write generated `.aegis` memory/log files.
+- Jobs do not edit project source, delete files, install packages, run build/test/lint commands, or send cloud context without explicit approval.
+- Job state is stored in `.aegis/jobs-state.json`; job history is appended to `.aegis/jobs-log.md`.
 
 Core `/v1` responses use the shared envelope from `aegis-core/aegis_core/contracts.py`:
 
