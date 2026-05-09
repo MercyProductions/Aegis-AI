@@ -14,6 +14,7 @@
 - Hardened Website-to-Core URL normalization so pasted legacy Core endpoint URLs such as `/health` or `/models` are reduced to the Core base URL while reverse-proxy path prefixes are preserved.
 - Improved Website validation planning so root `build.ps1` guard scripts are preferred over lower-level CMake/MSBuild suggestions for Desktop and extension workspaces.
 - Improved Website .NET validation and dependency profiling so `.fsproj` and `.vbproj` workspaces receive the same `dotnet restore`, `dotnet build`, and `dotnet test` treatment as `.csproj` projects.
+- Improved Aegis Core workspace scans so F# and Visual Basic .NET projects are included in build-file, framework, language, TODO, and dependency metadata.
 - Improved Website dependency profiling so root `build.py` and `build.ps1` guard scripts are recorded as validation commands before lower-level CMake/MSBuild native fallbacks.
 - Improved Website agent continuation so existing projects with root `build.ps1` guard scripts propose the same safe PowerShell validation command used by validation discovery.
 - Improved Website project-builder existing-project validation so root `build.ps1` guard scripts are selected before CMake/MSBuild fallback commands.

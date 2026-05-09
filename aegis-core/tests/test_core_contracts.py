@@ -235,6 +235,42 @@ def test_workspace_scan_framework_detection_ignores_damaged_marker_shapes(tmp_pa
     assert "Unity" in result["frameworks"]
 
 
+def test_workspace_scan_detects_fsharp_and_visual_basic_dotnet_projects(tmp_path: Path) -> None:
+    workspace = tmp_path / "dotnet-polyglot-project"
+    (workspace / "src" / "FSharpApp").mkdir(parents=True)
+    (workspace / "src" / "VisualBasicTool").mkdir(parents=True)
+    (workspace / "src" / "FSharpApp" / "FSharpApp.fsproj").write_text(
+        '<Project Sdk="Microsoft.NET.Sdk"></Project>',
+        encoding="utf-8",
+    )
+    (workspace / "src" / "FSharpApp" / "Program.fs").write_text(
+        "module Program\nopen System\n// TODO verify startup\n",
+        encoding="utf-8",
+    )
+    (workspace / "src" / "VisualBasicTool" / "VisualBasicTool.vbproj").write_text(
+        '<Project Sdk="Microsoft.NET.Sdk"></Project>',
+        encoding="utf-8",
+    )
+    (workspace / "src" / "VisualBasicTool" / "Program.vb").write_text(
+        "Imports System\nModule Program\nEnd Module\n",
+        encoding="utf-8",
+    )
+
+    result = WorkspaceScanner(workspace).scan(persist=False)
+
+    assert "src/FSharpApp/FSharpApp.fsproj" in result["build_files"]
+    assert "src/VisualBasicTool/VisualBasicTool.vbproj" in result["build_files"]
+    assert "F#/.NET" in result["frameworks"]
+    assert "VB.NET" in result["frameworks"]
+    assert result["languages"]["F#"] == 1
+    assert result["languages"]["Visual Basic"] == 1
+    assert result["todo_comments"] == [
+        {"file": "src/FSharpApp/Program.fs", "line": 3, "text": "// TODO verify startup"}
+    ]
+    assert result["dependency_graph"]["files"]["src/FSharpApp/Program.fs"] == ["System"]
+    assert result["dependency_graph"]["files"]["src/VisualBasicTool/Program.vb"] == ["System"]
+
+
 def test_workspace_scan_recent_files_survives_stat_race(tmp_path: Path, monkeypatch) -> None:
     workspace = tmp_path / "stat-race-project"
     workspace.mkdir()

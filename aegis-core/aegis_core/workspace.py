@@ -13,6 +13,14 @@ from .memory import ProjectMemory
 from .safety import IGNORED_DIRS, is_ignored_path, is_safe_to_read
 
 
+DOTNET_PROJECT_SUFFIXES = {".csproj", ".fsproj", ".vbproj"}
+DOTNET_FRAMEWORK_BY_SUFFIX = {
+    ".csproj": "C#/.NET",
+    ".fsproj": "F#/.NET",
+    ".vbproj": "VB.NET",
+}
+BUILD_FILE_SUFFIXES = {".sln", ".slnx", ".vcxproj"} | DOTNET_PROJECT_SUFFIXES
+
 TEXT_SUFFIXES = {
     ".py",
     ".js",
@@ -20,6 +28,10 @@ TEXT_SUFFIXES = {
     ".ts",
     ".tsx",
     ".cs",
+    ".fs",
+    ".fsi",
+    ".fsx",
+    ".vb",
     ".cpp",
     ".cxx",
     ".cc",
@@ -34,6 +46,9 @@ TEXT_SUFFIXES = {
     ".md",
     ".txt",
     ".sln",
+    ".slnx",
+    ".fsproj",
+    ".vbproj",
     ".csproj",
     ".vcxproj",
     ".props",
@@ -63,6 +78,10 @@ LANGUAGE_BY_SUFFIX = {
     ".ts": "TypeScript",
     ".tsx": "React/TypeScript",
     ".cs": "C#",
+    ".fs": "F#",
+    ".fsi": "F#",
+    ".fsx": "F#",
+    ".vb": "Visual Basic",
     ".cpp": "C++",
     ".cxx": "C++",
     ".cc": "C++",
@@ -106,7 +125,7 @@ class WorkspaceScanner:
                 return cached
 
         language_counts = Counter(LANGUAGE_BY_SUFFIX.get(path.suffix.lower(), path.suffix.lower() or "other") for path in files)
-        build_files = [self._rel(path) for path in files if path.name in BUILD_FILE_NAMES or path.suffix.lower() in {".sln", ".slnx", ".csproj", ".vcxproj"}]
+        build_files = [self._rel(path) for path in files if path.name in BUILD_FILE_NAMES or path.suffix.lower() in BUILD_FILE_SUFFIXES]
         readmes = [self._rel(path) for path in files if path.name.lower().startswith("readme")]
         tests = [self._rel(path) for path in files if self._is_test_file(path)]
         recent = sorted(files, key=self._mtime_or_zero, reverse=True)[:20]
@@ -281,6 +300,7 @@ class WorkspaceScanner:
     def _detect_frameworks(self, files: list[Path]) -> list[str]:
         names = {path.name for path in files}
         rels = {self._rel(path) for path in files}
+        lower_rels = {item.lower() for item in rels}
         frameworks: set[str] = set()
         package_json = self.workspace / "package.json"
         if _is_safe_file(package_json, self.workspace):
@@ -302,11 +322,12 @@ class WorkspaceScanner:
                     frameworks.add("Node/Express")
             except (OSError, json.JSONDecodeError):
                 frameworks.add("Node")
-        if any(item.endswith(".sln") or item.endswith(".slnx") for item in rels):
+        if any(item.endswith(".sln") or item.endswith(".slnx") for item in lower_rels):
             frameworks.add("Visual Studio Solution")
-        if any(item.endswith(".csproj") for item in rels):
-            frameworks.add("C#/.NET")
-        if any(item.endswith(".vcxproj") for item in rels):
+        for suffix, framework in DOTNET_FRAMEWORK_BY_SUFFIX.items():
+            if any(item.endswith(suffix) for item in lower_rels):
+                frameworks.add(framework)
+        if any(item.endswith(".vcxproj") for item in lower_rels):
             frameworks.add("C++/MSBuild")
         if "ProjectSettings.asset" in names or (
             _is_safe_dir(self.workspace / "Assets", self.workspace)
@@ -326,9 +347,9 @@ class WorkspaceScanner:
         for path in files:
             rel = self._rel(path)
             lower = rel.lower()
-            if lower in {"main.py", "app.py", "program.cs", "index.js", "server.js"}:
+            if lower in {"main.py", "app.py", "program.cs", "program.fs", "program.vb", "index.js", "server.js"}:
                 candidates.append(rel)
-            elif lower.endswith(("/program.cs", "/main.py", "/main.ts", "/main.tsx", "/app.tsx", "/index.tsx")):
+            elif lower.endswith(("/program.cs", "/program.fs", "/program.vb", "/main.py", "/main.ts", "/main.tsx", "/app.tsx", "/index.tsx")):
                 candidates.append(rel)
         return candidates[:50]
 
@@ -339,8 +360,8 @@ class WorkspaceScanner:
             "/test/" in rel
             or "/tests/" in rel
             or name.startswith("test_")
-            or name.endswith((".test.ts", ".test.tsx", ".spec.ts", ".spec.tsx", "tests.cs"))
-            or "test" in name and path.suffix.lower() in {".cs", ".py", ".js", ".ts", ".tsx"}
+            or name.endswith((".test.ts", ".test.tsx", ".spec.ts", ".spec.tsx", "tests.cs", "tests.fs", "tests.vb"))
+            or "test" in name and path.suffix.lower() in {".cs", ".fs", ".vb", ".py", ".js", ".ts", ".tsx"}
         )
 
     def _read_text(self, path: Path) -> str:
@@ -352,7 +373,7 @@ class WorkspaceScanner:
     def _find_todos(self, files: list[Path]) -> list[dict[str, Any]]:
         todos = []
         for path in files:
-            if path.suffix.lower() not in {".py", ".js", ".jsx", ".ts", ".tsx", ".cs", ".cpp", ".h", ".hpp", ".md"}:
+            if path.suffix.lower() not in {".py", ".js", ".jsx", ".ts", ".tsx", ".cs", ".fs", ".fsi", ".fsx", ".vb", ".cpp", ".h", ".hpp", ".md"}:
                 continue
             for number, line in enumerate(self._read_text(path).splitlines(), start=1):
                 lowered = line.lower()
@@ -369,10 +390,12 @@ class WorkspaceScanner:
             re.compile(r"^\s*import\s+[\"'](.+?)[\"']"),
             re.compile(r"^\s*from\s+([\w.]+)\s+import\s+"),
             re.compile(r"^\s*using\s+([\w.]+)\s*;"),
+            re.compile(r"^\s*open\s+([\w.]+)"),
+            re.compile(r"^\s*Imports\s+([\w.]+)", re.IGNORECASE),
             re.compile(r"^\s*#include\s+[<\"](.+?)[>\"]"),
         ]
         for path in files:
-            if path.suffix.lower() not in {".py", ".js", ".jsx", ".ts", ".tsx", ".cs", ".cpp", ".c", ".h", ".hpp"}:
+            if path.suffix.lower() not in {".py", ".js", ".jsx", ".ts", ".tsx", ".cs", ".fs", ".fsi", ".fsx", ".vb", ".cpp", ".c", ".h", ".hpp"}:
                 continue
             deps: list[str] = []
             for line in self._read_text(path).splitlines()[:500]:

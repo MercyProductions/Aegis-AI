@@ -579,7 +579,7 @@ def _suggested_templates(
         templates.append({"title": "Keep agent workflow scaffolding documented", "category": "agent", "reason": "Planner/agent systems recur in this ecosystem."})
     if "save_or_persistence" in names:
         templates.append({"title": "Extract a persistence safety checklist", "category": "persistence", "reason": "Save, memory, or repository flows repeat across projects."})
-    if any(name in frameworks for name in ("React", "Vite", "C#/.NET", "Unity")):
+    if any(name in frameworks for name in ("React", "Vite", "C#/.NET", "F#/.NET", "VB.NET", "Unity")):
         templates.append({"title": "Record framework setup conventions", "category": "onboarding", "reason": "Framework preferences are visible across local workspaces."})
     return _dedupe_dicts(templates)
 

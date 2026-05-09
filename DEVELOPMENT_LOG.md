@@ -2078,6 +2078,25 @@ Validation completed:
 - Website workspace/storage suite: pass, 63 tests.
 - Repository whitespace check: pass.
 
+## 2026-05-09 - Core Workspace .NET Metadata Parity
+
+Focus:
+
+- Keep Aegis Core workspace scans aligned with validation, Website, and VS Code support for C#, F#, and Visual Basic .NET projects.
+- Ensure roadmap, memory, operations, and dashboard consumers see accurate project metadata for non-C# .NET workspaces.
+
+Actions:
+
+- Added shared Core workspace scanner suffix metadata for `.csproj`, `.fsproj`, and `.vbproj` build/project files.
+- Added F# and Visual Basic source scanning for language counts, TODO extraction, lightweight dependency graph entries, and entry-point detection.
+- Added framework detection for F#/.NET and VB.NET projects without changing existing C#/.NET detection.
+- Updated personal intelligence template suggestions so recurring F#/VB .NET projects count as framework setup patterns.
+- Added a Core regression covering F# and Visual Basic project files, source languages, TODO extraction, and dependency metadata.
+
+Validation completed:
+
+- Aegis Core contract test suite: pass, 140 tests.
+
 ## 2026-05-09 - Website PowerShell Guard Windows Path Compatibility
 
 Focus:

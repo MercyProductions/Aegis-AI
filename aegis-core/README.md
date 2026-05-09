@@ -14,7 +14,7 @@ This first pass is intentionally small. It consolidates common backend responsib
 ## What Core Owns
 
 - Ollama model detection, health checks, routing defaults, fallback metadata, and local-first hybrid model route planning
-- Workspace scanning, language/framework detection, file index, dependency graph, and symbol index
+- Workspace scanning, language/framework detection, file index, dependency graph, and symbol index, including C#, F#, and Visual Basic .NET project files
 - Project memory files in `.aegis/`
 - Roadmap generation from local scan data
 - Autonomous task orchestration for large goals, stored as approval-gated local queues
