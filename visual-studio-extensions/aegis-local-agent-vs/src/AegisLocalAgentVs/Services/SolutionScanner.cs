@@ -481,7 +481,8 @@ namespace Aegis.LocalAgent.VisualStudio.Services
         private static bool IsImportantFile(string relativePath)
         {
             var name = Path.GetFileName(relativePath);
-            return name.Equals("README.md", StringComparison.OrdinalIgnoreCase)
+            return IsUnityMetadataFile(relativePath)
+                || name.Equals("README.md", StringComparison.OrdinalIgnoreCase)
                 || name.Equals("CHANGELOG.md", StringComparison.OrdinalIgnoreCase)
                 || name.Equals("Directory.Build.props", StringComparison.OrdinalIgnoreCase)
                 || name.Equals("Directory.Build.targets", StringComparison.OrdinalIgnoreCase)
@@ -499,6 +500,21 @@ namespace Aegis.LocalAgent.VisualStudio.Services
                 || name.Equals("manifest.json", StringComparison.OrdinalIgnoreCase)
                 || name.Equals("packages.lock.json", StringComparison.OrdinalIgnoreCase)
                 || relativePath.IndexOf("ProjectSettings", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static bool IsUnityMetadataFile(string relativePath)
+        {
+            var normalized = (relativePath ?? string.Empty).Replace('\\', '/').TrimStart('/');
+            return normalized.Equals("Packages/manifest.json", StringComparison.OrdinalIgnoreCase)
+                || normalized.Equals("Packages/packages-lock.json", StringComparison.OrdinalIgnoreCase)
+                || normalized.Equals("ProjectSettings/ProjectVersion.txt", StringComparison.OrdinalIgnoreCase)
+                || normalized.Equals("ProjectSettings/ProjectSettings.asset", StringComparison.OrdinalIgnoreCase)
+                || normalized.Equals("ProjectSettings/EditorBuildSettings.asset", StringComparison.OrdinalIgnoreCase)
+                || normalized.Equals("ProjectSettings/EditorSettings.asset", StringComparison.OrdinalIgnoreCase)
+                || normalized.Equals("ProjectSettings/InputManager.asset", StringComparison.OrdinalIgnoreCase)
+                || normalized.Equals("ProjectSettings/TagsManager.asset", StringComparison.OrdinalIgnoreCase)
+                || normalized.EndsWith(".asmdef", StringComparison.OrdinalIgnoreCase)
+                || normalized.EndsWith(".asmref", StringComparison.OrdinalIgnoreCase);
         }
 
         internal static string MakeRelative(string root, string file)

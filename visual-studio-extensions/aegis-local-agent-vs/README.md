@@ -204,11 +204,11 @@ The scanner reads:
 - project references, assembly references, target frameworks, NuGet packages, include paths, and C++ configurations
 - startup project, active project, active document, selected code, and Solution Explorer selection
 - README, TODO, config, XAML, test, source, and project files
-- Unity `Assets/`, `Packages/`, and `ProjectSettings/` signals while ignoring generated runtime folders
+- Unity `Assets/`, `Packages/manifest.json`, `Packages/packages-lock.json`, key `ProjectSettings/` metadata, and `.asmdef` / `.asmref` files while ignoring generated runtime folders
 
 The index is incremental inside the running Visual Studio session. Unchanged files are reused from cache, changed files are reparsed, and a manual rescan forces a fresh index.
 
-Ignored folders include `.git/`, `.vs/`, `.aegis/`, `bin/`, `obj/`, `packages/`, `node_modules/`, `vendor/`, `dist/`, `build/`, `Generated/`, Unity `Library/`, Unity `Temp/`, `Logs/`, and C++ `ipch/`.
+Ignored folders include `.git/`, `.vs/`, `.aegis/`, `bin/`, `obj/`, NuGet `packages/`, `node_modules/`, `vendor/`, `dist/`, `build/`, `Generated/`, Unity `Library/`, Unity `Temp/`, `Logs/`, and C++ `ipch/`. Unity's top-level `Packages/` folder remains readable for package metadata.
 
 ## Architecture Awareness
 
@@ -244,7 +244,7 @@ This keeps model prompts smaller, reduces hallucinated file edits, and helps the
 - C#/.NET: reads `.csproj`, target frameworks, NuGet `PackageReference` entries, namespaces, classes, and WPF XAML files.
 - F# and Visual Basic: recognizes `.fsproj` and `.vbproj` projects, indexes modules/types/functions/imports, and keeps managed project validation hints available.
 - C++: reads `.vcxproj`, header/source pairs, include paths, project configurations, common `.cpp` / `.cc` / `.cxx` and header suffixes, and linker/compiler diagnostics from Visual Studio output.
-- Unity: recognizes `Assets/`, `Packages/`, and `ProjectSettings/`, avoids `Library/` and `Temp/`, and flags `MonoBehaviour` scripts for Unity-safe planning.
+- Unity: recognizes `Assets/`, package manifests and lockfiles, key `ProjectSettings/` metadata, `.asmdef` / `.asmref` files, avoids `Library/` and `Temp/`, and flags `MonoBehaviour` scripts for Unity-safe planning.
 
 ## Safety Model
 

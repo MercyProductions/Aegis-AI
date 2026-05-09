@@ -282,8 +282,16 @@ function Assert-SolutionScannerParityGuards {
   if ($scannerText -notmatch 'packages\.lock\.json') {
     $issues += "SolutionScanner must treat NuGet packages.lock.json as an important dependency metadata file."
   }
-  if ($scannerText -match 'packages-lock\.json') {
-    $issues += "SolutionScanner must not use the invalid NuGet lockfile name packages-lock.json."
+  if ($scannerText -match 'name\.Equals\("packages-lock\.json"') {
+    $issues += "SolutionScanner must not use the invalid NuGet lockfile name packages-lock.json as a filename-only rule."
+  }
+  foreach ($unityFile in @("Packages/manifest.json", "Packages/packages-lock.json", ".asmdef", ".asmref")) {
+    if ($scannerText -notmatch [regex]::Escape($unityFile)) {
+      $issues += "SolutionScanner must keep Unity metadata visible in important solution context: $unityFile."
+    }
+    if ($intelligenceText -notmatch [regex]::Escape($unityFile)) {
+      $issues += "SolutionIntelligenceService must classify Unity metadata as smart-context config: $unityFile."
+    }
   }
 
   if ($issues.Count -gt 0) {

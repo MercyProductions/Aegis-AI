@@ -33,7 +33,7 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 | VS Code packaging | Improved | Release lint now verifies command contribution/activation parity, release metadata, source-only helper exclusions, package hygiene, Python lockfile fallback safety, and Unity metadata fallback context before VSIX creation. |
 | Visual Studio settings | Improved | Ollama and Aegis Core URL fields normalize host:port inputs and pasted endpoint paths before model or shared-runtime requests. |
 | Shared task API | Improved | Bad task status updates return `400`, missing task IDs return `404`, and malformed local task records are normalized on read. |
-| Visual Studio packaging | Improved | VSIX packaging now validates manifest metadata, command resources, VSCT/C# command table parity, solution scanner parity, NuGet lockfile filename handling, and release documentation/license sources before producing the release archive. |
+| Visual Studio packaging | Improved | VSIX packaging now validates manifest metadata, command resources, VSCT/C# command table parity, solution scanner parity, NuGet lockfile filename handling, Unity metadata context, and release documentation/license sources before producing the release archive. |
 | Shared mutation persistence | Improved | Client registration and task creation/update now verify persistence; unwritable `.aegis` roots return clear failures or degraded plan responses instead of phantom successful writes. |
 | Memory resilience | Improved | Dashboard/task reads, agent plan reads, and generated-memory writes now tolerate unreadable or damaged `.aegis` JSON/markdown paths. |
 | VS Code memory resilience | Improved | Workspace startup and later index/history/log writes skip damaged `.aegis` paths instead of breaking scans or post-apply bookkeeping. |
@@ -80,6 +80,8 @@ Ran during this pass:
 - `npm run package` in VS Code extension: pass, regenerated `release/aegis-local-autopilot-0.1.1.vsix` with only runtime/package metadata files
 - Visual Studio package validation guards: pass, including release documentation/license source checks
 - Visual Studio package validation guards: pass, including NuGet lockfile scanner parity
+- Visual Studio package validation guards after Unity metadata context hardening: pass
+- Visual Studio extension Release build after Unity metadata context hardening: pass
 - Desktop `.\build.ps1`: pass, 0 warnings, 0 errors
 - Desktop quick smoke: pass, nonblank login capture with backend reachable before and after launch
 - Visual Studio extension `.\build.ps1`: pass, command table parity checked, regenerated `release/AegisLocalAgentVs.vsix`
@@ -122,6 +124,7 @@ Ran during this pass:
 - Hardened Core framework detection so damaged `package.json`, `Assets`, or `ProjectSettings` marker shapes do not create false Node or Unity classifications.
 - Improved Core Unity scans and change simulation so package manifests, package lockfiles, project settings, and assembly-definition metadata are available as build/context files and build-impacting risk without scanning generated Unity runtime folders.
 - Improved VS Code local fallback snapshots so Unity package manifests, package lockfiles, project settings, and assembly-definition metadata stay available as important context/build-risk files when Core scan is unavailable.
+- Improved Visual Studio solution scans and smart context so Unity package manifests, package lockfiles, project settings, and assembly-definition metadata stay available as important context/config files without treating Unity's package lockfile as the old NuGet typo.
 - Hardened Core validation detection so ignored dependency/build folders do not trigger false `.NET` build suggestions.
 - Hardened Core validation detection so damaged root build-marker directories do not trigger false Cargo, Python, CMake, pnpm, or Yarn suggestions.
 - Reduced Core validation startup overhead by avoiding duplicate validation-command detection.

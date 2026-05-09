@@ -1025,7 +1025,8 @@ namespace Aegis.LocalAgent.VisualStudio.Services
         private static bool IsConfigFile(string relative)
         {
             var name = Path.GetFileName(relative);
-            return name.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase)
+            return IsUnityMetadataFile(relative)
+                || name.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase)
                 || name.EndsWith(".fsproj", StringComparison.OrdinalIgnoreCase)
                 || name.EndsWith(".vbproj", StringComparison.OrdinalIgnoreCase)
                 || name.EndsWith(".vcxproj", StringComparison.OrdinalIgnoreCase)
@@ -1038,6 +1039,21 @@ namespace Aegis.LocalAgent.VisualStudio.Services
                 || name.Equals("Directory.Build.props", StringComparison.OrdinalIgnoreCase)
                 || name.Equals("Directory.Build.targets", StringComparison.OrdinalIgnoreCase)
                 || relative.IndexOf("ProjectSettings", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static bool IsUnityMetadataFile(string relative)
+        {
+            var normalized = (relative ?? string.Empty).Replace('\\', '/').TrimStart('/');
+            return normalized.Equals("Packages/manifest.json", StringComparison.OrdinalIgnoreCase)
+                || normalized.Equals("Packages/packages-lock.json", StringComparison.OrdinalIgnoreCase)
+                || normalized.Equals("ProjectSettings/ProjectVersion.txt", StringComparison.OrdinalIgnoreCase)
+                || normalized.Equals("ProjectSettings/ProjectSettings.asset", StringComparison.OrdinalIgnoreCase)
+                || normalized.Equals("ProjectSettings/EditorBuildSettings.asset", StringComparison.OrdinalIgnoreCase)
+                || normalized.Equals("ProjectSettings/EditorSettings.asset", StringComparison.OrdinalIgnoreCase)
+                || normalized.Equals("ProjectSettings/InputManager.asset", StringComparison.OrdinalIgnoreCase)
+                || normalized.Equals("ProjectSettings/TagsManager.asset", StringComparison.OrdinalIgnoreCase)
+                || normalized.EndsWith(".asmdef", StringComparison.OrdinalIgnoreCase)
+                || normalized.EndsWith(".asmref", StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool IsDocumentationFile(string relative)

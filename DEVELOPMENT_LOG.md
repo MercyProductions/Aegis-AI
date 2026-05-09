@@ -1,5 +1,24 @@
 # Development Log
 
+## 2026-05-09 - Visual Studio Unity Metadata Context
+
+Focus:
+
+- Keep Visual Studio solution scans aligned with Core and VS Code Unity metadata handling.
+- Distinguish Unity's real `Packages/packages-lock.json` from the invalid NuGet `packages-lock.json` typo guard.
+
+Actions:
+
+- Added path-aware Unity metadata detection for Visual Studio important-file scanning and smart context config classification.
+- Included Unity package manifests, package lockfiles, key `ProjectSettings` files, and `.asmdef`/`.asmref` files in focused solution context.
+- Updated Visual Studio package validation guards so Unity metadata must remain visible while filename-only NuGet lockfile typos still fail validation.
+
+Validation completed:
+
+- Visual Studio package validation guards: pass.
+- Visual Studio extension Release build: pass.
+- Git whitespace check: pass.
+
 ## 2026-05-09 - VS Code Unity Metadata Context
 
 Focus:
