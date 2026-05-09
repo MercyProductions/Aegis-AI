@@ -1,5 +1,5 @@
 import type { ChatMediaJob, MediaAsset, MediaJobResponse } from '../types';
-import { getResolvedApiBase } from '../api';
+import { apiResourceUrl } from '../api';
 
 export type PreviewableMediaJob = MediaJobResponse | ChatMediaJob;
 
@@ -7,8 +7,7 @@ const imageFormats = new Set(['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp']);
 const audioFormats = new Set(['wav', 'mp3', 'midi']);
 
 export function creativeAssetUrl(path: string): string {
-  const base = (getResolvedApiBase() || import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8787').replace(/\/+$/, '');
-  return `${base}/api/creative-studio/assets/file?path=${encodeURIComponent(path)}`;
+  return apiResourceUrl(`/api/creative-studio/assets/file?path=${encodeURIComponent(path)}`);
 }
 
 export function mediaJobPreviewAsset(job: PreviewableMediaJob | null | undefined): MediaAsset | null {

@@ -1,5 +1,24 @@
 # Development Log
 
+## 2026-05-09 - Website Creative Asset URL Alignment
+
+Focus:
+
+- Keep generated media previews aligned with the Website API client's active-backend discovery.
+- Avoid broken Creative Studio previews when dogfooding through the Vite proxy or alternate backend ports.
+
+Actions:
+
+- Added a shared synchronous API resource URL helper for frontend assets that need browser-loadable URLs.
+- Refactored creative asset preview URL construction to use the helper instead of a hardcoded `8787` fallback.
+- Added frontend API regressions for relative proxy resource URLs before discovery and discovered-backend preview URLs after discovery.
+
+Validation completed:
+
+- Website frontend API tests: pass.
+- Website frontend full test suite: pass.
+- Website frontend production build: pass.
+
 ## 2026-05-09 - Website Memory API Base Alignment
 
 Focus:

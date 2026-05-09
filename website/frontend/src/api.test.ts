@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   __resetApiBaseForTests,
   __setApiDiscoveryForTests,
+  apiResourceUrl,
   activateAdaptivePolicyProfile,
   approveAutonomousGate,
   cancelExecutionQueueItem,
@@ -105,6 +106,7 @@ import {
   validateEcosystemPackage,
   validatePlugin
 } from './api';
+import { creativeAssetUrl } from './utils/creativeAssets';
 import type {
   AgentRequest,
   AgentResponse,
@@ -378,6 +380,32 @@ describe('memory api', () => {
       body: JSON.stringify({ pinned: true })
     });
     expect(fetchMock.mock.calls[6]?.[1]).toMatchObject({ method: 'DELETE' });
+  });
+});
+
+describe('API resource URLs', () => {
+  it('uses relative proxy URLs before API base discovery', () => {
+    expect(apiResourceUrl('/api/media/assets/file?path=preview.png')).toBe('/api/media/assets/file?path=preview.png');
+    expect(creativeAssetUrl('renders/preview image.png')).toBe(
+      '/api/creative-studio/assets/file?path=renders%2Fpreview%20image.png'
+    );
+  });
+
+  it('uses the discovered API base for creative asset previews', async () => {
+    __setApiDiscoveryForTests(true);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ ok: true, ready: true, app: 'Aegis Coding AI' }))
+      .mockResolvedValueOnce(jsonResponse({ ok: true, ready: true, app: 'Aegis Coding AI' }))
+      .mockResolvedValueOnce(jsonResponse({ ok: true, ready: true, app: 'Auralith OS' }))
+      .mockResolvedValueOnce(jsonResponse({ workspace_root: 'C:/project root', warnings: [], notes: [] }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(listMemoryNotes('C:/project root')).resolves.toMatchObject({ notes: [] });
+
+    expect(creativeAssetUrl('renders/preview image.png')).toBe(
+      'http://127.0.0.1:8793/api/creative-studio/assets/file?path=renders%2Fpreview%20image.png'
+    );
   });
 });
 

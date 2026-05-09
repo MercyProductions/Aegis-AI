@@ -287,6 +287,12 @@ export function getResolvedApiBase(): string {
   return resolvedApiBase;
 }
 
+export function apiResourceUrl(path: string): string {
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  const base = resolvedApiBase || EXPLICIT_API_BASE;
+  return `${base}${normalizedPath}`;
+}
+
 async function jsonFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await apiFetch(path, {
     headers: {

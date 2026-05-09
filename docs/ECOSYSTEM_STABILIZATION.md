@@ -48,6 +48,7 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 | Website model benchmarks | Improved | Damaged benchmark result/job stores are skipped safely, blank job records are ignored, and benchmark state writes are atomic. |
 | Website dependency profiling | Improved | Damaged marker directories and lockfile paths no longer distort onboarding stack, package-manager, entry-point, or database summaries, root `build.py` / `build.ps1` guard scripts are recorded before lower-level native validation fallbacks, and Python lockfile drift is tracked by watcher snapshots. |
 | Dependency lockfile safety | Improved | Core maintenance manifests, Website guided auto-apply scoring, and VS Code local fallback proposal guards now treat `uv.lock`, `poetry.lock`, and `pdm.lock` as dependency-wide lockfile surfaces. |
+| Website creative assets | Improved | Generated media preview URLs use the shared API resource URL helper, so previews work through the Vite proxy and discovered backend ports instead of assuming `8787`. |
 | Website checkpoint restore | Improved | Restore now validates checkpoint IDs, damaged manifests, backup paths, and missing backup files before touching workspace files. |
 | Website safe apply | Improved | Apply refuses to edit when checkpoint creation fails and reports later write/delete failures with checkpoint context. |
 | Website frontend bundle | Improved | Production builds split React, icons, API calls, app utilities, and app styles into stable chunks, removing the default Vite large-chunk warning without raising the warning limit. |
@@ -83,8 +84,8 @@ Ran during this pass:
 - Visual Studio extension `.\build.ps1`: pass, command table parity checked, regenerated `release/AegisLocalAgentVs.vsix`
 - Visual Studio rollback hardening `.\build.ps1`: pass, regenerated `release/AegisLocalAgentVs.vsix`
 - Visual Studio rollback cross-solution/path hardening `.\build.ps1`: pass, regenerated `release/AegisLocalAgentVs.vsix`
-- Website frontend API tests: pass, including memory API base discovery regression
-- Website frontend tests: 21 files / 170 tests passed
+- Website frontend API tests: pass, including memory and creative asset API base discovery regressions
+- Website frontend tests: 21 files / 172 tests passed
 - Website frontend production build: pass, no Vite chunk-size warning
 - Website focused frontend API/runtime/task tests: 40 tests passed
 - Website acceptance gate with explicit backend/frontend URLs: pass
