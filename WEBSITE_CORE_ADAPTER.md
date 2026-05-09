@@ -19,6 +19,7 @@ The adapter:
 - validates the expected Core `kind`;
 - preserves Core envelopes for `/api/core-runtime`;
 - returns degraded adapter results instead of raising when Core is offline or incompatible;
+- redacts secret-like query parameters, bearer tokens, URL credentials, and assignment-style secrets from Core adapter errors before they reach Website `/api` clients;
 - provides narrow route helpers for health, models, settings, diagnostics, dashboard, and settings updates.
 
 ## Migrated Route Group
@@ -71,6 +72,11 @@ Core incompatible:
 
 - A response with a non-`v1` `api_version` or unexpected `kind` is treated as degraded adapter state.
 - Website `/api` keeps returning its established response model.
+
+Core/provider error text:
+
+- Adapter errors are redacted before being returned through Website `/api`.
+- Query-string keys such as `?key=...`, `?token=...`, bearer tokens, URL credentials, and common `api_key=...`-style assignments are replaced with redacted placeholders.
 
 ## Next Migration Candidates
 

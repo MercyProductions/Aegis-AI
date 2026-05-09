@@ -659,3 +659,25 @@ Validation completed:
 
 - Aegis Core contract tests: pass, 89 tests.
 - Aegis Core compile check: pass.
+
+## 2026-05-09 - Website Core Bridge Error Redaction
+
+Focus:
+
+- Keep Website `/api` compatibility safe when it adapts Aegis Core degraded responses.
+- Ensure adapter shims preserve local-first privacy even if Core or a provider returns secret-like error text.
+
+Actions:
+
+- Added Website Core bridge redaction for query-string keys, bearer tokens, URL credentials, and common assignment-style secrets.
+- Redacted Core `ok=false` details, deprecation text, and HTTP exception messages before they are returned through adapter results.
+- Updated the Website Core adapter documentation with the new error-redaction rule.
+- Added regressions for redacted Core error details, HTTP error URLs, and deprecation text.
+
+Validation completed:
+
+- Website Core bridge tests: pass, 12 tests.
+- Website Core bridge/config/runtime-health/model-inventory tests: pass, 26 tests.
+- Website backend compile check: pass.
+- Aegis Core contract tests: pass, 89 tests.
+- VS Code extension compile smoke: pass.

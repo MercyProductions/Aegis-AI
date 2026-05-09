@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -12,6 +13,16 @@ import httpx
 DEFAULT_CORE_API_URL = "http://127.0.0.1:8788"
 CORE_API_VERSION = "v1"
 CORE_CONTRACT_VERSION_FIELD = "contract_version"
+SENSITIVE_QUERY_RE = re.compile(
+    r"([?&](?:api[_-]?key|key|token|secret|password|passwd|credential)=)[^&#\s]+",
+    re.IGNORECASE,
+)
+SENSITIVE_ASSIGNMENT_RE = re.compile(
+    r"\b((?:api[_-]?key|token|secret|password|passwd|credential|authorization)\s*[:=]\s*)[^\s&]+",
+    re.IGNORECASE,
+)
+BEARER_TOKEN_RE = re.compile(r"\b(Bearer\s+)[A-Za-z0-9._~+/\-=]+", re.IGNORECASE)
+URL_CREDENTIAL_RE = re.compile(r"\b(https?://)[^/\s:@]+:[^@\s/]+@", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -248,7 +259,7 @@ class AegisCoreBridge:
                 status_code=status_code,
                 kind="",
                 data=None,
-                error=str(exc),
+                error=_redact_core_error_text(str(exc)),
             )
 
 
@@ -269,11 +280,18 @@ def core_envelope_error(envelope: dict[str, Any] | None) -> str:
     data = envelope.get("data") if isinstance(envelope.get("data"), dict) else {}
     detail = data.get("error") or data.get("message") or envelope.get("detail")
     if detail:
-        return str(detail)
+        return _redact_core_error_text(str(detail))
     deprecations = envelope.get("deprecations")
     if isinstance(deprecations, list) and deprecations:
-        return "; ".join(str(item) for item in deprecations if str(item).strip())
+        return _redact_core_error_text("; ".join(str(item) for item in deprecations if str(item).strip()))
     return "Core returned ok=false."
+
+
+def _redact_core_error_text(text: str) -> str:
+    cleaned = URL_CREDENTIAL_RE.sub(r"\1[redacted]@", str(text))
+    cleaned = SENSITIVE_QUERY_RE.sub(r"\1[redacted]", cleaned)
+    cleaned = SENSITIVE_ASSIGNMENT_RE.sub(r"\1[redacted]", cleaned)
+    return BEARER_TOKEN_RE.sub(r"\1[redacted]", cleaned)
 
 
 def core_envelope_data(envelope: dict[str, Any] | None) -> dict[str, Any]:

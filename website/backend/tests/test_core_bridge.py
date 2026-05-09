@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from aegis_ai import main
 from aegis_ai.core_bridge import (
     AegisCoreBridge,
+    core_envelope_error,
     core_dashboard_to_website_runtime_status,
     core_task_to_website_task_summary,
     core_validation_to_website_validation,
@@ -185,6 +186,67 @@ def test_core_bridge_surfaces_ok_false_error_detail(tmp_path: Path) -> None:
     assert result.reachable is True
     assert result.ok is False
     assert result.error == "model inventory unavailable"
+
+
+def test_core_bridge_redacts_secret_like_core_error_detail(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    secret = "AIzaSyVerySecretProviderKey"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "ok": False,
+                "api_version": "v1",
+                "contract_version": "2026.05.09",
+                "kind": "models",
+                "workspace": str(workspace.resolve()),
+                "data": {"error": f"Provider failed at https://example.test/v1?key={secret}&alt=json"},
+            },
+        )
+
+    bridge = AegisCoreBridge("http://127.0.0.1:8788", transport=httpx.MockTransport(handler))
+    result = asyncio.run(bridge.model_status(workspace))
+
+    assert result.reachable is True
+    assert result.ok is False
+    assert secret not in result.error
+    assert "key=[redacted]" in result.error
+    assert "Provider failed" in result.error
+
+
+def test_core_bridge_redacts_secret_like_http_error_urls(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    secret = "secret-token-value"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503, json={"detail": "unavailable"})
+
+    bridge = AegisCoreBridge("http://127.0.0.1:8788", transport=httpx.MockTransport(handler))
+    result = asyncio.run(bridge.get(f"/v1/models?token={secret}", expected_kind="models"))
+
+    assert result.reachable is True
+    assert result.ok is False
+    assert secret not in result.error
+    assert "token=[redacted]" in result.error
+
+
+def test_core_envelope_error_redacts_secret_like_deprecations() -> None:
+    secret = "sk-live-should-not-leak"
+    error = core_envelope_error(
+        {
+            "ok": False,
+            "api_version": "v1",
+            "kind": "models",
+            "deprecations": [f"Bearer {secret} should never be visible"],
+            "data": {},
+        }
+    )
+
+    assert secret not in error
+    assert "Bearer [redacted]" in error
 
 
 def test_core_runtime_endpoint_delegates_to_core_bridge(tmp_path: Path) -> None:
