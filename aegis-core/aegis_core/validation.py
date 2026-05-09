@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .diagnostics import scrub
 from .memory import ProjectMemory, utc_now
 
 
@@ -168,9 +169,12 @@ def _decode_output(value: Any) -> str:
 def append_validation_log(workspace: str | Path, result: dict[str, Any]) -> None:
     memory = ProjectMemory(workspace)
     memory.ensure()
-    command = " ".join(result.get("command") or [])
+    command = scrub(" ".join(result.get("command") or []))
     status = "passed" if result.get("ok") else "failed"
-    output = (result.get("stderr") or result.get("stdout") or "").strip()
+    output = scrub((result.get("stderr") or result.get("stdout") or "").strip())
     entry = f"## {utc_now()} - {status}\n\nCommand: `{command}`\n\n```text\n{output[:4000]}\n```\n\n"
-    with (memory.root / "validation-log.md").open("a", encoding="utf-8") as handle:
-        handle.write(entry)
+    try:
+        with (memory.root / "validation-log.md").open("a", encoding="utf-8") as handle:
+            handle.write(entry)
+    except OSError:
+        return

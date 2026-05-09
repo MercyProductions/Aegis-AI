@@ -28,13 +28,14 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 | Memory resilience | Improved | Dashboard and task reads now tolerate unreadable `.aegis` JSON/markdown files. |
 | Validation detection | Improved | Core now lists JS test/build validation commands only when matching package scripts exist. |
 | Validation execution | Improved | Core blocks unsafe custom validation commands and returns structured missing-tool/timeout failures. |
+| Validation logging | Improved | Validation output is redacted before disk writes and log write failures do not crash validation. |
 | Diagnostics | Improved | Core dashboard now surfaces stale tasks and suggested actions. |
 
 ## Verification Run
 
 Ran during this pass:
 
-- `python -m pytest tests -q` in Aegis Core: 11 tests passed
+- `python -m pytest tests -q` in Aegis Core: 13 tests passed
 - `python -m compileall aegis_core`: pass
 - Aegis Core `/v1` TestClient smoke for settings, memory, diagnostics, roadmap, tasks, task status: pass
 - Core scan twice: second scan returned `cache_hit: true`

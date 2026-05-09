@@ -11,7 +11,7 @@ import aegis_core.validation as validation_module
 from aegis_core.config import AegisConfig, load_config
 from aegis_core.safety import is_ignored_path, is_safe_to_read, is_secret_like
 from aegis_core.server import create_app
-from aegis_core.validation import detect_validation_commands, run_validation
+from aegis_core.validation import append_validation_log, detect_validation_commands, run_validation
 
 
 def make_workspace(tmp_path: Path) -> Path:
@@ -252,3 +252,33 @@ def test_validation_runner_handles_timeout(tmp_path: Path, monkeypatch) -> None:
     assert result["timed_out"] is True
     assert "partial stdout" in result["stdout"]
     assert "partial stderr" in result["stderr"]
+
+
+def test_validation_log_redacts_secret_like_lines(tmp_path: Path) -> None:
+    workspace = tmp_path / "redaction-project"
+    workspace.mkdir()
+
+    append_validation_log(
+        workspace,
+        {
+            "ok": False,
+            "command": ["npm", "test"],
+            "stderr": "normal failure\nAPI_TOKEN=abc123\nAuthorization: Bearer abc123\npassword=hunter2",
+        },
+    )
+
+    text = (workspace / ".aegis" / "validation-log.md").read_text(encoding="utf-8")
+    assert "normal failure" in text
+    assert "[redacted secret-like log line]" in text
+    assert "abc123" not in text
+    assert "hunter2" not in text
+
+
+def test_validation_log_write_failures_do_not_crash(tmp_path: Path) -> None:
+    workspace = tmp_path / "log-directory-project"
+    workspace.mkdir()
+    aegis_dir = workspace / ".aegis"
+    aegis_dir.mkdir()
+    (aegis_dir / "validation-log.md").mkdir()
+
+    append_validation_log(workspace, {"ok": False, "command": ["npm", "test"], "stderr": "still returns"})

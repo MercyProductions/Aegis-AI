@@ -50,7 +50,7 @@ Core should not store:
 - generated build outputs
 - vendor dependencies
 
-Diagnostics pass through a simple redaction layer before being written to `core-log.md`.
+Diagnostics and validation output pass through a simple redaction layer before being written to `core-log.md` or `validation-log.md`.
 
 ## Reset
 

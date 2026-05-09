@@ -6,7 +6,21 @@ from pathlib import Path
 from .config import memory_dir
 
 
-SECRET_MARKERS = ("api_key", "apikey", "token", "secret", "password", "private key")
+SECRET_MARKERS = (
+    "api_key",
+    "apikey",
+    "api-key",
+    "auth",
+    "authorization",
+    "bearer",
+    "credential",
+    "passwd",
+    "password",
+    "private key",
+    "private_key",
+    "secret",
+    "token",
+)
 
 
 def scrub(text: str) -> str:
