@@ -9,6 +9,14 @@ $solution = Join-Path $root "AegisLocalAgentVs.sln"
 $project = Join-Path $root "src\AegisLocalAgentVs\AegisLocalAgentVs.csproj"
 $projectDir = Split-Path -Parent $project
 $release = Join-Path $root "release"
+$releaseDocumentationFiles = @(
+  "README.md",
+  "INSTALL.md",
+  "CHANGELOG.md",
+  "RELEASE_NOTES.md",
+  "TROUBLESHOOTING.md",
+  "LICENSE.txt"
+)
 
 function Invoke-MSBuild {
   param(
@@ -19,6 +27,33 @@ function Invoke-MSBuild {
   & dotnet msbuild @Arguments
   if ($LASTEXITCODE -ne 0) {
     throw "dotnet msbuild failed with exit code $LASTEXITCODE. Arguments: $($Arguments -join ' ')"
+  }
+}
+
+function Assert-ReleaseDocumentationSources {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Root,
+    [Parameter(Mandatory = $true)]
+    [string[]]$FileNames
+  )
+
+  $issues = @()
+  foreach ($fileName in $FileNames) {
+    $sourcePath = Join-Path $Root $fileName
+    if (-not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
+      $issues += "Missing release documentation source '$fileName'."
+      continue
+    }
+
+    $sourceFile = Get-Item -LiteralPath $sourcePath
+    if ($sourceFile.Length -eq 0) {
+      $issues += "Release documentation source '$fileName' is empty."
+    }
+  }
+
+  if ($issues.Count -gt 0) {
+    throw "Visual Studio release documentation validation failed:`n - $($issues -join "`n - ")"
   }
 }
 
@@ -259,6 +294,7 @@ Assert-DiagnosticRedactionGuards -ProjectDirectory $projectDir
 Assert-UrlNormalizationGuards -ProjectDirectory $projectDir
 Assert-SafeEditRollbackGuards -ProjectDirectory $projectDir
 Assert-SolutionScannerParityGuards -ProjectDirectory $projectDir
+Assert-ReleaseDocumentationSources -Root $root -FileNames $releaseDocumentationFiles
 
 if ($ValidateOnly) {
   Write-Host "Visual Studio package validation guards passed."
@@ -299,11 +335,9 @@ if (-not $vsix) {
 }
 
 Copy-Item -LiteralPath $vsix.FullName -Destination (Join-Path $release "AegisLocalAgentVs.vsix") -Force
-Copy-Item -LiteralPath (Join-Path $root "README.md") -Destination (Join-Path $release "README.md") -Force
-Copy-Item -LiteralPath (Join-Path $root "INSTALL.md") -Destination (Join-Path $release "INSTALL.md") -Force
-Copy-Item -LiteralPath (Join-Path $root "CHANGELOG.md") -Destination (Join-Path $release "CHANGELOG.md") -Force
-Copy-Item -LiteralPath (Join-Path $root "RELEASE_NOTES.md") -Destination (Join-Path $release "RELEASE_NOTES.md") -Force
-Copy-Item -LiteralPath (Join-Path $root "TROUBLESHOOTING.md") -Destination (Join-Path $release "TROUBLESHOOTING.md") -Force
+foreach ($fileName in $releaseDocumentationFiles) {
+  Copy-Item -LiteralPath (Join-Path $root $fileName) -Destination (Join-Path $release $fileName) -Force
+}
 
 $projectText = Get-Content -Raw -LiteralPath $project
 $expectedVersion = [regex]::Match($projectText, "<Version>([^<]+)</Version>").Groups[1].Value

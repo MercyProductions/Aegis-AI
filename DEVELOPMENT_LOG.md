@@ -1,5 +1,23 @@
 # Development Log
 
+## 2026-05-09 - Visual Studio Release Bundle License Guard
+
+Focus:
+
+- Keep the tracked Visual Studio release bundle aligned with the files included in the VSIX.
+- Make `build.ps1 -ValidateOnly` catch missing distributable documentation sources before a release package is attempted.
+
+Actions:
+
+- Added a release documentation source guard for the Visual Studio package script.
+- Reused the validated documentation list when copying release bundle files.
+- Added `LICENSE.txt` to the tracked Visual Studio release folder so the sidecar release bundle includes the same license notice as the VSIX.
+
+Validation completed:
+
+- Visual Studio package validation guards: pass.
+- Git whitespace check: pass.
+
 ## 2026-05-09 - VS Code Model Call Progress
 
 Focus:

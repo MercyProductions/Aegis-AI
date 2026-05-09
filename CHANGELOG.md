@@ -201,6 +201,7 @@
 - Hardened Visual Studio Aegis Core contract mismatch diagnostics so unexpected `api_version` and `kind` values are redacted, with a packaging guard to prevent regressions.
 - Hardened Visual Studio VSIX metadata and packaging so MoreInfo points to GitHub and internal dogfooding/model-inventory files are excluded.
 - Hardened Visual Studio release-folder cleanup so stale internal dogfooding notes, detected-model inventories, and repository-only `.gitignore` files are removed before packaging.
+- Hardened Visual Studio release bundling so distributable documentation sources are validated and `LICENSE.txt` is mirrored beside the packaged VSIX.
 - Hardened Visual Studio VSIX packaging so VSCT command buttons, command symbols, C# command IDs, and registered handlers must stay synchronized.
 - Refreshed stabilization validation docs so Core test counts, Website build status, historical migration-phase caveats, VS Code packaging guards, Visual Studio command-table guards, and Desktop smoke status match the current baseline.
 - Added product-utilization workflow notes for daily Auralith dogfooding.
