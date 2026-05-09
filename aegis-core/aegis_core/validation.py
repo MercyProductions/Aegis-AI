@@ -114,6 +114,17 @@ def run_validation(workspace: str | Path, command: list[str] | None = None, time
         }
         append_validation_log(root, result)
         return result
+    except OSError as exc:
+        result = {
+            "ok": False,
+            "command": selected,
+            "returncode": None,
+            "stdout": "",
+            "stderr": f"Validation command failed to start: {exc}",
+            "start_failed": True,
+        }
+        append_validation_log(root, result)
+        return result
     except subprocess.TimeoutExpired as exc:
         result = {
             "ok": False,

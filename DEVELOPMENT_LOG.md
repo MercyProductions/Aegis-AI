@@ -18,6 +18,7 @@ Actions:
 - Hardened dashboard/task memory reads so corrupted or unreadable `.aegis` files do not crash shared clients.
 - Tightened Core JavaScript validation detection to avoid hallucinated npm/pnpm/yarn test/build commands.
 - Restricted Core validation execution to known safe commands and structured failure results.
+- Hardened Core validation command startup failures so OS-level launch errors are logged and returned as structured failures.
 - Redacted validation logs before disk writes and made validation log write failures non-fatal.
 - Redacted returned validation output and made Core diagnostic log writes non-fatal.
 - Hardened Core generated-memory writes so damaged `.aegis` paths do not crash workspace scans.
@@ -36,8 +37,9 @@ Actions:
 
 Validation completed:
 
-- Aegis Core pytest suite: pass, 25 tests.
+- Aegis Core contract test suite: pass, 26 tests.
 - Aegis Core compile check: pass.
+- Aegis Core validation startup-failure regression test: pass.
 - VS Code extension lint and package: pass.
 - VS Code extension memory-write hardening lint: pass.
 - Desktop app build: pass.

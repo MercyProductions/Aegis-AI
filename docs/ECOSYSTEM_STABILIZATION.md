@@ -33,7 +33,7 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 | Website checkpoint restore | Improved | Restore now validates checkpoint IDs, damaged manifests, and backup paths before touching workspace files. |
 | Website safe apply | Improved | Apply refuses to edit when checkpoint creation fails and reports later write/delete failures with checkpoint context. |
 | Validation detection | Improved | Core now lists JS test/build validation commands only when matching package scripts exist. |
-| Validation execution | Improved | Core blocks unsafe custom validation commands and returns structured missing-tool/timeout failures. |
+| Validation execution | Improved | Core blocks unsafe custom validation commands and returns structured missing-tool/start-failed/timeout failures. |
 | Validation logging | Improved | Validation output is redacted before API responses and disk writes; log write failures do not crash validation. |
 | Diagnostics | Improved | Core dashboard now surfaces stale tasks and suggested actions; diagnostic log write failures do not crash health checks. |
 
@@ -41,8 +41,9 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 
 Ran during this pass:
 
-- `python -m pytest tests -q` in Aegis Core: 25 tests passed
+- `python -m pytest tests/test_core_contracts.py -q` in Aegis Core: 26 tests passed
 - `python -m compileall aegis_core`: pass
+- Core validation startup-failure regression test: pass
 - Aegis Core `/v1` TestClient smoke for settings, memory, diagnostics, roadmap, tasks, task status, agent continue, and agent repair: pass
 - Core scan twice: second scan returned `cache_hit: true`
 - `npm run lint` in VS Code extension: pass
@@ -71,6 +72,7 @@ Ran during this pass:
 - Made shared settings reads/writes best-effort, so damaged config paths do not crash health or settings APIs.
 - Restricted shared memory directory settings to one workspace-local folder name, preventing config from pointing memory outside the project.
 - Hardened agent continue/repair planning so damaged roadmap or validation-log paths degrade to safe responses instead of server errors.
+- Hardened Core validation startup failures so OS-level command launch errors return structured validation results instead of backend exceptions.
 - Hardened VS Code `.aegis` initialization so damaged memory files are left untouched and reported in the output channel.
 - Hardened VS Code index, managed-section, recovery, validation-log, decision-log, and dogfooding-note writes so damaged memory targets remain degraded instead of crashing workflows.
 - Hardened Visual Studio `.aegis` solution memory so damaged memory files are skipped and health checks surface the degraded state.

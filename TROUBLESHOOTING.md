@@ -16,6 +16,8 @@ python -m aegis_core.cli health --workspace . --json
 
 If `--json` appears to fail, update to the latest CLI. It should work before or after the subcommand.
 
+If validation reports `Validation command failed to start`, the command passed the safety allow-list but the OS could not launch it. Check that the tool is installed, available on `PATH`, and allowed by local permissions, then rerun the health check or validation command.
+
 ## Ollama
 
 Default local endpoint:

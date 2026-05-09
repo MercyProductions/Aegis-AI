@@ -311,6 +311,22 @@ def test_validation_runner_handles_missing_executable(tmp_path: Path, monkeypatc
     assert "Validation executable not found" in result["stderr"]
 
 
+def test_validation_runner_handles_oserror_start_failure(tmp_path: Path, monkeypatch) -> None:
+    workspace = tmp_path / "oserror-project"
+    workspace.mkdir()
+
+    def raise_oserror(*args, **kwargs):
+        raise OSError("permission denied")
+
+    monkeypatch.setattr(validation_module.subprocess, "run", raise_oserror)
+    result = run_validation(workspace, command=[sys.executable, "-m", "pytest"])
+
+    assert result["ok"] is False
+    assert result["returncode"] is None
+    assert result["start_failed"] is True
+    assert "Validation command failed to start" in result["stderr"]
+
+
 def test_validation_runner_handles_timeout(tmp_path: Path, monkeypatch) -> None:
     workspace = tmp_path / "timeout-project"
     workspace.mkdir()
