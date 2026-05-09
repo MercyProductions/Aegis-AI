@@ -11,6 +11,8 @@ Canonical schemas: `aegis-core/aegis_core/contracts.py`
 - Every active Core `/v1` success response uses the Core envelope: `ok`, `api_version`, `contract_version`, `kind`, `workspace`, `data`, `stability`, `deprecated`, and `deprecations`.
 - Current clients read only the fields they need. Unknown fields are safe to ignore.
 - Optional `data` fields may be absent. Compatibility tests cover minimal envelopes for Desktop, VS Code, and Visual Studio parsing assumptions.
+- Migrated clients must validate `api_version: v1` and the expected `kind` before treating a Core response as authoritative.
+- Mutating/sync calls such as client registration and task updates must treat `ok: false` as degraded sync and surface the Core error detail.
 - `stable` means safe for existing clients to depend on.
 - `experimental` means the shape exists and is tested, but may gain fields or be refined.
 - `schema-only` means the model is defined for compatibility planning, but no Core endpoint is active yet.
@@ -58,6 +60,7 @@ Current direct Core calls:
 
 Compatibility expectation:
 
+- Validates `client.registered` and `ecosystem.dashboard` envelopes before trusting Core sync/dashboard data.
 - Can parse dashboard envelopes with missing optional dashboard fields.
 - Keeps using Website `/api` for mature chat, apply, validation, checkpoint, routing, and project-builder workflows.
 - Should continue gracefully if Core is offline.
@@ -93,6 +96,7 @@ Current direct Core calls:
 Compatibility expectation:
 
 - Task creation reads `data.id`; other fields are optional for current behavior.
+- Registration and task-sync responses must match the expected Core envelope and `ok` state.
 - Registration failures are logged and skipped rather than blocking IDE workflows.
 - Core health/models/settings/scan/roadmap/memory/diagnostics/validation failures degrade to existing VS Code local or direct Ollama fallbacks where available.
 - Proposal, apply, rollback, and workspace-specific UX remain extension-owned.
@@ -106,7 +110,8 @@ Current direct Core calls:
 
 Compatibility expectation:
 
-- Health call only requires a parseable JSON object.
+- Health requires the expected Core `health` envelope.
+- Registration requires the expected `client.registered` envelope and `ok` state.
 - Registration failures surface as health-check warnings.
 - Solution detection, selected code review, build/error workflow, approval, rollback, and local intelligence remain extension-owned.
 
@@ -122,3 +127,4 @@ Low-risk candidates:
 Hold candidates:
 
 - Chat, streaming, model routing, generated changes, apply, checkpoint restore, repair execution, project builder, Creative Studio, auth/session, and advanced product workflows remain Website or client-owned until their contracts stop changing.
+- Website migration should wait until VS Code and Visual Studio interactive host workflows have been manually smoke-tested against Core online/offline states.

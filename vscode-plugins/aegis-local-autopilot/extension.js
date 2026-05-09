@@ -2790,6 +2790,18 @@ function validateAegisCoreEnvelope(envelope, expectedKind) {
   return envelope;
 }
 
+function requireAegisCoreOk(envelope, action) {
+  if (envelope && envelope.ok === false) {
+    throw new Error(`Aegis Core could not ${action}: ${coreEnvelopeError(envelope)}`);
+  }
+  return envelope;
+}
+
+function coreEnvelopeError(envelope) {
+  const data = coreEnvelopeData(envelope);
+  return data.error || data.message || (Array.isArray(envelope.deprecations) && envelope.deprecations.join('; ')) || 'Core returned ok=false.';
+}
+
 function coreEnvelopeData(envelope) {
   return envelope && envelope.data && typeof envelope.data === 'object' ? envelope.data : {};
 }
@@ -2915,7 +2927,7 @@ async function registerAegisCoreClient(target) {
     return false;
   }
   try {
-    await requestJson(new URL('/v1/clients/register', getConfig().coreUrl), {
+    const envelope = await requestJson(new URL('/v1/clients/register', getConfig().coreUrl), {
       workspace: resolvedTarget.root,
       client_id: 'aegis-vscode',
       client_type: 'vscode-extension',
@@ -2936,6 +2948,7 @@ async function registerAegisCoreClient(target) {
         'local-fallbacks'
       ]
     }, 120000);
+    requireAegisCoreOk(validateAegisCoreEnvelope(envelope, 'client.registered'), 'register the VS Code client');
     return true;
   } catch (error) {
     output && output.appendLine(`Aegis Core registration skipped: ${error.message}`);
@@ -2945,7 +2958,7 @@ async function registerAegisCoreClient(target) {
 
 async function createAegisCoreTask(target, title, kind, request, metadata = {}) {
   try {
-    const response = await requestJson(new URL('/v1/tasks', getConfig().coreUrl), {
+    const envelope = await requestJson(new URL('/v1/tasks', getConfig().coreUrl), {
       workspace: target.root,
       title,
       kind,
@@ -2953,6 +2966,7 @@ async function createAegisCoreTask(target, title, kind, request, metadata = {}) 
       request,
       metadata
     }, 120000);
+    const response = requireAegisCoreOk(validateAegisCoreEnvelope(envelope, 'task.created'), 'create a shared task');
     return response && response.data && response.data.id ? response.data.id : '';
   } catch (error) {
     output && output.appendLine(`Aegis Core task creation skipped: ${error.message}`);
@@ -2965,11 +2979,12 @@ async function updateAegisCoreTaskStatus(target, taskId, status, summary = '') {
     return false;
   }
   try {
-    await requestJson(new URL(`/v1/tasks/${encodeURIComponent(taskId)}/status`, getConfig().coreUrl), {
+    const envelope = await requestJson(new URL(`/v1/tasks/${encodeURIComponent(taskId)}/status`, getConfig().coreUrl), {
       workspace: target.root,
       status,
       summary
     }, 120000);
+    requireAegisCoreOk(validateAegisCoreEnvelope(envelope, 'task.updated'), 'update a shared task');
     return true;
   } catch (error) {
     output && output.appendLine(`Aegis Core task update skipped: ${error.message}`);

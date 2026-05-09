@@ -28,8 +28,12 @@ namespace Aegis.LocalAgent.VisualStudio.Services
                 url += "?workspace=" + Uri.EscapeDataString(workspaceRoot);
             }
 
-            var text = await Http.GetStringAsync(url);
-            return JObject.Parse(text);
+            using (var response = await Http.GetAsync(url, cancellationToken))
+            {
+                await EnsureSuccessAsync(response, "read Aegis Core health");
+                var text = await response.Content.ReadAsStringAsync();
+                return ParseCoreEnvelope(text, "health", "read Aegis Core health");
+            }
         }
 
         public async Task RegisterClientAsync(SolutionContext context, CancellationToken cancellationToken = default)
@@ -55,6 +59,8 @@ namespace Aegis.LocalAgent.VisualStudio.Services
                 using (var response = await Http.PostAsync($"{BaseUrl}/v1/clients/register", content, cancellationToken))
                 {
                     await EnsureSuccessAsync(response, "register Visual Studio client with Aegis Core");
+                    var text = await response.Content.ReadAsStringAsync();
+                    ParseCoreEnvelope(text, "client.registered", "register Visual Studio client with Aegis Core", requireOk: true);
                 }
             }
         }
@@ -93,6 +99,64 @@ namespace Aegis.LocalAgent.VisualStudio.Services
             {
                 return responseText.Trim();
             }
+        }
+
+        private static JObject ParseCoreEnvelope(string responseText, string expectedKind, string action, bool requireOk = false)
+        {
+            if (string.IsNullOrWhiteSpace(responseText))
+            {
+                throw new InvalidOperationException($"Could not {action}: Aegis Core returned an empty response.");
+            }
+
+            JObject parsed;
+            try
+            {
+                parsed = JObject.Parse(responseText);
+            }
+            catch (JsonException ex)
+            {
+                throw new InvalidOperationException($"Could not {action}: Aegis Core returned invalid JSON - {ex.Message}", ex);
+            }
+
+            var apiVersion = parsed.Value<string>("api_version");
+            if (!string.Equals(apiVersion, "v1", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException($"Could not {action}: Aegis Core response used unexpected api_version: {apiVersion ?? "missing"}.");
+            }
+
+            var kind = parsed.Value<string>("kind");
+            if (!string.Equals(kind, expectedKind, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException($"Could not {action}: Aegis Core response kind mismatch: expected {expectedKind}, got {kind ?? "missing"}.");
+            }
+
+            JToken okToken;
+            if (requireOk && parsed.TryGetValue("ok", out okToken) && okToken.Type == JTokenType.Boolean && !okToken.Value<bool>())
+            {
+                throw new InvalidOperationException($"Could not {action}: {ExtractCoreEnvelopeError(parsed)}");
+            }
+
+            return parsed;
+        }
+
+        private static string ExtractCoreEnvelopeError(JObject envelope)
+        {
+            var data = envelope["data"] as JObject;
+            var detail = data?.Value<string>("error")
+                ?? data?.Value<string>("message")
+                ?? envelope.Value<string>("detail");
+            if (!string.IsNullOrWhiteSpace(detail))
+            {
+                return detail;
+            }
+
+            var deprecations = envelope["deprecations"] as JArray;
+            if (deprecations != null && deprecations.Count > 0)
+            {
+                return string.Join("; ", deprecations);
+            }
+
+            return "Core returned ok=false.";
         }
 
         private string BaseUrl

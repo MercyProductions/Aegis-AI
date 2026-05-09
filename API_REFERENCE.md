@@ -97,6 +97,14 @@ All Core `/v1` responses use this envelope:
 }
 ```
 
+Client parsing rules:
+
+- Validate `api_version` before trusting the response. Current clients expect `v1`.
+- Validate `kind` against the endpoint contract listed below.
+- Treat unknown top-level or `data` fields as additive and safe to ignore.
+- Treat missing optional `data` fields as a degraded or empty state, not a parser crash.
+- For sync/mutation calls, treat `ok: false` as a useful Core error and surface `data.error`, `data.message`, or `deprecations` when present.
+
 Endpoint families:
 
 | Endpoint | Contract kind | Stability | Purpose |

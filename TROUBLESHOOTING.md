@@ -71,6 +71,14 @@ If Core is reachable but registration is skipped, the client should keep local w
 
 VS Code and Visual Studio try to show the parsed Core error detail for failed shared sync calls. If the message mentions persistence, repair the workspace `.aegis` folder before retrying client registration or task sync.
 
+If a client reports an unexpected Core `api_version` or response `kind`, it is usually talking to an old Core process or the wrong base URL. Restart Core on `http://127.0.0.1:8788`, confirm `/v1/health` returns `api_version: v1`, and remove any pasted endpoint path from the client setting so only the base URL remains.
+
+Expected degraded behavior when Core is offline:
+
+- VS Code: logs Core registration/task/model/scan/roadmap/validation warnings and falls back to local or direct Ollama paths where available.
+- Visual Studio: reports Core health/registration as a warning and keeps local solution/review/build workflows available.
+- Desktop: keeps Website `/api` workflows available and marks the shared Core dashboard as unavailable.
+
 ## Safe Apply And Rollback
 
 All clients should keep approval-based edits on by default. Before applying generated edits:

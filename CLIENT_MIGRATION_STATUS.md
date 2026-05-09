@@ -6,10 +6,10 @@ Goal: migrate clients incrementally toward Aegis Core `/v1` as the shared runtim
 
 ## Migration Order
 
-1. VS Code Extension - in progress, first migration committed this phase.
-2. Visual Studio Extension - not started.
-3. Desktop App - not started.
-4. Website backend/frontend - last; adapter layer only until client migrations settle.
+1. VS Code Extension - migrated to Core contracts for shared runtime reads/tasks; hardening pass complete.
+2. Visual Studio Extension - partial Core integration hardened; broader migration not started.
+3. Desktop App - partial Core integration hardened; broader migration not started.
+4. Website backend/frontend - last; do not migrate until client hardening has more interactive coverage.
 
 ## VS Code Extension
 
@@ -49,6 +49,7 @@ Path: `vscode-plugins/aegis-local-autopilot`
 - Core memory failures fall back to `.aegis` file reads.
 - Core validation failures to connect fall back to the local safe validation runner.
 - Core task registration/update failures are logged and do not block Agent Mode.
+- Core registration and task sync now require the expected `/v1` envelope kind and surface `ok: false` details instead of silently trusting any successful JSON response.
 
 ### Broken Workflows
 
@@ -76,12 +77,24 @@ Interactive IDE host workflows still need manual follow-up:
 
 ## Visual Studio Extension
 
-Status: not started.
+Status: partial Core integration hardened; broader migration not started.
 
 Current Core use:
 
 - `GET /v1/health`
 - `POST /v1/clients/register`
+
+Hardening completed:
+
+- Health now validates the Core `/v1` envelope and expected `health` kind.
+- Registration now validates the expected `client.registered` kind and treats `ok: false` as a surfaced warning.
+- Existing runtime behavior still degrades to a health-check warning instead of blocking local Visual Studio workflows.
+
+Validation results:
+
+| Check | Result |
+| --- | --- |
+| VSIX build/package | Passed: `visual-studio-extensions/aegis-local-agent-vs/build.ps1`, produced `release/AegisLocalAgentVs.vsix` |
 
 Planned next migration candidates:
 
@@ -93,12 +106,26 @@ Planned next migration candidates:
 
 ## Desktop App
 
-Status: not started.
+Status: partial Core integration hardened; broader migration not started.
 
 Current Core use:
 
 - `POST /v1/clients/register`
 - `GET /v1/ecosystem/dashboard`
+
+Hardening completed:
+
+- Registration now validates the expected `client.registered` envelope before treating Core sync as successful.
+- Dashboard reads now validate the expected `ecosystem.dashboard` envelope before parsing shared runtime status.
+- Core offline still leaves the desktop usable through the Website backend and shows the Core dashboard as unavailable.
+
+Validation results:
+
+| Check | Result |
+| --- | --- |
+| Desktop build | Passed: `build.ps1`, produced `x64/Release/AegisChatBotDesktop.exe` |
+| Desktop smoke, Core online | Passed with isolated app data and nonblank login/setup/dashboard captures |
+| Desktop smoke, Core offline | Passed with isolated app data and nonblank login/setup/dashboard captures |
 
 Planned migration candidates:
 
@@ -108,7 +135,7 @@ Planned migration candidates:
 
 ## Website Backend/Frontend
 
-Status: adapter layer only; migrate last.
+Status: adapter layer only; migrate last. No website migration was performed during hardening.
 
 Current Core bridge:
 
@@ -117,3 +144,8 @@ Current Core bridge:
 Hold until clients are stable:
 
 - Website chat, routing, apply, checkpoint restore, project builder, auth/session, Creative Studio, and advanced product workflows.
+
+Website migration safety:
+
+- Not ready for the website migration phase yet. VS Code has the broadest Core coverage, but Visual Studio and Desktop still use only narrow Core surfaces.
+- Next hardening should add interactive extension-host/manual workflow coverage for VS Code and Visual Studio before shifting Website `/api` behavior toward Core.
