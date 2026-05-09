@@ -20,6 +20,7 @@ Actions:
 - Hardened Ollama model inventory parsing so malformed `/api/tags` payloads do not break shared health/model endpoints.
 - Hardened hybrid provider inventory and route planning so credential-store read failures are visible to clients instead of being flattened into missing cloud keys.
 - Hardened hybrid provider key deletion so real OS credential-store delete failures are surfaced while missing keys remain a harmless no-op.
+- Hardened Core diagnostic redaction so Google/OpenAI-style query-string keys are scrubbed from provider connection errors before clients or logs see them.
 - Added explicit Core task-status API errors for bad statuses and missing task IDs.
 - Hardened shared task record loading so malformed local task metadata and timestamps do not break dashboards or status updates.
 - Hardened shared client registry loading so malformed local client records and mixed timestamp types do not break dashboard client lists.
@@ -640,3 +641,21 @@ Validation completed:
 - Aegis Core contract tests: pass, 87 tests.
 - Aegis Core compile check: pass.
 - VS Code extension compile smoke: pass.
+
+## 2026-05-09 - Provider Error Secret Redaction
+
+Focus:
+
+- Keep optional cloud-provider diagnostics useful without exposing provider keys.
+- Preserve local-first privacy controls when provider connection failures include request URLs.
+
+Actions:
+
+- Added inline redaction for query-string provider keys such as `?key=...`.
+- Added inline redaction for common assignment-style secrets and bearer tokens before diagnostic output is returned or logged.
+- Added regressions for direct diagnostic scrubbing and provider connection errors that include a Google-style API key URL.
+
+Validation completed:
+
+- Aegis Core contract tests: pass, 89 tests.
+- Aegis Core compile check: pass.

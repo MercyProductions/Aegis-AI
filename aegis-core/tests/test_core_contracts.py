@@ -3,11 +3,13 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import urllib.error
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
+import aegis_core.model_router as model_router_module
 import aegis_core.validation as validation_module
 from aegis_core.clients import list_clients
 from aegis_core.config import AegisConfig, load_config, memory_dir, update_config, write_default_config
@@ -22,6 +24,7 @@ from aegis_core.contracts import (
     validate_contract_envelope,
 )
 from aegis_core.credentials import CredentialStore, CredentialStoreError
+from aegis_core.diagnostics import scrub
 from aegis_core.memory import ProjectMemory
 from aegis_core.model_router import provider_inventory, route_model
 from aegis_core.ollama import OllamaClient, OllamaStatus
@@ -1475,6 +1478,37 @@ def test_workspace_scan_skips_file_symlink_outside_workspace(tmp_path: Path) -> 
 
     assert result["file_count"] == 0
     assert not is_safe_to_read(link, workspace)
+
+
+def test_diagnostics_scrub_redacts_provider_query_keys_without_losing_context() -> None:
+    secret = "AIzaSyVerySecretProviderKey"
+    message = (
+        "Provider connection failed: https://generativelanguage.googleapis.com/v1beta/"
+        f"models/gemini-1.5-pro:generateContent?key={secret}&alt=json"
+    )
+
+    cleaned = scrub(message)
+
+    assert secret not in cleaned
+    assert "key=[redacted]" in cleaned
+    assert "Provider connection failed" in cleaned
+
+
+def test_provider_connection_errors_redact_query_api_keys(monkeypatch) -> None:
+    secret = "AIzaSyVerySecretProviderKey"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini:generateContent?key={secret}"
+
+    def failing_urlopen(request, timeout=0):
+        raise urllib.error.URLError(f"unreachable {url}")
+
+    monkeypatch.setattr(model_router_module.urllib.request, "urlopen", failing_urlopen)
+
+    with pytest.raises(RuntimeError) as excinfo:
+        model_router_module._request_json(url, {"contents": []}, {"Content-Type": "application/json"}, 1)
+
+    message = str(excinfo.value)
+    assert secret not in message
+    assert "key=[redacted]" in message
 
 
 def test_invalid_config_values_fall_back_safely(tmp_path: Path) -> None:

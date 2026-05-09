@@ -20,6 +20,7 @@
 - Added an experimental Aegis Core hybrid model router with local-first defaults, optional OpenAI/Anthropic/Google/OpenRouter/LM Studio provider inventory, cloud approval gates, sanitized context previews, and OS credential storage for provider keys.
 - Improved hybrid provider inventory and route planning so OS credential-store inspection failures are surfaced through `credential_store_healthy` and `credential_store_errors` instead of looking like simply missing provider keys.
 - Hardened hybrid provider key deletion so missing keys still return a harmless `removed: false`, while OS credential-store backend failures surface as `503` errors instead of being mistaken for absent keys.
+- Hardened Core diagnostic redaction so provider URLs containing query-string keys are scrubbed before cloud connection errors reach clients or logs.
 - Added experimental Aegis Core autonomous task orchestration with supervised goal planning, local queue state, approval gates, validation state, rollback metadata, and memory updates without uncontrolled file editing.
 - Added experimental Aegis Core multi-agent specialization with Planner, Architect, Coder, Reviewer, Tester, Repair, and Documentation roles assigned to orchestration tasks.
 - Added experimental Aegis Core workflow automation with safe scheduled/triggered maintenance jobs, `/v1/jobs`, `aegis jobs`, generated project health reports, and `.aegis/jobs-log.md` history while preserving approval gates for risky actions.
