@@ -71,6 +71,7 @@
 - Improved lockfile metadata safety so Core tracks `package-lock.json` in scans/maintenance manifests and Website approval scoring treats Yarn/Bun lockfiles as dependency-wide changes.
 - Improved Python lockfile metadata safety so Core tracks `uv.lock`, `poetry.lock`, and `pdm.lock` in scans/maintenance manifests and Website treats those files as dependency drift and high-risk auto-apply changes.
 - Improved Go/Rust metadata safety so Core scans `.go`/`.rs` files plus `Cargo.lock`, `go.mod`, and `go.sum`, Website approval/autonomous planning treats native lockfiles as dependency-wide changes, and VS Code local fallback guards `go.sum`.
+- Improved .NET/NuGet metadata safety so Core and Website track `packages.lock.json`, `packages.config`, and `Directory.Packages.props` as dependency-wide metadata, watcher events include concrete NuGet drift evidence, and VS Code local fallback guards the same files.
 - Improved VS Code local fallback safety so `uv.lock`, `poetry.lock`, and `pdm.lock` are treated as important Python package-manager metadata and guarded lockfiles.
 - Improved Aegis Core validation detection so root `build.ps1` guard scripts are surfaced before lower-level CMake/.NET fallback commands and constrained to an exact safe PowerShell invocation.
 - Improved the Aegis Core CLI so `--json` works before or after the subcommand.

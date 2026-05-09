@@ -41,6 +41,7 @@ IGNORE_NAMES = {
 }
 
 DOTNET_PROJECT_SUFFIXES = {".csproj": "C#", ".fsproj": "F#", ".vbproj": "Visual Basic"}
+DOTNET_DEPENDENCY_METADATA_FILES = ("Directory.Packages.props", "packages.config", "packages.lock.json")
 VISUAL_STUDIO_SOLUTION_GLOBS = ("*.sln", "*.slnx")
 
 TEXT_SUFFIXES = {
@@ -1051,6 +1052,15 @@ class WorkspaceManager:
                 )
 
     def _inspect_dotnet_projects(self, root: Path, profile: WorkspaceDependencyProfile) -> None:
+        has_dotnet_dependency_metadata = False
+        for relative in DOTNET_DEPENDENCY_METADATA_FILES:
+            if self._path_is_file(root / relative):
+                has_dotnet_dependency_metadata = True
+                self._add_unique(profile.config_files, relative)
+        if has_dotnet_dependency_metadata:
+            self._add_unique(profile.package_managers, "dotnet")
+            self._add_unique(profile.build_systems, ".NET")
+
         dotnet_projects = [
             path
             for suffix in DOTNET_PROJECT_SUFFIXES

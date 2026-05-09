@@ -71,6 +71,8 @@ class AutonomousEngineeringTests(unittest.TestCase):
         self.assertIn("uv.lock", detail.simulations[0].projected_dependency_changes)
         self.assertIn("Cargo.lock", detail.simulations[0].projected_dependency_changes)
         self.assertIn("go.sum", detail.simulations[0].projected_dependency_changes)
+        self.assertIn("packages.lock.json", detail.simulations[0].projected_dependency_changes)
+        self.assertIn("Directory.Packages.props", detail.simulations[0].projected_dependency_changes)
         self.assertGreater(detail.simulations[0].predicted_validation_risk, 0.3)
         self.assertEqual(loaded.objective.id, detail.objective.id)
         self.assertTrue(loaded.explanations)

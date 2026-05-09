@@ -79,6 +79,9 @@ class ApprovalAndCommandTests(unittest.TestCase):
                 FileChange(action="update", path="pdm.lock", content=""),
                 FileChange(action="update", path="Cargo.lock", content=""),
                 FileChange(action="update", path="go.sum", content=""),
+                FileChange(action="update", path="packages.lock.json", content="{}\n"),
+                FileChange(action="update", path="packages.config", content="<packages />\n"),
+                FileChange(action="update", path="Directory.Packages.props", content="<Project />\n"),
             ]
         )
 
@@ -95,6 +98,9 @@ class ApprovalAndCommandTests(unittest.TestCase):
                 "pdm.lock",
                 "Cargo.lock",
                 "go.sum",
+                "packages.lock.json",
+                "packages.config",
+                "Directory.Packages.props",
             ],
         )
         self.assertTrue(all(item[1].risk_level >= 5 for item in blocked))

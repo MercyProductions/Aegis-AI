@@ -1,5 +1,24 @@
 # Development Log
 
+## 2026-05-09 - .NET NuGet Metadata Safety
+
+Focus:
+
+- Bring NuGet lockfile and central package metadata into the same safety posture as JS, Python, Go, and Rust dependency metadata.
+- Make dependency watcher drift events point at the concrete NuGet files that changed.
+
+Actions:
+
+- Added Core scan, quality, job, and simulation coverage for `packages.lock.json`, `packages.config`, and `Directory.Packages.props`.
+- Extended Website approval, autonomous dependency projections, workspace dependency profiling, and watcher evidence for NuGet metadata.
+- Extended VS Code local fallback guards and project-language inference for NuGet metadata files.
+
+Validation completed:
+
+- Aegis Core focused lockfile/source metadata tests: pass.
+- Website approval, autonomous engineering, and workspace operation tests: pass.
+- VS Code package lint and extension syntax check: pass.
+
 ## 2026-05-09 - Go/Rust Lockfile Metadata Safety
 
 Focus:

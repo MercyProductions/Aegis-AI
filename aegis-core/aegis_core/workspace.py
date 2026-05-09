@@ -116,6 +116,11 @@ BUILD_FILE_NAMES = {
     "Cargo.lock",
     "go.mod",
     "go.sum",
+    "packages.config",
+    "packages.lock.json",
+    "Directory.Packages.props",
+    "Directory.Build.props",
+    "Directory.Build.targets",
     "CMakeLists.txt",
     "Makefile",
 }

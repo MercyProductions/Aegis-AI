@@ -729,6 +729,8 @@ def _dependency_manifests(root: Path) -> list[str]:
         "go.mod",
         "go.sum",
         "packages.config",
+        "packages.lock.json",
+        "Directory.Packages.props",
     }
     manifests: list[str] = []
     for name in sorted(names):

@@ -47,7 +47,15 @@ DEPENDENCY_FILES = {
     "Cargo.lock",
     "go.mod",
     "go.sum",
+    "packages.lock.json",
+    "packages.config",
+    "Directory.Packages.props",
 }
+DEPENDENCY_FILE_NAMES = {name.casefold() for name in DEPENDENCY_FILES}
+
+
+def _is_dependency_file(path: str) -> bool:
+    return Path(path).name.casefold() in DEPENDENCY_FILE_NAMES
 
 
 def utc_now() -> str:
@@ -157,7 +165,7 @@ class WorkspaceOperationsEngine:
                 if state_by_path[path].fingerprint != previous_by_path[path].fingerprint
             ]
             for path in modified[:50]:
-                severity = "medium" if path in DEPENDENCY_FILES or any(marker in path.lower() for marker in ("config", "schema", "storage")) else "low"
+                severity = "medium" if _is_dependency_file(path) or any(marker in path.lower() for marker in ("config", "schema", "storage")) else "low"
                 events.append(self.event(workspace_root, "file.modified", severity, "File changed", path, path=path))
 
             if previous.dependency_fingerprint and previous.dependency_fingerprint != self.dependency_fingerprint(dependency_profile, states):
@@ -168,6 +176,7 @@ class WorkspaceOperationsEngine:
                         "medium",
                         "Dependency profile changed",
                         "Dependency manifests, lockfiles, or inferred package metadata changed since the last scan.",
+                        related_files=self.dependency_related_files(dependency_profile, states),
                     )
                 )
             if previous.git.branch and git.branch and previous.git.branch != git.branch:
@@ -453,7 +462,7 @@ class WorkspaceOperationsEngine:
         dependency_profile: WorkspaceDependencyProfile,
         states: list[WorkspaceFileState],
     ) -> str:
-        dep_states = [item for item in states if Path(item.path).name in DEPENDENCY_FILES]
+        dep_states = [item for item in states if _is_dependency_file(item.path)]
         payload = {
             "config_files": dependency_profile.config_files,
             "dependencies": [item.model_dump(mode="json") for item in dependency_profile.dependencies],
@@ -461,6 +470,15 @@ class WorkspaceOperationsEngine:
             "states": [item.model_dump(mode="json") for item in dep_states],
         }
         return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
+
+    def dependency_related_files(
+        self,
+        dependency_profile: WorkspaceDependencyProfile,
+        states: list[WorkspaceFileState],
+    ) -> list[str]:
+        related = {path for path in dependency_profile.config_files if _is_dependency_file(path)}
+        related.update(item.path for item in states if _is_dependency_file(item.path))
+        return sorted(related)[:20]
 
     def event(
         self,
@@ -593,7 +611,7 @@ class WorkspaceOperationsEngine:
                 score=72,
                 summary="Dependency metadata needs review.",
                 evidence=warnings[:10],
-                related_files=[path for path in dependency.config_files if Path(path).name in DEPENDENCY_FILES],
+                related_files=[path for path in dependency.config_files if _is_dependency_file(path)],
             )
         return ProjectHealthMetric(name="Dependency freshness", status="healthy", score=92, summary="Dependency manifests are present with no local warnings.")
 

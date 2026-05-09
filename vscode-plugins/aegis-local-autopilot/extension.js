@@ -84,6 +84,9 @@ const LOCKFILE_PATTERNS = [
   /^bun\.lockb$/i,
   /^cargo\.lock$/i,
   /^go\.sum$/i,
+  /^packages\.lock\.json$/i,
+  /^packages\.config$/i,
+  /^directory\.packages\.props$/i,
   /^uv\.lock$/i,
   /^poetry\.lock$/i,
   /^pdm\.lock$/i
@@ -113,6 +116,10 @@ const IMPORTANT_FILE_PATTERNS = [
   /^cargo\.lock$/i,
   /^go\.mod$/i,
   /^go\.sum$/i,
+  /^packages\.lock\.json$/i,
+  /^packages\.config$/i,
+  /^directory\.packages\.props$/i,
+  /^directory\.build\.(?:props|targets)$/i,
   /^pom\.xml$/i,
   /^build\.gradle/i,
   /^dockerfile$/i,
@@ -2199,12 +2206,14 @@ function inferProjectLanguages(files, importantContents) {
   const extensions = new Set(files.map((file) => path.extname(file.relative).toLowerCase()));
   const hasUnityProject = names.has('projectsettings/projectversion.txt') || names.has('packages/manifest.json') || Array.from(names).some((name) => name.startsWith('assets/') && name.endsWith('.unity'));
   const hasPythonLockfile = names.has('uv.lock') || names.has('poetry.lock') || names.has('pdm.lock');
+  const hasDotnetProject = Array.from(names).some((name) => name.endsWith('.csproj') || name.endsWith('.sln') || name.endsWith('.slnx'));
+  const hasDotnetNugetMetadata = names.has('packages.lock.json') || names.has('packages.config') || names.has('directory.packages.props');
 
   if (extensions.has('.ts') || extensions.has('.tsx')) languages.add('TypeScript');
   if (extensions.has('.js') || extensions.has('.jsx') || names.has('package.json')) languages.add('JavaScript');
   if (extensions.has('.py') || names.has('pyproject.toml') || names.has('requirements.txt') || hasPythonLockfile) languages.add('Python');
   if (extensions.has('.cpp') || extensions.has('.cc') || extensions.has('.cxx') || extensions.has('.c') || extensions.has('.h') || extensions.has('.hpp')) languages.add('C/C++');
-  if (extensions.has('.cs') || Array.from(names).some((name) => name.endsWith('.csproj') || name.endsWith('.sln') || name.endsWith('.slnx'))) languages.add('C#/.NET');
+  if (extensions.has('.cs') || hasDotnetProject || hasDotnetNugetMetadata) languages.add('C#/.NET');
   if (extensions.has('.fs') || extensions.has('.fsi') || extensions.has('.fsx') || Array.from(names).some((name) => name.endsWith('.fsproj'))) languages.add('F#/.NET');
   if (extensions.has('.vb') || Array.from(names).some((name) => name.endsWith('.vbproj'))) languages.add('VB.NET');
   if (extensions.has('.rs') || names.has('cargo.toml') || names.has('cargo.lock')) languages.add('Rust');

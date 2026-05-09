@@ -545,6 +545,17 @@ function assertProjectLanguageInference(inferrer) {
   if (!nativeLockResult.languages.includes('Rust') || !nativeLockResult.languages.includes('Go')) {
     fail('inferProjectLanguages must detect Rust and Go workspaces from native lockfiles.');
   }
+
+  const dotnetPackageResult = inferrer(
+    [
+      { relative: 'packages.lock.json' },
+      { relative: 'Directory.Packages.props' }
+    ],
+    []
+  );
+  if (!dotnetPackageResult.languages.includes('C#/.NET')) {
+    fail('inferProjectLanguages must detect .NET workspaces from NuGet package metadata.');
+  }
 }
 
 function assertProjectCommandInference(inferrer) {
@@ -593,6 +604,11 @@ function assertPythonLockfilePatterns(source) {
   }
   if (!source.includes('^cargo\\.lock$') || !source.includes('^go\\.sum$')) {
     fail('extension lockfile safety patterns must include Cargo.lock and go.sum.');
+  }
+  for (const pattern of ['^packages\\.lock\\.json$', '^packages\\.config$', '^directory\\.packages\\.props$']) {
+    if (!source.includes(pattern)) {
+      fail(`extension lockfile safety patterns must include ${pattern}.`);
+    }
   }
 }
 

@@ -141,6 +141,9 @@ class ApprovalManager:
             "pdm.lock",
             "cargo.lock",
             "go.sum",
+            "packages.lock.json",
+            "packages.config",
+            "directory.packages.props",
         }:
             return 6, "Environment and lockfile changes can affect the whole workspace."
         if action == "create" and name in {

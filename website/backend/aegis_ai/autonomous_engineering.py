@@ -488,6 +488,9 @@ class AutonomousEngineeringEngine:
                 "pdm.lock",
                 "Cargo.lock",
                 "go.sum",
+                "packages.lock.json",
+                "packages.config",
+                "Directory.Packages.props",
             ]
         risk = 0.25
         if _contains_any(goal, ARCHITECTURE_TERMS):

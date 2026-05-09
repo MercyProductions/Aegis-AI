@@ -47,7 +47,7 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 | Website model manager | Improved | Damaged model-operation and pull-log JSON paths are skipped safely, invalid operation records are ignored, and operation history writes are atomic. |
 | Website model benchmarks | Improved | Damaged benchmark result/job stores are skipped safely, blank job records are ignored, and benchmark state writes are atomic. |
 | Website dependency profiling | Improved | Damaged marker directories and lockfile paths no longer distort onboarding stack, package-manager, entry-point, or database summaries, root `build.py` / `build.ps1` guard scripts are recorded before lower-level native validation fallbacks, and Python lockfile drift is tracked by watcher snapshots. |
-| Dependency lockfile safety | Improved | Core maintenance manifests, Website guided auto-apply scoring, autonomous dependency projections, and VS Code local fallback proposal guards now treat JS, Python, Go, and Rust lockfiles as dependency-wide surfaces. |
+| Dependency lockfile safety | Improved | Core maintenance manifests, Website guided auto-apply scoring, autonomous dependency projections, watcher evidence, and VS Code local fallback proposal guards now treat JS, Python, Go, Rust, and .NET/NuGet lockfiles or package metadata as dependency-wide surfaces. |
 | Website creative assets | Improved | Generated media preview URLs use the shared API resource URL helper, so previews work through the Vite proxy and discovered backend ports instead of assuming `8787`. |
 | Website checkpoint restore | Improved | Restore now validates checkpoint IDs, damaged manifests, backup paths, and missing backup files before touching workspace files. |
 | Website safe apply | Improved | Apply refuses to edit when checkpoint creation fails and reports later write/delete failures with checkpoint context. |
@@ -87,8 +87,8 @@ Ran during this pass:
 - Website frontend API tests: pass, including memory and creative asset API base discovery regressions
 - Website frontend tests: 21 files / 172 tests passed
 - Website frontend production build: pass, no Vite chunk-size warning
-- Aegis Core Go/Rust lockfile/source metadata focused tests: 5 passed
-- Website approval/autonomous lockfile safety tests: 29 passed, 11 subtests passed
+- Aegis Core JS/Python/Go/Rust/.NET lockfile/source metadata focused tests: 7 passed
+- Website approval/autonomous/workspace-operation lockfile safety tests: 36 passed, 11 subtests passed
 - VS Code package lint and extension syntax check: pass
 - Website focused frontend API/runtime/task tests: 40 tests passed
 - Website acceptance gate with explicit backend/frontend URLs: pass
@@ -143,6 +143,7 @@ Ran during this pass:
 - Hardened Website model-manager snapshot reads so damaged `logs/model-manager/operations.json` and model-pull summary paths cannot break the local model dashboard.
 - Hardened Website model-benchmark persistence so damaged benchmark result/job JSON paths cannot break snapshots, blank job records are ignored, and failed state writes return clear API errors.
 - Hardened Website dependency profiling so damaged marker directories and lockfile paths do not distort onboarding stack summaries and root build guard scripts stay aligned with validation planning.
+- Hardened Core, Website, and VS Code dependency metadata handling so NuGet lockfiles and central package metadata are treated as dependency-wide drift and guarded edit surfaces.
 - Hardened Website checkpoint restore so invalid checkpoint IDs, non-file manifests, and escaped backup paths fail safely before workspace files are restored or removed.
 - Hardened Website checkpoint restore preflight so missing backup files fail clearly before any workspace files are restored or removed.
 - Hardened Website apply changes so failed checkpoint creation stops the apply before file writes and file write/delete failures are reported as warnings tied to the checkpoint.
