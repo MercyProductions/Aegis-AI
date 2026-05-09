@@ -71,10 +71,16 @@ class CredentialStore:
             return False
         if self._keyring is not None:
             try:
+                existing = self._keyring.get_password(self.service_name, provider)
+            except Exception as exc:
+                raise CredentialStoreError(f"OS credential store read failed before delete: {exc}") from exc
+            if not (isinstance(existing, str) and existing.strip()):
+                return False
+            try:
                 self._keyring.delete_password(self.service_name, provider)
                 return True
-            except Exception:
-                return False
+            except Exception as exc:
+                raise CredentialStoreError(f"OS credential store delete failed: {exc}") from exc
         if os.name == "nt":
             return _windows_delete_credential(credential_target(provider))
         raise CredentialStoreError("No OS credential store is available. Install keyring or use Windows Credential Manager.")

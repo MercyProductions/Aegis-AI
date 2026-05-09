@@ -19,6 +19,7 @@ Actions:
 - Hardened shared Ollama URL parsing and model health diagnostics for malformed local endpoint settings, pasted API paths, and credential-like URL text.
 - Hardened Ollama model inventory parsing so malformed `/api/tags` payloads do not break shared health/model endpoints.
 - Hardened hybrid provider inventory and route planning so credential-store read failures are visible to clients instead of being flattened into missing cloud keys.
+- Hardened hybrid provider key deletion so real OS credential-store delete failures are surfaced while missing keys remain a harmless no-op.
 - Added explicit Core task-status API errors for bad statuses and missing task IDs.
 - Hardened shared task record loading so malformed local task metadata and timestamps do not break dashboards or status updates.
 - Hardened shared client registry loading so malformed local client records and mixed timestamp types do not break dashboard client lists.
@@ -619,3 +620,23 @@ Actions:
 Validation completed:
 
 - Aegis Core contract tests: pass, 77 tests including graph persistence, read-only graph behavior, API/file/doc/validation relationships, graph query responses, and Planner graph integration.
+
+## 2026-05-09 - Provider Credential Delete Diagnostics
+
+Focus:
+
+- Keep the hybrid model router trustworthy when provider-key removal touches OS credential storage.
+- Preserve harmless no-op behavior for missing keys while surfacing real credential backend failures.
+
+Actions:
+
+- Changed keyring-backed provider-key deletion to verify whether a key exists before deleting it.
+- Kept missing provider keys as `removed: false`.
+- Surfaced keyring read/delete backend failures as `CredentialStoreError`, allowing `/v1/providers/{provider_id}/key` deletes to return clear degraded `503` responses.
+- Added focused regression tests for missing-key deletion and credential backend delete failure.
+
+Validation completed:
+
+- Aegis Core contract tests: pass, 87 tests.
+- Aegis Core compile check: pass.
+- VS Code extension compile smoke: pass.

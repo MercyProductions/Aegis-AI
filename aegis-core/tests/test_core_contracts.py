@@ -5,6 +5,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 import aegis_core.validation as validation_module
@@ -20,6 +21,7 @@ from aegis_core.contracts import (
     model_dump,
     validate_contract_envelope,
 )
+from aegis_core.credentials import CredentialStore, CredentialStoreError
 from aegis_core.memory import ProjectMemory
 from aegis_core.model_router import provider_inventory, route_model
 from aegis_core.ollama import OllamaClient, OllamaStatus
@@ -1612,6 +1614,40 @@ class DummyCredentialStore:
 class BrokenCredentialStore(DummyCredentialStore):
     def has_provider_key(self, provider_id: str) -> bool:
         raise RuntimeError("credential backend unavailable")
+
+
+class MissingDeleteKeyring:
+    def get_password(self, service_name: str, provider_id: str) -> None:
+        return None
+
+    def delete_password(self, service_name: str, provider_id: str) -> None:
+        raise AssertionError("delete_password should not run for missing keys")
+
+
+class BrokenDeleteKeyring:
+    def get_password(self, service_name: str, provider_id: str) -> str:
+        return "stored-key"
+
+    def delete_password(self, service_name: str, provider_id: str) -> None:
+        raise RuntimeError("credential backend unavailable")
+
+
+def test_credential_store_delete_missing_key_returns_false(monkeypatch) -> None:
+    store = CredentialStore(service_name="aegis-core-test")
+    monkeypatch.setattr(store, "_keyring", MissingDeleteKeyring())
+
+    assert store.delete_provider_key("openai") is False
+
+
+def test_credential_store_delete_reports_backend_failure(monkeypatch) -> None:
+    store = CredentialStore(service_name="aegis-core-test")
+    monkeypatch.setattr(store, "_keyring", BrokenDeleteKeyring())
+
+    with pytest.raises(CredentialStoreError) as excinfo:
+        store.delete_provider_key("openai")
+
+    assert "OS credential store delete failed" in str(excinfo.value)
+    assert "credential backend unavailable" in str(excinfo.value)
 
 
 def test_model_router_is_local_first_and_blocks_secret_context(tmp_path: Path, monkeypatch) -> None:
