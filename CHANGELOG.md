@@ -30,6 +30,7 @@
 - Hardened VS Code package lint with validation-command guard regressions so launcher aliases, chained commands, installs, and destructive Git forms stay out of the local fallback runner.
 - Hardened VS Code Core/Ollama URL handling so reverse-proxy path prefixes are preserved while pasted `/v1`, `/health`, `/models`, and Ollama `/api/...` endpoint paths are trimmed.
 - Hardened Visual Studio Core/Ollama URL handling so reverse-proxy path prefixes are preserved while pasted `/v1`, `/health`, `/models`, and Ollama `/api/...` endpoint paths are trimmed.
+- Hardened Visual Studio rollback so manifests must resolve through explicit `backupId` values and added a `build.ps1 -ValidateOnly` guard path for fast package/safety validation.
 - Hardened Desktop backend/Core URL handling so reverse-proxy path prefixes are preserved while pasted `/api`, `/v1`, `/health`, or `/models` endpoint paths are trimmed.
 - Hardened Aegis Core local provider URL settings so Ollama and LM Studio reverse-proxy prefixes are preserved while pasted `/api/...` and `/v1/...` endpoint paths are trimmed.
 - Hardened Aegis Core validation detection so native Visual Studio/C++ solutions are not mislabeled as `dotnet build` projects unless a .NET project file is present or referenced.

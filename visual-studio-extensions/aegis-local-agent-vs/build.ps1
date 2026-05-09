@@ -1,14 +1,14 @@
+param(
+  [switch]$ValidateOnly
+)
+
 $ErrorActionPreference = "Stop"
 
-$root = Split-Path -Parent $MyInvocation.MyCommand.Path
+$root = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
 $solution = Join-Path $root "AegisLocalAgentVs.sln"
 $project = Join-Path $root "src\AegisLocalAgentVs\AegisLocalAgentVs.csproj"
 $projectDir = Split-Path -Parent $project
 $release = Join-Path $root "release"
-
-if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
-  throw "dotnet was not found. Install the .NET SDK and Visual Studio 2022 Community with the Visual Studio extension development workload."
-}
 
 function Invoke-MSBuild {
   param(
@@ -192,6 +192,29 @@ function Assert-UrlNormalizationGuards {
   }
 }
 
+function Assert-SafeEditRollbackGuards {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$ProjectDirectory
+  )
+
+  $safeEditText = Get-Content -Raw -LiteralPath (Join-Path $ProjectDirectory "Services\SafeEditService.cs")
+
+  $issues = @()
+  if ($safeEditText -match 'TimestampFromCreatedAt') {
+    $issues += "SafeEditService rollback must not fall back from explicit backupId to createdAt-derived folders."
+  }
+  if ($safeEditText -notmatch 'manifest\.BackupId\?\.Trim\(\)' -or
+      $safeEditText -notmatch 'IsSafeBackupId\(backupId\)' -or
+      $safeEditText -notmatch 'Path\.Combine\(normalizedBase, backupId\)') {
+    $issues += "SafeEditService rollback must resolve backup folders from the manifest backupId only."
+  }
+
+  if ($issues.Count -gt 0) {
+    throw "Visual Studio rollback safety validation failed:`n - $($issues -join "`n - ")"
+  }
+}
+
 Assert-VisualStudioCommandTable `
   -VsctPath (Join-Path $projectDir "AegisLocalAgentPackage.vsct") `
   -CommandIdsPath (Join-Path $projectDir "CommandIds.cs") `
@@ -199,6 +222,16 @@ Assert-VisualStudioCommandTable `
 
 Assert-DiagnosticRedactionGuards -ProjectDirectory $projectDir
 Assert-UrlNormalizationGuards -ProjectDirectory $projectDir
+Assert-SafeEditRollbackGuards -ProjectDirectory $projectDir
+
+if ($ValidateOnly) {
+  Write-Host "Visual Studio package validation guards passed."
+  return
+}
+
+if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
+  throw "dotnet was not found. Install the .NET SDK and Visual Studio 2022 Community with the Visual Studio extension development workload."
+}
 
 New-Item -ItemType Directory -Force -Path $release | Out-Null
 $sourceOnlyReleaseFiles = @(

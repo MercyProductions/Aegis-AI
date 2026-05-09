@@ -4,6 +4,14 @@ Version: `0.1.1`
 
 ## Build Locally
 
+Run fast static package and safety guards:
+
+```powershell
+.\build.ps1 -ValidateOnly
+```
+
+Build the release VSIX:
+
 ```powershell
 .\build.ps1
 ```

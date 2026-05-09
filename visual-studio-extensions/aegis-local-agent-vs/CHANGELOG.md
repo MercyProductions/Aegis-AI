@@ -10,8 +10,10 @@
 - Hardened `build.ps1` so MSBuild failures stop packaging and the generated VSIX is checked for matching manifest version plus embedded `Menus.ctmenu` resources.
 - Hardened `build.ps1` to reject localhost placeholder metadata and internal note/model-inventory files in packaged VSIX archives.
 - Hardened `build.ps1` release-folder cleanup so stale internal dogfooding notes, detected-model inventories, and repository-only `.gitignore` files are removed before packaging.
+- Added `build.ps1 -ValidateOnly` for fast package/safety guard checks without requiring a full VSIX build.
 - Hardened solution memory reads and writes so damaged `.aegis` paths degrade safely instead of crashing roadmap, context, build-log, or history workflows.
 - Hardened rollback manifests with explicit backup IDs and rollback path validation so corrupted metadata cannot restore from ambiguous or escaped paths.
+- Hardened rollback resolution so the manifest `backupId` is required and `createdAt` can no longer be used as a fallback backup folder selector.
 - Tightened rollback for shared backup locations so manifests from another solution, hidden/dot backup IDs, ambiguous newest-backup fallback, and traversal or secret-like proposed paths are rejected.
 - Hardened Ollama/Core URL settings so host:port inputs, pasted endpoint paths, and invalid values normalize before model calls or shared Core registration.
 - Hardened Core/Ollama URL normalization to preserve reverse-proxy path prefixes while trimming pasted endpoint paths.

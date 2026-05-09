@@ -393,32 +393,19 @@ namespace Aegis.LocalAgent.VisualStudio.Services
             return DateTime.UtcNow.ToString("yyyy-MM-ddTHH-mm-ss-fffZ");
         }
 
-        private static string TimestampFromCreatedAt(string value)
-        {
-            if (DateTime.TryParse(value, out var date))
-            {
-                return date.ToUniversalTime().ToString("yyyy-MM-ddTHH-mm-ss-fffZ");
-            }
-
-            return value;
-        }
-
         private static string ResolveBackupRoot(string backupBase, BackupManifest manifest)
         {
             var normalizedBase = Path.GetFullPath(backupBase);
-            foreach (var rawName in new[] { manifest.BackupId, TimestampFromCreatedAt(manifest.CreatedAtString) })
+            var backupId = manifest.BackupId?.Trim();
+            if (!IsSafeBackupId(backupId))
             {
-                var backupId = rawName?.Trim();
-                if (!IsSafeBackupId(backupId))
-                {
-                    continue;
-                }
+                return string.Empty;
+            }
 
-                var candidate = Path.GetFullPath(Path.Combine(normalizedBase, backupId));
-                if (IsInside(normalizedBase, candidate) && Directory.Exists(candidate))
-                {
-                    return candidate;
-                }
+            var candidate = Path.GetFullPath(Path.Combine(normalizedBase, backupId));
+            if (IsInside(normalizedBase, candidate) && Directory.Exists(candidate))
+            {
+                return candidate;
             }
 
             return string.Empty;

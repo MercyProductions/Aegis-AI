@@ -1999,6 +1999,26 @@ Validation completed:
 - Aegis Core package compile check: pass.
 - Repository whitespace check: pass.
 
+## 2026-05-09 - Visual Studio Rollback Exact Backup Validation
+
+Focus:
+
+- Align Visual Studio rollback behavior with the documented explicit `backupId` contract.
+- Keep package/safety validation fast enough to run without a full VSIX build.
+
+Actions:
+
+- Removed `createdAt` fallback backup-folder resolution so rollback requires a safe manifest `backupId`.
+- Added a build-script rollback safety guard that fails if fallback timestamp resolution returns.
+- Added `build.ps1 -ValidateOnly` to run command-table, diagnostic redaction, URL normalization, and rollback safety guards without invoking MSBuild.
+- Updated Visual Studio install and changelog docs plus the root changelog.
+
+Validation completed:
+
+- Visual Studio package/safety validation guards: pass.
+- Visual Studio VSIX build and package validation: pass.
+- Repository whitespace check: pass.
+
 ## 2026-05-09 - Website PowerShell Guard Windows Path Compatibility
 
 Focus:
