@@ -320,7 +320,7 @@ Body:
 }
 ```
 
-Only known safe configuration keys are applied. The file written is `.aegis/config.json`. Persisted known settings are sanitized before writing so later restarts see canonical settings instead of raw invalid input; unknown client-owned keys are preserved. `model_routing_mode` is restricted to `local_only`, `hybrid`, or `cloud_allowed`. URL settings are normalized to base HTTP(S) origins and reject credentials. `fallback_models` and `validation_preferences` are stored as clean lists. `memory_dir_name` is restricted to one workspace-local folder name; absolute paths, nested paths, and parent traversal fall back to `.aegis`.
+Only known safe configuration keys are applied. The file written is `.aegis/config.json`. Persisted known settings are sanitized before writing so later restarts see canonical settings instead of raw invalid input; unknown client-owned keys are preserved. `model_routing_mode` is restricted to `local_only`, `hybrid`, or `cloud_allowed`. Local provider URL settings are normalized to HTTP(S) service bases, preserve reverse-proxy path prefixes, trim pasted endpoint suffixes such as `/api/...` and `/v1/...`, and reject credentials. `fallback_models` and `validation_preferences` are stored as clean lists. `memory_dir_name` is restricted to one workspace-local folder name; absolute paths, nested paths, and parent traversal fall back to `.aegis`.
 
 `preferred_cloud_provider` is restricted to `openai`, `anthropic`, `google`, or `openrouter`; unsupported values fall back to the default `openai` provider.
 

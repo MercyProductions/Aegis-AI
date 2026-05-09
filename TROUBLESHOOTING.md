@@ -62,7 +62,7 @@ If model calls fail:
 
 - Confirm `ollama list` works.
 - Confirm the configured model is installed.
-- Confirm the configured Ollama URL includes a valid host and port. `127.0.0.1:11434` is normalized to `http://127.0.0.1:11434`, and pasted paths such as `/api/tags` are trimmed to the base URL. VS Code, Visual Studio, and Desktop preserve reverse-proxy prefixes such as `https://proxy.local/ollama`.
+- Confirm the configured Ollama URL includes a valid host and port. `127.0.0.1:11434` is normalized to `http://127.0.0.1:11434`, and pasted paths such as `/api/tags` are trimmed to the base URL. Core, VS Code, Visual Studio, and Desktop preserve reverse-proxy prefixes such as `https://proxy.local/ollama`.
 - Run the relevant client health check.
 - Check `.aegis/core-log.md`, `.aegis/extension-log.md`, and `.aegis/validation-log.md`.
 

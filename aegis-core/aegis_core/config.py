@@ -99,7 +99,39 @@ def _clean_http_base_url(value: Any, default: str) -> str:
         or any(char.isspace() for char in parsed.netloc)
     ):
         return default
-    return f"{parsed.scheme}://{parsed.netloc}"
+    return f"{parsed.scheme}://{parsed.netloc}{_strip_known_service_endpoint_path(parsed.path)}"
+
+
+def _strip_known_service_endpoint_path(path: str) -> str:
+    cleaned = str(path or "").rstrip("/")
+    if not cleaned or cleaned == "/":
+        return ""
+
+    segments = [segment for segment in cleaned.split("/") if segment]
+    lowered = [segment.lower() for segment in segments]
+    if "v1" in lowered:
+        index = lowered.index("v1")
+        return f"/{'/'.join(segments[:index])}" if index else ""
+
+    if "api" in lowered:
+        index = lowered.index("api")
+        endpoint = lowered[index + 1] if index + 1 < len(lowered) else ""
+        api_endpoints = {
+            "chat",
+            "embeddings",
+            "generate",
+            "ps",
+            "show",
+            "tags",
+            "version",
+        }
+        if endpoint in api_endpoints:
+            return f"/{'/'.join(segments[:index])}" if index else ""
+
+    if lowered[-1] in {"health", "models"}:
+        return f"/{'/'.join(segments[:-1])}" if len(segments) > 1 else ""
+
+    return cleaned
 
 
 def _clean_ollama_url(value: Any) -> str:

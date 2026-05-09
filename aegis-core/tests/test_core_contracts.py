@@ -2012,6 +2012,12 @@ def test_ollama_url_config_normalizes_common_local_values(tmp_path: Path) -> Non
     config_path.write_text(json.dumps({"ollama_url": "http://127.0.0.1:11434/api/tags"}), encoding="utf-8")
     assert load_config(workspace).ollama_url == "http://127.0.0.1:11434"
 
+    config_path.write_text(json.dumps({"ollama_url": "https://proxy.local/ollama/api/tags"}), encoding="utf-8")
+    assert load_config(workspace).ollama_url == "https://proxy.local/ollama"
+
+    config_path.write_text(json.dumps({"ollama_url": "https://proxy.local/ollama-v1-proxy"}), encoding="utf-8")
+    assert load_config(workspace).ollama_url == "https://proxy.local/ollama-v1-proxy"
+
     config_path.write_text(json.dumps({"ollama_url": "not a url"}), encoding="utf-8")
     assert load_config(workspace).ollama_url == AegisConfig.ollama_url
 
@@ -2023,6 +2029,28 @@ def test_ollama_url_config_normalizes_common_local_values(tmp_path: Path) -> Non
 
     config_path.write_text(json.dumps({"ollama_url": "http://127.0.0.1:not-a-port"}), encoding="utf-8")
     assert load_config(workspace).ollama_url == AegisConfig.ollama_url
+
+
+def test_local_provider_urls_preserve_reverse_proxy_prefixes(tmp_path: Path) -> None:
+    workspace = tmp_path / "provider-url-prefix-project"
+    aegis_dir = workspace / ".aegis"
+    aegis_dir.mkdir(parents=True)
+    config_path = aegis_dir / "config.json"
+
+    config_path.write_text(
+        json.dumps(
+            {
+                "ollama_url": "https://proxy.local/ollama/api/chat",
+                "lm_studio_url": "https://proxy.local/lmstudio/v1/chat/completions",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    config = load_config(workspace)
+
+    assert config.ollama_url == "https://proxy.local/ollama"
+    assert config.lm_studio_url == "https://proxy.local/lmstudio"
 
 
 def test_ollama_health_handles_malformed_direct_url() -> None:

@@ -269,6 +269,25 @@ Validation completed:
 - Desktop Release build: pass.
 - Repository whitespace check: pass.
 
+## 2026-05-09 - Core Local Provider URL Prefix Preservation
+
+Focus:
+
+- Align Aegis Core local provider URL normalization with the local clients.
+- Preserve Ollama and LM Studio reverse-proxy prefixes while tolerating pasted endpoint URLs.
+
+Actions:
+
+- Updated Core config URL cleaning to strip known `/api/...`, `/v1/...`, `/health`, and `/models` endpoint suffixes without discarding proxy prefixes.
+- Added regressions for Ollama and LM Studio proxy prefixes and path names that merely contain `v1`.
+- Updated config/API troubleshooting documentation.
+
+Validation completed:
+
+- Aegis Core provider URL normalization regression slice: pass.
+- Aegis Core contract test suite: pass.
+- Repository whitespace check: pass.
+
 ## 2026-05-09 - Completion Selected Model Guard
 
 Focus:
