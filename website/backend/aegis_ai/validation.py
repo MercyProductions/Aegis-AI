@@ -119,7 +119,7 @@ class ValidationManager:
         if history_candidate is not None:
             candidates.append(history_candidate)
 
-        has_build_runner = (workspace_root / "build.py").exists()
+        has_build_runner = self._is_file(workspace_root / "build.py")
         if has_build_runner:
             candidates.append(
                 ValidationCandidate(
@@ -130,7 +130,7 @@ class ValidationManager:
                     132,
                 )
             )
-        if (workspace_root / "build.js").exists():
+        if self._is_file(workspace_root / "build.js"):
             candidates.append(
                 ValidationCandidate(
                     "node build.js",
@@ -142,10 +142,10 @@ class ValidationManager:
             )
 
         package_json = workspace_root / "package.json"
-        if package_json.exists():
+        if self._is_file(package_json):
             candidates.extend(self._node_candidates(package_json))
 
-        if (workspace_root / "Cargo.toml").exists():
+        if self._is_file(workspace_root / "Cargo.toml"):
             candidates.extend(
                 [
                     ValidationCandidate("cargo test", "Cargo test suite", "test", "Runs Rust tests for the workspace.", 120),
@@ -153,7 +153,7 @@ class ValidationManager:
                 ]
             )
 
-        if (workspace_root / "go.mod").exists():
+        if self._is_file(workspace_root / "go.mod"):
             candidates.append(
                 ValidationCandidate("go test ./...", "Go test suite", "test", "Runs Go tests across all packages.", 120)
             )
@@ -190,7 +190,7 @@ class ValidationManager:
                     )
                 )
 
-        if (workspace_root / "CMakeLists.txt").exists() and not has_build_runner:
+        if self._is_file(workspace_root / "CMakeLists.txt") and not has_build_runner:
             candidates.extend(
                 [
                     ValidationCandidate(
@@ -217,7 +217,7 @@ class ValidationManager:
                 candidates.append(ValidationCandidate("make test", "Make test target", "test", "Runs the Makefile test target.", 92))
             candidates.append(ValidationCandidate("make", "Make build", "build", "Runs the default Makefile build target.", 82))
 
-        if (workspace_root / "pom.xml").exists():
+        if self._is_file(workspace_root / "pom.xml"):
             candidates.extend(
                 [
                     ValidationCandidate("mvn test", "Maven test suite", "test", "Runs Maven tests.", 116),
@@ -225,7 +225,10 @@ class ValidationManager:
                 ]
             )
 
-        if any((workspace_root / name).exists() for name in ("build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts")):
+        if any(
+            self._is_file(workspace_root / name)
+            for name in ("build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts")
+        ):
             candidates.extend(
                 [
                     ValidationCandidate("gradle test", "Gradle test suite", "test", "Runs Gradle tests.", 112),
@@ -233,20 +236,28 @@ class ValidationManager:
                 ]
             )
 
-        if any((workspace_root / name).exists() for name in ("pyproject.toml", "requirements.txt", "setup.py")):
+        if any(
+            self._is_file(workspace_root / name)
+            for name in ("pyproject.toml", "requirements.txt", "setup.py")
+        ):
             candidates.extend(self._python_candidates(workspace_root))
 
-        if any((workspace_root / name).exists() for name in ("tsconfig.json", "vite.config.ts", "vite.config.js")):
+        if any(
+            self._is_file(workspace_root / name)
+            for name in ("tsconfig.json", "vite.config.ts", "vite.config.js")
+        ):
             candidates.append(
                 ValidationCandidate("npx tsc --noEmit", "TypeScript typecheck", "typecheck", "Runs a no-emit TypeScript typecheck.", 85)
             )
 
-        if (workspace_root / "prisma" / "schema.prisma").exists():
+        if self._is_file(workspace_root / "prisma" / "schema.prisma"):
             candidates.append(
                 ValidationCandidate("npx prisma validate", "Prisma schema validation", "database", "Validates the Prisma database schema.", 104)
             )
 
-        if any(workspace_root.glob("**/*.sql")) or any((workspace_root / name).exists() for name in (".sqlfluff", ".sqlfluffignore")):
+        if self._first_existing(workspace_root.glob("**/*.sql")) is not None or any(
+            self._is_file(workspace_root / name) for name in (".sqlfluff", ".sqlfluffignore")
+        ):
             candidates.append(
                 ValidationCandidate("sqlfluff lint .", "SQL lint", "database", "Lints SQL files for syntax and style issues.", 74)
             )
@@ -635,24 +646,24 @@ class ValidationManager:
 
     def _inferred_install_command(self, workspace_root: Path) -> str:
         package_json = workspace_root / "package.json"
-        if package_json.exists():
+        if self._is_file(package_json):
             payload = self._read_json_object(package_json) or {}
             return self._node_install_command(workspace_root, payload)
-        if (workspace_root / "pyproject.toml").exists():
-            if (workspace_root / "uv.lock").exists():
+        if self._is_file(workspace_root / "pyproject.toml"):
+            if self._is_file(workspace_root / "uv.lock"):
                 return "uv sync"
-            if (workspace_root / "poetry.lock").exists():
+            if self._is_file(workspace_root / "poetry.lock"):
                 return "poetry install"
             return "python -m pip install -e ."
-        if (workspace_root / "requirements.txt").exists():
+        if self._is_file(workspace_root / "requirements.txt"):
             return "python -m pip install -r requirements.txt"
-        if (workspace_root / "Cargo.toml").exists():
+        if self._is_file(workspace_root / "Cargo.toml"):
             return "cargo fetch"
-        if (workspace_root / "go.mod").exists():
+        if self._is_file(workspace_root / "go.mod"):
             return "go mod download"
         if self._first_existing(workspace_root.glob("*.csproj")) is not None:
             return "dotnet restore"
-        if (workspace_root / "pom.xml").exists():
+        if self._is_file(workspace_root / "pom.xml"):
             return "mvn dependency:resolve"
         return ""
 
@@ -685,7 +696,9 @@ class ValidationManager:
         return candidates
 
     def _python_candidates(self, workspace_root: Path) -> list[ValidationCandidate]:
-        has_tests = any((workspace_root / name).exists() for name in ("tests", "pytest.ini", "conftest.py"))
+        has_tests = self._is_dir(workspace_root / "tests") or any(
+            self._is_file(workspace_root / name) for name in ("pytest.ini", "conftest.py")
+        )
         candidates: list[ValidationCandidate] = []
 
         if has_tests:
@@ -766,11 +779,11 @@ class ValidationManager:
             return "bun"
         if raw.startswith("npm"):
             return "npm"
-        if (workspace_root / "pnpm-lock.yaml").exists():
+        if self._is_file(workspace_root / "pnpm-lock.yaml"):
             return "pnpm"
-        if (workspace_root / "yarn.lock").exists():
+        if self._is_file(workspace_root / "yarn.lock"):
             return "yarn"
-        if (workspace_root / "bun.lockb").exists() or (workspace_root / "bun.lock").exists():
+        if self._is_file(workspace_root / "bun.lockb") or self._is_file(workspace_root / "bun.lock"):
             return "bun"
         return "npm"
 
@@ -797,9 +810,21 @@ class ValidationManager:
 
     def _first_existing(self, paths) -> Path | None:
         for path in paths:
-            if path.exists():
+            if self._is_file(path):
                 return path
         return None
+
+    def _is_file(self, path: Path) -> bool:
+        try:
+            return path.is_file()
+        except OSError:
+            return False
+
+    def _is_dir(self, path: Path) -> bool:
+        try:
+            return path.is_dir()
+        except OSError:
+            return False
 
     def _read_text(self, path: Path, *, limit: int) -> str:
         try:

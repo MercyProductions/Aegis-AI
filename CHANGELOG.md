@@ -41,6 +41,7 @@
 - Hardened Visual Studio rollback so backups carry explicit IDs and rollback skips unsafe or incomplete manifest entries instead of restoring from ambiguous paths.
 - Tightened Visual Studio rollback so shared backup folders cannot roll back manifests from a different solution and invalid backup IDs no longer fall back to the newest backup folder.
 - Hardened Website workspace setup so damaged `.aegis` project and validation profile paths return warnings instead of breaking setup.
+- Hardened Website validation discovery so damaged project marker directories no longer create false validation or install suggestions.
 - Hardened Website checkpoint restore so checkpoint IDs stay folder-local and damaged manifests or backup paths return clean errors instead of unsafe restores or server failures.
 - Hardened Website checkpoint restore preflight so missing backup files fail clearly before any workspace files are restored or removed.
 - Hardened Website apply changes so checkpoint creation failures stop the apply before files are touched and later write/delete failures return warnings with checkpoint context.

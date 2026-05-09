@@ -81,6 +81,55 @@ class ValidationManagerTests(unittest.TestCase):
         self.assertEqual(pipeline[0].command, "pnpm install")
         self.assertIn("pnpm typecheck", [step.command for step in pipeline])
 
+    def test_validation_discovery_ignores_damaged_marker_directories(self) -> None:
+        marker_dirs = (
+            "build.py",
+            "build.js",
+            "package.json",
+            "Cargo.toml",
+            "go.mod",
+            "Project.csproj",
+            "Native.vcxproj",
+            "Demo.sln",
+            "CMakeLists.txt",
+            "Makefile",
+            "pom.xml",
+            "build.gradle",
+            "pyproject.toml",
+            "requirements.txt",
+            "setup.py",
+            "tsconfig.json",
+            "vite.config.ts",
+            ".sqlfluff",
+            "schema.sql",
+            "pnpm-lock.yaml",
+            "yarn.lock",
+            "bun.lock",
+            "uv.lock",
+            "poetry.lock",
+            "prisma/schema.prisma",
+        )
+        for relative in marker_dirs:
+            (self.workspace / relative).mkdir(parents=True)
+
+        suggestions = self.manager.discover_commands(self.workspace)
+        pipeline = self.manager.verification_plan(self.workspace, include_install=True)
+
+        self.assertEqual([item.command for item in suggestions], [])
+        self.assertEqual([step.command for step in pipeline], [])
+
+        (self.workspace / "package.json").rmdir()
+        (self.workspace / "package.json").write_text(
+            json.dumps({"scripts": {"build": "vite build"}}),
+            encoding="utf-8",
+        )
+
+        suggestions = self.manager.discover_commands(self.workspace)
+        pipeline = self.manager.verification_plan(self.workspace, include_install=True)
+
+        self.assertEqual(suggestions[0].command, "npm run build")
+        self.assertEqual(pipeline[0].command, "npm install")
+
     def test_project_manifest_validation_command_wins_over_detected_scripts(self) -> None:
         (self.workspace / "package.json").write_text(
             json.dumps({"scripts": {"test": "vitest run", "build": "vite build"}}),
