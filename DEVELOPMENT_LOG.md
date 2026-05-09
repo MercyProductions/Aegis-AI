@@ -250,3 +250,23 @@ Validation completed:
 - Aegis Core start script against an already-running Core instance: pass; reported contract `2026.05.09`.
 - Aegis Core contract tests: pass, 51 tests.
 - Aegis Core compile check: pass.
+
+## 2026-05-09 - Aegis Core Starter Edge-Case Hardening
+
+Focus:
+
+- Keep Core startup errors clear when port `8788` is occupied by a non-Core service that returns HTTP 200 with a malformed body.
+
+Actions:
+
+- Split the start script's HTTP reachability check from JSON envelope parsing.
+- Added explicit probe reasons for HTTP errors, invalid JSON, unexpected envelopes, and unexpected status responses.
+- Included the probe reason in the wrong-service error message.
+
+Validation completed:
+
+- Aegis Core start script syntax check: pass.
+- Aegis Core start script against an already-running Core instance: pass; reported contract `2026.05.09`.
+- Mocked malformed JSON probe: pass; reported `invalid_json` while keeping the port marked reachable.
+- Aegis Core contract tests: pass, 51 tests.
+- Aegis Core compile check: pass.

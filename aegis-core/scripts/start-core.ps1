@@ -22,13 +22,6 @@ function Resolve-CorePython {
 function Test-AegisCoreHealth {
     try {
         $response = Invoke-WebRequest -UseBasicParsing $CoreUrl -Headers @{ Accept = "application/json" } -TimeoutSec 2
-        $body = $response.Content | ConvertFrom-Json
-        return [pscustomobject]@{
-            Reachable = $true
-            IsCore = ($response.StatusCode -eq 200 -and $body.api_version -eq "v1" -and $body.kind -eq "health")
-            ContractVersion = $body.contract_version
-            StatusCode = [int]$response.StatusCode
-        }
     } catch {
         $statusCode = $null
         if ($_.Exception.Response) {
@@ -40,7 +33,28 @@ function Test-AegisCoreHealth {
             IsCore = $false
             ContractVersion = $null
             StatusCode = $statusCode
+            Reason = "http_error"
         }
+    }
+
+    try {
+        $body = $response.Content | ConvertFrom-Json
+    } catch {
+        return [pscustomobject]@{
+            Reachable = $true
+            IsCore = $false
+            ContractVersion = $null
+            StatusCode = [int]$response.StatusCode
+            Reason = "invalid_json"
+        }
+    }
+
+    return [pscustomobject]@{
+        Reachable = $true
+        IsCore = ($response.StatusCode -eq 200 -and $body.api_version -eq "v1" -and $body.kind -eq "health")
+        ContractVersion = $body.contract_version
+        StatusCode = [int]$response.StatusCode
+        Reason = if ($response.StatusCode -eq 200) { "unexpected_envelope" } else { "http_status" }
     }
 }
 
@@ -51,7 +65,7 @@ if ($probe.IsCore) {
 }
 
 if ($probe.Reachable) {
-    throw "Port 8788 is responding, but it is not Aegis Core /v1 health (status $($probe.StatusCode)). Stop that process before starting Aegis Core."
+    throw "Port 8788 is responding, but it is not Aegis Core /v1 health (status $($probe.StatusCode), reason $($probe.Reason)). Stop that process before starting Aegis Core."
 }
 
 $Python = Resolve-CorePython

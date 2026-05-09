@@ -116,6 +116,20 @@ Fixes applied:
 - Preferred `.venv\Scripts\python.exe` when available.
 - Added a dependency import preflight with a setup-oriented error.
 
+### 2026-05-09 - Aegis Core Starter Edge-Case Hardening
+
+Context:
+- A wrong service on `8788` can still return HTTP 200 with HTML or malformed JSON.
+- That should be reported as an occupied wrong-service port, not treated as unreachable.
+
+What worked:
+- A mocked malformed JSON response is now marked reachable with reason `invalid_json`.
+- The running Core instance is still detected normally.
+
+Fixes applied:
+- Split HTTP probe success from JSON parsing in the Core starter.
+- Added probe reason details to the wrong-service startup error.
+
 ### 2026-05-08 - Product Utilization Kickoff
 
 Context:
@@ -157,6 +171,7 @@ Fixes applied:
 | 2026-05-09 | VS Code installer | PowerShell installer duplicated the npm/Node install path. | Low | Made it delegate to `npm run install-local` and validated the wrapper. |
 | 2026-05-09 | Website launcher | HTTP readiness probes had no explicit timeout, so half-responsive local services could stall startup. | Medium | Added short launch probe timeouts and validated launch/smoke. |
 | 2026-05-09 | Aegis Core startup | Core starter accepted any HTTP 200 at `/v1/health` and did not prefer a project virtualenv. | Medium | Verify the Core health envelope, report contract version, and resolve Python predictably. |
+| 2026-05-09 | Aegis Core startup | A non-Core service returning HTTP 200 with invalid JSON could be treated as unreachable. | Medium | Mark malformed responses reachable and report `invalid_json` as the startup blocker. |
 
 ## Daily Workflow Checklist
 
