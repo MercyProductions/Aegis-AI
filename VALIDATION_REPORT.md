@@ -141,3 +141,29 @@ Add small client smoke commands that can be run headlessly or semi-headlessly:
 - VS Code extension host smoke that runs `Aegis: Run Health Check`, generates a roadmap in a disposable workspace, applies a tiny approved patch, and rolls it back.
 - Visual Studio experimental instance smoke that opens a tiny solution and verifies tool window, health, solution detection, and rollback.
 - Desktop smoke assertion for Core dashboard loaded/degraded states.
+
+## Runtime Consolidation Phase 1
+
+Date: 2026-05-09
+
+Changes validated:
+
+- Added `website/backend/aegis_ai/core_bridge.py` as a read-only Website-to-Core adapter.
+- Added `GET /api/core-runtime` to surface Core `/v1` health, models, settings, memory, diagnostics, and dashboard envelopes through Website `/api`.
+- Added `AEGIS_CORE_API_URL` to Website settings and `.env.example`.
+- Added Core contract coverage for known Desktop, VS Code, and Visual Studio client payloads.
+- Added consolidation docs: `RUNTIME_CONSOLIDATION.md` and root `API_REFERENCE.md`.
+
+Tests run:
+
+| Area | Command or check | Result |
+| --- | --- | --- |
+| Website Core bridge | `python -m pytest backend/tests/test_core_bridge.py -q` | Passed: 4 tests |
+| Aegis Core contracts | `python -m pytest tests/test_core_contracts.py -q` | Passed: 46 tests |
+| Website focused config/health | `python -m pytest backend/tests/test_runtime_health.py backend/tests/test_config_update.py -q` | Passed: 3 tests |
+| Website backend suite | `npm run backend:test` | Passed: 768 tests, 155 subtests |
+| Website frontend tests | `npm test -- --run` | Passed: 21 files, 169 tests |
+| Website frontend build | `npm run build` | Passed, with existing Vite large-chunk warning |
+| Live Core bridge | `GET /api/core-runtime` against running Website 8787 and Core 8788 | Passed: 200, `health`, `ecosystem.dashboard` envelopes present |
+
+No rich Website workflows were migrated in this phase.

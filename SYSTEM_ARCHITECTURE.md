@@ -18,6 +18,7 @@ flowchart LR
   VS["Visual Studio Extension"]
 
   Api["Website Backend /api\nFastAPI on 8787"]
+  Bridge["Core Bridge\n/api/core-runtime"]
   Core["Aegis Core /v1\nFastAPI on 8788"]
   Ollama["Ollama\nLocal models on 11434"]
   Workspace["Workspace files\n.aegis local memory"]
@@ -25,6 +26,8 @@ flowchart LR
 
   Website --> Api
   Desktop --> Api
+  Api --> Bridge
+  Bridge --> Core
   Desktop --> Core
   VSCode --> Core
   VS --> Core
@@ -49,6 +52,7 @@ The Website backend is the mature application runtime. It owns app-rich workflow
 - Creative Studio and media jobs.
 - Website auth/session APIs.
 - SQLite-backed application event/task/telemetry storage.
+- Optional read-only Core bridge at `/api/core-runtime`, used to surface shared Core status without moving app workflows.
 
 Default port: `http://127.0.0.1:8787`.
 
@@ -105,10 +109,20 @@ The desired direction is:
 - Clients may call Website `/api` for rich app workflows.
 - Clients may call Core `/v1` for shared runtime state.
 - Core must not depend on Website backend internals.
-- Website may import or mirror Core concepts, but it should not require Core to be running for the mature web app to function.
+- Website may call Core through a thin bridge, but it must not require Core to be running for the mature web app to function.
 - IDE extensions should prefer Core `/v1` for shared health, memory, tasks, diagnostics, roadmap, validation, and dashboard data as those integrations mature.
 
 ## Stabilization Rule
 
 Do not move large workflows from Website `/api` into Core during stabilization. First make the boundary explicit, test it, and migrate one shared capability at a time only when all clients have a clear consumer contract.
 
+## Runtime Consolidation Phase 1
+
+Phase 1 adds a read-only Website-to-Core bridge instead of migrating workflows:
+
+- `GET /api/core-runtime` reads Core `/v1/health`, `/v1/models`, `/v1/settings`, `/v1/memory`, `/v1/diagnostics`, and `/v1/ecosystem/dashboard`.
+- `AEGIS_CORE_API_URL` controls the Core base URL for Website.
+- Existing Website `/api` chat, apply, validation, routing, project-builder, auth, and product surfaces remain unchanged.
+- Core stays independent of Website imports and Website-specific storage.
+
+See `RUNTIME_CONSOLIDATION.md` for the subsystem ownership matrix and migration order.

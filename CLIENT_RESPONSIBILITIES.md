@@ -42,6 +42,7 @@ Owns:
 Delegates to Website `/api`:
 
 - All current production web functionality.
+- Read-only shared runtime status through `/api/core-runtime`, which preserves Core `/v1` envelopes for health, models, settings, memory, diagnostics, and dashboard.
 
 Future Core delegation candidates:
 
@@ -122,6 +123,7 @@ Owns:
 
 - The mature `/api` application runtime.
 - Rich agent execution, local/provider routing, repair loops, model registry, model benchmarks, app task graph, app telemetry, productization, ecosystem, autonomous engineering, and Creative Studio.
+- The thin Website-to-Core bridge at `/api/core-runtime`; this bridge must remain optional and degraded-mode friendly.
 
 Should not own long term:
 
@@ -129,4 +131,3 @@ Should not own long term:
 - Shared dashboard aggregation.
 - Shared task status needed by all clients.
 - Core settings that must be consistent across clients.
-

@@ -20,6 +20,7 @@ DEFAULT_WORKSPACE=workspace
 AEGIS_MODEL_API=ollama
 AEGIS_MODEL_ENDPOINT=http://127.0.0.1:11434
 AEGIS_MODEL_NAME=qwen2.5-coder:7b
+AEGIS_CORE_API_URL=http://127.0.0.1:8788
 AEGIS_ROUTER_EXECUTION_ENABLED=true
 AEGIS_ALLOW_EXPLICIT_WORKSPACE_PATHS=true
 AEGIS_ADDITIONAL_WORKSPACE_ROOTS=
@@ -76,6 +77,7 @@ class Settings(BaseSettings):
     aegis_model_api: str = Field(default="ollama", alias="AEGIS_MODEL_API")
     aegis_model_endpoint: str = Field(default="http://127.0.0.1:11434", alias="AEGIS_MODEL_ENDPOINT")
     aegis_model_name: str = Field(default="qwen2.5-coder:7b", alias="AEGIS_MODEL_NAME")
+    aegis_core_api_url: str = Field(default="http://127.0.0.1:8788", alias="AEGIS_CORE_API_URL")
     aegis_model_timeout_seconds: float = Field(default=120.0, alias="AEGIS_MODEL_TIMEOUT_SECONDS")
     aegis_model_temperature: float = Field(default=0.2, alias="AEGIS_MODEL_TEMPERATURE")
     aegis_router_execution_enabled: bool = Field(default=True, alias="AEGIS_ROUTER_EXECUTION_ENABLED")

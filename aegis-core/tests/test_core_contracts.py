@@ -309,6 +309,82 @@ def test_v1_endpoint_family_smoke_contracts(tmp_path: Path) -> None:
     assert status_response.json()["data"]["status"] == "completed"
 
 
+def test_v1_known_client_contracts_match_desktop_vscode_and_visual_studio(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    client = TestClient(create_app())
+
+    desktop_registration = client.post(
+        "/v1/clients/register",
+        json={
+            "workspace": str(workspace),
+            "client_id": "auralith-desktop",
+            "client_type": "desktop-app",
+            "name": "Auralith Desktop",
+            "version": "0.1.0",
+            "capabilities": ["ecosystem-dashboard", "memory-browser", "workflow-orchestration"],
+        },
+    )
+    assert desktop_registration.status_code == 200
+
+    vscode_health = client.get("/v1/health", params={"workspace": str(workspace)})
+    assert vscode_health.status_code == 200
+    assert vscode_health.json()["kind"] == "health"
+
+    vscode_registration = client.post(
+        "/v1/clients/register",
+        json={
+            "workspace": str(workspace),
+            "client_id": "aegis-vscode",
+            "client_type": "vscode-extension",
+            "name": "Aegis Local Agent for VS Code",
+            "version": "0.1.1",
+            "capabilities": ["workspace-scan", "diff-preview"],
+        },
+    )
+    assert vscode_registration.status_code == 200
+
+    vscode_task = client.post(
+        "/v1/tasks",
+        json={
+            "workspace": str(workspace),
+            "title": "VS Code proposal",
+            "kind": "vscode-agent",
+            "source_client": "vscode-extension",
+            "request": "Draft a safe proposal",
+            "metadata": {"command": "aegisLocalAutopilot.runAgentMode"},
+        },
+    )
+    assert vscode_task.status_code == 200
+    task_id = vscode_task.json()["data"]["id"]
+
+    waiting = client.post(
+        f"/v1/tasks/{task_id}/status",
+        json={"workspace": str(workspace), "status": "waiting_for_approval", "summary": "Proposal ready."},
+    )
+    assert waiting.status_code == 200
+    assert waiting.json()["data"]["status"] == "waiting_for_approval"
+
+    visual_studio_registration = client.post(
+        "/v1/clients/register",
+        json={
+            "workspace": str(workspace),
+            "client_id": "aegis-visual-studio",
+            "client_type": "visual-studio-extension",
+            "name": "Aegis Local Agent for Visual Studio",
+            "version": "0.1.1",
+            "capabilities": ["solution-scan", "build-validation"],
+        },
+    )
+    assert visual_studio_registration.status_code == 200
+
+    dashboard = client.get("/v1/ecosystem/dashboard", params={"workspace": str(workspace)})
+    assert dashboard.status_code == 200
+    data = dashboard.json()["data"]
+    client_ids = {item["client_id"] for item in data["clients"]}
+    assert {"auralith-desktop", "aegis-vscode", "aegis-visual-studio"}.issubset(client_ids)
+    assert any(item["id"] == task_id for item in data["active_tasks"])
+
+
 def test_shared_mutation_apis_report_unwritable_memory_root(tmp_path: Path) -> None:
     workspace = make_workspace(tmp_path)
     (workspace / ".aegis").write_text("not a directory", encoding="utf-8")

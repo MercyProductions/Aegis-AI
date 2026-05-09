@@ -136,6 +136,16 @@ New clients should use `/v1`. Responses are wrapped in this envelope:
 
 The unversioned endpoints above remain for migration compatibility.
 
+Core `/v1` is the shared runtime contract for Desktop, Website, VS Code, and Visual Studio. Website-specific product APIs stay under Website `/api`; when Website needs shared runtime state it should call Core through its read-only bridge (`GET /api/core-runtime`) and preserve these Core envelopes.
+
+Shared request body conventions:
+
+- Workspace operations use `workspace`.
+- Website compatibility endpoints may accept `workspace_root` and translate it to Core `workspace`.
+- Cross-client task records use `title`, `kind`, `source_client`, optional `request`, and optional `metadata`.
+- Task status values are `planned`, `running`, `waiting_for_approval`, `blocked`, `completed`, `cancelled`, and `rolled_back`.
+- Continue and repair endpoints are plan-only and never apply file edits.
+
 ## GET /v1/health
 
 Query:

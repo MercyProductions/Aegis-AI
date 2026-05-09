@@ -28,6 +28,7 @@ from .chat_streaming import (
     structured_stream_summary,
 )
 from .continuity import AegisContinuityEngine
+from .core_bridge import AegisCoreBridge
 from .creative_media import CreativeMediaEngine
 from .distributed_runtime import DistributedRuntimeManager
 from .ecosystem import ECOSYSTEM_API_VERSION, EcosystemEngine
@@ -243,6 +244,7 @@ from .workspace_cache import (
 settings = get_settings()
 workspace_manager = WorkspaceManager(PROJECT_ROOT, settings)
 agent = AgentEngine(PROJECT_ROOT, settings)
+core_bridge = AegisCoreBridge.from_settings(settings)
 creative_media = CreativeMediaEngine(PROJECT_ROOT, settings)
 model_registry = ModelRegistryManager(PROJECT_ROOT, settings)
 model_manager = ModelManager(PROJECT_ROOT, settings, model_registry)
@@ -549,12 +551,13 @@ _FEEDBACK_REDACTION_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
 
 
 def refresh_runtime() -> None:
-    global settings, workspace_manager, agent, creative_media, model_registry, model_manager, model_benchmarks, workspace_operations, distributed_runtime, adaptive_intelligence, productization, ecosystem, autonomous_engineering, unified_runtime, operating_environment, unified_context, continuity, platform_discipline
+    global settings, workspace_manager, agent, core_bridge, creative_media, model_registry, model_manager, model_benchmarks, workspace_operations, distributed_runtime, adaptive_intelligence, productization, ecosystem, autonomous_engineering, unified_runtime, operating_environment, unified_context, continuity, platform_discipline
     clear_settings_cache()
     _invalidate_workspace_caches()
     settings = get_settings()
     workspace_manager = WorkspaceManager(PROJECT_ROOT, settings)
     agent = AgentEngine(PROJECT_ROOT, settings)
+    core_bridge = AegisCoreBridge.from_settings(settings)
     creative_media = CreativeMediaEngine(PROJECT_ROOT, settings)
     model_registry = ModelRegistryManager(PROJECT_ROOT, settings)
     model_manager = ModelManager(PROJECT_ROOT, settings, model_registry)
@@ -1440,6 +1443,12 @@ async def health() -> RuntimeHealthResponse:
 @app.get("/api/ready", response_model=RuntimeHealthResponse)
 async def ready() -> RuntimeHealthResponse:
     return await runtime_health_snapshot()
+
+
+@app.get("/api/core-runtime")
+async def core_runtime_status(workspace_root: str | None = Query(default=None)) -> dict[str, Any]:
+    workspace = _resolve_workspace_path_for_config(workspace_root)
+    return await core_bridge.shared_runtime_status(workspace)
 
 
 @app.get("/api/unified-runtime", response_model=UnifiedRuntimeSnapshot)

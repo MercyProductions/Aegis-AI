@@ -1,0 +1,104 @@
+from __future__ import annotations
+
+import asyncio
+from pathlib import Path
+import sys
+from unittest.mock import patch
+
+import httpx
+from fastapi.testclient import TestClient
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from aegis_ai import main
+from aegis_ai.core_bridge import AegisCoreBridge, normalize_core_base_url
+
+
+def test_normalize_core_base_url_accepts_common_local_inputs() -> None:
+    assert normalize_core_base_url("127.0.0.1:8788") == "http://127.0.0.1:8788"
+    assert normalize_core_base_url("http://127.0.0.1:8788/v1/health") == "http://127.0.0.1:8788"
+    assert normalize_core_base_url("https://core.local:8788/v1/tasks") == "https://core.local:8788"
+    assert normalize_core_base_url("not a url") == "http://127.0.0.1:8788"
+    assert normalize_core_base_url("http://user:secret@127.0.0.1:8788") == "http://127.0.0.1:8788"
+
+
+def test_core_bridge_reads_shared_runtime_status(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        kind_by_path = {
+            "/v1/health": "health",
+            "/v1/models": "models",
+            "/v1/settings": "settings",
+            "/v1/memory": "memory.summary",
+            "/v1/diagnostics": "diagnostics.summary",
+            "/v1/ecosystem/dashboard": "ecosystem.dashboard",
+        }
+        kind = kind_by_path[request.url.path]
+        return httpx.Response(
+            200,
+            json={
+                "ok": True,
+                "api_version": "v1",
+                "kind": kind,
+                "workspace": str(workspace.resolve()),
+                "data": {"path": request.url.path},
+            },
+        )
+
+    bridge = AegisCoreBridge("127.0.0.1:8788/v1/health", transport=httpx.MockTransport(handler))
+    status = asyncio.run(bridge.shared_runtime_status(workspace))
+
+    assert status["ok"] is True
+    assert status["reachable"] is True
+    assert status["core_url"] == "http://127.0.0.1:8788"
+    assert status["ownership"]["shared_runtime"] == "aegis-core"
+    assert status["health"]["kind"] == "health"
+    assert status["models"]["kind"] == "models"
+    assert status["settings"]["kind"] == "settings"
+    assert status["memory"]["kind"] == "memory.summary"
+    assert status["diagnostics"]["kind"] == "diagnostics.summary"
+    assert status["dashboard"]["kind"] == "ecosystem.dashboard"
+    assert status["errors"] == []
+
+
+def test_core_bridge_degrades_when_core_is_unavailable(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404, json={"detail": f"missing {request.url.path}"})
+
+    bridge = AegisCoreBridge("http://127.0.0.1:8788", transport=httpx.MockTransport(handler))
+    status = asyncio.run(bridge.shared_runtime_status(workspace))
+
+    assert status["ok"] is False
+    assert status["reachable"] is True
+    assert status["health"] is None
+    assert len(status["errors"]) == 6
+
+
+def test_core_runtime_endpoint_delegates_to_core_bridge(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    class FakeCoreBridge:
+        async def shared_runtime_status(self, workspace_path: Path):
+            return {
+                "ok": True,
+                "reachable": True,
+                "workspace": str(workspace_path),
+                "core_url": "http://127.0.0.1:8788",
+                "api_version": "v1",
+                "health": {"kind": "health"},
+                "errors": [],
+            }
+
+    with patch.object(main, "core_bridge", FakeCoreBridge()):
+        response = TestClient(main.app).get("/api/core-runtime", params={"workspace_root": str(workspace)})
+
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
+    assert response.json()["health"]["kind"] == "health"
+    assert response.json()["workspace"] == str(workspace.resolve())

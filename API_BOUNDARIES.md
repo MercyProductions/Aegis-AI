@@ -20,6 +20,7 @@ Website `/api` is allowed to be broad because it backs the full Auralith OS app 
 Primary groups:
 
 - `/api/health`, `/api/ready`
+- `/api/core-runtime`
 - `/api/auth/*`
 - `/api/config`
 - `/api/models`, `/api/model-registry/*`, `/api/model-manager/*`, `/api/model-benchmarks/*`
@@ -41,6 +42,8 @@ Primary groups:
 Boundary rule:
 
 Website `/api` may expose app-rich workflows, but any new cross-client primitive should first be considered for Core `/v1`.
+
+`/api/core-runtime` is the exception-shaped adapter for consolidation. It is read-only, calls stable Core `/v1` endpoints, and returns Core envelopes under Website API compatibility.
 
 ## Aegis Core `/v1`
 
@@ -93,7 +96,7 @@ Code search found these direct `/v1` calls:
 | VS Code | `/v1/health`, `/v1/clients/register`, `/v1/tasks`, `/v1/tasks/{task_id}/status` |
 | Visual Studio | `/v1/health`, `/v1/clients/register` |
 | Website frontend | none direct |
-| Website backend | none direct; it currently has its own mature `/api` runtime |
+| Website backend | `/v1/health`, `/v1/models`, `/v1/settings`, `/v1/memory`, `/v1/diagnostics`, `/v1/ecosystem/dashboard` through `/api/core-runtime` |
 
 ## Migration Order
 
@@ -103,4 +106,3 @@ Code search found these direct `/v1` calls:
 4. Move shared task lifecycle next.
 5. Move workspace scan, roadmap, and validation only after IDE-specific context needs are represented.
 6. Leave rich app workflows in Website `/api` until there is a clear multi-client need.
-
