@@ -22,6 +22,8 @@ If validation reports `Validation command failed to start`, the command passed t
 
 Desktop and VS Code backend/Core URL settings are normalized before use. Inputs like `127.0.0.1:8788` or pasted `/v1/ecosystem/dashboard` URLs are reduced to a clean `http://host:port` base URL, while empty values fall back to the local defaults.
 
+If saving Core settings returns `Could not persist Aegis Core settings`, inspect the project `.aegis` path. The settings file must be a writable `.aegis/config.json` file, not a directory or a blocked path.
+
 ## Ollama
 
 Default local endpoint:

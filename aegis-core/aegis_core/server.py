@@ -4,7 +4,7 @@ from typing import Any
 from .agent import continue_from_roadmap, repair_from_last_validation
 from .branding import branding_tokens
 from .clients import ClientRegistryPersistenceError, list_clients, register_client
-from .config import load_config, update_config, write_default_config
+from .config import ConfigPersistenceError, load_config, update_config, write_default_config
 from .contracts import (
     ClientRegistrationRequest,
     ContinueRequest,
@@ -188,7 +188,10 @@ def create_app():
 
     @app.post("/v1/settings")
     def v1_update_settings(request: SettingsRequest) -> dict[str, Any]:
-        config = update_config(request.workspace, request.settings)
+        try:
+            config = update_config(request.workspace, request.settings)
+        except ConfigPersistenceError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
         return envelope("settings.updated", config.to_dict(), request.workspace)
 
     @app.post("/v1/workspaces/scan")

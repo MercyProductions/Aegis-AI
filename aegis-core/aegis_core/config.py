@@ -35,6 +35,10 @@ class AegisConfig:
         return data
 
 
+class ConfigPersistenceError(RuntimeError):
+    """Raised when a settings update cannot be persisted."""
+
+
 def workspace_root(path: str | Path | None = None) -> Path:
     return Path(path or os.getcwd()).expanduser().resolve()
 
@@ -192,7 +196,8 @@ def update_config(workspace: str | Path | None, updates: dict[str, Any]) -> Aegi
     for key, value in updates.items():
         if key in allowed:
             current[key] = _clean_memory_dir_name(value) if key == "memory_dir_name" else value
-    _write_json_best_effort(path, current)
+    if not _write_json_best_effort(path, current):
+        raise ConfigPersistenceError(f"Could not persist Aegis Core settings to {path}.")
     return load_config(root)
 
 

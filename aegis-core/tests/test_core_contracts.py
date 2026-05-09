@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 import aegis_core.model_router as model_router_module
 import aegis_core.validation as validation_module
 from aegis_core.clients import list_clients
-from aegis_core.config import AegisConfig, load_config, memory_dir, update_config, write_default_config
+from aegis_core.config import AegisConfig, ConfigPersistenceError, load_config, memory_dir, update_config, write_default_config
 from aegis_core.contracts import (
     CORE_CONTRACT_VERSION,
     CONTRACTS,
@@ -1962,7 +1962,8 @@ def test_config_read_write_survives_damaged_paths(tmp_path: Path) -> None:
 
     assert load_config(workspace).default_model == AegisConfig.default_model
     assert write_default_config(workspace) == aegis_dir / "config.json"
-    assert update_config(workspace, {"default_model": "granite-code:8b"}).default_model == AegisConfig.default_model
+    with pytest.raises(ConfigPersistenceError):
+        update_config(workspace, {"default_model": "granite-code:8b"})
 
     client = TestClient(create_app())
     get_response = client.get("/v1/settings", params={"workspace": str(workspace)})
@@ -1972,8 +1973,8 @@ def test_config_read_write_survives_damaged_paths(tmp_path: Path) -> None:
     )
 
     assert get_response.status_code == 200
-    assert post_response.status_code == 200
-    assert post_response.json()["data"]["default_model"] == AegisConfig.default_model
+    assert post_response.status_code == 503
+    assert "Could not persist Aegis Core settings" in post_response.json()["detail"]
 
 
 def test_config_write_survives_memory_root_file(tmp_path: Path) -> None:
@@ -1983,7 +1984,8 @@ def test_config_write_survives_memory_root_file(tmp_path: Path) -> None:
 
     assert load_config(workspace).default_model == AegisConfig.default_model
     assert write_default_config(workspace) == workspace / ".aegis" / "config.json"
-    assert update_config(workspace, {"default_model": "granite-code:8b"}).default_model == AegisConfig.default_model
+    with pytest.raises(ConfigPersistenceError):
+        update_config(workspace, {"default_model": "granite-code:8b"})
 
 
 def test_dashboard_survives_unreadable_memory_files(tmp_path: Path) -> None:

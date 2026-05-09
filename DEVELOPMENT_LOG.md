@@ -1058,3 +1058,22 @@ Validation completed:
 - VS Code extension lint: pass, including compile and package lint guards.
 - VS Code VSIX package: pass; `package-release.js` syntax-checked `extension.js` before linting and packaging.
 - Git diff whitespace check: pass.
+
+## 2026-05-09 - Core Settings Persistence Failure Handling
+
+Focus:
+
+- Avoid phantom-success settings saves when `.aegis/config.json` is damaged or blocked.
+- Keep settings reads resilient while making failed writes explicit and actionable.
+
+Actions:
+
+- Added `ConfigPersistenceError` for failed Core settings writes.
+- Updated `/v1/settings` writes to return `503` when settings cannot be persisted.
+- Documented the troubleshooting path for damaged `.aegis/config.json` targets.
+
+Validation completed:
+
+- Core settings/config focused tests: pass, 6 tests.
+- Aegis Core contract tests: pass, 93 tests.
+- Git diff whitespace check: pass.
