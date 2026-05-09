@@ -17,6 +17,7 @@ from .safety import is_ignored_path, is_safe_to_read
 VALIDATION_LOG_FILE = "validation-log.md"
 DOTNET_PROJECT_SUFFIXES = {".csproj", ".fsproj", ".vbproj"}
 PACKAGE_VALIDATION_SCRIPTS = ("test", "lint", "typecheck", "type-check", "build")
+POWERSHELL_BUILD_COMMAND = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "./build.ps1"]
 NESTED_WORKSPACE_MARKER_FILES = {
     "package.json",
     "pyproject.toml",
@@ -43,6 +44,8 @@ def detect_validation_commands(workspace: str | Path) -> list[ValidationCommand]
         for script in PACKAGE_VALIDATION_SCRIPTS:
             if script in package_scripts:
                 commands.append(_package_script_command(package_manager, script))
+    if _has_root_file_named(root, "build.ps1"):
+        commands.append(ValidationCommand("powershell build.ps1", POWERSHELL_BUILD_COMMAND, "build.ps1 detected"))
     if _has_dotnet_solution(root) or _has_project_file(root, DOTNET_PROJECT_SUFFIXES):
         commands.append(ValidationCommand("dotnet build", ["dotnet", "build"], ".NET project or solution detected"))
     if _has_root_file_named(root, "Cargo.toml"):
@@ -263,9 +266,20 @@ def is_safe_validation_command(command: list[str]) -> bool:
         return args == ["test", "./..."]
     if executable == "cmake":
         return args == ["--build", "build"]
+    if executable in {"powershell", "pwsh"}:
+        return _is_safe_powershell_build_command(args)
     if executable in {"python", "python.exe", "py", "py.exe"} or executable == Path(sys.executable).name.lower():
         return args == ["-m", "pytest"]
     return False
+
+
+def _is_safe_powershell_build_command(args: list[str]) -> bool:
+    normalized = [arg.lower() for arg in args]
+    return normalized in (
+        ["-noprofile", "-executionpolicy", "bypass", "-file", "./build.ps1"],
+        ["-noprofile", "-executionpolicy", "bypass", "-file", ".\\build.ps1"],
+        ["-noprofile", "-executionpolicy", "bypass", "-file", "build.ps1"],
+    )
 
 
 def _normalized_executable_name(executable: str) -> str:

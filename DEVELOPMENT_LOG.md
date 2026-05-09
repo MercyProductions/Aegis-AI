@@ -345,6 +345,26 @@ Validation completed:
 - Aegis Core contract test suite: pass.
 - Repository whitespace check: pass.
 
+## 2026-05-09 - Core PowerShell Build Validation Detection
+
+Focus:
+
+- Prefer project-owned Windows build guard scripts for Desktop and extension validation.
+- Keep PowerShell validation execution constrained to a narrow, predictable build command.
+
+Actions:
+
+- Added Core validation discovery for root `build.ps1` before lower-level CMake/.NET fallback commands.
+- Extended safe validation command checks to allow only exact no-profile PowerShell or PowerShell Core `build.ps1` invocations.
+- Added regressions for root build script priority and unsafe PowerShell script rejection.
+
+Validation completed:
+
+- Aegis Core validation detection regression slice: pass.
+- Aegis Core contract test suite: pass.
+- Desktop root `build.ps1`: pass.
+- Repository whitespace check: pass.
+
 ## 2026-05-09 - Completion Selected Model Guard
 
 Focus:

@@ -2836,6 +2836,23 @@ def test_validation_detection_includes_safe_package_lint_and_typecheck_scripts(t
     assert [item.name for item in detect_validation_commands(workspace)] == ["npm run lint", "npm run typecheck"]
 
 
+def test_validation_detection_prefers_root_build_script_before_low_level_project_commands(tmp_path: Path) -> None:
+    workspace = tmp_path / "desktop-build-script-project"
+    workspace.mkdir()
+    (workspace / "build.ps1").write_text("Write-Host 'build'\n", encoding="utf-8")
+    (workspace / "CMakeLists.txt").write_text("cmake_minimum_required(VERSION 3.24)\n", encoding="utf-8")
+    (workspace / "Native.sln").write_text(
+        'Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Native", "Native.vcxproj", "{55555555-5555-5555-5555-555555555555}"\n',
+        encoding="utf-8",
+    )
+    (workspace / "Native.vcxproj").write_text("<Project />\n", encoding="utf-8")
+
+    commands = detect_validation_commands(workspace)
+
+    assert [item.name for item in commands] == ["powershell build.ps1", "cmake build"]
+    assert commands[0].command == ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "./build.ps1"]
+
+
 def test_validation_detection_ignores_project_files_in_ignored_folders(tmp_path: Path) -> None:
     workspace = tmp_path / "ignored-dotnet-project"
     workspace.mkdir()
@@ -2964,7 +2981,10 @@ def test_validation_runner_allows_windows_package_manager_shims() -> None:
     assert validation_module.is_safe_validation_command(["yarn.cmd", "typecheck"])
     assert validation_module.is_safe_validation_command(["dotnet.exe", "build"])
     assert validation_module.is_safe_validation_command(["cmake.exe", "--build", "build"])
+    assert validation_module.is_safe_validation_command(["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ".\\build.ps1"])
+    assert validation_module.is_safe_validation_command(["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "./build.ps1"])
     assert not validation_module.is_safe_validation_command(["npm.cmd", "install"])
+    assert not validation_module.is_safe_validation_command(["powershell.exe", "-NoProfile", "-File", ".\\scripts\\install.ps1"])
 
 
 def test_validation_runner_handles_safe_command_failures(tmp_path: Path) -> None:
