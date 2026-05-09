@@ -136,6 +136,12 @@ assertServiceUrl(serviceUrlBuilder, 'http://127.0.0.1:8788', '/v1/models', 'http
 
 const validationCommandGuard = loadExtensionFunction(extensionText, 'isSafeValidationCommand');
 assertValidationCommandGuard(validationCommandGuard);
+const validationSummaryHelpers = loadExtensionFunctions(
+  extensionText,
+  ['truncateMiddle', 'classifyValidationFailure', 'summarizeValidation'],
+  '({ classifyValidationFailure, summarizeValidation })'
+);
+assertValidationFailureClassification(validationSummaryHelpers);
 const validationCommandDetector = loadExtensionFunctions(
   extensionText,
   [
@@ -347,6 +353,56 @@ function assertValidationCommandGuard(guard) {
     if (guard(command)) {
       fail(`extension validation command guard allowed unsafe command: ${command}`);
     }
+  }
+}
+
+function assertValidationFailureClassification(helpers) {
+  const missingTool = {
+    skipped: false,
+    commands: [
+      {
+        command: 'npm run build',
+        success: false,
+        output: "'tsc' is not recognized as an internal or external command"
+      }
+    ],
+    output: "'tsc' is not recognized as an internal or external command"
+  };
+  const missingDependency = {
+    skipped: false,
+    commands: [
+      {
+        command: 'npm run build',
+        success: false,
+        output: "Error: Cannot find module 'vite'"
+      }
+    ],
+    output: "Error: Cannot find module 'vite'"
+  };
+  const codeFailure = {
+    skipped: false,
+    commands: [
+      {
+        command: 'npm run build',
+        success: false,
+        output: "src/app.ts(1,1): error TS1005: ';' expected"
+      }
+    ],
+    output: "src/app.ts(1,1): error TS1005: ';' expected"
+  };
+
+  if (helpers.classifyValidationFailure(missingTool).kind !== 'missing-tool') {
+    fail('validation failure classifier must detect missing tool output.');
+  }
+  if (helpers.classifyValidationFailure(missingDependency).kind !== 'missing-dependency') {
+    fail('validation failure classifier must detect missing dependency output.');
+  }
+  if (helpers.classifyValidationFailure(codeFailure).kind !== 'code-or-config') {
+    fail('validation failure classifier must keep code/config failures distinct.');
+  }
+  const summary = helpers.summarizeValidation(missingTool);
+  if (!summary.includes('Classification: Likely missing tool') || !summary.includes('Check PATH')) {
+    fail('validation summaries must include actionable missing-tool classification.');
   }
 }
 

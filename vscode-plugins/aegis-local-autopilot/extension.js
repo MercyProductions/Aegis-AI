@@ -5460,11 +5460,61 @@ function summarizeValidation(validation) {
   if (validation.skipped) {
     return validation.output;
   }
-  const failed = validation.commands.find((item) => !item.success);
+  const commands = Array.isArray(validation.commands) ? validation.commands : [];
+  const failed = commands.find((item) => !item.success);
   if (!failed) {
     return `Validation passed.\n\n${validation.output}`;
   }
-  return `Validation failed at \`${failed.command}\`.\n\n${truncateMiddle(failed.output, 12000)}`;
+  const classification = classifyValidationFailure(validation);
+  const classificationText = classification.summary
+    ? `\n\nClassification: ${classification.summary}\nNext step: ${classification.guidance}`
+    : '';
+  return `Validation failed at \`${failed.command}\`.\n\n${truncateMiddle(failed.output, 12000)}${classificationText}`;
+}
+
+function classifyValidationFailure(validation) {
+  const commands = validation && Array.isArray(validation.commands) ? validation.commands : [];
+  const failed = commands.find((item) => item && !item.success);
+  if (!failed) {
+    return { kind: 'none', summary: '', guidance: '' };
+  }
+  const text = `${failed.command || ''}\n${failed.output || ''}\n${validation.output || ''}`;
+  const lower = text.toLowerCase();
+  const missingDependencyPatterns = [
+    /cannot find module/i,
+    /module_not_found/i,
+    /err_module_not_found/i,
+    /modulenotfounderror/i,
+    /no module named/i,
+    /can't resolve/i,
+    /could not resolve/i
+  ];
+  if (missingDependencyPatterns.some((pattern) => pattern.test(text))) {
+    return {
+      kind: 'missing-dependency',
+      summary: 'Likely missing dependency or uninstalled project packages.',
+      guidance: 'Check the install/restore step before editing source; only change manifests or lockfiles when the dependency declaration is clearly wrong.'
+    };
+  }
+  if (
+    lower.includes('not recognized as an internal or external command') ||
+    lower.includes('is not recognized as the name of') ||
+    lower.includes('command not found') ||
+    lower.includes('spawn enoent') ||
+    lower.includes('enoent') ||
+    /(?:^|\s)not found:?/i.test(text)
+  ) {
+    return {
+      kind: 'missing-tool',
+      summary: 'Likely missing tool or project-local CLI rather than application code failure.',
+      guidance: 'Check PATH, package installation, and project setup before changing source files.'
+    };
+  }
+  return {
+    kind: 'code-or-config',
+    summary: 'Likely code, test, or configuration failure.',
+    guidance: 'Inspect the failing files and make the smallest source or config correction.'
+  };
 }
 
 function isWorkspaceTarget(value) {

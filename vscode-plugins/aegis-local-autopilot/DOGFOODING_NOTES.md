@@ -52,7 +52,7 @@ Follow-up candidates:
 - Improve visible blocked-edit details in the sidebar/error panel. Addressed for warnings/errors; sidebar detail remains a future polish area.
 - Add clearer progress messaging for long local model calls.
 - Consider a lighter roadmap model setting or a fast-mode option for dogfooding large workspaces.
-- Improve build-failure classification for missing dependencies versus code errors.
+- Improve build-failure classification for missing dependencies versus code errors. Addressed after 0.1.1 by classifying missing tools, missing dependencies, and likely code/config failures in validation summaries.
 
 Safety outcome:
 

@@ -1,5 +1,24 @@
 # Development Log
 
+## 2026-05-09 - VS Code Validation Failure Classification
+
+Focus:
+
+- Make build-failure repair prompts distinguish missing setup/dependency failures from source-code failures.
+- Reduce trust damage from repair proposals that jump into source edits when validation only proves a missing tool or package.
+
+Actions:
+
+- Added VS Code validation failure classification for missing tools, missing dependencies, and likely code/config failures.
+- Included the classification and recommended next step in validation summaries used by repair prompts and the validation console.
+- Extended package lint regressions for `tsc`-missing, missing-module, and code/config validation outputs.
+- Updated dogfooding notes to mark the build-failure classification follow-up as addressed.
+
+Validation completed:
+
+- VS Code package lint: pass.
+- VS Code extension syntax check: pass.
+
 ## 2026-05-09 - VS Code Blocked Edit Visibility
 
 Focus:
