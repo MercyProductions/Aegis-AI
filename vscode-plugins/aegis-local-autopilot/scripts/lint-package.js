@@ -158,6 +158,16 @@ const projectLanguageInferrer = loadExtensionFunctions(
   { path }
 );
 assertProjectLanguageInference(projectLanguageInferrer);
+const projectCommandInferrer = loadExtensionFunctions(
+  extensionText,
+  ['parseJsonText', 'inferProjectCommands'],
+  'inferProjectCommands',
+  { path }
+);
+assertProjectCommandInference(projectCommandInferrer);
+const buildFileClassifier = loadExtensionFunction(extensionText, 'isLikelyBuildFile', { path });
+assertBuildFileDetection(buildFileClassifier);
+assertProjectRiskPattern(extensionText);
 
 const unsafeErrorMessagePatterns = [
   {
@@ -374,6 +384,7 @@ function assertValidationCommandDetection(detector) {
 function assertProjectLanguageInference(inferrer) {
   const result = inferrer(
     [
+      { relative: 'Modern.slnx' },
       { relative: 'src/App/Program.fs' },
       { relative: 'src/App/App.fsproj' },
       { relative: 'src/Tool/Module.vb' },
@@ -382,10 +393,37 @@ function assertProjectLanguageInference(inferrer) {
     ],
     []
   );
-  for (const expected of ['F#/.NET', 'VB.NET', 'C/C++']) {
+  for (const expected of ['C#/.NET', 'F#/.NET', 'VB.NET', 'C/C++']) {
     if (!result.languages.includes(expected)) {
       fail(`inferProjectLanguages must detect ${expected} workspaces from project/source files.`);
     }
+  }
+}
+
+function assertProjectCommandInference(inferrer) {
+  const result = inferrer(
+    [],
+    [
+      { relative: 'Modern.slnx' },
+      { relative: 'src/App/App.fsproj' }
+    ]
+  );
+  if (!result.includes('msbuild <solution>.slnx')) {
+    fail('inferProjectCommands must suggest MSBuild for .slnx workspaces.');
+  }
+}
+
+function assertBuildFileDetection(classifier) {
+  for (const file of ['Modern.slnx', 'src/App/App.fsproj', 'src/Tool/Tool.vbproj', 'Native.vcxproj', 'Native.vcxproj.filters']) {
+    if (!classifier(file)) {
+      fail(`isLikelyBuildFile must classify ${file} as a build/config file.`);
+    }
+  }
+}
+
+function assertProjectRiskPattern(source) {
+  if (!source.includes('csproj|fsproj|vbproj|vcxproj|vcxproj\\\\.filters|sln|slnx')) {
+    fail('webview risk badge must cover .slnx, F#/VB, and Visual Studio project files.');
   }
 }
 

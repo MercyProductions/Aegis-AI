@@ -76,6 +76,7 @@ Actions:
 - Improved Website scaffold install preflight parity so supported non-C# .NET manifests and `.slnx` files trigger `dotnet restore` before validation when assets are missing.
 - Improved Website `.slnx` continuity parity so workspace profiling, validation suggestions, and existing-project scaffold routing recognize modern Visual Studio solution files.
 - Improved Website agent continuation and deterministic fallback parity so `.slnx` workspaces keep Visual Studio/native stack classification and generated validation helpers search both `.sln` and `.slnx` files.
+- Improved VS Code fallback project snapshots so `.slnx`, F#/Visual Basic projects, `.vcxproj`, and `.vcxproj.filters` files stay visible as important build/risk surfaces.
 
 Validation completed:
 

@@ -108,7 +108,7 @@ const IMPORTANT_FILE_PATTERNS = [
   /^makefile$/i,
   /^projectversion\.txt$/i,
   /^packages-lock\.json$/i,
-  /^.*\.(?:sln|csproj|fsproj|vbproj|vcxproj)$/i
+  /^.*\.(?:sln|slnx|csproj|fsproj|vbproj|vcxproj|vcxproj\.filters)$/i
 ];
 const MAX_AGENT_REPAIR_ATTEMPTS = 3;
 
@@ -2192,7 +2192,7 @@ function inferProjectLanguages(files, importantContents) {
   if (extensions.has('.js') || extensions.has('.jsx') || names.has('package.json')) languages.add('JavaScript');
   if (extensions.has('.py') || names.has('pyproject.toml') || names.has('requirements.txt')) languages.add('Python');
   if (extensions.has('.cpp') || extensions.has('.cc') || extensions.has('.cxx') || extensions.has('.c') || extensions.has('.h') || extensions.has('.hpp')) languages.add('C/C++');
-  if (extensions.has('.cs') || Array.from(names).some((name) => name.endsWith('.csproj') || name.endsWith('.sln'))) languages.add('C#/.NET');
+  if (extensions.has('.cs') || Array.from(names).some((name) => name.endsWith('.csproj') || name.endsWith('.sln') || name.endsWith('.slnx'))) languages.add('C#/.NET');
   if (extensions.has('.fs') || extensions.has('.fsi') || extensions.has('.fsx') || Array.from(names).some((name) => name.endsWith('.fsproj'))) languages.add('F#/.NET');
   if (extensions.has('.vb') || Array.from(names).some((name) => name.endsWith('.vbproj'))) languages.add('VB.NET');
   if (extensions.has('.rs') || names.has('cargo.toml')) languages.add('Rust');
@@ -2262,7 +2262,9 @@ function inferProjectCommands(importantContents, files) {
   }
 
   if (names.has('cmakelists.txt')) commands.push('cmake --build build');
-  if (Array.from(names).some((name) => name.endsWith('.sln'))) commands.push('msbuild <solution>.sln');
+  const hasSlnSolution = Array.from(names).some((name) => name.endsWith('.sln'));
+  const hasSlnxSolution = Array.from(names).some((name) => name.endsWith('.slnx'));
+  if (hasSlnSolution || hasSlnxSolution) commands.push(hasSlnSolution ? 'msbuild <solution>.sln' : 'msbuild <solution>.slnx');
   if (names.has('pyproject.toml')) commands.push('python -m pytest');
   if (names.has('requirements.txt')) commands.push('python -m pytest');
   if (names.has('cargo.toml')) commands.push('cargo test');
@@ -4179,7 +4181,12 @@ function isLikelyBuildFile(relativePath) {
     basename === 'go.mod' ||
     basename === 'pyproject.toml' ||
     basename.endsWith('.csproj') ||
+    basename.endsWith('.fsproj') ||
+    basename.endsWith('.vbproj') ||
+    basename.endsWith('.vcxproj') ||
+    basename.endsWith('.vcxproj.filters') ||
     basename.endsWith('.sln') ||
+    basename.endsWith('.slnx') ||
     basename.startsWith('vite.config') ||
     basename.startsWith('webpack.config') ||
     basename.startsWith('next.config') ||
@@ -6337,7 +6344,7 @@ function renderPanelHtml() {
     }
 
     function isRiskyFile(filePath) {
-      return /(^|\\/)(package\\.json|.*\\.csproj|.*\\.sln|vite\\.config\\.|webpack\\.config\\.|next\\.config\\.|tsconfig|pyproject\\.toml|requirements|cmakelists\\.txt)/i.test(filePath || '') || /lock/i.test(filePath || '');
+      return /(^|\\/)(package\\.json|.*\\.(?:csproj|fsproj|vbproj|vcxproj|vcxproj\\.filters|sln|slnx)|vite\\.config\\.|webpack\\.config\\.|next\\.config\\.|tsconfig|pyproject\\.toml|requirements|cmakelists\\.txt)/i.test(filePath || '') || /lock/i.test(filePath || '');
     }
 
     function renderRepoWide(state) {
