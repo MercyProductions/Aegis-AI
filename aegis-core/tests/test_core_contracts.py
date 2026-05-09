@@ -1787,6 +1787,7 @@ def test_diagnostics_redact_inline_handles_colon_assignments() -> None:
 def test_diagnostics_redact_inline_handles_provider_auth_aliases() -> None:
     secrets = {
         "api": "sk-provider-secret",
+        "api_token": "api-token-secret",
         "client": "oauth-client-secret",
         "access": "oauth-access-token",
         "refresh": "oauth-refresh-token",
@@ -1795,11 +1796,12 @@ def test_diagnostics_redact_inline_handles_provider_auth_aliases() -> None:
     }
     message = (
         'Provider HTTP 401: {"x-api-key":"%s","client_secret":"%s"} '
-        "access_token=%s refresh_token: %s private_key: %s "
+        "api_token=%s access_token=%s refresh_token: %s private_key: %s "
         "https://provider.example/callback?access_token=%s"
     ) % (
         secrets["api"],
         secrets["client"],
+        secrets["api_token"],
         secrets["access"],
         secrets["refresh"],
         secrets["private"],
@@ -1812,11 +1814,19 @@ def test_diagnostics_redact_inline_handles_provider_auth_aliases() -> None:
         assert secret not in cleaned
     assert '"x-api-key":"[redacted]"' in cleaned
     assert '"client_secret":"[redacted]"' in cleaned
+    assert "api_token=[redacted]" in cleaned
     assert "access_token=[redacted]" in cleaned
     assert "refresh_token: [redacted]" in cleaned
     assert "private_key: [redacted]" in cleaned
     assert "?access_token=[redacted]" in cleaned
     assert "Provider HTTP 401" in cleaned
+
+
+def test_diagnostics_preserves_non_secret_token_parser_context() -> None:
+    message = "Provider returned invalid JSON: unexpected token: < at position 0"
+
+    assert redact_inline(message) == message
+    assert scrub(message) == message
 
 
 def test_provider_connection_errors_redact_query_api_keys(monkeypatch) -> None:

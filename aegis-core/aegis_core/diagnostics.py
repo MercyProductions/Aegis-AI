@@ -10,8 +10,10 @@ from .config import memory_dir
 SECRET_MARKERS = (
     "access_token",
     "api_key",
+    "api_token",
     "apikey",
     "api-key",
+    "api-token",
     "auth",
     "authorization",
     "bearer",
@@ -23,16 +25,15 @@ SECRET_MARKERS = (
     "private_key",
     "refresh_token",
     "secret",
-    "token",
 )
 
-SENSITIVE_FIELD = r"(?:x-api-key|api[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|token|client[_-]?secret|secret|private[_-]?key|password|passwd|credential)"
+SENSITIVE_FIELD = r"(?:x-api-key|api[_-]?key|api[_-]?token|access[_-]?token|refresh[_-]?token|id[_-]?token|token|client[_-]?secret|secret|private[_-]?key|password|passwd|credential)"
 SENSITIVE_QUERY_RE = re.compile(
     rf"([?&](?:key|{SENSITIVE_FIELD})=)[^&#\s]+",
     re.IGNORECASE,
 )
 SENSITIVE_ASSIGNMENT_RE = re.compile(
-    rf"\b({SENSITIVE_FIELD}\s*[:=]\s*)[^\s&]+",
+    rf"\b({SENSITIVE_FIELD})(\s*[:=]\s*)([^\s&]+)",
     re.IGNORECASE,
 )
 SENSITIVE_JSON_RE = re.compile(
@@ -69,8 +70,27 @@ def _redact_inline_secrets(line: str) -> str:
     line = SENSITIVE_QUERY_RE.sub(r"\1[redacted]", line)
     line = SENSITIVE_JSON_RE.sub(r"\1[redacted]", line)
     line = AUTHORIZATION_HEADER_RE.sub(r"\1[redacted]", line)
-    line = SENSITIVE_ASSIGNMENT_RE.sub(r"\1[redacted]", line)
+    line = SENSITIVE_ASSIGNMENT_RE.sub(_redact_assignment, line)
     return BEARER_TOKEN_RE.sub(r"\1[redacted]", line)
+
+
+def _redact_assignment(match: re.Match[str]) -> str:
+    field = match.group(1)
+    separator = match.group(2)
+    value = match.group(3)
+    if field.lower() == "token" and not _looks_like_secret_value(value):
+        return match.group(0)
+    return f"{field}{separator}[redacted]"
+
+
+def _looks_like_secret_value(value: str) -> bool:
+    text = value.strip().strip("\"'`.,;)]}")
+    lowered = text.lower()
+    if lowered.startswith(("sk-", "ghp_", "gho_", "ghu_", "github_pat_", "xox", "ya29.", "eyj")):
+        return True
+    if len(text) >= 20 and re.search(r"[A-Za-z]", text) and re.search(r"\d", text):
+        return True
+    return len(text) >= 12 and any(char in text for char in "-_.") and bool(re.search(r"[A-Za-z]", text))
 
 
 class CoreLogger:

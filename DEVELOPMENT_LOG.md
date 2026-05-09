@@ -186,6 +186,25 @@ Validation completed:
 - Aegis Core contract test suite: pass, 118 tests.
 - Repository whitespace check: pass.
 
+## 2026-05-09 - Token Diagnostic Precision
+
+Focus:
+
+- Preserve useful parser diagnostics after broadening provider token redaction.
+- Avoid turning ordinary `unexpected token` messages into opaque redacted failures.
+
+Actions:
+
+- Made bare `token:` assignment redaction conditional on the value looking secret-like.
+- Kept explicit fields such as `api_token`, `access_token`, `refresh_token`, and `id_token` strict across JSON, query-string, and assignment-style diagnostics.
+- Added regression coverage proving `unexpected token: <` remains readable while likely token secrets are still redacted.
+
+Validation completed:
+
+- Aegis Core diagnostic/provider redaction and validation-log regression slice: pass, 11 tests.
+- Aegis Core contract test suite: pass, 124 tests.
+- Repository whitespace check: pass.
+
 ## 2026-05-09 - Provider Auth Alias Redaction
 
 Focus:

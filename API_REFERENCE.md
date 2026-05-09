@@ -188,6 +188,7 @@ Hybrid model routing:
 - Provider inventory and route responses include `credential_store_healthy` and `credential_store_errors` so clients can tell the difference between "no cloud key stored" and "the OS credential store could not be inspected."
 - Malformed provider responses, including invalid JSON, are returned as bounded provider failures rather than internal parser errors.
 - Provider and credential diagnostics redact common provider/OAuth secret fields such as `api_key`, `x-api-key`, `client_secret`, `access_token`, `refresh_token`, `private_key`, and `token` across JSON, query-string, and assignment-style errors while preserving actionable context.
+- Bare `token:` parser diagnostics are preserved unless the value looks secret-like, so ordinary errors such as `unexpected token: <` remain readable.
 - Settings updates persist sanitized hybrid routing values to `.aegis/config.json`, including canonical routing modes, provider IDs, model lists, context limits, booleans, and local HTTP(S) provider URLs. When settings are saved, existing known settings on disk are normalized while unknown client-owned keys are preserved.
 - CLI parity: `python -m aegis_core.cli route --provider lm_studio --model local-model --context-file src/App.tsx --json` previews the same provider selection and sanitized context metadata as `/v1/models/route`.
 
