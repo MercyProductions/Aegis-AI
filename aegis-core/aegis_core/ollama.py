@@ -50,7 +50,7 @@ class OllamaClient:
             selected = next((model for model in desired if model in models), None)
             missing = [model for model in desired if model not in models]
             return OllamaStatus(True, latency, models, selected, missing)
-        except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError) as exc:
+        except (urllib.error.URLError, TimeoutError, OSError, ValueError, json.JSONDecodeError) as exc:
             return OllamaStatus(False, None, [], None, [self.config.default_model, *self.config.fallback_models], str(exc))
 
     def chat(self, prompt: str, model: str | None = None, timeout: int = 120) -> str:

@@ -14,7 +14,7 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 | Area | Status | Notes |
 | --- | --- | --- |
 | Aegis Core health | Pass | `/v1/health` responds through FastAPI TestClient and CLI. |
-| Ollama model routing | Pass | Core detects `qwen3-coder:30b` with configured fallbacks available. |
+| Ollama model routing | Pass | Core detects `qwen3-coder:30b` with configured fallbacks available, and malformed local URLs degrade to health errors. |
 | Shared client registration | Pass | Desktop, VS Code, and Visual Studio now have Core registration paths. |
 | Shared task visibility | Pass | VS Code creates and updates Core tasks during agent mode; Core dashboard displays active/recent tasks. |
 | Desktop dashboard bridge | Pass | Desktop has `core_api_base_url` and an Auralith Ecosystem card backed by `/v1/ecosystem/dashboard`. |
@@ -41,9 +41,10 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 
 Ran during this pass:
 
-- `python -m pytest tests/test_core_contracts.py -q` in Aegis Core: 26 tests passed
+- `python -m pytest tests/test_core_contracts.py -q` in Aegis Core: 28 tests passed
 - `python -m compileall aegis_core`: pass
 - Core validation startup-failure regression test: pass
+- Core Ollama URL normalization and malformed-health regression tests: pass
 - Aegis Core `/v1` TestClient smoke for settings, memory, diagnostics, roadmap, tasks, task status, agent continue, and agent repair: pass
 - Core scan twice: second scan returned `cache_hit: true`
 - `npm run lint` in VS Code extension: pass
@@ -68,6 +69,7 @@ Ran during this pass:
 - Added Core scan cache through `.aegis/scan-cache.json`.
 - Added Core dashboard stale-task detection and suggested actions.
 - Hardened Core scan safety for mixed-case ignored folders, token/password/auth-like files, and Windows workspaces under temp-style parent directories.
+- Hardened shared Ollama URL settings so common local inputs are normalized and malformed URLs surface as health diagnostics.
 - Made generated-memory writes best-effort and atomic where possible, so damaged `.aegis` paths do not crash scans.
 - Made shared settings reads/writes best-effort, so damaged config paths do not crash health or settings APIs.
 - Restricted shared memory directory settings to one workspace-local folder name, preventing config from pointing memory outside the project.

@@ -38,6 +38,7 @@ If model calls fail:
 
 - Confirm `ollama list` works.
 - Confirm the configured model is installed.
+- Confirm the configured Ollama URL includes a valid host and port. `127.0.0.1:11434` is normalized to `http://127.0.0.1:11434`.
 - Run the relevant client health check.
 - Check `.aegis/core-log.md`, `.aegis/extension-log.md`, and `.aegis/validation-log.md`.
 

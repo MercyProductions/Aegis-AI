@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 import aegis_core.validation as validation_module
 from aegis_core.config import AegisConfig, load_config, memory_dir, update_config, write_default_config
 from aegis_core.memory import ProjectMemory
+from aegis_core.ollama import OllamaClient
 from aegis_core.safety import is_ignored_path, is_safe_to_read, is_secret_like
 from aegis_core.server import create_app
 from aegis_core.validation import append_validation_log, detect_validation_commands, run_validation
@@ -159,6 +160,31 @@ def test_invalid_config_values_fall_back_safely(tmp_path: Path) -> None:
     assert config.auto_scan_on_open is False
     assert config.validation_preferences == ("npm test", "npm run build")
     assert config.memory_dir_name == AegisConfig.memory_dir_name
+
+
+def test_ollama_url_config_normalizes_common_local_values(tmp_path: Path) -> None:
+    workspace = tmp_path / "ollama-url-project"
+    aegis_dir = workspace / ".aegis"
+    aegis_dir.mkdir(parents=True)
+    config_path = aegis_dir / "config.json"
+
+    config_path.write_text(json.dumps({"ollama_url": "127.0.0.1:11434/"}), encoding="utf-8")
+    assert load_config(workspace).ollama_url == "http://127.0.0.1:11434"
+
+    config_path.write_text(json.dumps({"ollama_url": "not a url"}), encoding="utf-8")
+    assert load_config(workspace).ollama_url == AegisConfig.ollama_url
+
+    config_path.write_text(json.dumps({"ollama_url": "ftp://127.0.0.1:11434"}), encoding="utf-8")
+    assert load_config(workspace).ollama_url == AegisConfig.ollama_url
+
+
+def test_ollama_health_handles_malformed_direct_url() -> None:
+    status = OllamaClient(AegisConfig(ollama_url="not a url")).health()
+
+    assert status.reachable is False
+    assert status.selected_model is None
+    assert AegisConfig.default_model in status.missing_models
+    assert status.error
 
 
 def test_memory_dir_name_is_restricted_to_workspace_local_folder(tmp_path: Path) -> None:

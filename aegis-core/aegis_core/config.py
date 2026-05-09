@@ -5,6 +5,7 @@ import os
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 
 @dataclass
@@ -37,6 +38,18 @@ def memory_dir(workspace: str | Path | None = None, config: AegisConfig | None =
 def _clean_string(value: Any, default: str) -> str:
     text = str(value).strip() if value is not None else ""
     return text or default
+
+
+def _clean_ollama_url(value: Any) -> str:
+    text = _clean_string(value, AegisConfig.ollama_url).rstrip("/")
+    if "://" in text and not text.startswith(("http://", "https://")):
+        return AegisConfig.ollama_url
+    if not text.startswith(("http://", "https://")):
+        text = f"http://{text}"
+    parsed = urlparse(text)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc or any(char.isspace() for char in parsed.netloc):
+        return AegisConfig.ollama_url
+    return text
 
 
 def _clean_memory_dir_name(value: Any) -> str:
@@ -93,10 +106,8 @@ def load_config(workspace: str | Path | None = None) -> AegisConfig:
     if env_url:
         data["ollama_url"] = env_url
 
-    ollama_url = _clean_string(data.get("ollama_url"), AegisConfig.ollama_url).rstrip("/") or AegisConfig.ollama_url
-
     return AegisConfig(
-        ollama_url=ollama_url,
+        ollama_url=_clean_ollama_url(data.get("ollama_url")),
         default_model=_clean_string(data.get("default_model"), AegisConfig.default_model),
         fallback_models=_clean_string_list(data.get("fallback_models"), AegisConfig.fallback_models),
         max_context_chars=_clean_int(data.get("max_context_chars"), AegisConfig.max_context_chars, minimum=1000),
