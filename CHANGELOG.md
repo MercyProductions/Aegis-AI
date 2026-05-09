@@ -16,6 +16,7 @@
 - Improved Website .NET validation and dependency profiling so `.fsproj` and `.vbproj` workspaces receive the same `dotnet restore`, `dotnet build`, and `dotnet test` treatment as `.csproj` projects.
 - Improved Aegis Core workspace scans so F# and Visual Basic .NET projects are included in build-file, framework, language, TODO, and dependency metadata.
 - Improved Aegis Core Unity workspace scans and change simulation so `Packages/manifest.json`, `Packages/packages-lock.json`, key `ProjectSettings` files, and `.asmdef`/`.asmref` files are treated as build/config metadata.
+- Improved VS Code local fallback snapshots so Unity package manifests, package lockfiles, key `ProjectSettings` files, and `.asmdef`/`.asmref` files stay visible as important build/context metadata when Core scan is unavailable.
 - Improved Aegis Core simulation and orchestration planning so `.csproj`, `.fsproj`, `.vbproj`, `.vcxproj`, and `.slnx` path mentions are not truncated and non-C# .NET projects are tagged as `.net` work.
 - Improved Aegis Core knowledge graphs so local F# `open` and Visual Basic `Imports` dependencies resolve to workspace files instead of external placeholders.
 - Improved Aegis Core quality, jobs, knowledge, and personal-intelligence consumers to share one source-code suffix set that includes F# and Visual Basic files.

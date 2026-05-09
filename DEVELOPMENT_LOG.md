@@ -1,5 +1,24 @@
 # Development Log
 
+## 2026-05-09 - VS Code Unity Metadata Context
+
+Focus:
+
+- Keep VS Code local fallback context aligned with Core Unity metadata visibility.
+- Avoid dropping Unity package/settings/assembly-definition metadata when Core scan is unavailable.
+
+Actions:
+
+- Added path-aware Unity important-file detection for `Packages/manifest.json`, `Packages/packages-lock.json`, key `ProjectSettings` metadata, and `.asmdef`/`.asmref` files.
+- Reused the Unity important-file classifier for config, graph, and build-risk detection.
+- Added VS Code package lint guards for Unity metadata context.
+
+Validation completed:
+
+- VS Code package lint: pass.
+- VS Code extension syntax check: pass.
+- Git whitespace check: pass.
+
 ## 2026-05-09 - Core Unity Metadata Scan Coverage
 
 Focus:

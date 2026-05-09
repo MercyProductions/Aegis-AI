@@ -174,7 +174,19 @@ const projectCommandInferrer = loadExtensionFunctions(
   { path }
 );
 assertProjectCommandInference(projectCommandInferrer);
-const buildFileClassifier = loadExtensionFunction(extensionText, 'isLikelyBuildFile', { path });
+const unityImportantFileClassifier = loadExtensionFunctions(
+  extensionText,
+  ['isUnityImportantFile', 'isImportantWorkspaceFile'],
+  'isImportantWorkspaceFile',
+  { path, IMPORTANT_FILE_PATTERNS: [] }
+);
+assertUnityImportantFileDetection(unityImportantFileClassifier);
+const buildFileClassifier = loadExtensionFunctions(
+  extensionText,
+  ['isUnityImportantFile', 'isLikelyBuildFile'],
+  'isLikelyBuildFile',
+  { path }
+);
 assertBuildFileDetection(buildFileClassifier);
 assertProjectRiskPattern(extensionText);
 assertPythonLockfilePatterns(extensionText);
@@ -581,8 +593,36 @@ function assertProjectCommandInference(inferrer) {
   }
 }
 
+function assertUnityImportantFileDetection(classifier) {
+  for (const file of [
+    'Packages/manifest.json',
+    'Packages/packages-lock.json',
+    'ProjectSettings/ProjectVersion.txt',
+    'ProjectSettings/ProjectSettings.asset',
+    'ProjectSettings/EditorBuildSettings.asset',
+    'Assets/Scripts/Gameplay.asmdef',
+    'Assets/Scripts/Gameplay.asmref'
+  ]) {
+    if (!classifier(file)) {
+      fail(`isImportantWorkspaceFile must keep Unity metadata visible: ${file}.`);
+    }
+  }
+  if (classifier('Assets/Logs/editor.log')) {
+    fail('isImportantWorkspaceFile must not treat arbitrary Unity logs as important metadata.');
+  }
+}
+
 function assertBuildFileDetection(classifier) {
-  for (const file of ['Modern.slnx', 'src/App/App.fsproj', 'src/Tool/Tool.vbproj', 'Native.vcxproj', 'Native.vcxproj.filters']) {
+  for (const file of [
+    'Modern.slnx',
+    'src/App/App.fsproj',
+    'src/Tool/Tool.vbproj',
+    'Native.vcxproj',
+    'Native.vcxproj.filters',
+    'Packages/manifest.json',
+    'ProjectSettings/ProjectVersion.txt',
+    'Assets/Scripts/Gameplay.asmdef'
+  ]) {
     if (!classifier(file)) {
       fail(`isLikelyBuildFile must classify ${file} as a build/config file.`);
     }

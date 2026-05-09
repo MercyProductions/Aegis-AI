@@ -16,6 +16,7 @@
 - Hardened Core/Ollama URL normalization to preserve reverse-proxy path prefixes while trimming pasted endpoint paths.
 - Hardened package lint with validation-command guard regressions so unsafe shell launchers, installs, chained commands, and destructive Git aliases cannot drift into the fallback validation runner.
 - Hardened fallback validation detection so native-only Visual Studio solutions are no longer mislabeled as `dotnet build` workspaces; .NET project files still trigger `dotnet build`.
+- Improved Unity local fallback snapshots so package manifests, package lockfiles, key `ProjectSettings` metadata, and assembly-definition files are treated as important context/build files.
 
 ## 0.1.0 - Release Candidate
 

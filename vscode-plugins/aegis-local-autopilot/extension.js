@@ -1930,7 +1930,7 @@ async function buildProjectSnapshot(target, options = {}) {
   const files = entries.filter((entry) => entry.type === 'file');
   const directories = entries.filter((entry) => entry.type === 'directory');
   const importantFiles = files
-    .filter((entry) => IMPORTANT_FILE_PATTERNS.some((pattern) => pattern.test(path.basename(entry.relative))))
+    .filter((entry) => isImportantWorkspaceFile(entry.relative))
     .slice(0, options.fast ? 20 : 60);
   const testFiles = files
     .filter((entry) => isLikelyTestFile(entry.relative))
@@ -2163,9 +2163,23 @@ function isLikelyTestFile(relativePath) {
 function isLikelyConfigFile(relativePath) {
   const normalized = relativePath.replace(/\\/g, '/').toLowerCase();
   const basename = path.basename(normalized);
-  return IMPORTANT_FILE_PATTERNS.some((pattern) => pattern.test(basename)) ||
+  return isImportantWorkspaceFile(normalized) ||
     /\.(config|conf|ini|toml|yaml|yml|jsonc)$/.test(normalized) ||
     /^(\.eslintrc|\.prettierrc|\.babelrc|dockerfile|makefile)/.test(basename);
+}
+
+function isUnityImportantFile(relativePath) {
+  const normalized = relativePath.replace(/\\/g, '/').toLowerCase();
+  return normalized === 'packages/manifest.json' ||
+    normalized === 'packages/packages-lock.json' ||
+    /^projectsettings\/(?:projectversion\.txt|projectsettings\.asset|editorbuildsettings\.asset|editorsettings\.asset|inputmanager\.asset|tagsmanager\.asset)$/.test(normalized) ||
+    /\.(?:asmdef|asmref)$/i.test(normalized);
+}
+
+function isImportantWorkspaceFile(relativePath) {
+  const normalized = relativePath.replace(/\\/g, '/').toLowerCase();
+  const basename = path.basename(normalized);
+  return isUnityImportantFile(normalized) || IMPORTANT_FILE_PATTERNS.some((pattern) => pattern.test(basename));
 }
 
 function detectEntryPoints(files) {
@@ -4201,7 +4215,7 @@ function isGraphCandidate(relativePath, size) {
   if (size > 512000 || isBlockedRelativePath(relativePath)) {
     return false;
   }
-  return isIndexableTextFile(relativePath) || isLikelyConfigFile(relativePath) || IMPORTANT_FILE_PATTERNS.some((pattern) => pattern.test(path.basename(relativePath)));
+  return isIndexableTextFile(relativePath) || isLikelyConfigFile(relativePath) || isImportantWorkspaceFile(relativePath);
 }
 
 function isSymbolCandidate(relativePath, size) {
@@ -4236,6 +4250,9 @@ function classifyFileRoles(relativePath, text, snapshot) {
 }
 
 function isLikelyBuildFile(relativePath) {
+  if (isUnityImportantFile(relativePath)) {
+    return true;
+  }
   const basename = path.basename(relativePath).toLowerCase();
   return basename === 'package.json' ||
     basename === 'cmakelists.txt' ||
