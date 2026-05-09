@@ -1959,6 +1959,25 @@ Validation completed:
 - Website backend compile check: pass.
 - Repository whitespace check: pass.
 
+## 2026-05-09 - VS Code Validation Guard Package Lint
+
+Focus:
+
+- Keep the VS Code local fallback validation runner limited to exact known-safe commands.
+- Prevent future package releases from accidentally permitting shell launchers, install commands, chained commands, or destructive Git aliases.
+- Align extension documentation with the actual validation command allowlist.
+
+Actions:
+
+- Added package-lint regressions for `isSafeValidationCommand` covering representative safe validation commands and unsafe launcher/destructive/chained forms.
+- Updated VS Code extension documentation to include lint, typecheck, and Go validation commands already supported by the fallback runner.
+- Documented the fallback validation safety contract in the root changelog, extension release changelog, and troubleshooting guide.
+
+Validation completed:
+
+- VS Code extension lint: pass.
+- Repository whitespace check: pass.
+
 ## 2026-05-09 - Website PowerShell Guard Windows Path Compatibility
 
 Focus:

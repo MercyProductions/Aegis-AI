@@ -134,6 +134,9 @@ assertServiceUrl(serviceUrlBuilder, 'https://proxy.local/aegis', '/v1/health', '
 assertServiceUrl(serviceUrlBuilder, 'https://proxy.local/ollama', '/api/tags', 'https://proxy.local/ollama/api/tags');
 assertServiceUrl(serviceUrlBuilder, 'http://127.0.0.1:8788', '/v1/models', 'http://127.0.0.1:8788/v1/models');
 
+const validationCommandGuard = loadExtensionFunction(extensionText, 'isSafeValidationCommand');
+assertValidationCommandGuard(validationCommandGuard);
+
 const unsafeErrorMessagePatterns = [
   {
     pattern: /appendLine\s*\([^)]*error\.message/s,
@@ -255,6 +258,40 @@ function assertServiceUrl(builder, baseUrl, pathname, expected) {
   const built = builder(baseUrl, pathname).toString();
   if (built !== expected) {
     fail(`service URL mismatch for "${baseUrl}" + "${pathname}": expected "${expected}", got "${built}".`);
+  }
+}
+
+function assertValidationCommandGuard(guard) {
+  const safeCommands = [
+    'npm test',
+    'npm run build',
+    'pnpm lint',
+    'yarn typecheck',
+    'dotnet build',
+    'cargo check',
+    'go test ./...',
+    'python -m pytest',
+    'cmake --build build'
+  ];
+  const unsafeCommands = [
+    'npm.cmd install',
+    'cmd.exe /c npm test',
+    'powershell -Command Invoke-Build',
+    'git reset --hard',
+    'git.exe -C . clean -fd',
+    '"C:\\Program Files\\Git\\cmd\\git.exe" checkout -- .',
+    'python -m pytest && git reset --hard'
+  ];
+
+  for (const command of safeCommands) {
+    if (!guard(command)) {
+      fail(`extension validation command guard rejected safe command: ${command}`);
+    }
+  }
+  for (const command of unsafeCommands) {
+    if (guard(command)) {
+      fail(`extension validation command guard allowed unsafe command: ${command}`);
+    }
   }
 }
 

@@ -216,16 +216,26 @@ Detected validation commands are limited to known safe checks:
 
 - `npm test`
 - `npm run build`
+- `npm run lint`
+- `npm run typecheck`
+- `npm run type-check`
 - `pnpm test`
 - `pnpm build`
+- `pnpm lint`
+- `pnpm typecheck`
+- `pnpm type-check`
 - `yarn test`
 - `yarn build`
+- `yarn lint`
+- `yarn typecheck`
+- `yarn type-check`
 - `dotnet build`
 - `cargo check`
+- `go test ./...`
 - `python -m pytest`
 - `cmake --build build`
 
-The extension does not run destructive commands automatically.
+The extension does not run destructive commands automatically. Package lint checks this fallback allowlist so shell launchers, install commands, chained commands, and destructive Git aliases stay out of release packages.
 
 ## Workspace Memory
 

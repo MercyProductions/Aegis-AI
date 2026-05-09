@@ -27,6 +27,7 @@
 - Hardened Website validation launcher filtering so quoted Windows paths such as `"C:\Program Files\nodejs\npm.cmd" install` cannot bypass remembered-command safety checks.
 - Hardened Website command execution so destructive Git aliases such as `git.exe reset --hard` remain blocked even if `git` is explicitly allowlisted.
 - Hardened Website command execution so destructive Git subcommands remain blocked when hidden behind global Git options such as `git -C . reset --hard`.
+- Hardened VS Code package lint with validation-command guard regressions so launcher aliases, chained commands, installs, and destructive Git forms stay out of the local fallback runner.
 - Hardened VS Code Core/Ollama URL handling so reverse-proxy path prefixes are preserved while pasted `/v1`, `/health`, `/models`, and Ollama `/api/...` endpoint paths are trimmed.
 - Hardened Visual Studio Core/Ollama URL handling so reverse-proxy path prefixes are preserved while pasted `/v1`, `/health`, `/models`, and Ollama `/api/...` endpoint paths are trimmed.
 - Hardened Desktop backend/Core URL handling so reverse-proxy path prefixes are preserved while pasted `/api`, `/v1`, `/health`, or `/models` endpoint paths are trimmed.
