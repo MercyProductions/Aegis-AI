@@ -177,6 +177,16 @@ class ApprovalAndCommandTests(unittest.TestCase):
         self.assertIn("CMAKE_GENERATOR=NMake Makefiles", wrapper_command)
         self.assertIn("python.exe build.py", wrapper_command)
 
+    def test_native_toolchain_detection_includes_slnx_solutions(self) -> None:
+        runner = CommandRunner(Settings(_env_file=None, aegis_command_allowlist="python,msbuild"))
+        self.workspace.joinpath("Modern.slnx").write_text("<Solution></Solution>\n", encoding="utf-8")
+        self.workspace.joinpath("build.py").write_text("print('build')\n", encoding="utf-8")
+
+        self.assertTrue(
+            runner._needs_windows_native_toolchain("msbuild", ["msbuild", "Modern.slnx"], self.workspace)
+        )
+        self.assertTrue(runner._needs_windows_native_toolchain("python", ["python", "build.py"], self.workspace))
+
     def test_vsdevcmd_wrapper_prefers_vs_ninja_for_cmake_when_available(self) -> None:
         runner = CommandRunner(Settings(_env_file=None, aegis_command_allowlist="cmake"))
         self.workspace.joinpath("CMakeLists.txt").write_text("project(Demo LANGUAGES CXX)\n", encoding="utf-8")

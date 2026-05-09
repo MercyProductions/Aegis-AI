@@ -375,6 +375,7 @@ class CommandRunner:
         has_native_project = (
             (cwd / "CMakeLists.txt").exists()
             or any(cwd.glob("*.sln"))
+            or any(cwd.glob("*.slnx"))
             or any(cwd.glob("*.vcxproj"))
         )
         if not has_native_project:
