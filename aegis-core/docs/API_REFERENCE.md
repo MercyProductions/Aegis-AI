@@ -79,7 +79,7 @@ When `run` is false, returns detected validation commands.
 
 When `run` is true, runs the provided command or first detected safe command and appends `.aegis/validation-log.md`.
 
-JavaScript package managers are script-aware: `npm`/`pnpm`/`yarn` test and build commands are listed only when matching `package.json` scripts exist. Visual Studio solution files are treated as .NET validation targets only when they reference `.csproj`, `.fsproj`, or `.vbproj` projects; native C++ `.vcxproj` solutions are not mislabeled as `dotnet build`. Nested subprojects with their own manifests or solution files are treated as validation boundaries so their project files do not leak commands into parent ecosystem workspaces.
+JavaScript package managers are script-aware: safe `npm`/`pnpm`/`yarn` test, lint, typecheck, and build commands are listed only when matching `package.json` scripts exist. Visual Studio solution files are treated as .NET validation targets only when they reference `.csproj`, `.fsproj`, or `.vbproj` projects; native C++ `.vcxproj` solutions are not mislabeled as `dotnet build`. Nested subprojects with their own manifests or solution files are treated as validation boundaries so their project files do not leak commands into parent ecosystem workspaces.
 
 Custom commands are still restricted to the built-in safe validation allow-list. Unsafe commands are logged as blocked and are not executed.
 

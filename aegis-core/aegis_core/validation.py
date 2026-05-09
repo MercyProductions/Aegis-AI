@@ -16,6 +16,7 @@ from .safety import is_ignored_path, is_safe_to_read
 
 VALIDATION_LOG_FILE = "validation-log.md"
 DOTNET_PROJECT_SUFFIXES = {".csproj", ".fsproj", ".vbproj"}
+PACKAGE_VALIDATION_SCRIPTS = ("test", "lint", "typecheck", "type-check", "build")
 NESTED_WORKSPACE_MARKER_FILES = {
     "package.json",
     "pyproject.toml",
@@ -39,10 +40,9 @@ def detect_validation_commands(workspace: str | Path) -> list[ValidationCommand]
     package_scripts = _package_scripts(root)
     if package_scripts:
         package_manager = _detect_package_manager(root)
-        if "test" in package_scripts:
-            commands.append(_package_script_command(package_manager, "test"))
-        if "build" in package_scripts:
-            commands.append(_package_script_command(package_manager, "build"))
+        for script in PACKAGE_VALIDATION_SCRIPTS:
+            if script in package_scripts:
+                commands.append(_package_script_command(package_manager, script))
     if _has_dotnet_solution(root) or _has_project_file(root, DOTNET_PROJECT_SUFFIXES):
         commands.append(ValidationCommand("dotnet build", ["dotnet", "build"], ".NET project or solution detected"))
     if _has_root_file_named(root, "Cargo.toml"):

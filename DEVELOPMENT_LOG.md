@@ -326,6 +326,25 @@ Validation completed:
 - Aegis Core contract test suite: pass.
 - Repository whitespace check: pass.
 
+## 2026-05-09 - Core Package Validation Script Coverage
+
+Focus:
+
+- Surface safe package validation scripts used by extensions and tooling workspaces.
+- Avoid adding package, install, or publish scripts to automatic validation discovery.
+
+Actions:
+
+- Extended Core package validation discovery from test/build-only to safe test, lint, typecheck, type-check, and build scripts.
+- Added a regression for lint/typecheck-only package workspaces that ignores unsafe packaging scripts.
+- Updated validation discovery documentation.
+
+Validation completed:
+
+- Aegis Core validation detection regression slice: pass.
+- Aegis Core contract test suite: pass.
+- Repository whitespace check: pass.
+
 ## 2026-05-09 - Completion Selected Model Guard
 
 Focus:

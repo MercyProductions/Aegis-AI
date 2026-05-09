@@ -2825,6 +2825,17 @@ def test_validation_detection_respects_package_scripts(tmp_path: Path) -> None:
     assert [item.name for item in detect_validation_commands(workspace)] == ["pnpm test", "pnpm build"]
 
 
+def test_validation_detection_includes_safe_package_lint_and_typecheck_scripts(tmp_path: Path) -> None:
+    workspace = tmp_path / "lint-only-node-project"
+    workspace.mkdir()
+    (workspace / "package.json").write_text(
+        json.dumps({"scripts": {"start": "vite", "lint": "eslint .", "typecheck": "tsc --noEmit", "package": "vsce package"}}),
+        encoding="utf-8",
+    )
+
+    assert [item.name for item in detect_validation_commands(workspace)] == ["npm run lint", "npm run typecheck"]
+
+
 def test_validation_detection_ignores_project_files_in_ignored_folders(tmp_path: Path) -> None:
     workspace = tmp_path / "ignored-dotnet-project"
     workspace.mkdir()
