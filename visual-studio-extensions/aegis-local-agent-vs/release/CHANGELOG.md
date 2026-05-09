@@ -3,15 +3,18 @@
 ## 0.1.1 - Visual Studio Dogfooding Hardening
 
 - Repackaged the Visual Studio extension after dogfooding install/open smoke tests.
+- Replaced localhost VSIX MoreInfo metadata with the GitHub repository URL.
+- Removed internal dogfooding notes from the packaged VSIX archive.
 - Changed the default `Auto Scan On Solution Open` setting to `false` for new installs, reducing startup friction on large C++, Unity, and multi-project solutions.
 - Fixed VSCT command-resource packaging so Visual Studio can load the Aegis Tools menu and command table after VSIX install.
 - Hardened `build.ps1` so MSBuild failures stop packaging and the generated VSIX is checked for matching manifest version plus embedded `Menus.ctmenu` resources.
+- Hardened `build.ps1` to reject localhost placeholder metadata and internal note/model-inventory files in packaged VSIX archives.
 - Hardened solution memory reads and writes so damaged `.aegis` paths degrade safely instead of crashing roadmap, context, build-log, or history workflows.
 - Hardened rollback manifests with explicit backup IDs and rollback path validation so corrupted metadata cannot restore from ambiguous or escaped paths.
 - Tightened rollback for shared backup locations so manifests from another solution, hidden/dot backup IDs, ambiguous newest-backup fallback, and traversal or secret-like proposed paths are rejected.
 - Hardened Ollama/Core URL settings so host:port inputs, pasted endpoint paths, and invalid values normalize before model calls or shared Core registration.
 - Updated install and troubleshooting documentation to make manual rescan the expected first-run indexing workflow.
-- Added `DOGFOODING_NOTES.md` to track real-solution test coverage, observed issues, and remaining manual GUI gaps.
+- Kept `DOGFOODING_NOTES.md` in the source tree to track real-solution test coverage, observed issues, and remaining manual GUI gaps.
 
 ## 0.1.0 - Visual Studio Release Candidate
 

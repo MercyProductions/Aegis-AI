@@ -48,6 +48,14 @@ if (!manifest.icon || !fs.existsSync(path.join(root, manifest.icon))) {
   fail(`icon is missing or not found: ${manifest.icon}`);
 }
 
+if (!manifest.repository || manifest.repository.type !== 'git') {
+  fail('repository metadata must point at the GitHub git repository.');
+}
+
+if (typeof manifest.repository.url !== 'string' || !/^https:\/\/github\.com\/MercyProductions\/Aegis-AI(\.git)?$/.test(manifest.repository.url)) {
+  fail(`repository URL must be the public GitHub repository, got "${manifest.repository.url || 'missing'}".`);
+}
+
 const contributedCommands = new Set((manifest.contributes.commands || []).map((item) => item.command));
 for (const command of requiredCommands) {
   if (!contributedCommands.has(command)) {

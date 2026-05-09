@@ -132,3 +132,25 @@ Friction recorded:
 
 - `npm test -- --runInBand` is a Jest habit and not valid for this Vitest project. The project command is `npm test`.
 - VS Code packaging reports `extension.js` as large at about 250 KB. This is a warning, not a release blocker, but future maintainability work should consider splitting only when it pays for itself.
+
+## 2026-05-09 - Extension Release Metadata Follow-up
+
+Focus:
+
+- Keep extension release packages professional and free of local placeholders.
+- Add build-time checks so packaging hygiene does not depend on memory.
+
+Actions:
+
+- Replaced the VS Code extension `repository.url` value from `file:../..` to `https://github.com/MercyProductions/Aegis-AI.git`.
+- Extended VS Code package lint so release metadata must point to the GitHub repository.
+- Replaced the Visual Studio VSIX `MoreInfo` placeholder `https://localhost/aegis-local-agent` with the GitHub repository URL in both manifest sources.
+- Removed `DOGFOODING_NOTES.md` from the Visual Studio VSIX content list and from the generated release folder.
+- Extended the Visual Studio build script to reject packaged VSIX archives containing localhost placeholder URLs, internal dogfooding notes, local detected model inventory, or repository-only `.gitignore` files.
+
+Validation completed:
+
+- VS Code extension lint: pass.
+- VS Code VSIX package: pass; repository metadata points to GitHub.
+- Visual Studio extension build/package: pass.
+- Visual Studio VSIX archive inspection: pass; MoreInfo points to GitHub and internal notes/model inventory/repository-only files are absent.

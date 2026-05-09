@@ -8,7 +8,7 @@
   "icon": "media/aegis.png",
   "repository": {
     "type": "git",
-    "url": "file:../.."
+    "url": "https://github.com/MercyProductions/Aegis-AI.git"
   },
   "engines": {
     "vscode": "^1.90.0"

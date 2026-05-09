@@ -51,7 +51,6 @@
     <Content Include="..\..\CHANGELOG.md" Link="CHANGELOG.md" IncludeInVSIX="true" />
     <Content Include="..\..\RELEASE_NOTES.md" Link="RELEASE_NOTES.md" IncludeInVSIX="true" />
     <Content Include="..\..\TROUBLESHOOTING.md" Link="TROUBLESHOOTING.md" IncludeInVSIX="true" />
-    <Content Include="..\..\DOGFOODING_NOTES.md" Link="DOGFOODING_NOTES.md" IncludeInVSIX="true" />
     <Content Include="..\..\LICENSE.txt" Link="LICENSE.txt" IncludeInVSIX="true" />
     <Content Include="Resources\AegisIcon.png" IncludeInVSIX="true" />
   </ItemGroup>

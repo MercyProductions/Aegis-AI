@@ -58,8 +58,10 @@
 - Hardened VS Code Ollama/Core URL settings so common local inputs normalize before model detection, health checks, and shared Core sync.
 - Hardened VS Code local API error reporting so Core/Ollama HTTP failures surface parsed, redacted detail text instead of raw JSON bodies.
 - Hardened VS Code VSIX packaging so local dogfooding notes, detected model inventories, and repository-only files are excluded from release archives.
+- Hardened VS Code release metadata so packaged extensions point at the GitHub repository instead of a local filesystem path.
 - Hardened Visual Studio Ollama/Core URL settings so common local inputs normalize before model calls, health checks, and shared Core registration.
 - Hardened Visual Studio Health Check so Core reachability and client registration are reported separately with useful Core error details.
+- Hardened Visual Studio VSIX metadata and packaging so MoreInfo points to GitHub and internal dogfooding/model-inventory files are excluded.
 - Added product-utilization workflow notes for daily Auralith dogfooding.
 - Started the long-term workflow refinement cadence so repeated daily-use friction is tracked before new feature work.
 - Documented the current stabilization and validation pass.
@@ -72,5 +74,6 @@
 - VS Code extension lint and VSIX packaging pass.
 - VS Code package lint now runs before VSIX packaging and verifies release-only exclusions.
 - Visual Studio extension build and VSIX packaging pass.
+- Visual Studio VSIX packaging now verifies manifest MoreInfo and rejects localhost placeholders or internal notes in the archive.
 - Website frontend tests/build and backend test suite pass.
 - Full validation notes are tracked in `docs/ECOSYSTEM_STABILIZATION.md`.
