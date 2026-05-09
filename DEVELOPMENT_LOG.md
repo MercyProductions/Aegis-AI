@@ -403,3 +403,22 @@ Actions:
 Validation completed:
 
 - Visual Studio extension build/package: pass; command table validation ran before the VSIX was produced.
+
+## 2026-05-09 - Validation Documentation Refresh
+
+Focus:
+
+- Keep the living stabilization reports aligned with the current test and packaging baseline.
+- Remove stale validation wording that still described older Core test counts and the prior Website build warning.
+
+Actions:
+
+- Updated `docs/ECOSYSTEM_STABILIZATION.md` with the current Core, Website, Desktop, VS Code, and Visual Studio validation state.
+- Updated `VALIDATION_REPORT.md` so the main validation table reflects the latest package guards and the warning-free Website production build.
+
+Validation completed:
+
+- Aegis Core tests: pass, 51 tests.
+- VS Code extension lint/package: pass.
+- Website focused frontend API/runtime/task tests: pass, 40 tests.
+- Desktop Release build and quick smoke: pass.

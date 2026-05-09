@@ -76,6 +76,7 @@
 - Hardened Visual Studio Health Check so Core reachability and client registration are reported separately with useful Core error details.
 - Hardened Visual Studio VSIX metadata and packaging so MoreInfo points to GitHub and internal dogfooding/model-inventory files are excluded.
 - Hardened Visual Studio VSIX packaging so VSCT command buttons, command symbols, C# command IDs, and registered handlers must stay synchronized.
+- Refreshed stabilization validation docs so Core test counts, Website build status, VS Code packaging guards, Visual Studio command-table guards, and Desktop smoke status match the current baseline.
 - Added product-utilization workflow notes for daily Auralith dogfooding.
 - Started the long-term workflow refinement cadence so repeated daily-use friction is tracked before new feature work.
 - Documented the current stabilization and validation pass.

@@ -30,8 +30,10 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 | Desktop settings | Improved | Backend and Aegis Core URL fields normalize host:port inputs and pasted endpoint paths before config writes or runtime requests. |
 | VS Code settings | Improved | Ollama and Aegis Core URL fields normalize host:port inputs and pasted endpoint paths before model or shared-runtime requests. |
 | VS Code diagnostics | Improved | Local API HTTP failures now surface parsed, redacted details instead of raw JSON response bodies. |
+| VS Code packaging | Improved | Release lint now verifies command contribution/activation parity, release metadata, source-only helper exclusions, and package hygiene before VSIX creation. |
 | Visual Studio settings | Improved | Ollama and Aegis Core URL fields normalize host:port inputs and pasted endpoint paths before model or shared-runtime requests. |
 | Shared task API | Improved | Bad task status updates return `400`, missing task IDs return `404`, and malformed local task records are normalized on read. |
+| Visual Studio packaging | Improved | VSIX packaging now validates manifest metadata, command resources, and VSCT/C# command table parity before producing the release archive. |
 | Shared mutation persistence | Improved | Client registration and task creation/update now verify persistence; unwritable `.aegis` roots return clear failures or degraded plan responses instead of phantom successful writes. |
 | Memory resilience | Improved | Dashboard/task reads, agent plan reads, and generated-memory writes now tolerate unreadable or damaged `.aegis` JSON/markdown paths. |
 | VS Code memory resilience | Improved | Workspace startup and later index/history/log writes skip damaged `.aegis` paths instead of breaking scans or post-apply bookkeeping. |
@@ -57,7 +59,7 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 
 Ran during this pass:
 
-- `python -m pytest tests/test_core_contracts.py -q` in Aegis Core: 44 tests passed
+- `python -m pytest tests -q` in Aegis Core: 51 tests passed
 - `python -m compileall aegis_core`: pass
 - Core BOM-prefixed package framework detection regression test: pass
 - Core malformed client registry regression test: pass
@@ -69,17 +71,20 @@ Ran during this pass:
 - Core malformed Ollama model inventory regression tests: pass
 - Aegis Core `/v1` TestClient smoke for settings, memory, diagnostics, roadmap, tasks, task status, agent continue, and agent repair: pass
 - Core scan twice: second scan returned `cache_hit: true`
-- `npm run lint` in VS Code extension: pass
+- `npm run lint` in VS Code extension: pass, including command activation parity checks
 - VS Code memory-write hardening lint: pass
 - VS Code rollback manifest hardening lint and package: pass
 - VS Code rollback incomplete-backup hardening lint and package: pass
-- `npm run package` in VS Code extension: pass, regenerated `release/aegis-local-autopilot-0.1.1.vsix`
+- `npm run package` in VS Code extension: pass, regenerated `release/aegis-local-autopilot-0.1.1.vsix` with only runtime/package metadata files
 - Desktop `.\build.ps1`: pass, 0 warnings, 0 errors
-- Visual Studio extension `.\build.ps1`: pass, regenerated `release/AegisLocalAgentVs.vsix`
+- Desktop quick smoke: pass, nonblank login capture with backend reachable before and after launch
+- Visual Studio extension `.\build.ps1`: pass, command table parity checked, regenerated `release/AegisLocalAgentVs.vsix`
 - Visual Studio rollback hardening `.\build.ps1`: pass, regenerated `release/AegisLocalAgentVs.vsix`
 - Visual Studio rollback cross-solution/path hardening `.\build.ps1`: pass, regenerated `release/AegisLocalAgentVs.vsix`
 - Website frontend tests: 21 files / 169 tests passed
 - Website frontend production build: pass, no Vite chunk-size warning
+- Website focused frontend API/runtime/task tests: 40 tests passed
+- Website acceptance gate with explicit backend/frontend URLs: pass
 - Website backend tests: 739 tests and 155 subtests passed
 - Website workspace setup regression and helper tests for damaged `.aegis` paths: 8 tests passed
 - Website validation manager damaged-marker/profile-persistence regression tests: 21 tests and 4 subtests passed
