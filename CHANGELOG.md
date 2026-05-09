@@ -15,6 +15,7 @@
 - Improved Website validation planning so root `build.ps1` guard scripts are preferred over lower-level CMake/MSBuild suggestions for Desktop and extension workspaces.
 - Improved Website .NET validation and dependency profiling so `.fsproj` and `.vbproj` workspaces receive the same `dotnet restore`, `dotnet build`, and `dotnet test` treatment as `.csproj` projects.
 - Improved Aegis Core workspace scans so F# and Visual Basic .NET projects are included in build-file, framework, language, TODO, and dependency metadata.
+- Improved Aegis Core simulation and orchestration planning so `.csproj`, `.fsproj`, `.vbproj`, `.vcxproj`, and `.slnx` path mentions are not truncated and non-C# .NET projects are tagged as `.net` work.
 - Improved Website dependency profiling so root `build.py` and `build.ps1` guard scripts are recorded as validation commands before lower-level CMake/MSBuild native fallbacks.
 - Improved Website agent continuation so existing projects with root `build.ps1` guard scripts propose the same safe PowerShell validation command used by validation discovery.
 - Improved Website project-builder existing-project validation so root `build.ps1` guard scripts are selected before CMake/MSBuild fallback commands.

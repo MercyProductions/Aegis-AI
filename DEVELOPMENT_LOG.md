@@ -2097,6 +2097,24 @@ Validation completed:
 
 - Aegis Core contract test suite: pass, 140 tests.
 
+## 2026-05-09 - Core Simulation .NET Project Path Parity
+
+Focus:
+
+- Keep Core simulation and orchestration consumers aligned with the wider C#/F#/Visual Basic .NET scan metadata.
+- Avoid truncating project-file mentions such as `App.csproj` or `FSharpApp.fsproj` into source-file-looking paths.
+
+Actions:
+
+- Reordered simulation path parsing to prefer longer project/build suffixes before shorter source suffixes.
+- Extended simulation focus-file parsing, build-risk detection, and path system classification to F# and Visual Basic .NET project files.
+- Extended orchestration affected-system tagging so `.fsproj` and `.vbproj` required files are treated as `.net` work.
+- Added focused Core regressions for simulation project-path parsing/build risks and orchestration .NET affected-system tagging.
+
+Validation completed:
+
+- Focused Core .NET simulation/orchestration regression slice: pass, 3 tests.
+
 ## 2026-05-09 - Website PowerShell Guard Windows Path Compatibility
 
 Focus:

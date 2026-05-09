@@ -12,7 +12,7 @@ from .memory import ProjectMemory, utc_now
 from .quality import quality_dashboard
 from .safety import is_safe_to_read
 from .validation import detect_validation_commands
-from .workspace import WorkspaceScanner
+from .workspace import BUILD_FILE_SUFFIXES, WorkspaceScanner
 
 
 DEPENDENCY_FILES = {
@@ -31,8 +31,35 @@ DEPENDENCY_FILES = {
 }
 RISK_ORDER = {"low": 0, "moderate": 1, "high": 2, "dangerous_architectural_change": 3}
 ROLLBACK_ORDER = {"simple": 0, "moderate": 1, "complex": 2, "high": 3}
+PATH_EXTENSIONS = (
+    "csproj",
+    "fsproj",
+    "vbproj",
+    "vcxproj",
+    "slnx",
+    "tsx",
+    "jsx",
+    "cpp",
+    "hpp",
+    "yaml",
+    "toml",
+    "json",
+    "sln",
+    "py",
+    "js",
+    "ts",
+    "cs",
+    "fsi",
+    "fsx",
+    "fs",
+    "vb",
+    "c",
+    "h",
+    "md",
+    "yml",
+)
 PATH_PATTERN = re.compile(
-    r"([A-Za-z0-9_./\\-]+\.(?:py|js|jsx|ts|tsx|cs|cpp|c|h|hpp|md|json|toml|yml|yaml|sln|slnx|csproj|vcxproj))"
+    r"([A-Za-z0-9_./\\-]+\.(?:" + "|".join(PATH_EXTENSIONS) + r"))"
 )
 COMMON_WORDS = {
     "add",
@@ -438,7 +465,7 @@ def _likely_build_risks(
     statuses = quality.get("statuses") if isinstance(quality.get("statuses"), dict) else {}
     if _status_failed(statuses.get("build")) or _status_failed(statuses.get("validation")):
         risks.append({"title": "Existing validation is already failing", "severity": "high", "evidence": statuses})
-    dependency_paths = [path for path in paths if Path(path).name in DEPENDENCY_FILES or path.endswith((".sln", ".csproj", ".vcxproj"))]
+    dependency_paths = [path for path in paths if Path(path).name in DEPENDENCY_FILES or Path(path).suffix.lower() in BUILD_FILE_SUFFIXES]
     if dependency_paths:
         risks.append({"title": "Build or dependency manifest may be affected", "severity": "high", "files": dependency_paths[:8]})
     if not validation["commands"]:
@@ -865,7 +892,7 @@ def _system_for_path(path: str) -> str:
         return "website-frontend"
     if "vscode" in lower or "vs-code" in lower:
         return "vscode-extension"
-    if "visualstudio" in lower or "visual-studio" in lower or lower.endswith((".sln", ".csproj", ".vcxproj")):
+    if "visualstudio" in lower or "visual-studio" in lower or Path(lower).suffix.lower() in BUILD_FILE_SUFFIXES:
         return "visual-studio-extension"
     if "desktop" in lower or "tauri" in lower or "electron" in lower:
         return "desktop-client"

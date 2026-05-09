@@ -21,12 +21,13 @@ from .quality import planner_guidance, planner_quality_summary, quality_dashboar
 from .safety import is_safe_to_read
 from .simulation import planner_simulation_guidance, planner_simulation_summary, simulate_change
 from .validation import detect_validation_commands, run_validation
-from .workspace import WorkspaceScanner
+from .workspace import DOTNET_PROJECT_SUFFIXES, WorkspaceScanner
 
 
 QUEUE_FILE = "orchestration-queue.json"
 ACTIVE_FILE = "active-orchestration.json"
 QUEUE_STATUSES = {"pending", "in_progress", "blocked", "needs_approval", "validating", "completed", "failed"}
+DOTNET_PLAN_SUFFIXES = {".sln", ".slnx"} | DOTNET_PROJECT_SUFFIXES
 APPROVAL_GATE_LABELS = {
     "file_edit": "File edits require explicit approval.",
     "file_delete": "File deletion requires explicit approval.",
@@ -448,7 +449,7 @@ def _affected_systems(scan: dict[str, Any], objective: str, required_files: list
         systems.append("website")
     if any("package.json" in item for item in required_files):
         systems.append("node")
-    if any(item.endswith((".sln", ".csproj")) for item in required_files):
+    if any(Path(item).suffix.lower() in DOTNET_PLAN_SUFFIXES for item in required_files):
         systems.append(".net")
     return _merge_lists([], systems) or ["workspace"]
 

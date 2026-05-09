@@ -47,6 +47,29 @@ def make_workspace(tmp_path: Path) -> Path:
     return workspace
 
 
+def make_dotnet_polyglot_workspace(tmp_path: Path, name: str = "dotnet-polyglot-project") -> Path:
+    workspace = tmp_path / name
+    (workspace / "src" / "FSharpApp").mkdir(parents=True)
+    (workspace / "src" / "VisualBasicTool").mkdir(parents=True)
+    (workspace / "src" / "FSharpApp" / "FSharpApp.fsproj").write_text(
+        '<Project Sdk="Microsoft.NET.Sdk"></Project>',
+        encoding="utf-8",
+    )
+    (workspace / "src" / "FSharpApp" / "Program.fs").write_text(
+        "module Program\nopen System\n// TODO verify startup\n",
+        encoding="utf-8",
+    )
+    (workspace / "src" / "VisualBasicTool" / "VisualBasicTool.vbproj").write_text(
+        '<Project Sdk="Microsoft.NET.Sdk"></Project>',
+        encoding="utf-8",
+    )
+    (workspace / "src" / "VisualBasicTool" / "Program.vb").write_text(
+        "Imports System\nModule Program\nEnd Module\n",
+        encoding="utf-8",
+    )
+    return workspace
+
+
 def run_cli(core_root: Path, *args: str) -> dict:
     completed = subprocess.run(
         [sys.executable, "-m", "aegis_core.cli", *args],
@@ -236,25 +259,7 @@ def test_workspace_scan_framework_detection_ignores_damaged_marker_shapes(tmp_pa
 
 
 def test_workspace_scan_detects_fsharp_and_visual_basic_dotnet_projects(tmp_path: Path) -> None:
-    workspace = tmp_path / "dotnet-polyglot-project"
-    (workspace / "src" / "FSharpApp").mkdir(parents=True)
-    (workspace / "src" / "VisualBasicTool").mkdir(parents=True)
-    (workspace / "src" / "FSharpApp" / "FSharpApp.fsproj").write_text(
-        '<Project Sdk="Microsoft.NET.Sdk"></Project>',
-        encoding="utf-8",
-    )
-    (workspace / "src" / "FSharpApp" / "Program.fs").write_text(
-        "module Program\nopen System\n// TODO verify startup\n",
-        encoding="utf-8",
-    )
-    (workspace / "src" / "VisualBasicTool" / "VisualBasicTool.vbproj").write_text(
-        '<Project Sdk="Microsoft.NET.Sdk"></Project>',
-        encoding="utf-8",
-    )
-    (workspace / "src" / "VisualBasicTool" / "Program.vb").write_text(
-        "Imports System\nModule Program\nEnd Module\n",
-        encoding="utf-8",
-    )
+    workspace = make_dotnet_polyglot_workspace(tmp_path)
 
     result = WorkspaceScanner(workspace).scan(persist=False)
 
@@ -1026,6 +1031,39 @@ def test_change_simulation_forecasts_risk_and_impact(tmp_path: Path) -> None:
     assert data["rollback_complexity"]["checkpoint_required"] is True
 
 
+def test_change_simulation_tracks_fsharp_and_visual_basic_project_paths(tmp_path: Path) -> None:
+    workspace = make_dotnet_polyglot_workspace(tmp_path, "dotnet-simulation-project")
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/v1/simulation/change",
+        json={
+            "workspace": str(workspace),
+            "objective": (
+                "Update src/FSharpApp/FSharpApp.fsproj, src/FSharpApp/Program.fs, "
+                "and src/VisualBasicTool/VisualBasicTool.vbproj with focused validation"
+            ),
+            "approach": "Minimal project metadata repair",
+        },
+    )
+
+    assert response.status_code == 200
+    assert_core_contract(response.json(), "simulation.change")
+    data = response.json()["data"]
+    assert "src/FSharpApp/FSharpApp.fsproj" in data["focus_files"]
+    assert "src/FSharpApp/Program.fs" in data["focus_files"]
+    assert "src/VisualBasicTool/VisualBasicTool.vbproj" in data["focus_files"]
+    assert "src/FSharpApp/FSharpApp.fs" not in data["focus_files"]
+    build_risk_files = [
+        path
+        for risk in data["likely_build_risks"]
+        for path in risk.get("files", [])
+        if isinstance(risk, dict)
+    ]
+    assert "src/FSharpApp/FSharpApp.fsproj" in build_risk_files
+    assert "src/VisualBasicTool/VisualBasicTool.vbproj" in build_risk_files
+
+
 def test_simulation_compare_ranks_incremental_approach_over_rewrite(tmp_path: Path) -> None:
     workspace = make_workspace(tmp_path)
     src = workspace / "src"
@@ -1448,6 +1486,29 @@ def test_orchestration_plan_creates_safe_queue_and_memory(tmp_path: Path) -> Non
     history = json.loads((workspace / ".aegis" / "agent-history.json").read_text(encoding="utf-8"))
     assert any(item.get("event") == "orchestration_created" for item in history)
     assert any(item.get("event") == "agent_decision" and item.get("agent_id") == "planner" for item in history)
+
+
+def test_orchestration_plan_tracks_fsharp_and_visual_basic_dotnet_systems(tmp_path: Path) -> None:
+    workspace = make_dotnet_polyglot_workspace(tmp_path, "dotnet-orchestration-project")
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/v1/orchestration/plan",
+        json={
+            "workspace": str(workspace),
+            "goal": "Stabilize the F# and Visual Basic project validation flow",
+            "source_client": "pytest",
+        },
+    )
+
+    assert response.status_code == 200
+    assert_core_contract(response.json(), "orchestration.plan")
+    plan = response.json()["data"]["plan"]
+    assert "src/FSharpApp/FSharpApp.fsproj" in plan["required_files"]
+    assert "src/VisualBasicTool/VisualBasicTool.vbproj" in plan["required_files"]
+    assert "F#/.NET" in plan["affected_systems"]
+    assert "VB.NET" in plan["affected_systems"]
+    assert ".net" in plan["affected_systems"]
 
 
 def test_orchestration_plan_reports_queue_persistence_failure(tmp_path: Path) -> None:
