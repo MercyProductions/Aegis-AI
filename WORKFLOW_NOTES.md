@@ -73,6 +73,20 @@ Fixes applied:
 - Passed relative release paths to `vsce` and `code`.
 - Added a lint guard against `execSync` shell command strings in the release scripts.
 
+### 2026-05-09 - VS Code Installer Wrapper Hardening
+
+Context:
+- The PowerShell installer still duplicated the package/install sequence even after the npm install path had been hardened.
+- Duplicate installer paths make release validation less trustworthy because one path can be fixed while the other quietly drifts.
+
+What worked:
+- The PowerShell wrapper now runs the same `npm run install-local` path used in package validation.
+- The wrapper installed the extension successfully from this Windows workspace path.
+
+Fixes applied:
+- Replaced duplicate PowerShell package/discovery/install logic with a thin npm delegation.
+- Added a clearer npm-missing error.
+
 ### 2026-05-08 - Product Utilization Kickoff
 
 Context:
@@ -111,6 +125,7 @@ Fixes applied:
 | 2026-05-09 | Extension release metadata | VS Code repository metadata used a local `file:` URL and Visual Studio MoreInfo used a localhost placeholder. | Medium | Pointed both at GitHub and added package/build guards. |
 | 2026-05-09 | VS Code package contents | VSIX archive included the source-tree `install.ps1` helper, which is only useful before packaging. | Low | Excluded it from the VSIX and added a lint guard. |
 | 2026-05-09 | VS Code release scripts | Package/install commands broke when the workspace path contained spaces and `&`. | Medium | Replaced shell command strings with a shared command runner and relative VSIX args. |
+| 2026-05-09 | VS Code installer | PowerShell installer duplicated the npm/Node install path. | Low | Made it delegate to `npm run install-local` and validated the wrapper. |
 
 ## Daily Workflow Checklist
 

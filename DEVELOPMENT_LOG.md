@@ -192,3 +192,21 @@ Validation completed:
 - VS Code package script: pass.
 - VS Code local install script: pass.
 - VSIX archive inspection: pass; the package still contains only runtime files and package metadata.
+
+## 2026-05-09 - VS Code Installer Wrapper Hardening
+
+Focus:
+
+- Avoid maintaining two separate local install flows for the VS Code extension.
+- Keep the human-facing PowerShell installer aligned with the validated npm/Node packaging path.
+
+Actions:
+
+- Changed `install.ps1` to call `npm run install-local` instead of separately packaging, discovering the newest VSIX, and invoking `code` directly.
+- Added an explicit npm availability check with a setup-oriented error message.
+
+Validation completed:
+
+- VS Code extension lint: pass.
+- VS Code PowerShell installer: pass; it packages and installs the VSIX through the hardened local install path.
+- VSIX archive inspection: pass; packaged contents remain limited to runtime files and package metadata.

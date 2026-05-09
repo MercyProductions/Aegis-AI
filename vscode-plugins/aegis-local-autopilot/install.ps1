@@ -2,13 +2,14 @@ $ErrorActionPreference = "Stop"
 
 Push-Location $PSScriptRoot
 try {
-    npm run package
-    $vsix = Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot "release") -Filter "*.vsix" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-    if (-not $vsix) {
-        throw "No VSIX package was created."
+    if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
+        throw "npm was not found. Install Node.js, then rerun this installer."
     }
-    code --install-extension $vsix.FullName --force
-    Write-Host "Installed $($vsix.Name) into VS Code."
+
+    npm run install-local
+    if ($LASTEXITCODE -ne 0) {
+        throw "npm run install-local failed with exit code $LASTEXITCODE."
+    }
 }
 finally {
     Pop-Location

@@ -61,6 +61,7 @@
 - Hardened VS Code release metadata so packaged extensions point at the GitHub repository instead of a local filesystem path.
 - Hardened VS Code VSIX contents so the source-tree install helper is excluded from the shipped extension archive.
 - Hardened VS Code package/install scripts so Windows workspace paths with spaces or `&` no longer break VSIX creation or local installation.
+- Simplified the VS Code PowerShell installer so it delegates to the same validated local install path as npm.
 - Hardened Visual Studio Ollama/Core URL settings so common local inputs normalize before model calls, health checks, and shared Core registration.
 - Hardened Visual Studio Health Check so Core reachability and client registration are reported separately with useful Core error details.
 - Hardened Visual Studio VSIX metadata and packaging so MoreInfo points to GitHub and internal dogfooding/model-inventory files are excluded.
@@ -77,6 +78,7 @@
 - VS Code package lint now runs before VSIX packaging and verifies release-only exclusions.
 - VS Code VSIX archive inspection confirms only runtime/package metadata files are shipped.
 - VS Code local install script passes after packaging from the current Windows workspace path.
+- VS Code PowerShell install helper passes through the hardened local install path.
 - Visual Studio extension build and VSIX packaging pass.
 - Visual Studio VSIX packaging now verifies manifest MoreInfo and rejects localhost placeholders or internal notes in the archive.
 - Website frontend tests/build and backend test suite pass.
