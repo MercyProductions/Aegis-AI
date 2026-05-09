@@ -88,7 +88,7 @@ Backups are stored under:
 .aegis/backups/
 ```
 
-Rollback only touches files listed in a valid latest backup manifest for the current workspace. If the manifest has an unsafe backup ID, mismatched workspace root, or backup file path outside `.aegis/backups/`, Aegis refuses or skips that restore path.
+Rollback only touches files listed in a valid latest backup manifest for the current workspace. If the manifest has an unsafe backup ID, hidden/dot-folder backup ID, mismatched workspace root, or backup file path outside `.aegis/backups/`, Aegis refuses or skips that restore path.
 
 ## Safety Model
 

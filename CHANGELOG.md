@@ -27,6 +27,7 @@
 - Hardened VS Code workspace memory initialization so damaged `.aegis` files are reported and skipped instead of breaking startup scans.
 - Hardened VS Code memory/index/history writes so damaged `.aegis` files do not break scans, recovery state, validation logs, or post-apply bookkeeping.
 - Hardened VS Code rollback manifest validation so corrupted backup IDs, mismatched workspace roots, or unsafe backup file paths cannot restore outside the current workspace backup folder.
+- Tightened VS Code rollback backup ID validation to reject dot and hidden-folder aliases.
 - Hardened Visual Studio solution memory reads and writes so damaged `.aegis` paths degrade safely and Health Check can report them.
 - Hardened Visual Studio rollback so backups carry explicit IDs and rollback skips unsafe or incomplete manifest entries instead of restoring from ambiguous paths.
 - Hardened Website workspace setup so damaged `.aegis` project and validation profile paths return warnings instead of breaking setup.

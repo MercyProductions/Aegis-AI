@@ -429,7 +429,7 @@ Before applying edits, the extension:
 - asks for approval
 - creates backups in `.aegis/vscode-autopilot/checkpoints`
 - creates rollback snapshots in `.aegis/backups`
-- validates rollback manifests before restore, including backup IDs, workspace roots, and backup file paths
+- validates rollback manifests before restore, including timestamp-like backup IDs, workspace roots, and backup file paths
 - stores proposal history in `.aegis/vscode-autopilot/proposals`
 - refuses absolute paths and writes outside the project folder
 - blocks `.env`, secret, credential, token, key, certificate, dependency, vendor, build, dist, cache, and VCS paths

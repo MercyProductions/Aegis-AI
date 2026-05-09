@@ -2908,7 +2908,7 @@ function timestampForPath() {
 }
 
 function isSafeBackupId(value) {
-  return typeof value === 'string' && /^[A-Za-z0-9_.-]+$/.test(value) && value.length <= 120;
+  return typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9_-]{0,119}$/.test(value);
 }
 
 async function saveProposal(proposal) {
