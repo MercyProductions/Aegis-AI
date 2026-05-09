@@ -3080,14 +3080,14 @@ function requestJson(url, body, timeoutMs) {
         try {
           resolve(parseJsonText(text));
         } catch (error) {
-          reject(new Error(`Invalid JSON from ${url.href}: ${error.message}`));
+          reject(new Error(`Invalid JSON from ${formatRequestTarget(url)}: ${error.message}`));
         }
       });
     });
 
     request.on('error', reject);
     request.setTimeout(timeoutMs, () => {
-      request.destroy(new Error(`Timed out calling ${url.href}`));
+      request.destroy(new Error(`Timed out calling ${formatRequestTarget(url)}`));
     });
 
     if (data) {
@@ -3095,6 +3095,14 @@ function requestJson(url, body, timeoutMs) {
     }
     request.end();
   });
+}
+
+function formatRequestTarget(url) {
+  const pathname = url && url.pathname ? url.pathname : '/';
+  const origin = url && url.origin && url.origin !== 'null'
+    ? url.origin
+    : `${url.protocol || 'http:'}//${url.host || 'unknown-host'}`;
+  return `${origin}${pathname}`;
 }
 
 function formatHttpError(statusCode, responseText) {

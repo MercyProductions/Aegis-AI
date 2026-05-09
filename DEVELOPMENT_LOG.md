@@ -442,3 +442,19 @@ Validation completed:
 - Website Core bridge and runtime-health tests: pass, 11 tests.
 - Website Core bridge, config, runtime-health, and model-inventory tests: pass, 23 tests.
 - Website backend compile check: pass.
+
+## 2026-05-09 - VS Code Request Diagnostic Redaction
+
+Focus:
+
+- Keep VS Code Core/Ollama degraded-mode messages useful without exposing local workspace query strings in timeout or invalid-JSON errors.
+
+Actions:
+
+- Replaced full `url.href` request diagnostics with a `formatRequestTarget` helper that keeps origin and endpoint path while dropping query parameters.
+- Added a VS Code package lint guard so full request URL logging cannot be reintroduced accidentally.
+
+Validation completed:
+
+- VS Code extension lint: pass.
+- VS Code VSIX package: pass; package lint ran before archive creation.
