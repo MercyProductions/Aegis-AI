@@ -1621,6 +1621,20 @@ struct MemoryListResult {
     std::vector<MemoryNoteInfo> notes;
 };
 
+struct AegisCoreDashboardInfo {
+    bool reachable = false;
+    std::string workspace_root;
+    std::string selected_model;
+    bool ollama_reachable = false;
+    int installed_model_count = 0;
+    int connected_client_count = 0;
+    int active_task_count = 0;
+    int recent_task_count = 0;
+    int validation_command_count = 0;
+    std::string roadmap_excerpt;
+    std::string diagnostic_excerpt;
+};
+
 class AegisClient {
 public:
     explicit AegisClient(DesktopSettings settings);
@@ -1756,6 +1770,14 @@ public:
     MemoryListResult ListMemoryNotes(const std::string& workspace_root, const std::string& category = "");
     MemoryNoteInfo SaveMemoryNote(const std::string& workspace_root, const MemoryNoteInfo& note);
     void DeleteMemoryNote(const std::string& workspace_root, const std::string& note_id);
+    void RegisterCoreClient(
+        const std::string& workspace_root,
+        const std::string& client_id,
+        const std::string& client_type,
+        const std::string& name,
+        const std::string& version,
+        const std::vector<std::string>& capabilities);
+    AegisCoreDashboardInfo GetCoreDashboard(const std::string& workspace_root);
     ValidationProfileInfo GetValidationProfile(const std::string& workspace_root);
     ValidationProfileInfo SaveValidationProfile(
         const std::string& workspace_root,
@@ -1776,6 +1798,7 @@ private:
     DesktopSettings settings_;
 
     std::string Endpoint(const std::string& path) const;
+    std::string CoreEndpoint(const std::string& path) const;
     std::string RequireJson(const HttpResponse& response, const std::string& action) const;
 };
 

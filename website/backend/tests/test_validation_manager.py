@@ -5,10 +5,17 @@ import tempfile
 import unittest
 from pathlib import Path
 import sys
+from unittest.mock import patch
+
+from fastapi.testclient import TestClient
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from aegis_ai import main
+from aegis_ai.agent import AgentEngine
+from aegis_ai.settings import Settings
 from aegis_ai.validation import ValidationManager
+from aegis_ai.workspace import WorkspaceManager
 
 
 class ValidationManagerTests(unittest.TestCase):
@@ -80,6 +87,55 @@ class ValidationManagerTests(unittest.TestCase):
         self.assertEqual(pipeline[0].phase, "install")
         self.assertEqual(pipeline[0].command, "pnpm install")
         self.assertIn("pnpm typecheck", [step.command for step in pipeline])
+
+    def test_validation_discovery_ignores_damaged_marker_directories(self) -> None:
+        marker_dirs = (
+            "build.py",
+            "build.js",
+            "package.json",
+            "Cargo.toml",
+            "go.mod",
+            "Project.csproj",
+            "Native.vcxproj",
+            "Demo.sln",
+            "CMakeLists.txt",
+            "Makefile",
+            "pom.xml",
+            "build.gradle",
+            "pyproject.toml",
+            "requirements.txt",
+            "setup.py",
+            "tsconfig.json",
+            "vite.config.ts",
+            ".sqlfluff",
+            "schema.sql",
+            "pnpm-lock.yaml",
+            "yarn.lock",
+            "bun.lock",
+            "uv.lock",
+            "poetry.lock",
+            "prisma/schema.prisma",
+        )
+        for relative in marker_dirs:
+            (self.workspace / relative).mkdir(parents=True)
+
+        suggestions = self.manager.discover_commands(self.workspace)
+        pipeline = self.manager.verification_plan(self.workspace, include_install=True)
+
+        self.assertEqual([item.command for item in suggestions], [])
+        self.assertEqual([step.command for step in pipeline], [])
+
+        (self.workspace / "package.json").rmdir()
+        (self.workspace / "package.json").write_text(
+            json.dumps({"scripts": {"build": "vite build"}}),
+            encoding="utf-8",
+        )
+
+        suggestions = self.manager.discover_commands(self.workspace)
+        pipeline = self.manager.verification_plan(self.workspace, include_install=True)
+
+        self.assertEqual(suggestions[0].command, "npm run build")
+        self.assertEqual(pipeline[0].command, "npm install")
 
     def test_project_manifest_validation_command_wins_over_detected_scripts(self) -> None:
         (self.workspace / "package.json").write_text(
@@ -387,6 +443,41 @@ class ValidationManagerTests(unittest.TestCase):
 
         self.manager.clear_profile(self.workspace)
         self.assertIsNone(self.manager.load_profile(self.workspace))
+
+    def test_validation_profile_api_reports_damaged_profile_path(self) -> None:
+        project_root = Path(self.tempdir.name)
+        aegis_dir = self.workspace / ".aegis"
+        aegis_dir.mkdir(parents=True, exist_ok=True)
+        (aegis_dir / "validation_profile.json").mkdir()
+        settings = Settings(
+            _env_file=None,
+            default_workspace="workspace",
+            aegis_database_path="data/test.sqlite3",
+        )
+        workspace_manager = WorkspaceManager(project_root, settings)
+        agent = AgentEngine(project_root, settings)
+
+        with (
+            patch.object(main, "workspace_manager", workspace_manager),
+            patch.object(main, "agent", agent),
+            TestClient(main.app) as client,
+        ):
+            save_response = client.put(
+                "/api/validation/profile",
+                params={"workspace_root": str(self.workspace)},
+                json={"command": "python -m pytest"},
+            )
+            clear_response = client.put(
+                "/api/validation/profile",
+                params={"workspace_root": str(self.workspace)},
+                json={"command": ""},
+            )
+
+        self.assertEqual(save_response.status_code, 503)
+        self.assertEqual(clear_response.status_code, 503)
+        self.assertIn("Could not update .aegis/validation_profile.json", save_response.json()["detail"])
+        self.assertIn("Could not update .aegis/validation_profile.json", clear_response.json()["detail"])
+        self.assertFalse((aegis_dir / ".validation_profile.json.tmp").exists())
 
     def test_remember_success_does_not_override_manual_recipe(self) -> None:
         self.manager.save_profile(

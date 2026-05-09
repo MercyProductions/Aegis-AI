@@ -7949,6 +7949,49 @@ void AegisChatApp::RefreshWorkspaceProfile()
     });
 }
 
+void AegisChatApp::RefreshCoreDashboard()
+{
+    AegisClient client = client_;
+    const std::string workspace = Trim(workspace_root_.empty() ? BufferString(workspace_buffer_.data()) : workspace_root_);
+    StartTask("Loading Aegis Core dashboard...", [this, client, workspace]() mutable {
+        AegisCoreDashboardInfo dashboard;
+        std::string error_message;
+        std::string registration_warning;
+        bool loaded = false;
+        try {
+            try {
+                client.RegisterCoreClient(
+                    workspace,
+                    "auralith-desktop",
+                    "desktop-app",
+                    "Auralith Desktop",
+                    "0.1.0",
+                    {"ecosystem-dashboard", "memory-browser", "workflow-orchestration"});
+            } catch (const std::exception& error) {
+                registration_warning = std::string("Aegis Core registration skipped: ") + error.what();
+            }
+            dashboard = client.GetCoreDashboard(workspace);
+            loaded = true;
+        } catch (const std::exception& error) {
+            error_message = error.what();
+        }
+        return [this,
+                dashboard = std::move(dashboard),
+                error_message = std::move(error_message),
+                registration_warning = std::move(registration_warning),
+                loaded]() {
+            core_dashboard_ = dashboard;
+            core_dashboard_loaded_ = loaded;
+            core_dashboard_error_ = loaded ? registration_warning : error_message;
+            if (loaded) {
+                status_ = registration_warning.empty() ? "Loaded Aegis ecosystem dashboard." : "Loaded Aegis ecosystem dashboard with degraded client registration.";
+            } else {
+                status_ = "Aegis Core dashboard unavailable: " + error_message;
+            }
+        };
+    });
+}
+
 void AegisChatApp::StartCodingRoute(const std::string& route)
 {
     const std::string composer_prompt = Trim(std::string(message_buffer_.data()));
@@ -8590,6 +8633,7 @@ void AegisChatApp::HydrateConfigBuffers()
 void AegisChatApp::HydrateDesktopBuffers()
 {
     SetBuffer(api_base_buffer_, settings_.api_base_url);
+    SetBuffer(core_api_base_buffer_, settings_.core_api_base_url);
     SetBuffer(backend_root_buffer_, WideToUtf8(settings_.backend_root.wstring()));
     SetBuffer(backend_script_buffer_, settings_.backend_start_script);
 }
@@ -8613,10 +8657,8 @@ AppConfig AegisChatApp::BuildConfigFromBuffers() const
 DesktopSettings AegisChatApp::BuildDesktopSettingsFromBuffers() const
 {
     DesktopSettings next = settings_;
-    next.api_base_url = BufferString(api_base_buffer_.data());
-    while (!next.api_base_url.empty() && next.api_base_url.back() == '/') {
-        next.api_base_url.pop_back();
-    }
+    next.api_base_url = NormalizeHttpBaseUrl(BufferString(api_base_buffer_.data()), "http://127.0.0.1:8787");
+    next.core_api_base_url = NormalizeHttpBaseUrl(BufferString(core_api_base_buffer_.data()), "http://127.0.0.1:8788");
     next.backend_root = std::filesystem::path(Utf8ToWide(BufferString(backend_root_buffer_.data())));
     next.backend_start_script = BufferString(backend_script_buffer_.data());
     next.max_files = std::max(20, std::min(500, next.max_files));
@@ -9671,12 +9713,62 @@ void AegisChatApp::RenderAgentActivityPanel()
     EndCard();
 }
 
+void AegisChatApp::RenderEcosystemDashboardCard()
+{
+    if (BeginCard("ecosystem_dashboard_card", ImVec2(0, 236.0f))) {
+        TextColor("Auralith Ecosystem", Rgba(246, 248, 251));
+        ImGui::SameLine(ImGui::GetWindowWidth() - 82.0f);
+        Pill(core_dashboard_loaded_ ? "Core" : "Local", core_dashboard_loaded_ ? Rgba(38, 221, 123) : Rgba(205, 154, 82));
+        ImGui::Separator();
+        TextMuted("Aegis Core: " + Shorten(settings_.core_api_base_url.empty() ? "http://127.0.0.1:8788" : settings_.core_api_base_url, 54));
+
+        if (!core_dashboard_error_.empty()) {
+            TextColor(Shorten(core_dashboard_error_, 92), Rgba(248, 113, 113));
+        } else if (!core_dashboard_loaded_) {
+            TextMuted("Load the shared dashboard to see connected clients, tasks, model health, and roadmap state.");
+        }
+
+        if (core_dashboard_loaded_) {
+            ImGui::Dummy(ImVec2(0.0f, 4.0f));
+            ImGui::Columns(2, "ecosystem_dashboard_columns", false);
+            TextMuted("Clients");
+            TextColor(std::to_string(core_dashboard_.connected_client_count), Rgba(246, 248, 251));
+            ImGui::NextColumn();
+            TextMuted("Active tasks");
+            TextColor(std::to_string(core_dashboard_.active_task_count), Rgba(246, 248, 251));
+            ImGui::NextColumn();
+            TextMuted("Model");
+            TextColor(core_dashboard_.selected_model.empty() ? "Not selected" : Shorten(core_dashboard_.selected_model, 18),
+                      core_dashboard_.ollama_reachable ? Rgba(38, 221, 123) : Rgba(248, 113, 113));
+            ImGui::NextColumn();
+            TextMuted("Validation");
+            TextColor(std::to_string(core_dashboard_.validation_command_count) + " command(s)", Rgba(246, 248, 251));
+            ImGui::Columns(1);
+            if (!core_dashboard_.roadmap_excerpt.empty()) {
+                ImGui::Dummy(ImVec2(0.0f, 4.0f));
+                TextMuted("Roadmap: " + Shorten(core_dashboard_.roadmap_excerpt, 112));
+            }
+        }
+
+        ImGui::Dummy(ImVec2(0.0f, 8.0f));
+        ImGui::BeginDisabled(busy_);
+        if (ImGui::Button("Refresh Ecosystem", ImVec2(-1, 32.0f))) {
+            RefreshCoreDashboard();
+        }
+        ImGui::EndDisabled();
+    }
+    EndCard();
+}
+
 void AegisChatApp::RenderRightPanel()
 {
     ImGui::PushStyleColor(ImGuiCol_ChildBg, Rgba(0, 0, 0, 0));
     ImGui::BeginChild("right_panel", ImVec2(0, 0), false);
     ImGui::PopStyleColor();
     ImGui::Dummy(ImVec2(0.0f, 2.0f));
+
+    RenderEcosystemDashboardCard();
+    ImGui::Dummy(ImVec2(0.0f, 4.0f));
 
     RenderAgentActivityPanel();
     ImGui::Dummy(ImVec2(0.0f, 4.0f));
@@ -12438,6 +12530,7 @@ void AegisChatApp::RenderSettingsTab()
 {
     ImGui::TextUnformatted("Desktop");
     ImGui::InputText("API base", api_base_buffer_.data(), api_base_buffer_.size());
+    ImGui::InputText("Aegis Core API", core_api_base_buffer_.data(), core_api_base_buffer_.size());
     ImGui::InputText("Backend root", backend_root_buffer_.data(), backend_root_buffer_.size());
     ImGui::InputText("Start script", backend_script_buffer_.data(), backend_script_buffer_.size());
     ImGui::Checkbox("Auto start backend", &settings_.auto_start_backend);
@@ -12447,6 +12540,7 @@ void AegisChatApp::RenderSettingsTab()
         next.auto_start_backend = settings_.auto_start_backend;
         next.max_files = settings_.max_files;
         SetBuffer(api_base_buffer_, next.api_base_url);
+        SetBuffer(core_api_base_buffer_, next.core_api_base_url);
         SetBuffer(backend_root_buffer_, WideToUtf8(next.backend_root.wstring()));
         SetBuffer(backend_script_buffer_, next.backend_start_script);
         SaveDesktopSettingsFromUi();

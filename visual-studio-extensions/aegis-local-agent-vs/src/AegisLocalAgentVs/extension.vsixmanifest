@@ -1,0 +1,26 @@
+<PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011">
+  <Metadata>
+    <Identity Id="AegisLocalAgentVs.5f6b5c6a-4b9a-4c29-8b48-c88e6e2b53b8" Version="0.1.1" Language="en-US" Publisher="Aegis" />
+    <DisplayName>Aegis Local Agent</DisplayName>
+    <Description xml:space="preserve">Local-first Visual Studio coding agent for Ollama, solution scanning, safe proposals, build validation, and project memory.</Description>
+    <MoreInfo>https://localhost/aegis-local-agent</MoreInfo>
+    <License>LICENSE.txt</License>
+    <Icon>Resources\AegisIcon.png</Icon>
+    <PreviewImage>Resources\AegisIcon.png</PreviewImage>
+    <Tags>Aegis, Ollama, local AI, coding agent, Visual Studio</Tags>
+  </Metadata>
+  <Installation>
+    <InstallationTarget Id="Microsoft.VisualStudio.Community" Version="[17.0,19.0)">
+      <ProductArchitecture>amd64</ProductArchitecture>
+    </InstallationTarget>
+  </Installation>
+  <Dependencies>
+    <Dependency Id="Microsoft.Framework.NDP" DisplayName=".NET Framework" Version="[4.7.2,)" />
+  </Dependencies>
+  <Prerequisites>
+    <Prerequisite Id="Microsoft.VisualStudio.Component.CoreEditor" Version="[17.0,19.0)" DisplayName="Visual Studio core editor" />
+  </Prerequisites>
+  <Assets>
+    <Asset Type="Microsoft.VisualStudio.VsPackage" Path="AegisLocalAgentVs.pkgdef" />
+  </Assets>
+</PackageManifest>

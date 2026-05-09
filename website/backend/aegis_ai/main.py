@@ -214,6 +214,7 @@ from .schemas import (
     WorkspaceOperationsScanRequest,
     WorkspaceOperationsSnapshot,
     WorkspaceProfileResponse,
+    WorkspaceProjectManifest,
     WorkspaceRecommendation,
     WorkspaceSetupRequest,
     WorkspaceSetupResponse,
@@ -2228,17 +2229,27 @@ async def workspace_setup(request: WorkspaceSetupRequest) -> WorkspaceSetupRespo
     warnings: list[str] = []
     manifest_path = workspace_manager.PROJECT_MANIFEST_PATH
 
+    def save_manifest_safely(candidate: WorkspaceProjectManifest) -> tuple[WorkspaceProjectManifest, bool]:
+        try:
+            return workspace_manager.save_project_manifest(root, candidate), True
+        except OSError as exc:
+            warnings.append(f"Could not write {manifest_path}: {exc}")
+            return candidate, False
+
     if existing_manifest is None:
-        manifest = workspace_manager.save_project_manifest(root, generated_manifest)
-        created_files.append(manifest_path)
+        manifest, saved = save_manifest_safely(generated_manifest)
+        if saved:
+            created_files.append(manifest_path)
     elif request.overwrite_manifest:
-        manifest = workspace_manager.save_project_manifest(root, generated_manifest)
-        updated_files.append(manifest_path)
+        manifest, saved = save_manifest_safely(generated_manifest)
+        if saved:
+            updated_files.append(manifest_path)
     else:
         manifest, changed = merge_missing_manifest_fields(existing_manifest, generated_manifest)
         if changed:
-            manifest = workspace_manager.save_project_manifest(root, manifest)
-            updated_files.append(manifest_path)
+            manifest, saved = save_manifest_safely(manifest)
+            if saved:
+                updated_files.append(manifest_path)
         else:
             manifest = existing_manifest
 
@@ -2251,17 +2262,21 @@ async def workspace_setup(request: WorkspaceSetupRequest) -> WorkspaceSetupRespo
             saved_recipe = persisted_recipe
         else:
             profile_existed = (root / profile_path).exists()
-            saved_recipe = agent.validation.save_profile(
-                root,
-                command=validation_command,
-                label=(detected_recipe.label if detected_recipe and detected_recipe.command == validation_command else "")
-                or "Workspace validation",
-                source="workspace_setup",
-                notes=request.notes.strip()
-                or (detected_recipe.notes if detected_recipe and detected_recipe.command == validation_command else "")
-                or "Saved by Aegis workspace setup from detected project files.",
-            )
-            (updated_files if profile_existed else created_files).append(profile_path)
+            try:
+                saved_recipe = agent.validation.save_profile(
+                    root,
+                    command=validation_command,
+                    label=(detected_recipe.label if detected_recipe and detected_recipe.command == validation_command else "")
+                    or "Workspace validation",
+                    source="workspace_setup",
+                    notes=request.notes.strip()
+                    or (detected_recipe.notes if detected_recipe and detected_recipe.command == validation_command else "")
+                    or "Saved by Aegis workspace setup from detected project files.",
+                )
+            except OSError as exc:
+                warnings.append(f"Could not write {profile_path}: {exc}")
+            else:
+                (updated_files if profile_existed else created_files).append(profile_path)
     else:
         warnings.append("No validation command was detected; manifest was created without a validation recipe.")
 
@@ -2440,16 +2455,22 @@ async def update_validation_profile(
     root = _resolve_workspace_or_400(workspace_root)
 
     command = request.command.strip()
-    if command:
-        agent.validation.save_profile(
-            root,
-            command=command,
-            label=request.label.strip() or command,
-            source="manual",
-            notes=request.notes.strip(),
-        )
-    else:
-        agent.validation.clear_profile(root)
+    try:
+        if command:
+            agent.validation.save_profile(
+                root,
+                command=command,
+                label=request.label.strip() or command,
+                source="manual",
+                notes=request.notes.strip(),
+            )
+        else:
+            agent.validation.clear_profile(root)
+    except OSError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Could not update {agent.validation.PROFILE_PATH}: {exc}",
+        ) from exc
 
     return agent.validation.profile_snapshot(root)
 
@@ -3707,6 +3728,7 @@ async def get_memory_notes(
 
     return {
         "workspace_root": str(root),
+        "warnings": [memory.storage_warning] if memory.storage_warning else [],
         "notes": [
             {
                 "id": n.id,
@@ -3732,18 +3754,21 @@ async def create_memory_note(request: dict, workspace_root: str | None = Query(d
     from .memory_manager import MemoryManager
 
     memory = MemoryManager(root)
-    note = memory.create_note(
-        title=request.get("title", "Untitled"),
-        content=request.get("content", ""),
-        category=request.get("category", "insight"),
-        tags=request.get("tags", []),
-        related_files=request.get("related_files", [])
-    )
-    note = memory.update_note(
-        note.id,
-        pinned=bool(request.get("pinned", False)),
-        confidence=float(request.get("confidence", note.confidence) or note.confidence),
-    ) or note
+    try:
+        note = memory.create_note(
+            title=request.get("title", "Untitled"),
+            content=request.get("content", ""),
+            category=request.get("category", "insight"),
+            tags=request.get("tags", []),
+            related_files=request.get("related_files", [])
+        )
+        note = memory.update_note(
+            note.id,
+            pinned=bool(request.get("pinned", False)),
+            confidence=request.get("confidence", note.confidence),
+        ) or note
+    except OSError as exc:
+        raise HTTPException(status_code=503, detail=f"Could not update memory notes: {exc}") from exc
     _invalidate_workspace_caches(root)
 
     return {
@@ -3862,9 +3887,14 @@ async def update_memory_note(
     from .memory_manager import MemoryManager
 
     memory = MemoryManager(root)
-    note = memory.update_note(note_id, **request)
+    try:
+        note = memory.update_note(note_id, **request)
+    except OSError as exc:
+        raise HTTPException(status_code=503, detail=f"Could not update memory notes: {exc}") from exc
 
     if not note:
+        if memory.storage_warning:
+            raise HTTPException(status_code=503, detail=f"Could not read memory notes: {memory.storage_warning}")
         raise HTTPException(status_code=404, detail="Note not found")
 
     _invalidate_workspace_caches(root)
@@ -3889,7 +3919,13 @@ async def delete_memory_note(note_id: str, workspace_root: str | None = Query(de
     from .memory_manager import MemoryManager
 
     memory = MemoryManager(root)
-    if not memory.delete_note(note_id):
+    try:
+        deleted = memory.delete_note(note_id)
+    except OSError as exc:
+        raise HTTPException(status_code=503, detail=f"Could not update memory notes: {exc}") from exc
+    if not deleted:
+        if memory.storage_warning:
+            raise HTTPException(status_code=503, detail=f"Could not read memory notes: {memory.storage_warning}")
         raise HTTPException(status_code=404, detail="Note not found")
 
     _invalidate_workspace_caches(root)

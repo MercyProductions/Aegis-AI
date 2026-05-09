@@ -2,9 +2,14 @@
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Optional
+from typing import Any, Optional
 from pathlib import Path
 import json
+import re
+
+
+MAX_NOTE_BYTES = 512_000
+NOTE_ID_SAFE_RE = re.compile(r"[^A-Za-z0-9_.-]+")
 
 
 @dataclass
@@ -37,20 +42,28 @@ class MemoryManager:
 
     def __init__(self, storage_path: Path):
         self.storage_path = storage_path / "memory"
-        self.storage_path.mkdir(parents=True, exist_ok=True)
         self.notes: dict[str, MemoryNote] = {}
+        self.storage_warning = ""
+        try:
+            self._ensure_storage_dir()
+        except OSError as exc:
+            self.storage_warning = str(exc)
+            return
         self._load_all_notes()
 
     def _load_all_notes(self):
         """Load all notes from storage."""
         for note_file in self.storage_path.glob("*.json"):
             try:
-                with open(note_file) as f:
-                    data = json.load(f)
-                    note = MemoryNote(**data)
-                    self.notes[note.id] = note
-            except Exception:
-                pass
+                if not note_file.is_file() or note_file.stat().st_size > MAX_NOTE_BYTES:
+                    continue
+                data = json.loads(note_file.read_text(encoding="utf-8-sig", errors="replace"))
+                if not isinstance(data, dict):
+                    continue
+                note = self._note_from_payload(data, fallback_id=note_file.stem)
+                self.notes[note.id] = note
+            except (OSError, TypeError, ValueError, json.JSONDecodeError):
+                continue
 
     def create_note(
         self,
@@ -61,23 +74,24 @@ class MemoryManager:
         related_files: list[str] = None
     ) -> MemoryNote:
         """Create a new memory note."""
+        self._ensure_storage_dir()
         now_dt = datetime.now(UTC)
         now = now_dt.isoformat()
-        note_id = f"{category}_{int(now_dt.timestamp() * 1000)}"
+        note_id = self._new_note_id(category, now_dt)
 
         note = MemoryNote(
             id=note_id,
-            title=title,
-            content=content,
-            category=category,
+            title=str(title or "Untitled"),
+            content=str(content or ""),
+            category=str(category or "insight"),
             created_at=now,
             updated_at=now,
-            tags=tags or [],
-            related_files=related_files or []
+            tags=self._coerce_string_list(tags),
+            related_files=self._coerce_string_list(related_files),
         )
 
-        self.notes[note_id] = note
         self._save_note(note)
+        self.notes[note_id] = note
         return note
 
     def update_note(self, note_id: str, **kwargs) -> Optional[MemoryNote]:
@@ -89,8 +103,18 @@ class MemoryManager:
         now = datetime.now(UTC).isoformat()
 
         for key, value in kwargs.items():
-            if hasattr(note, key):
-                setattr(note, key, value)
+            if key in {"id", "created_at"}:
+                continue
+            if key == "tags":
+                note.tags = self._coerce_string_list(value)
+            elif key == "related_files":
+                note.related_files = self._coerce_string_list(value)
+            elif key == "confidence":
+                note.confidence = self._coerce_confidence(value, default=note.confidence)
+            elif key == "pinned":
+                note.pinned = bool(value)
+            elif key in {"title", "content", "category"}:
+                setattr(note, key, str(value or ""))
 
         note.updated_at = now
         self._save_note(note)
@@ -109,10 +133,17 @@ class MemoryManager:
         if note_id not in self.notes:
             return False
 
-        del self.notes[note_id]
-        note_file = self.storage_path / f"{note_id}.json"
+        self._ensure_storage_dir()
+        try:
+            note_file = self._note_path(note_id)
+        except ValueError:
+            return False
         if note_file.exists():
+            if not note_file.is_file():
+                return False
             note_file.unlink()
+
+        del self.notes[note_id]
 
         return True
 
@@ -173,20 +204,31 @@ class MemoryManager:
 
     def _save_note(self, note: MemoryNote):
         """Save a note to storage."""
-        note_file = self.storage_path / f"{note.id}.json"
-        with open(note_file, "w") as f:
-            json.dump({
-                "id": note.id,
-                "title": note.title,
-                "content": note.content,
-                "category": note.category,
-                "created_at": note.created_at,
-                "updated_at": note.updated_at,
-                "pinned": note.pinned,
-                "tags": note.tags,
-                "related_files": note.related_files,
-                "confidence": note.confidence
-            }, f, indent=2)
+        self._ensure_storage_dir()
+        note_file = self._note_path(note.id)
+        payload = {
+            "id": note.id,
+            "title": note.title,
+            "content": note.content,
+            "category": note.category,
+            "created_at": note.created_at,
+            "updated_at": note.updated_at,
+            "pinned": note.pinned,
+            "tags": note.tags,
+            "related_files": note.related_files,
+            "confidence": note.confidence,
+        }
+        tmp = note_file.with_name(f".{note_file.name}.tmp")
+        try:
+            tmp.write_text(json.dumps(payload, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
+            tmp.replace(note_file)
+        except OSError:
+            try:
+                if tmp.is_file():
+                    tmp.unlink()
+            except OSError:
+                pass
+            raise
 
     def export_memory(self, format: str = "json") -> str:
         """Export all memory in specified format."""
@@ -212,3 +254,76 @@ class MemoryManager:
             return json.dumps(data, indent=2)
 
         return ""
+
+    def _ensure_storage_dir(self) -> None:
+        try:
+            if self.storage_path.exists() and not self.storage_path.is_dir():
+                raise OSError(f"{self.storage_path} is not a directory")
+            self.storage_path.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            raise OSError(f"Could not initialize memory storage at {self.storage_path}: {exc}") from exc
+        self.storage_warning = ""
+
+    def _new_note_id(self, category: str, now_dt: datetime) -> str:
+        base = f"{self._slugify_identifier(category)}_{int(now_dt.timestamp() * 1000)}"
+        note_id = base
+        suffix = 2
+        while note_id in self.notes or self._note_path(note_id).exists():
+            note_id = f"{base}_{suffix}"
+            suffix += 1
+        return note_id
+
+    def _note_path(self, note_id: str) -> Path:
+        clean_id = str(note_id or "").strip()
+        if not clean_id or clean_id in {".", ".."} or Path(clean_id).name != clean_id:
+            raise ValueError("memory note id must be a single file name")
+        path = self.storage_path / f"{clean_id}.json"
+        try:
+            path.resolve().relative_to(self.storage_path.resolve())
+        except (OSError, ValueError) as exc:
+            raise ValueError("memory note path escaped storage") from exc
+        return path
+
+    def _note_from_payload(self, data: dict[str, Any], *, fallback_id: str) -> MemoryNote:
+        note_id = str(data.get("id") or fallback_id).strip()
+        try:
+            self._note_path(note_id)
+        except ValueError:
+            note_id = fallback_id
+        return MemoryNote(
+            id=note_id,
+            title=str(data.get("title") or "Untitled"),
+            content=str(data.get("content") or ""),
+            category=str(data.get("category") or "insight"),
+            created_at=str(data.get("created_at") or ""),
+            updated_at=str(data.get("updated_at") or data.get("created_at") or ""),
+            pinned=bool(data.get("pinned", False)),
+            tags=self._coerce_string_list(data.get("tags")),
+            related_files=self._coerce_string_list(data.get("related_files")),
+            confidence=self._coerce_confidence(data.get("confidence"), default=0.8),
+        )
+
+    @staticmethod
+    def _slugify_identifier(value: Any) -> str:
+        cleaned = NOTE_ID_SAFE_RE.sub("_", str(value or "note").strip()).strip("._-")
+        return cleaned[:80] or "note"
+
+    @staticmethod
+    def _coerce_string_list(value: Any) -> list[str]:
+        if value is None:
+            return []
+        items = value if isinstance(value, (list, tuple, set)) else [value]
+        clean_items = []
+        for item in items:
+            text = str(item or "").strip()
+            if text:
+                clean_items.append(text[:500])
+        return clean_items
+
+    @staticmethod
+    def _coerce_confidence(value: Any, *, default: float) -> float:
+        try:
+            confidence = float(value)
+        except (TypeError, ValueError):
+            confidence = default
+        return max(0.0, min(1.0, confidence))

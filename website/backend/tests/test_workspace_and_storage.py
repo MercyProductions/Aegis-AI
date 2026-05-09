@@ -6,9 +6,13 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import sys
+from unittest.mock import patch
+
+from fastapi.testclient import TestClient
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from aegis_ai import main
 from aegis_ai.schemas import (
     ContextBudgetInfo,
     ContextBudgetItemInfo,
@@ -56,6 +60,79 @@ class WorkspaceAndStorageTests(unittest.TestCase):
 
         self.assertEqual(original_file.read_text(encoding="utf-8"), "print('before')\n")
         self.assertFalse((workspace / "new.py").exists())
+
+    def test_restore_checkpoint_rejects_path_traversal_checkpoint_id(self) -> None:
+        manager = WorkspaceManager(self.project_root, self.settings)
+        workspace = manager.resolve_workspace("workspace")
+
+        with self.assertRaisesRegex(ValueError, "checkpoint folder name"):
+            manager.restore_checkpoint(workspace, "../outside")
+
+    def test_restore_checkpoint_rejects_non_file_manifest(self) -> None:
+        manager = WorkspaceManager(self.project_root, self.settings)
+        workspace = manager.resolve_workspace("workspace")
+        checkpoint_root = workspace / ".aegis" / "checkpoints" / "bad-manifest"
+        (checkpoint_root / "manifest.json").mkdir(parents=True)
+
+        with self.assertRaisesRegex(ValueError, "not a regular file"):
+            manager.restore_checkpoint(workspace, "bad-manifest")
+
+    def test_restore_checkpoint_rejects_backup_paths_outside_files_folder(self) -> None:
+        manager = WorkspaceManager(self.project_root, self.settings)
+        workspace = manager.resolve_workspace("workspace")
+        checkpoint_root = workspace / ".aegis" / "checkpoints" / "bad-backup-path"
+        checkpoint_root.mkdir(parents=True)
+        (checkpoint_root / "manifest.json").write_text(
+            json.dumps({"id": "bad-backup-path", "files": [{"path": "../workspace/app.py", "state": "present"}]}),
+            encoding="utf-8",
+        )
+
+        with self.assertRaisesRegex(ValueError, "outside the checkpoint files folder"):
+            manager.restore_checkpoint(workspace, "bad-backup-path")
+
+    def test_restore_checkpoint_preflights_missing_backup_before_restoring(self) -> None:
+        manager = WorkspaceManager(self.project_root, self.settings)
+        workspace = manager.resolve_workspace("workspace")
+        tracked = workspace / "app.py"
+        tracked.write_text("after\n", encoding="utf-8")
+        checkpoint_root = workspace / ".aegis" / "checkpoints" / "missing-backup"
+        backup = checkpoint_root / "files" / "app.py"
+        backup.parent.mkdir(parents=True)
+        backup.write_text("before\n", encoding="utf-8")
+        (checkpoint_root / "manifest.json").write_text(
+            json.dumps(
+                {
+                    "id": "missing-backup",
+                    "files": [
+                        {"path": "app.py", "state": "present"},
+                        {"path": "missing.py", "state": "present"},
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        with self.assertRaisesRegex(ValueError, "checkpoint backup file is missing"):
+            manager.restore_checkpoint(workspace, "missing-backup")
+
+        self.assertEqual(tracked.read_text(encoding="utf-8"), "after\n")
+
+    def test_apply_changes_does_not_write_when_checkpoint_cannot_be_created(self) -> None:
+        manager = WorkspaceManager(self.project_root, self.settings)
+        workspace = manager.resolve_workspace("workspace")
+        (workspace / ".aegis").write_text("not a directory", encoding="utf-8")
+
+        result = manager.apply_changes(
+            workspace,
+            [
+                FileChange(action="create", path="app.py", summary="create", content="print('new')\n"),
+            ],
+        )
+
+        self.assertEqual(result.applied, [])
+        self.assertIsNone(result.checkpoint)
+        self.assertFalse((workspace / "app.py").exists())
+        self.assertTrue(any("checkpoint could not be created" in warning for warning in result.warnings))
 
     def test_apply_changes_can_append_large_generated_file_chunks(self) -> None:
         manager = WorkspaceManager(self.project_root, self.settings)
@@ -736,6 +813,65 @@ Project completion list
         self.assertIn("npm", profile.package_managers)
         self.assertIn("npm run test", profile.validation_commands)
 
+    def test_inspect_dependency_profile_ignores_damaged_marker_directories(self) -> None:
+        manager = WorkspaceManager(self.project_root, self.settings)
+        workspace = manager.resolve_workspace("workspace")
+        marker_dirs = (
+            "package.json",
+            "tsconfig.json",
+            "requirements.txt",
+            "go.mod",
+            "Cargo.toml",
+            "CMakeLists.txt",
+            "build.py",
+            "Demo.csproj",
+            "Demo.vcxproj",
+            "Demo.sln",
+            "Demo.vcxproj.filters",
+            "pom.xml",
+            "build.gradle",
+            "schema.sql",
+            "pnpm-lock.yaml",
+            "yarn.lock",
+            "bun.lock",
+            "prisma/schema.prisma",
+            "src/main.tsx",
+        )
+        for relative in marker_dirs:
+            (workspace / relative).mkdir(parents=True)
+
+        profile = manager.inspect_dependency_profile(workspace)
+
+        self.assertEqual(profile.config_files, [])
+        self.assertEqual(profile.validation_commands, [])
+        self.assertEqual(profile.entry_points, [])
+        self.assertIn("No dependency or build manifest was detected.", profile.warnings)
+
+        (workspace / "package.json").rmdir()
+        (workspace / "package.json").write_text(
+            json.dumps({"scripts": {"build": "vite build"}}),
+            encoding="utf-8",
+        )
+
+        profile = manager.inspect_dependency_profile(workspace)
+
+        self.assertIn("package.json", profile.config_files)
+        self.assertIn("npm", profile.package_managers)
+        self.assertNotIn("pnpm", profile.package_managers)
+        self.assertNotIn("tsconfig.json", profile.config_files)
+        self.assertIn("npm run build", profile.validation_commands)
+
+        python_workspace = manager.resolve_workspace("python-workspace")
+        (python_workspace / "pyproject.toml").write_text("[project]\nname = \"demo\"\n", encoding="utf-8")
+        (python_workspace / "uv.lock").mkdir()
+        (python_workspace / "poetry.lock").mkdir()
+
+        profile = manager.inspect_dependency_profile(python_workspace)
+
+        self.assertIn("pip", profile.package_managers)
+        self.assertNotIn("uv", profile.package_managers)
+        self.assertNotIn("poetry", profile.package_managers)
+
     def test_inspect_dependency_profile_detects_python_stack(self) -> None:
         manager = WorkspaceManager(self.project_root, self.settings)
         workspace = manager.resolve_workspace("workspace")
@@ -891,6 +1027,120 @@ int main() {
         self.assertEqual(len(manager.search_notes("green")), 1)
         self.assertTrue(manager.delete_note(note.id))
         self.assertEqual(manager.search_notes("green"), [])
+
+    def test_memory_manager_confines_user_controlled_category_to_memory_dir(self) -> None:
+        workspace = (self.project_root / "workspace").resolve()
+        manager = MemoryManager(workspace)
+
+        note = manager.create_note(
+            title="Scoped note",
+            content="Keep memory files inside the memory directory.",
+            category="../.aegis/project memory",
+            tags="safety",
+            related_files="PROJECT_TODO.md",
+        )
+
+        self.assertNotIn("/", note.id)
+        self.assertNotIn("\\", note.id)
+        self.assertNotIn("..", note.id)
+        self.assertEqual(note.category, "../.aegis/project memory")
+        self.assertEqual(note.tags, ["safety"])
+        self.assertEqual(note.related_files, ["PROJECT_TODO.md"])
+        self.assertTrue((workspace / "memory" / f"{note.id}.json").is_file())
+        self.assertFalse((workspace / ".aegis").exists())
+
+    def test_memory_manager_generates_unique_ids_for_same_millisecond(self) -> None:
+        workspace = (self.project_root / "workspace").resolve()
+        manager = MemoryManager(workspace)
+        fixed_now = datetime(2026, 5, 8, 12, 0, 0, 123000, tzinfo=timezone.utc)
+
+        with patch("aegis_ai.memory_manager.datetime") as mocked_datetime:
+            mocked_datetime.now.return_value = fixed_now
+            first = manager.create_note("First", "One", "insight")
+            second = manager.create_note("Second", "Two", "insight")
+
+        self.assertNotEqual(first.id, second.id)
+        self.assertTrue((workspace / "memory" / f"{first.id}.json").is_file())
+        self.assertTrue((workspace / "memory" / f"{second.id}.json").is_file())
+
+    def test_memory_manager_ignores_update_attempts_to_mutate_note_identity(self) -> None:
+        workspace = (self.project_root / "workspace").resolve()
+        manager = MemoryManager(workspace)
+        note = manager.create_note("Stable", "Keep the id stable.", "insight")
+
+        updated = manager.update_note(note.id, id="../escaped", created_at="changed", confidence=9)
+
+        self.assertIsNotNone(updated)
+        self.assertEqual(updated.id, note.id)
+        self.assertEqual(updated.created_at, note.created_at)
+        self.assertEqual(updated.confidence, 1.0)
+        self.assertTrue((workspace / "memory" / f"{note.id}.json").is_file())
+        self.assertFalse((workspace / "escaped.json").exists())
+
+    def test_memory_api_coerces_bad_confidence_without_escaping_memory_dir(self) -> None:
+        workspace = (self.project_root / "workspace").resolve()
+        workspace_manager = WorkspaceManager(self.project_root, self.settings)
+
+        with (
+            patch.object(main, "workspace_manager", workspace_manager),
+            TestClient(main.app) as client,
+        ):
+            response = client.post(
+                "/api/memory",
+                params={"workspace_root": str(workspace)},
+                json={
+                    "title": "API note",
+                    "content": "Invalid confidence should not break the endpoint.",
+                    "category": "../.aegis/api note",
+                    "confidence": "not-a-number",
+                    "tags": "api",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["confidence"], 0.8)
+        self.assertEqual(payload["tags"], ["api"])
+        self.assertTrue((workspace / "memory" / f"{payload['id']}.json").is_file())
+        self.assertFalse((workspace / ".aegis").exists())
+
+    def test_memory_manager_degrades_when_memory_storage_path_is_file(self) -> None:
+        workspace = (self.project_root / "workspace").resolve()
+        workspace.mkdir(parents=True, exist_ok=True)
+        memory_path = workspace / "memory"
+        memory_path.write_text("damaged memory path", encoding="utf-8")
+
+        manager = MemoryManager(workspace)
+
+        self.assertEqual(manager.notes, {})
+        self.assertIn("not a directory", manager.storage_warning)
+        with self.assertRaisesRegex(OSError, "Could not initialize memory storage"):
+            manager.create_note("Blocked", "Cannot write through a file path.", "insight")
+        self.assertEqual(memory_path.read_text(encoding="utf-8"), "damaged memory path")
+
+    def test_memory_api_reports_damaged_memory_storage_path(self) -> None:
+        workspace = (self.project_root / "workspace").resolve()
+        workspace.mkdir(parents=True, exist_ok=True)
+        (workspace / "memory").write_text("damaged memory path", encoding="utf-8")
+        workspace_manager = WorkspaceManager(self.project_root, self.settings)
+
+        with (
+            patch.object(main, "workspace_manager", workspace_manager),
+            TestClient(main.app) as client,
+        ):
+            get_response = client.get("/api/memory", params={"workspace_root": str(workspace)})
+            create_response = client.post(
+                "/api/memory",
+                params={"workspace_root": str(workspace)},
+                json={"title": "Blocked", "content": "Cannot write.", "category": "insight"},
+            )
+
+        self.assertEqual(get_response.status_code, 200)
+        self.assertEqual(get_response.json()["notes"], [])
+        self.assertIn("not a directory", "\n".join(get_response.json()["warnings"]))
+        self.assertEqual(create_response.status_code, 503)
+        self.assertIn("Could not update memory notes", create_response.json()["detail"])
+        self.assertIn("not a directory", create_response.json()["detail"])
 
     def test_repair_attempts_round_trip(self) -> None:
         store = EventStore(self.project_root, self.settings)

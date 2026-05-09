@@ -114,6 +114,7 @@ private:
     ProjectScaffoldResult project_scaffold_result_;
     WorkspaceProfileInfo workspace_profile_;
     WorkspaceAutopilotStatusInfo workspace_autopilot_status_;
+    AegisCoreDashboardInfo core_dashboard_;
     AgentResponse last_response_;
     AgentResponse route_preview_;
     bool has_response_ = false;
@@ -126,6 +127,7 @@ private:
     bool has_verification_result_ = false;
     bool has_workspace_profile_snapshot_ = false;
     bool has_workspace_autopilot_status_snapshot_ = false;
+    bool core_dashboard_loaded_ = false;
     CheckpointListResult checkpoints_;
     std::vector<MediaJobSummary> media_jobs_;
     MediaJobSummary selected_media_job_;
@@ -177,6 +179,7 @@ private:
     std::string selected_model_registry_checkpoint_diff_error_;
     std::string workspace_profile_error_;
     std::string workspace_autopilot_status_error_;
+    std::string core_dashboard_error_;
     std::string next_validation_command_override_;
     std::string next_validation_label_override_;
     std::string next_validation_notes_override_;
@@ -263,6 +266,7 @@ private:
     std::array<char, 8192> message_buffer_{};
     std::array<char, 256> search_buffer_{};
     std::array<char, 512> api_base_buffer_{};
+    std::array<char, 512> core_api_base_buffer_{};
     std::array<char, 1024> backend_root_buffer_{};
     std::array<char, 128> backend_script_buffer_{};
     std::array<char, 256> assistant_name_buffer_{};
@@ -434,6 +438,7 @@ private:
     void RefreshValidationProfile();
     void SaveValidationProfile(bool clear_profile = false);
     void RefreshWorkspaceProfile();
+    void RefreshCoreDashboard();
     void StartCodingRoute(const std::string& route);
     void HydrateProjectBuilderDefaults();
     void RefreshProjectBuilderPresets();
@@ -466,6 +471,7 @@ private:
     void RenderConversationSidebar();
     void RenderChatPanel();
     void RenderRightPanel();
+    void RenderEcosystemDashboardCard();
     void RenderAgentActivityPanel();
     void RenderResponseTab();
     void RenderChangesTab();

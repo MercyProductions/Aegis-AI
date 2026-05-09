@@ -1,0 +1,68 @@
+# Changelog
+
+## Unreleased
+
+### Stabilization
+
+- Added focused Aegis Core regression tests for `/v1` client registration, shared tasks, dashboard contracts, scan caching, and flexible CLI JSON output.
+- Improved the Aegis Core CLI so `--json` works before or after the subcommand.
+- Hardened the Aegis Core CLI so shared task persistence failures return clean nonzero errors and JSON payloads instead of tracebacks.
+- Hardened Aegis Core path safety so ignored folders and secret-like filenames are handled case-insensitively and relative to the workspace before scanning.
+- Hardened Aegis Core read/edit safety so paths resolving outside the workspace, including file symlinks, are not treated as project-local scan inputs.
+- Hardened Aegis Core config loading so malformed shared settings fall back safely instead of breaking startup/health checks.
+- Hardened shared Ollama URL settings so common local URLs are normalized, API-path pastes are reduced to base URLs, credential-like endpoint text is rejected, and malformed URLs report model health failures instead of breaking diagnostics.
+- Hardened Ollama model inventory parsing so malformed `/api/tags` payloads become health diagnostics instead of client-visible exceptions.
+- Improved `/v1/tasks/{task_id}/status` error responses for missing tasks and unsupported statuses.
+- Hardened shared task loading so malformed local task records do not break task listing, dashboard sorting, or status summary updates.
+- Hardened shared client registry loading so malformed local client records do not break cross-client dashboard sorting.
+- Hardened shared client/task mutation APIs so unwritable `.aegis` memory roots return clear persistence failures or degraded plan responses instead of phantom successful writes.
+- Made Core dashboard/task memory reads resilient when `.aegis` JSON or markdown files are unreadable.
+- Improved Core JavaScript validation detection so npm/pnpm/yarn test/build commands are listed only when matching package scripts exist.
+- Hardened Core validation detection so `.csproj` files in ignored dependency/build folders do not create false `dotnet build` suggestions.
+- Hardened Core validation detection so damaged root build marker directories do not create false Cargo, Python, CMake, pnpm, or Yarn validation suggestions.
+- Reduced Core validation startup overhead by detecting the default validation command once per run.
+- Restricted Core validation execution to a safe command allow-list and added structured blocked/missing/timeout failure results.
+- Hardened Core validation startup failures so OS-level command launch errors return structured results instead of escaping to shared clients.
+- Redacted secret-like validation output before writing `.aegis/validation-log.md` and made validation log write failures non-fatal.
+- Redacted validation API output before returning it to clients and made Core diagnostic log writes non-fatal.
+- Made Core memory writes best-effort and atomic where possible so damaged `.aegis` files do not crash scans or generated-memory updates.
+- Hardened Core workspace scans against malformed `package.json` dependency shapes and file stat races during recent-file sorting.
+- Hardened Core workspace framework detection so UTF-8 BOM-prefixed `package.json` files still detect React/Vite/Next dependencies.
+- Hardened Core workspace framework detection so damaged `package.json`, `Assets`, or `ProjectSettings` marker shapes do not create false Node or Unity classifications.
+- Hardened Core config reads and writes so damaged `.aegis/config.json` paths do not crash health or settings APIs.
+- Restricted Core memory directory settings to a single workspace-local folder name so shared config cannot point memory outside the project.
+- Hardened Core agent continue/repair planning so damaged roadmap or validation-log paths return safe responses instead of server errors.
+- Hardened VS Code workspace memory initialization so damaged `.aegis` files are reported and skipped instead of breaking startup scans.
+- Hardened VS Code memory/index/history writes so damaged `.aegis` files do not break scans, recovery state, validation logs, or post-apply bookkeeping.
+- Hardened VS Code rollback manifest validation so corrupted backup IDs, mismatched workspace roots, or unsafe backup file paths cannot restore outside the current workspace backup folder.
+- Tightened VS Code rollback backup ID validation to reject dot and hidden-folder aliases.
+- Hardened VS Code rollback failure handling so missing or unreadable backup files are skipped with output details and manifest-level failures surface as clear rollback errors.
+- Hardened Visual Studio solution memory reads and writes so damaged `.aegis` paths degrade safely and Health Check can report them.
+- Hardened Visual Studio rollback so backups carry explicit IDs and rollback skips unsafe or incomplete manifest entries instead of restoring from ambiguous paths.
+- Tightened Visual Studio rollback so shared backup folders cannot roll back manifests from a different solution and invalid backup IDs no longer fall back to the newest backup folder.
+- Hardened Website workspace setup so damaged `.aegis` project and validation profile paths return warnings instead of breaking setup.
+- Hardened Website validation discovery so damaged project marker directories no longer create false validation or install suggestions.
+- Hardened Website validation profile updates so damaged profile paths return clear API errors and failed writes do not leave temporary files behind.
+- Hardened Website memory note persistence so user-controlled categories cannot escape the memory directory, damaged memory paths degrade with clear API errors, malformed confidence input degrades safely, and rapid note creation cannot overwrite same-millisecond notes.
+- Hardened Website model-manager snapshots so damaged operation and pull-log JSON paths are skipped safely and operation history writes are atomic.
+- Hardened Website dependency profiling so damaged marker directories and lockfile paths no longer distort onboarding stack summaries.
+- Hardened Website checkpoint restore so checkpoint IDs stay folder-local and damaged manifests or backup paths return clean errors instead of unsafe restores or server failures.
+- Hardened Website checkpoint restore preflight so missing backup files fail clearly before any workspace files are restored or removed.
+- Hardened Website apply changes so checkpoint creation failures stop the apply before files are touched and later write/delete failures return warnings with checkpoint context.
+- Hardened Desktop backend/Core URL settings so local host:port inputs, trailing endpoint paths, and empty values normalize before runtime requests or config writes.
+- Hardened Desktop Core dashboard loading so a shared registration failure no longer blocks dashboard reads when Core is otherwise reachable.
+- Hardened VS Code Ollama/Core URL settings so common local inputs normalize before model detection, health checks, and shared Core sync.
+- Hardened VS Code local API error reporting so Core/Ollama HTTP failures surface parsed, redacted detail text instead of raw JSON bodies.
+- Hardened Visual Studio Ollama/Core URL settings so common local inputs normalize before model calls, health checks, and shared Core registration.
+- Hardened Visual Studio Health Check so Core reachability and client registration are reported separately with useful Core error details.
+- Added product-utilization workflow notes for daily Auralith dogfooding.
+- Documented the current stabilization and validation pass.
+
+### Validation
+
+- Aegis Core pytest, compile, CLI/API smoke checks pass.
+- Desktop App build passes.
+- VS Code extension lint and VSIX packaging pass.
+- Visual Studio extension build and VSIX packaging pass.
+- Website frontend tests/build and backend test suite pass.
+- Full validation notes are tracked in `docs/ECOSYSTEM_STABILIZATION.md`.

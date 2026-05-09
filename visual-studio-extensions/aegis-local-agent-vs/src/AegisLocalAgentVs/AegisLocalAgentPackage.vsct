@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="utf-8"?>
+<CommandTable xmlns="http://schemas.microsoft.com/VisualStudio/2005-10-18/CommandTable" xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <Extern href="stdidcmd.h" />
+  <Extern href="vsshlids.h" />
+
+  <Commands package="guidAegisPackage">
+    <Groups>
+      <Group guid="guidAegisCommandSet" id="AegisMenuGroup" priority="0x0600">
+        <Parent guid="guidSHLMainMenu" id="IDG_VS_MM_TOOLSADDINS" />
+      </Group>
+      <Group guid="guidAegisCommandSet" id="AegisItemContextGroup" priority="0x0900">
+        <Parent guid="guidSHLMainMenu" id="IDM_VS_CTXT_ITEMNODE" />
+      </Group>
+      <Group guid="guidAegisCommandSet" id="AegisProjectContextGroup" priority="0x0900">
+        <Parent guid="guidSHLMainMenu" id="IDM_VS_CTXT_PROJNODE" />
+      </Group>
+      <Group guid="guidAegisCommandSet" id="AegisSolutionContextGroup" priority="0x0900">
+        <Parent guid="guidSHLMainMenu" id="IDM_VS_CTXT_SOLNNODE" />
+      </Group>
+    </Groups>
+
+    <Buttons>
+      <Button guid="guidAegisCommandSet" id="OpenAgentCommandId" priority="0x0100" type="Button">
+        <Parent guid="guidAegisCommandSet" id="AegisMenuGroup" />
+        <Strings><ButtonText>Aegis: Open Agent</ButtonText><CommandName>Aegis.OpenAgent</CommandName></Strings>
+      </Button>
+      <Button guid="guidAegisCommandSet" id="ExplainCurrentFileCommandId" priority="0x0101" type="Button">
+        <Parent guid="guidAegisCommandSet" id="AegisMenuGroup" />
+        <Strings><ButtonText>Aegis: Explain Current File</ButtonText><CommandName>Aegis.ExplainCurrentFile</CommandName></Strings>
+      </Button>
+      <Button guid="guidAegisCommandSet" id="ReviewSelectedCodeCommandId" priority="0x0102" type="Button">
+        <Parent guid="guidAegisCommandSet" id="AegisMenuGroup" />
+        <Strings><ButtonText>Aegis: Review Selected Code</ButtonText><CommandName>Aegis.ReviewSelectedCode</CommandName></Strings>
+      </Button>
+      <Button guid="guidAegisCommandSet" id="FixBuildErrorsCommandId" priority="0x0103" type="Button">
+        <Parent guid="guidAegisCommandSet" id="AegisMenuGroup" />
+        <Strings><ButtonText>Aegis: Fix Build Errors</ButtonText><CommandName>Aegis.FixBuildErrors</CommandName></Strings>
+      </Button>
+      <Button guid="guidAegisCommandSet" id="GenerateRoadmapCommandId" priority="0x0104" type="Button">
+        <Parent guid="guidAegisCommandSet" id="AegisMenuGroup" />
+        <Strings><ButtonText>Aegis: Generate Roadmap</ButtonText><CommandName>Aegis.GenerateRoadmap</CommandName></Strings>
+      </Button>
+      <Button guid="guidAegisCommandSet" id="ContinueFromRoadmapCommandId" priority="0x0105" type="Button">
+        <Parent guid="guidAegisCommandSet" id="AegisMenuGroup" />
+        <Strings><ButtonText>Aegis: Continue From Roadmap</ButtonText><CommandName>Aegis.ContinueFromRoadmap</CommandName></Strings>
+      </Button>
+      <Button guid="guidAegisCommandSet" id="RunHealthCheckCommandId" priority="0x0106" type="Button">
+        <Parent guid="guidAegisCommandSet" id="AegisMenuGroup" />
+        <Strings><ButtonText>Aegis: Run Health Check</ButtonText><CommandName>Aegis.RunHealthCheck</CommandName></Strings>
+      </Button>
+      <Button guid="guidAegisCommandSet" id="FixSelectedErrorCommandId" priority="0x0107" type="Button">
+        <Parent guid="guidAegisCommandSet" id="AegisMenuGroup" />
+        <Strings><ButtonText>Aegis: Fix Selected Error</ButtonText><CommandName>Aegis.FixSelectedError</CommandName></Strings>
+      </Button>
+      <Button guid="guidAegisCommandSet" id="ExplainBuildFailureCommandId" priority="0x0108" type="Button">
+        <Parent guid="guidAegisCommandSet" id="AegisMenuGroup" />
+        <Strings><ButtonText>Aegis: Explain Build Failure</ButtonText><CommandName>Aegis.ExplainBuildFailure</CommandName></Strings>
+      </Button>
+      <Button guid="guidAegisCommandSet" id="ReviewStartupProjectCommandId" priority="0x0109" type="Button">
+        <Parent guid="guidAegisCommandSet" id="AegisMenuGroup" />
+        <Strings><ButtonText>Aegis: Review Startup Project</ButtonText><CommandName>Aegis.ReviewStartupProject</CommandName></Strings>
+      </Button>
+      <Button guid="guidAegisCommandSet" id="GenerateSolutionRoadmapCommandId" priority="0x010A" type="Button">
+        <Parent guid="guidAegisCommandSet" id="AegisMenuGroup" />
+        <Strings><ButtonText>Aegis: Generate Solution Roadmap</ButtonText><CommandName>Aegis.GenerateSolutionRoadmap</CommandName></Strings>
+      </Button>
+      <Button guid="guidAegisCommandSet" id="ContinueCurrentSolutionCommandId" priority="0x010B" type="Button">
+        <Parent guid="guidAegisCommandSet" id="AegisMenuGroup" />
+        <Strings><ButtonText>Aegis: Continue Current Solution</ButtonText><CommandName>Aegis.ContinueCurrentSolution</CommandName></Strings>
+      </Button>
+      <Button guid="guidAegisCommandSet" id="RollbackLastChangeCommandId" priority="0x010C" type="Button">
+        <Parent guid="guidAegisCommandSet" id="AegisMenuGroup" />
+        <Strings><ButtonText>Aegis: Rollback Last Change</ButtonText><CommandName>Aegis.RollbackLastChange</CommandName></Strings>
+      </Button>
+      <Button guid="guidAegisCommandSet" id="RefactorSelectedCodeCommandId" priority="0x010D" type="Button">
+        <Parent guid="guidAegisCommandSet" id="AegisMenuGroup" />
+        <Strings><ButtonText>Aegis: Refactor Selected Code</ButtonText><CommandName>Aegis.RefactorSelectedCode</CommandName></Strings>
+      </Button>
+      <Button guid="guidAegisCommandSet" id="RescanSolutionIntelligenceCommandId" priority="0x010E" type="Button">
+        <Parent guid="guidAegisCommandSet" id="AegisMenuGroup" />
+        <Strings><ButtonText>Aegis: Rescan Solution Intelligence</ButtonText><CommandName>Aegis.RescanSolutionIntelligence</CommandName></Strings>
+      </Button>
+      <Button guid="guidAegisCommandSet" id="ExplainThisFileCommandId" priority="0x0110" type="Button">
+        <Parent guid="guidAegisCommandSet" id="AegisItemContextGroup" />
+        <Strings><ButtonText>Aegis: Explain This File</ButtonText><CommandName>Aegis.ExplainThisFile</CommandName></Strings>
+      </Button>
+      <Button guid="guidAegisCommandSet" id="GenerateTestsForThisFileCommandId" priority="0x0111" type="Button">
+        <Parent guid="guidAegisCommandSet" id="AegisItemContextGroup" />
+        <Strings><ButtonText>Aegis: Generate Tests For This File</ButtonText><CommandName>Aegis.GenerateTestsForThisFile</CommandName></Strings>
+      </Button>
+      <Button guid="guidAegisCommandSet" id="ReviewThisProjectCommandId" priority="0x0110" type="Button">
+        <Parent guid="guidAegisCommandSet" id="AegisProjectContextGroup" />
+        <Strings><ButtonText>Aegis: Review This Project</ButtonText><CommandName>Aegis.ReviewThisProject</CommandName></Strings>
+      </Button>
+      <Button guid="guidAegisCommandSet" id="FixErrorsInThisProjectCommandId" priority="0x0111" type="Button">
+        <Parent guid="guidAegisCommandSet" id="AegisProjectContextGroup" />
+        <Strings><ButtonText>Aegis: Fix Errors In This Project</ButtonText><CommandName>Aegis.FixErrorsInThisProject</CommandName></Strings>
+      </Button>
+      <Button guid="guidAegisCommandSet" id="AddFeatureToThisProjectCommandId" priority="0x0112" type="Button">
+        <Parent guid="guidAegisCommandSet" id="AegisProjectContextGroup" />
+        <Strings><ButtonText>Aegis: Add Feature To This Project</ButtonText><CommandName>Aegis.AddFeatureToThisProject</CommandName></Strings>
+      </Button>
+      <Button guid="guidAegisCommandSet" id="CreateRoadmapFromSolutionCommandId" priority="0x0110" type="Button">
+        <Parent guid="guidAegisCommandSet" id="AegisSolutionContextGroup" />
+        <Strings><ButtonText>Aegis: Create Roadmap From Solution</ButtonText><CommandName>Aegis.CreateRoadmapFromSolution</CommandName></Strings>
+      </Button>
+    </Buttons>
+  </Commands>
+
+  <Symbols>
+    <GuidSymbol name="guidAegisPackage" value="{8b9d899d-0f2a-4a3d-bf2a-1c2fb540b62f}" />
+    <GuidSymbol name="guidAegisCommandSet" value="{e1f7ed3a-183e-41c6-a296-20b8a17a6fc0}">
+      <IDSymbol name="AegisMenuGroup" value="0x1020" />
+      <IDSymbol name="AegisItemContextGroup" value="0x1021" />
+      <IDSymbol name="AegisProjectContextGroup" value="0x1022" />
+      <IDSymbol name="AegisSolutionContextGroup" value="0x1023" />
+      <IDSymbol name="OpenAgentCommandId" value="0x0100" />
+      <IDSymbol name="ExplainCurrentFileCommandId" value="0x0101" />
+      <IDSymbol name="ReviewSelectedCodeCommandId" value="0x0102" />
+      <IDSymbol name="FixBuildErrorsCommandId" value="0x0103" />
+      <IDSymbol name="GenerateRoadmapCommandId" value="0x0104" />
+      <IDSymbol name="ContinueFromRoadmapCommandId" value="0x0105" />
+      <IDSymbol name="RunHealthCheckCommandId" value="0x0106" />
+      <IDSymbol name="FixSelectedErrorCommandId" value="0x0107" />
+      <IDSymbol name="ExplainBuildFailureCommandId" value="0x0108" />
+      <IDSymbol name="ReviewStartupProjectCommandId" value="0x0109" />
+      <IDSymbol name="GenerateSolutionRoadmapCommandId" value="0x010A" />
+      <IDSymbol name="ContinueCurrentSolutionCommandId" value="0x010B" />
+      <IDSymbol name="RollbackLastChangeCommandId" value="0x010C" />
+      <IDSymbol name="RefactorSelectedCodeCommandId" value="0x010D" />
+      <IDSymbol name="RescanSolutionIntelligenceCommandId" value="0x010E" />
+      <IDSymbol name="ExplainThisFileCommandId" value="0x0110" />
+      <IDSymbol name="ReviewThisProjectCommandId" value="0x0111" />
+      <IDSymbol name="FixErrorsInThisProjectCommandId" value="0x0112" />
+      <IDSymbol name="GenerateTestsForThisFileCommandId" value="0x0113" />
+      <IDSymbol name="AddFeatureToThisProjectCommandId" value="0x0114" />
+      <IDSymbol name="CreateRoadmapFromSolutionCommandId" value="0x0115" />
+    </GuidSymbol>
+  </Symbols>
+</CommandTable>

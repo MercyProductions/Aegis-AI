@@ -17,6 +17,7 @@ struct HttpResponse {
 
 struct DesktopSettings {
     std::string api_base_url = "http://127.0.0.1:8787";
+    std::string core_api_base_url = "http://127.0.0.1:8788";
     std::filesystem::path backend_root;
     std::string backend_start_script = "scripts\\start-backend.ps1";
     bool auto_start_backend = true;
@@ -41,6 +42,7 @@ std::string GetEnvUtf8(const wchar_t* name);
 
 std::string Trim(const std::string& value);
 std::string Lower(std::string value);
+std::string NormalizeHttpBaseUrl(const std::string& value, const std::string& fallback);
 std::string EscapeJson(const std::string& value);
 std::string UrlEncode(const std::string& value);
 std::string JoinUrl(const std::string& base, const std::string& path);

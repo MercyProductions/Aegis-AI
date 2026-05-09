@@ -67,6 +67,14 @@ The built-in engine is `Aegis Core`. It is a self-contained local workflow engin
 - local model-backed drafting when a configured model server is reachable
 - validation command execution when enabled
 
+During ecosystem stabilization, the standalone shared Aegis Core runtime can also run at:
+
+```text
+http://127.0.0.1:8788
+```
+
+The website remains on its existing `/api` backend for daily use. Local/dev dashboard features should migrate to the shared `/v1` Core contracts incrementally after the Desktop, VS Code, and Visual Studio clients have dogfooded that path.
+
 The UI lets you set:
 
 - your Aegis assistant name
@@ -153,6 +161,12 @@ workspace/
 
 You can change the workspace path in the UI. All file changes stay constrained to that selected workspace.
 If an older install wrote files into `backend/workspace/`, Aegis now migrates that legacy workspace forward into the repo-root `workspace/` folder when the new workspace is empty.
+
+Workspace setup stores project and validation metadata under `.aegis/` in the selected workspace. If those memory paths are damaged, setup now stays usable and reports warnings so you can repair the paths before running setup again.
+
+Checkpoint restore validates checkpoint folder names, manifests, backup paths, and required backup files before touching workspace files. Damaged checkpoint metadata returns a clear restore error instead of attempting an unsafe or partial rollback.
+
+Approved Website file edits require a checkpoint first. If checkpoint creation fails, Aegis reports a warning and leaves project files unchanged.
 
 ## Project Layout
 
