@@ -95,6 +95,42 @@ class WorkspaceOperationsTests(unittest.TestCase):
         self.assertTrue(any("TODO" in item.title or "Large" in item.title or item.category == "dependency" for item in recommendations))
         self.assertGreaterEqual(len(events), len(second.watcher.events))
 
+    def test_watcher_treats_bun_lockfile_changes_as_dependency_drift(self) -> None:
+        files = self.workspace_manager.scan(self.workspace, max_files=500)
+        dependency = self.workspace_manager.inspect_dependency_profile(self.workspace)
+        first = self.engine.build_snapshot(
+            workspace_root=self.workspace,
+            files=files,
+            dependency_profile=dependency,
+            project_intelligence=None,
+            recent_tasks=[],
+            fix_memory=[],
+            project_memory=[],
+            previous_watch=None,
+            previous_recommendations=[],
+            include_git=False,
+        )
+        self.store.save_workspace_watch_snapshot(first.watcher)
+
+        (self.workspace / "bun.lock").write_text("", encoding="utf-8")
+        next_files = self.workspace_manager.scan(self.workspace, max_files=500)
+        next_dependency = self.workspace_manager.inspect_dependency_profile(self.workspace)
+        second = self.engine.build_snapshot(
+            workspace_root=self.workspace,
+            files=next_files,
+            dependency_profile=next_dependency,
+            project_intelligence=None,
+            recent_tasks=[],
+            fix_memory=[],
+            project_memory=[],
+            previous_watch=self.store.workspace_watch_snapshot(project_root=self.workspace),
+            previous_recommendations=[],
+            include_git=False,
+        )
+
+        self.assertIn("bun", next_dependency.package_managers)
+        self.assertTrue(any(event.kind == "dependency.changed" for event in second.watcher.events))
+
     @unittest.skipIf(shutil.which("git") is None, "git is not available")
     def test_git_event_processing(self) -> None:
         subprocess.run(["git", "init"], cwd=self.workspace, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
