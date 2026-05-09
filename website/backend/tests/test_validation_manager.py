@@ -104,6 +104,14 @@ class ValidationManagerTests(unittest.TestCase):
                 self.assertEqual(pipeline[0].phase, "install")
                 self.assertEqual(pipeline[0].command, "dotnet restore")
 
+    def test_discovers_visual_studio_solution_validation_for_slnx(self) -> None:
+        (self.workspace / "Modern.slnx").write_text("<Solution></Solution>\n", encoding="utf-8")
+
+        suggestions = self.manager.discover_commands(self.workspace)
+        commands = [item.command for item in suggestions]
+
+        self.assertIn("msbuild Modern.slnx /m /p:Configuration=Debug", commands)
+
     def test_validation_discovery_ignores_damaged_marker_directories(self) -> None:
         marker_dirs = (
             "build.py",
@@ -116,6 +124,7 @@ class ValidationManagerTests(unittest.TestCase):
             "Project.vbproj",
             "Native.vcxproj",
             "Demo.sln",
+            "Demo.slnx",
             "CMakeLists.txt",
             "Makefile",
             "pom.xml",

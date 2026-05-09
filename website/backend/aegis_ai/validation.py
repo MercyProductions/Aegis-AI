@@ -11,6 +11,7 @@ from .validation_commands import is_safe_remembered_validation_command
 
 
 DOTNET_PROJECT_GLOBS = ("*.csproj", "*.fsproj", "*.vbproj")
+VISUAL_STUDIO_SOLUTION_GLOBS = ("*.sln", "*.slnx")
 
 
 @dataclass(frozen=True)
@@ -189,7 +190,7 @@ class ValidationManager:
             )
         elif not has_build_runner:
             native_project = self._first_existing(workspace_root.glob("*.vcxproj"))
-            solution = self._first_existing(workspace_root.glob("*.sln"))
+            solution = self._first_visual_studio_solution(workspace_root)
             if native_project is not None:
                 candidates.append(
                     ValidationCandidate(
@@ -787,6 +788,13 @@ class ValidationManager:
             project = self._first_existing(workspace_root.glob(pattern))
             if project is not None:
                 return project
+        return None
+
+    def _first_visual_studio_solution(self, workspace_root: Path) -> Path | None:
+        for pattern in VISUAL_STUDIO_SOLUTION_GLOBS:
+            solution = self._first_existing(workspace_root.glob(pattern))
+            if solution is not None:
+                return solution
         return None
 
     def _is_file(self, path: Path) -> bool:

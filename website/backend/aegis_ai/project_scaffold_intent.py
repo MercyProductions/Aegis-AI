@@ -8,6 +8,10 @@ from .schemas import WorkspaceDependencyProfile, WorkspaceProjectManifest
 from .validation_commands import POWERSHELL_BUILD_COMMAND, is_root_powershell_build_command
 
 
+VISUAL_STUDIO_SOLUTION_GLOBS = ("*.sln", "*.slnx")
+VISUAL_STUDIO_PROJECT_SUFFIXES = (".sln", ".slnx", ".vcxproj")
+
+
 def should_validate_existing_project_only(
     prompt: str,
     target: Path,
@@ -90,7 +94,7 @@ def existing_project_validation_command(
         return "python build.py"
     if (target / "build.ps1").exists():
         return POWERSHELL_BUILD_COMMAND
-    solution_files = sorted(target.glob("*.sln"))
+    solution_files = sorted(path for pattern in VISUAL_STUDIO_SOLUTION_GLOBS for path in target.glob(pattern))
     if solution_files:
         return f"msbuild {solution_files[0].name} /m /p:Configuration=Release"
     if (target / "CMakeLists.txt").exists():
@@ -141,7 +145,7 @@ def continuity_preset_id(
     ):
         return "cpp-cmake-dll"
 
-    if any(item.endswith(".sln") or item.endswith(".vcxproj") for item in config_files):
+    if any(item.endswith(VISUAL_STUDIO_PROJECT_SUFFIXES) for item in config_files):
         return "cpp-msvc-console-sln"
 
     if "cmakelists.txt" in config_files or "cmake" in build_systems:
@@ -298,7 +302,9 @@ def should_update_existing_scaffold(prompt: str, target: Path) -> bool:
     cpp_request = any(term in lowered for term in ("c++", "cpp", "cmake", "sln", "console app", "console project"))
     if cpp_request and (target / "CMakeLists.txt").exists() and (target / "src" / "main.cpp").exists():
         return True
-    if any(target.glob("*.sln")) or any(target.glob("*.vcxproj")):
+    if any(target.glob("*.vcxproj")) or any(
+        next(target.glob(pattern), None) is not None for pattern in VISUAL_STUDIO_SOLUTION_GLOBS
+    ):
         return True
     if (target / "CMakeLists.txt").exists():
         return True

@@ -837,6 +837,7 @@ Project completion list
             "Demo.vbproj",
             "Demo.vcxproj",
             "Demo.sln",
+            "Demo.slnx",
             "Demo.vcxproj.filters",
             "pom.xml",
             "build.gradle",
@@ -904,6 +905,17 @@ Project completion list
         self.assertIn("dotnet build", profile.validation_commands)
         self.assertIn("dotnet test", profile.validation_commands)
         self.assertTrue(any(item.name == "FsToolkit.ErrorHandling" for item in profile.dependencies))
+
+    def test_inspect_dependency_profile_detects_slnx_solution(self) -> None:
+        manager = WorkspaceManager(self.project_root, self.settings)
+        workspace = manager.resolve_workspace("workspace")
+        (workspace / "Modern.slnx").write_text("<Solution></Solution>\n", encoding="utf-8")
+
+        profile = manager.inspect_dependency_profile(workspace)
+
+        self.assertIn("Modern.slnx", profile.config_files)
+        self.assertIn("msbuild Modern.slnx /m /p:Configuration=Release", profile.validation_commands)
+        self.assertIn("Visual Studio / MSBuild", profile.build_systems)
 
     def test_inspect_dependency_profile_detects_python_stack(self) -> None:
         manager = WorkspaceManager(self.project_root, self.settings)

@@ -41,6 +41,7 @@ IGNORE_NAMES = {
 }
 
 DOTNET_PROJECT_SUFFIXES = {".csproj": "C#", ".fsproj": "F#", ".vbproj": "Visual Basic"}
+VISUAL_STUDIO_SOLUTION_GLOBS = ("*.sln", "*.slnx")
 
 TEXT_SUFFIXES = {
     ".adoc",
@@ -105,6 +106,7 @@ TEXT_SUFFIXES = {
     ".shader",
     ".sh",
     ".sln",
+    ".slnx",
     ".sql",
     ".swift",
     ".targets",
@@ -1103,7 +1105,11 @@ class WorkspaceManager:
         self._add_unique(profile.validation_commands, "ctest --test-dir build")
 
     def _inspect_visual_studio_projects(self, root: Path, profile: WorkspaceDependencyProfile) -> None:
-        solutions = self._bounded_glob(root, "*.sln", max_items=8)
+        solutions = [
+            solution
+            for pattern in VISUAL_STUDIO_SOLUTION_GLOBS
+            for solution in self._bounded_glob(root, pattern, max_items=8)
+        ][:8]
         native_projects = self._bounded_glob(root, "*.vcxproj", max_items=12)
         if not solutions and not native_projects:
             return
