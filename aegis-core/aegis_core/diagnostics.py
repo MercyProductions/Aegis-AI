@@ -8,31 +8,35 @@ from .config import memory_dir
 
 
 SECRET_MARKERS = (
+    "access_token",
     "api_key",
     "apikey",
     "api-key",
     "auth",
     "authorization",
     "bearer",
+    "client_secret",
     "credential",
     "passwd",
     "password",
     "private key",
     "private_key",
+    "refresh_token",
     "secret",
     "token",
 )
 
+SENSITIVE_FIELD = r"(?:x-api-key|api[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|token|client[_-]?secret|secret|private[_-]?key|password|passwd|credential)"
 SENSITIVE_QUERY_RE = re.compile(
-    r"([?&](?:api[_-]?key|key|token|secret|password|passwd|credential)=)[^&#\s]+",
+    rf"([?&](?:key|{SENSITIVE_FIELD})=)[^&#\s]+",
     re.IGNORECASE,
 )
 SENSITIVE_ASSIGNMENT_RE = re.compile(
-    r"\b((?:api[_-]?key|token|secret|password|passwd|credential)\s*[:=]\s*)[^\s&]+",
+    rf"\b({SENSITIVE_FIELD}\s*[:=]\s*)[^\s&]+",
     re.IGNORECASE,
 )
 SENSITIVE_JSON_RE = re.compile(
-    r"""(["'](?:api[_-]?key|token|secret|password|passwd|credential|authorization)["']\s*:\s*["'])[^"']+""",
+    rf"""(["'](?:{SENSITIVE_FIELD}|authorization)["']\s*:\s*["'])[^"']+""",
     re.IGNORECASE,
 )
 AUTHORIZATION_HEADER_RE = re.compile(

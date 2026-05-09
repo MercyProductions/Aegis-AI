@@ -32,6 +32,7 @@
 - Hardened Core diagnostic redaction so provider URLs containing query-string keys are scrubbed before cloud connection errors reach clients or logs.
 - Hardened Core provider error redaction so authorization headers, JSON key fields, and URL credentials are redacted inline while preserving actionable provider diagnostics.
 - Hardened Core provider error redaction so colon-form secret assignments such as `api_key: ...`, `x-api-key: ...`, and `token: ...` cannot leak through provider or credential diagnostics.
+- Hardened Core provider error redaction so provider/OAuth aliases such as `client_secret`, `access_token`, `refresh_token`, and `private_key` are scrubbed across JSON, query-string, and assignment-style diagnostics.
 - Documented the direct VS Code `npm run lint:package` validation step in install and release instructions.
 - Hardened the VS Code release package script so `extension.js` is syntax-checked before VSIX creation and install-local packaging.
 - Hardened Core settings updates so unwritable `.aegis/config.json` paths return explicit persistence failures instead of appearing to save defaults.

@@ -186,6 +186,25 @@ Validation completed:
 - Aegis Core contract test suite: pass, 118 tests.
 - Repository whitespace check: pass.
 
+## 2026-05-09 - Provider Auth Alias Redaction
+
+Focus:
+
+- Broaden provider diagnostic privacy coverage without turning useful provider failures into opaque log lines.
+- Cover common OAuth and provider key field names that appear outside the exact `api_key`/`token` forms.
+
+Actions:
+
+- Centralized the Core inline diagnostic sensitive-field vocabulary across JSON, query-string, and assignment-style redaction patterns.
+- Added coverage for `x-api-key`, `client_secret`, `access_token`, `refresh_token`, `id_token`, and `private_key` field aliases.
+- Added regression coverage proving those aliases are redacted while provider failure context remains readable.
+
+Validation completed:
+
+- Aegis Core diagnostic/provider redaction regression slice: pass, 8 tests.
+- Aegis Core contract test suite: pass, 123 tests.
+- Repository whitespace check: pass.
+
 ## 2026-05-09 - Provider Diagnostic Colon Redaction
 
 Focus:

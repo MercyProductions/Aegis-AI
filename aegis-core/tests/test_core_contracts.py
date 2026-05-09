@@ -1784,6 +1784,41 @@ def test_diagnostics_redact_inline_handles_colon_assignments() -> None:
     assert "Provider HTTP 401" in cleaned
 
 
+def test_diagnostics_redact_inline_handles_provider_auth_aliases() -> None:
+    secrets = {
+        "api": "sk-provider-secret",
+        "client": "oauth-client-secret",
+        "access": "oauth-access-token",
+        "refresh": "oauth-refresh-token",
+        "private": "private-key-value",
+        "query": "query-access-token",
+    }
+    message = (
+        'Provider HTTP 401: {"x-api-key":"%s","client_secret":"%s"} '
+        "access_token=%s refresh_token: %s private_key: %s "
+        "https://provider.example/callback?access_token=%s"
+    ) % (
+        secrets["api"],
+        secrets["client"],
+        secrets["access"],
+        secrets["refresh"],
+        secrets["private"],
+        secrets["query"],
+    )
+
+    cleaned = redact_inline(message)
+
+    for secret in secrets.values():
+        assert secret not in cleaned
+    assert '"x-api-key":"[redacted]"' in cleaned
+    assert '"client_secret":"[redacted]"' in cleaned
+    assert "access_token=[redacted]" in cleaned
+    assert "refresh_token: [redacted]" in cleaned
+    assert "private_key: [redacted]" in cleaned
+    assert "?access_token=[redacted]" in cleaned
+    assert "Provider HTTP 401" in cleaned
+
+
 def test_provider_connection_errors_redact_query_api_keys(monkeypatch) -> None:
     secret = "AIzaSyVerySecretProviderKey"
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini:generateContent?key={secret}"
