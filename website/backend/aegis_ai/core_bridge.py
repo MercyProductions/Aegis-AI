@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -9,33 +8,13 @@ from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 
+from .diagnostic_redaction import redact_inline
+
 
 DEFAULT_CORE_API_URL = "http://127.0.0.1:8788"
 CORE_API_VERSION = "v1"
 CORE_CONTRACT_VERSION_FIELD = "contract_version"
 LEGACY_CORE_ENDPOINTS = {"health", "models"}
-SENSITIVE_FIELD = (
-    r"x-api-key|api[_-]?key|api[_-]?token|access[_-]?token|refresh[_-]?token|id[_-]?token|token|"
-    r"client[_-]?secret|secret|private[_-]?key|password|passwd|credential"
-)
-SENSITIVE_QUERY_RE = re.compile(
-    rf"([?&](?:{SENSITIVE_FIELD}|key|signature)=)[^&#\s]+",
-    re.IGNORECASE,
-)
-SENSITIVE_ASSIGNMENT_RE = re.compile(
-    rf"\b((?:{SENSITIVE_FIELD}|authorization)\s*[:=]\s*)[^\s&]+",
-    re.IGNORECASE,
-)
-SENSITIVE_JSON_RE = re.compile(
-    rf"""(["'](?:{SENSITIVE_FIELD}|authorization)["']\s*:\s*["'])[^"']+""",
-    re.IGNORECASE,
-)
-AUTHORIZATION_HEADER_RE = re.compile(
-    r"\b(Authorization\s*[:=]\s*)(?:Bearer|Basic|Digest)?\s*[A-Za-z0-9._~+/\-=]+",
-    re.IGNORECASE,
-)
-BEARER_TOKEN_RE = re.compile(r"\b(Bearer\s+)[A-Za-z0-9._~+/\-=]+", re.IGNORECASE)
-URL_CREDENTIAL_RE = re.compile(r"\b(https?://)[^/\s:@]+:[^@\s/]+@", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -315,13 +294,11 @@ def core_envelope_error(envelope: dict[str, Any] | None) -> str:
 
 
 def _redact_core_error_text(text: str) -> str:
-    cleaned = URL_CREDENTIAL_RE.sub(r"\1[redacted]@", str(text))
-    cleaned = SENSITIVE_QUERY_RE.sub(r"\1[redacted]", cleaned)
-    cleaned = SENSITIVE_JSON_RE.sub(r"\1[redacted]", cleaned)
-    cleaned = AUTHORIZATION_HEADER_RE.sub(r"\1[redacted]", cleaned)
-    cleaned = BEARER_TOKEN_RE.sub(r"\1[redacted]", cleaned)
-    cleaned = SENSITIVE_ASSIGNMENT_RE.sub(r"\1[redacted]", cleaned)
-    return cleaned
+    return _redact_core_text(text)
+
+
+def _redact_core_text(text: object) -> str:
+    return redact_inline(str(text))
 
 
 def core_envelope_data(envelope: dict[str, Any] | None) -> dict[str, Any]:
@@ -335,13 +312,13 @@ def core_task_to_website_task_summary(task: dict[str, Any] | None) -> dict[str, 
     source = task if isinstance(task, dict) else {}
     metadata = source.get("metadata") if isinstance(source.get("metadata"), dict) else {}
     return {
-        "id": str(source.get("id") or ""),
-        "title": str(source.get("title") or "Untitled task"),
-        "status": str(source.get("status") or "planned"),
-        "kind": str(source.get("kind") or "general"),
-        "source_client": str(source.get("source_client") or "unknown"),
-        "updated_at": str(source.get("updated_at") or source.get("created_at") or ""),
-        "summary": str(metadata.get("summary") or ""),
+        "id": _redact_core_text(source.get("id") or ""),
+        "title": _redact_core_text(source.get("title") or "Untitled task"),
+        "status": _redact_core_text(source.get("status") or "planned"),
+        "kind": _redact_core_text(source.get("kind") or "general"),
+        "source_client": _redact_core_text(source.get("source_client") or "unknown"),
+        "updated_at": _redact_core_text(source.get("updated_at") or source.get("created_at") or ""),
+        "summary": _redact_core_text(metadata.get("summary") or ""),
     }
 
 
@@ -355,9 +332,11 @@ def core_validation_to_website_validation(validation: dict[str, Any] | None) -> 
         raw = command.get("command")
         normalized_commands.append(
             {
-                "name": str(command.get("name") or ""),
-                "command": " ".join(str(part) for part in raw) if isinstance(raw, list) else str(raw or ""),
-                "reason": str(command.get("reason") or ""),
+                "name": _redact_core_text(command.get("name") or ""),
+                "command": _redact_core_text(
+                    " ".join(str(part) for part in raw) if isinstance(raw, list) else str(raw or "")
+                ),
+                "reason": _redact_core_text(command.get("reason") or ""),
             }
         )
 
@@ -365,10 +344,12 @@ def core_validation_to_website_validation(validation: dict[str, Any] | None) -> 
     return {
         "ok": bool(source.get("ok", True)),
         "commands": normalized_commands,
-        "command": " ".join(str(part) for part in raw_run_command) if isinstance(raw_run_command, list) else str(raw_run_command or ""),
+        "command": _redact_core_text(
+            " ".join(str(part) for part in raw_run_command) if isinstance(raw_run_command, list) else str(raw_run_command or "")
+        ),
         "returncode": source.get("returncode"),
-        "stdout": str(source.get("stdout") or ""),
-        "stderr": str(source.get("stderr") or ""),
+        "stdout": _redact_core_text(source.get("stdout") or ""),
+        "stderr": _redact_core_text(source.get("stderr") or ""),
         "blocked": bool(source.get("blocked", False)),
         "timed_out": bool(source.get("timed_out", False)),
         "start_failed": bool(source.get("start_failed", False)),

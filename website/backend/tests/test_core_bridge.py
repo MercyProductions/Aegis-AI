@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 import sys
 from unittest.mock import patch
@@ -373,6 +374,73 @@ def test_core_envelope_error_redacts_provider_oauth_aliases() -> None:
     assert "access_token=[redacted]" in error
     assert "refresh_token: [redacted]" in error
     assert "private_key: [redacted]" in error
+
+
+def test_core_validation_adapter_redacts_core_sourced_secret_output() -> None:
+    secret = "oauth-access-token-1234567890"
+    callback_url = f"https://provider.test/cb?access_token={secret}"
+    validation = core_validation_to_website_validation(
+        {
+            "commands": [
+                {
+                    "name": "provider validation",
+                    "command": ["python", "validate.py", f"--callback={callback_url}"],
+                    "reason": f"Authorization: Bearer {secret}",
+                }
+            ],
+            "command": ["python", "validate.py", f"--api-token={secret}"],
+            "stdout": f"ok access_token={secret}\nunexpected token: <",
+            "stderr": f'Provider failed {{"client_secret":"{secret}"}}',
+        }
+    )
+
+    joined = "\n".join(
+        [
+            validation["commands"][0]["command"],
+            validation["commands"][0]["reason"],
+            validation["command"],
+            validation["stdout"],
+            validation["stderr"],
+        ]
+    )
+
+    assert secret not in joined
+    assert "access_token=[redacted]" in joined
+    assert "api-token=[redacted]" in joined
+    assert "Authorization: [redacted]" in joined
+    assert '"client_secret":"[redacted]"' in joined
+    assert "unexpected token: <" in joined
+
+
+def test_core_dashboard_adapter_redacts_task_summary_secret_values() -> None:
+    secret = "task-summary-provider-key-12345"
+    title = f"Repair provider callback https://example.test/cb?refresh_token={secret}"
+    dashboard = core_dashboard_to_website_runtime_status(
+        {
+            "ok": True,
+            "api_version": "v1",
+            "contract_version": "2026.05.09",
+            "kind": "ecosystem.dashboard",
+            "data": {
+                "clients": [],
+                "active_tasks": [
+                    {
+                        "id": "task-1",
+                        "title": title,
+                        "metadata": {"summary": f"client_secret={secret}"},
+                    }
+                ],
+                "validation": {"stdout": f"private_key: {secret}"},
+            },
+        }
+    )
+
+    serialized = json.dumps(dashboard)
+
+    assert secret not in serialized
+    assert "refresh_token=[redacted]" in serialized
+    assert "client_secret=[redacted]" in serialized
+    assert "private_key: [redacted]" in serialized
 
 
 def test_core_runtime_endpoint_delegates_to_core_bridge(tmp_path: Path) -> None:
