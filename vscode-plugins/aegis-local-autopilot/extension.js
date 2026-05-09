@@ -1782,7 +1782,7 @@ async function applyProposal(proposal, options = {}) {
     }
   } catch (error) {
     await fs.writeFile(path.join(backupRoot, 'manifest.partial.json'), JSON.stringify(manifest, null, 2), 'utf8').catch(() => {});
-    await restoreFromManifest(backupRoot, manifest).catch((restoreError) => {
+    await restoreFromManifest(backupRoot, manifest, { workspaceRoot: stateRoot }).catch((restoreError) => {
       output.appendLine(`Aegis partial apply restore failed: ${restoreError.message}`);
     });
     await logExtensionEvent('apply-error', 'Apply failed; attempted to restore partial edits from backup.', {
@@ -2907,6 +2907,10 @@ function timestampForPath() {
   return new Date().toISOString().replace(/[:.]/g, '-');
 }
 
+function isSafeBackupId(value) {
+  return typeof value === 'string' && /^[A-Za-z0-9_.-]+$/.test(value) && value.length <= 120;
+}
+
 async function saveProposal(proposal) {
   const stateRoot = proposal.workspaceRoot || proposal.workspace || proposal.targetRoot;
   if (!stateRoot) {
@@ -3085,6 +3089,10 @@ async function rollbackLastAgentChange(resource) {
     vscode.window.showInformationMessage('The last Aegis backup has no file entries to restore.');
     return;
   }
+  if (!isSafeBackupId(manifest.backupId)) {
+    vscode.window.showErrorMessage('The last Aegis backup manifest has an unsafe backup id. Rollback was not started.');
+    return;
+  }
 
   const answer = await vscode.window.showWarningMessage(
     `Rollback last Aegis change from ${manifest.createdAt || manifest.backupId}? This restores ${manifest.files.length} file(s) from .aegis/backups.`,
@@ -3096,9 +3104,14 @@ async function rollbackLastAgentChange(resource) {
   }
 
   const workspaceRoot = target.workspaceRoot || target.root;
-  const backupRoot = path.join(memoryRoot, 'backups', manifest.backupId);
+  const backupsRoot = path.join(memoryRoot, 'backups');
+  const backupRoot = resolveInside(backupsRoot, manifest.backupId);
+  if (!backupRoot) {
+    vscode.window.showErrorMessage('The last Aegis backup path is outside the workspace backup folder. Rollback was not started.');
+    return;
+  }
   const restored = [];
-  restored.push(...await restoreFromManifest(backupRoot, manifest));
+  restored.push(...await restoreFromManifest(backupRoot, manifest, { workspaceRoot }));
 
   const validation = {
     success: true,
@@ -3122,8 +3135,17 @@ async function rollbackLastAgentChange(resource) {
   vscode.window.showInformationMessage(`Rolled back ${restored.length} file(s) from the last Aegis change.`);
 }
 
-async function restoreFromManifest(backupRoot, manifest) {
-  const workspaceRoot = manifest.workspaceRoot;
+async function restoreFromManifest(backupRoot, manifest, options = {}) {
+  const expectedWorkspaceRoot = options.workspaceRoot ? path.resolve(options.workspaceRoot) : '';
+  const workspaceRoot = manifest && manifest.workspaceRoot
+    ? path.resolve(manifest.workspaceRoot)
+    : expectedWorkspaceRoot;
+  if (!workspaceRoot) {
+    throw new Error('Rollback manifest is missing a workspace root.');
+  }
+  if (expectedWorkspaceRoot && workspaceRoot !== expectedWorkspaceRoot) {
+    throw new Error('Rollback manifest workspace does not match the current workspace.');
+  }
   const restored = [];
   for (const file of manifest.files || []) {
     const workspaceRelative = file.workspaceRelativePath || file.path;
@@ -3133,7 +3155,11 @@ async function restoreFromManifest(backupRoot, manifest) {
       continue;
     }
     if (file.existed) {
-      const backupPath = path.join(backupRoot, file.backupPath || '');
+      const backupPath = resolveInside(backupRoot, file.backupPath || '');
+      if (!backupPath) {
+        output.appendLine(`Skipped unsafe backup file path for restore: ${file.backupPath || '<missing>'}`);
+        continue;
+      }
       const backupBytes = await fs.readFile(backupPath);
       await fs.mkdir(path.dirname(targetPath), { recursive: true });
       await fs.writeFile(targetPath, backupBytes);

@@ -9,6 +9,7 @@
 - Fixed impact analysis context selection so non-file placeholders such as `.` are not shown as likely affected files.
 - Hardened `.aegis` memory initialization so damaged memory paths are logged and skipped instead of breaking startup scans.
 - Hardened index, managed memory, recovery, validation-log, decision-log, and dogfooding-note writes so damaged `.aegis` targets do not break scans or post-apply bookkeeping.
+- Hardened rollback manifest validation so corrupted backup IDs, mismatched workspace roots, or unsafe backup file paths cannot restore outside the current workspace backup folder.
 
 ## 0.1.0 - Release Candidate
 

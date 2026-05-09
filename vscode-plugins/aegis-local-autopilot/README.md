@@ -372,7 +372,7 @@ Use that file to record bad plans, hallucinated files, failed edits, unsafe prop
 
 Before every approved apply, Aegis creates a snapshot in `.aegis/backups/<timestamp>/` and records the changed files in `.aegis/change-history.json`.
 
-Use `Aegis: Rollback Last Agent Change` or the sidebar **Rollback Last** button to restore the previous contents from the latest Aegis backup. If a file was newly created by the agent, rollback removes that file. Rollback only touches files recorded in the backup manifest.
+Use `Aegis: Rollback Last Agent Change` or the sidebar **Rollback Last** button to restore the previous contents from the latest Aegis backup. If a file was newly created by the agent, rollback removes that file. Rollback only touches files recorded in a valid backup manifest for the current workspace.
 
 ## Failure Handling And Recovery
 
@@ -429,6 +429,7 @@ Before applying edits, the extension:
 - asks for approval
 - creates backups in `.aegis/vscode-autopilot/checkpoints`
 - creates rollback snapshots in `.aegis/backups`
+- validates rollback manifests before restore, including backup IDs, workspace roots, and backup file paths
 - stores proposal history in `.aegis/vscode-autopilot/proposals`
 - refuses absolute paths and writes outside the project folder
 - blocks `.env`, secret, credential, token, key, certificate, dependency, vendor, build, dist, cache, and VCS paths
