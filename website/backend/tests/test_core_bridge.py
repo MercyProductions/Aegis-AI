@@ -333,6 +333,48 @@ def test_core_envelope_error_redacts_json_secret_fields() -> None:
     assert "invalid" in error
 
 
+def test_core_envelope_error_redacts_provider_oauth_aliases() -> None:
+    secrets = {
+        "x-api-key": "provider-header-secret",
+        "client_secret": "provider-client-secret",
+        "api_token": "provider-api-token",
+        "access_token": "provider-access-token",
+        "refresh_token": "provider-refresh-token",
+        "private_key": "provider-private-key",
+        "query": "provider-query-token",
+    }
+    error = core_envelope_error(
+        {
+            "ok": False,
+            "api_version": "v1",
+            "kind": "models",
+            "data": {
+                "error": (
+                    'Provider HTTP 401: {"x-api-key":"'
+                    + secrets["x-api-key"]
+                    + '","client_secret":"'
+                    + secrets["client_secret"]
+                    + '"} '
+                    + f"api_token={secrets['api_token']} "
+                    + f"access_token={secrets['access_token']} "
+                    + f"refresh_token: {secrets['refresh_token']} "
+                    + f"private_key: {secrets['private_key']} "
+                    + f"https://provider.test/callback?access_token={secrets['query']}"
+                )
+            },
+        }
+    )
+
+    for secret in secrets.values():
+        assert secret not in error
+    assert '"x-api-key":"[redacted]"' in error
+    assert '"client_secret":"[redacted]"' in error
+    assert "api_token=[redacted]" in error
+    assert "access_token=[redacted]" in error
+    assert "refresh_token: [redacted]" in error
+    assert "private_key: [redacted]" in error
+
+
 def test_core_runtime_endpoint_delegates_to_core_bridge(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()

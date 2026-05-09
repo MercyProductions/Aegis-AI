@@ -116,6 +116,11 @@ class ProjectStatusTests(unittest.TestCase):
                 "jwt=eyJabcdefgh.abcdefghij.klmnopqrst",
                 "password='super-secret'",
                 "token=plain-secret",
+                "access_token=oauth-access-secret",
+                "refresh_token: oauth-refresh-secret",
+                "client_secret='oauth-client-secret'",
+                "private_key=oauth-private-secret",
+                "callback=https://provider.test/callback?access_token=query-secret&x-api-key=query-key",
             ]
         )
 
@@ -129,12 +134,20 @@ class ProjectStatusTests(unittest.TestCase):
         self.assertNotIn("eyJabcdefgh.abcdefghij.klmnopqrst", redacted)
         self.assertNotIn("super-secret", redacted)
         self.assertNotIn("plain-secret", redacted)
+        self.assertNotIn("oauth-access-secret", redacted)
+        self.assertNotIn("oauth-refresh-secret", redacted)
+        self.assertNotIn("oauth-client-secret", redacted)
+        self.assertNotIn("oauth-private-secret", redacted)
+        self.assertNotIn("query-secret", redacted)
+        self.assertNotIn("query-key", redacted)
         self.assertIn("[REDACTED_OPENAI_KEY]", redacted)
         self.assertIn("[REDACTED_GITHUB_TOKEN]", redacted)
         self.assertIn("[REDACTED_AWS_KEY]", redacted)
         self.assertIn("[REDACTED_SLACK_TOKEN]", redacted)
         self.assertIn("[REDACTED_JWT]", redacted)
         self.assertIn("[REDACTED_SECRET]", redacted)
+        self.assertIn("access_token=[REDACTED]", redacted)
+        self.assertIn("x-api-key=[REDACTED]", redacted)
 
 
 if __name__ == "__main__":

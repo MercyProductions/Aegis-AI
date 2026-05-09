@@ -216,6 +216,33 @@ class ConfigUpdateTests(unittest.TestCase):
         self.assertEqual(captured["AEGIS_FEEDBACK_MAX_EXCERPT_CHARS"], "123")
         self.assertEqual(captured["AEGIS_FEEDBACK_HASH_CONTENT"], "true")
 
+    def test_feedback_redaction_handles_provider_oauth_aliases(self) -> None:
+        text = "\n".join(
+            [
+                "access_token=feedback-access-secret",
+                "refresh_token: feedback-refresh-secret",
+                'client_secret="feedback-client-secret"',
+                "private_key=feedback-private-secret",
+                "callback=https://provider.test/callback?access_token=feedback-query-secret&x-api-key=feedback-query-key",
+            ]
+        )
+
+        redacted, count = main._redact_feedback_text(text)
+
+        self.assertGreaterEqual(count, 6)
+        self.assertNotIn("feedback-access-secret", redacted)
+        self.assertNotIn("feedback-refresh-secret", redacted)
+        self.assertNotIn("feedback-client-secret", redacted)
+        self.assertNotIn("feedback-private-secret", redacted)
+        self.assertNotIn("feedback-query-secret", redacted)
+        self.assertNotIn("feedback-query-key", redacted)
+        self.assertIn("access_token=[REDACTED_SECRET]", redacted)
+        self.assertIn("refresh_token: [REDACTED_SECRET]", redacted)
+        self.assertIn('client_secret="[REDACTED_SECRET]"', redacted)
+        self.assertIn("private_key=[REDACTED_SECRET]", redacted)
+        self.assertIn("access_token=[REDACTED]", redacted)
+        self.assertIn("x-api-key=[REDACTED]", redacted)
+
 
 if __name__ == "__main__":
     unittest.main()

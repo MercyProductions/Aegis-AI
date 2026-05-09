@@ -8,6 +8,10 @@ import re
 
 BUILD_LOG_EXTENSIONS = {".md", ".txt", ".log"}
 MAX_AEGIS_JSON_BYTES = 256_000
+SENSITIVE_FIELD = (
+    r"x-api-key|api[_-]?key|api[_-]?token|access[_-]?token|refresh[_-]?token|id[_-]?token|"
+    r"client[_-]?secret|secret|token|password|passwd|pwd|credential|authorization|private[_-]?key"
+)
 
 SECRET_REDACTION_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"\bsk-[A-Za-z0-9_-]{20,}\b"), "[REDACTED_OPENAI_KEY]"),
@@ -18,11 +22,12 @@ SECRET_REDACTION_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b"), "[REDACTED_JWT]"),
     (
         re.compile(
-            r"(?i)\b((?:api[_-]?key|secret|token|password|passwd|pwd|authorization)\s*[:=]\s*)"
-            r"([\"']?)[^\s\"']+"
+            rf"(?i)\b((?:{SENSITIVE_FIELD})\s*[:=]\s*)"
+            r"([\"']?)[^\s\"'&,;]+"
         ),
         r"\1\2[REDACTED_SECRET]",
     ),
+    (re.compile(rf"(?i)([?&](?:{SENSITIVE_FIELD}|key|signature)=)[^&\s]+"), r"\1[REDACTED]"),
 )
 
 

@@ -279,6 +279,11 @@ _project_plan_cache = ProjectPlanCache(
     max_size=_PROJECT_PLAN_CACHE_MAX,
 )
 
+_FEEDBACK_SECRET_FIELD = (
+    r"x-api-key|api[_-]?key|api[_-]?token|access[_-]?token|refresh[_-]?token|id[_-]?token|"
+    r"client[_-]?secret|secret|token|password|passwd|pwd|credential|authorization|private[_-]?key"
+)
+
 
 def _normalized_cache_path(path: Path) -> str:
     return normalized_cache_path(path)
@@ -534,8 +539,8 @@ _FEEDBACK_REDACTION_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     ),
     (
         re.compile(
-            r"(?i)\b((?:api[_-]?key|secret|token|password|passwd|pwd|authorization)\s*[:=]\s*)"
-            r"(['\"]?)[^\s'\",;]+",
+            rf"(?i)\b((?:{_FEEDBACK_SECRET_FIELD})\s*[:=]\s*)"
+            r"(['\"]?)[^\s'\"&,;]+",
         ),
         r"\1\2[REDACTED_SECRET]",
     ),
@@ -545,7 +550,7 @@ _FEEDBACK_REDACTION_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"\bAKIA[0-9A-Z]{16}\b"), "[REDACTED_AWS_KEY]"),
     (re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{20,}\b"), "[REDACTED_SLACK_TOKEN]"),
     (re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b"), "[REDACTED_JWT]"),
-    (re.compile(r"(?i)([?&](?:token|key|secret|password|signature)=)[^&\s]+"), r"\1[REDACTED]"),
+    (re.compile(rf"(?i)([?&](?:{_FEEDBACK_SECRET_FIELD}|key|signature)=)[^&\s]+"), r"\1[REDACTED]"),
     (re.compile(r"\b[\w.+-]+@[\w-]+(?:\.[\w-]+)+\b"), "[REDACTED_EMAIL]"),
 )
 

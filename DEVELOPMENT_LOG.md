@@ -1,5 +1,24 @@
 # Development Log
 
+## 2026-05-09 - Website OAuth Secret Redaction Parity
+
+Focus:
+
+- Keep Website diagnostics, project status excerpts, and feedback capture from leaking common OAuth/provider secret aliases.
+- Align Website backend redaction with the broader Core and editor redaction vocabulary.
+
+Actions:
+
+- Expanded Website Core bridge error redaction for `access_token`, `refresh_token`, `id_token`, `client_secret`, `x-api-key`, and `private_key` across query strings, JSON, and assignment-style diagnostics.
+- Expanded project-status and feedback redaction for the same provider/OAuth field names.
+- Tightened query-value handling so redaction stops at `&` and preserves neighboring query parameters.
+- Added focused backend regressions for Core bridge errors, project-status text, and feedback excerpts.
+
+Validation completed:
+
+- Website backend focused redaction tests: 27 passed.
+- Website backend compile check: pass.
+
 ## 2026-05-09 - Editor OAuth Secret Redaction Parity
 
 Focus:

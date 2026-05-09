@@ -14,16 +14,20 @@ DEFAULT_CORE_API_URL = "http://127.0.0.1:8788"
 CORE_API_VERSION = "v1"
 CORE_CONTRACT_VERSION_FIELD = "contract_version"
 LEGACY_CORE_ENDPOINTS = {"health", "models"}
+SENSITIVE_FIELD = (
+    r"x-api-key|api[_-]?key|api[_-]?token|access[_-]?token|refresh[_-]?token|id[_-]?token|token|"
+    r"client[_-]?secret|secret|private[_-]?key|password|passwd|credential"
+)
 SENSITIVE_QUERY_RE = re.compile(
-    r"([?&](?:api[_-]?key|key|token|secret|password|passwd|credential)=)[^&#\s]+",
+    rf"([?&](?:{SENSITIVE_FIELD}|key|signature)=)[^&#\s]+",
     re.IGNORECASE,
 )
 SENSITIVE_ASSIGNMENT_RE = re.compile(
-    r"\b((?:api[_-]?key|token|secret|password|passwd|credential|authorization)\s*[:=]\s*)[^\s&]+",
+    rf"\b((?:{SENSITIVE_FIELD}|authorization)\s*[:=]\s*)[^\s&]+",
     re.IGNORECASE,
 )
 SENSITIVE_JSON_RE = re.compile(
-    r"""(["'](?:api[_-]?key|token|secret|password|passwd|credential|authorization|private[_-]?key)["']\s*:\s*["'])[^"']+""",
+    rf"""(["'](?:{SENSITIVE_FIELD}|authorization)["']\s*:\s*["'])[^"']+""",
     re.IGNORECASE,
 )
 AUTHORIZATION_HEADER_RE = re.compile(
