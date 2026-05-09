@@ -95,6 +95,37 @@ class AgentDraftAnalysisTests(unittest.TestCase):
         self.assertEqual(draft_stack_families(draft), {"web", "desktop"})
         self.assertTrue(draft_has_desktop_host_surface(draft))
 
+    def test_dotnet_guardrails_include_fsharp_and_visual_basic_surfaces(self) -> None:
+        fsharp_draft = AgentDraft(
+            reply="Prepared F# app.",
+            changes=[FileChange(action="create", path="Program.fs", content="module Program\n")],
+        )
+        visual_basic_draft = AgentDraft(
+            reply="Prepared VB app.",
+            changes=[
+                FileChange(action="create", path="App.vbproj", content="<Project></Project>\n"),
+                FileChange(action="create", path="Module.vb", content="Module Program\nEnd Module\n"),
+            ],
+        )
+        wpf_draft = AgentDraft(
+            reply="Prepared WPF app.",
+            changes=[
+                FileChange(action="create", path="src/App/App.fsproj", content="<Project></Project>\n"),
+                FileChange(action="create", path="src/App/MainWindow.xaml", content="<Window />\n"),
+            ],
+        )
+
+        self.assertTrue(draft_has_concrete_source_surface(fsharp_draft))
+        self.assertTrue(draft_has_concrete_source_surface(visual_basic_draft))
+        self.assertEqual(draft_stack_families(fsharp_draft), {"dotnet"})
+        self.assertEqual(draft_stack_families(visual_basic_draft), {"dotnet"})
+        self.assertTrue(draft_has_desktop_host_surface(wpf_draft))
+        self.assertEqual(
+            workspace_stack_family([WorkspaceFile(path="Program.fs", kind="text", size=160)]),
+            "dotnet",
+        )
+        self.assertTrue(important_project_path("Program.vb"))
+
     def test_workspace_stack_family_prioritizes_real_project_markers(self) -> None:
         self.assertEqual(
             workspace_stack_family(
@@ -145,6 +176,7 @@ class AgentDraftAnalysisTests(unittest.TestCase):
 
     def test_stack_family_label_keeps_user_facing_guardrail_terms(self) -> None:
         self.assertEqual(stack_family_label("native-cpp"), "native C++/CMake/Visual Studio")
+        self.assertEqual(stack_family_label("dotnet"), ".NET")
         self.assertEqual(stack_family_label("desktop"), "desktop application")
         self.assertEqual(stack_family_label("unknown-family"), "unknown-family")
 

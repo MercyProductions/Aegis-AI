@@ -369,6 +369,23 @@ class AgentParserTests(unittest.TestCase):
             [],
         )
 
+    def test_fsharp_prompt_rejects_static_website_draft(self) -> None:
+        draft = AgentDraft(
+            reply="Created an F# app.",
+            changes=[
+                FileChange(action="create", path="index.html", content="<main>Tool</main>\n"),
+                FileChange(action="create", path="styles.css", content="body{margin:0}\n"),
+                FileChange(action="create", path="app.js", content="console.log('ready')\n"),
+            ],
+        )
+
+        reasons = self.engine._draft_stack_mismatch_reasons(
+            draft,
+            "Create an F# .NET CLI app with a project file.",
+        )
+
+        self.assertTrue(any(".net project files" in reason.lower() for reason in reasons))
+
     def test_completion_quality_flags_static_site_for_desktop_request(self) -> None:
         workspace = Path(self.tempdir.name) / "desktop-quality"
         workspace.mkdir()

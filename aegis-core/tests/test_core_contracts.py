@@ -1146,6 +1146,31 @@ def test_change_simulation_tracks_fsharp_and_visual_basic_project_paths(tmp_path
     assert "src/VisualBasicTool/VisualBasicTool.vbproj" in build_risk_files
 
 
+def test_change_simulation_parses_shared_source_suffix_path_mentions(tmp_path: Path) -> None:
+    workspace = tmp_path / "source-suffix-simulation"
+    src = workspace / "src"
+    src.mkdir(parents=True)
+    (workspace / "README.md").write_text("# Source Suffix Simulation\n", encoding="utf-8")
+    (src / "native.cxx").write_text("int main() { return 0; }\n", encoding="utf-8")
+    (src / "Dashboard.xaml").write_text("<Window />\n", encoding="utf-8")
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/v1/simulation/change",
+        json={
+            "workspace": str(workspace),
+            "objective": "Review src/native.cxx and src/Dashboard.xaml for startup risk.",
+            "approach": "Read-only impact review",
+        },
+    )
+
+    assert response.status_code == 200
+    assert_core_contract(response.json(), "simulation.change")
+    data = response.json()["data"]
+    assert "src/native.cxx" in data["focus_files"]
+    assert "src/Dashboard.xaml" in data["focus_files"]
+
+
 def test_simulation_compare_ranks_incremental_approach_over_rewrite(tmp_path: Path) -> None:
     workspace = make_workspace(tmp_path)
     src = workspace / "src"

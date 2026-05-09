@@ -151,6 +151,14 @@ const validationCommandDetector = loadExtensionFunctions(
 );
 assertValidationCommandDetection(validationCommandDetector);
 
+const projectLanguageInferrer = loadExtensionFunctions(
+  extensionText,
+  ['parseJsonText', 'inferProjectLanguages'],
+  'inferProjectLanguages',
+  { path }
+);
+assertProjectLanguageInference(projectLanguageInferrer);
+
 const unsafeErrorMessagePatterns = [
   {
     pattern: /appendLine\s*\([^)]*error\.message/s,
@@ -360,6 +368,24 @@ function assertValidationCommandDetection(detector) {
   }
   if (!detector(visualBasicSnapshot).some((item) => item.command === 'dotnet build')) {
     fail('detectValidationCommands must suggest dotnet build when a .vbproj is present.');
+  }
+}
+
+function assertProjectLanguageInference(inferrer) {
+  const result = inferrer(
+    [
+      { relative: 'src/App/Program.fs' },
+      { relative: 'src/App/App.fsproj' },
+      { relative: 'src/Tool/Module.vb' },
+      { relative: 'src/Tool/Tool.vbproj' },
+      { relative: 'native/main.cxx' }
+    ],
+    []
+  );
+  for (const expected of ['F#/.NET', 'VB.NET', 'C/C++']) {
+    if (!result.languages.includes(expected)) {
+      fail(`inferProjectLanguages must detect ${expected} workspaces from project/source files.`);
+    }
   }
 }
 

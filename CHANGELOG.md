@@ -19,6 +19,7 @@
 - Improved Aegis Core knowledge graphs so local F# `open` and Visual Basic `Imports` dependencies resolve to workspace files instead of external placeholders.
 - Improved Aegis Core quality, jobs, knowledge, and personal-intelligence consumers to share one source-code suffix set that includes F# and Visual Basic files.
 - Improved Aegis Core symbol indexing so F# modules/functions/types and Visual Basic modules/functions are included in scan, graph, and intelligence metadata.
+- Improved Core, Website, and VS Code planning guardrails so F#, Visual Basic, XAML, and C++ path/language hints stay aligned with shared .NET/source suffix support.
 - Improved Website dependency profiling so root `build.py` and `build.ps1` guard scripts are recorded as validation commands before lower-level CMake/MSBuild native fallbacks.
 - Improved Website agent continuation so existing projects with root `build.ps1` guard scripts propose the same safe PowerShell validation command used by validation discovery.
 - Improved Website project-builder existing-project validation so root `build.ps1` guard scripts are selected before CMake/MSBuild fallback commands.

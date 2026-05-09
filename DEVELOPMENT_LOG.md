@@ -71,6 +71,7 @@ Actions:
 - Added Core engineering operations so release readiness, technical debt, lifecycle stage, risk monitoring, maintenance scheduling, productivity bottlenecks, and cross-project coordination can be reviewed from a single read-only dashboard.
 - Added Core adaptive personal engineering intelligence so local workflow/style preferences, recurring project patterns, habit signals, context personalization, and resettable inspectable preference memory can guide clients without cloud calls or hidden persistence.
 - Tightened personal preference filtering so token-like secret fields stay blocked while harmless preference names containing `key`, such as `keyboard_layout`, still persist.
+- Improved cross-client source suffix parity so Core simulation path parsing, Website draft guardrails, and VS Code language summaries recognize F#, Visual Basic, XAML, and C++ source/project surfaces consistently.
 
 Validation completed:
 

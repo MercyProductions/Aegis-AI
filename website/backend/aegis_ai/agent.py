@@ -23,6 +23,7 @@ from .agent_request_intent import (
 )
 from .agent_runtime import (
     AgentDraft,
+    DOTNET_SUFFIXES as RUNTIME_DOTNET_SUFFIXES,
     MissionAnchor,
     draft_change_paths as runtime_draft_change_paths,
     draft_change_payload_size as runtime_draft_change_payload_size,
@@ -3103,7 +3104,7 @@ class AgentEngine:
             or path.endswith((".sln", ".vcxproj", ".vcxproj.filters"))
         )
         has_python = any_path(lambda path: path.endswith(".py") or path in {"pyproject.toml", "requirements.txt", "setup.py", "setup.cfg"})
-        has_dotnet = any_path(lambda path: path.endswith((".csproj", ".sln", ".cs", ".xaml")))
+        has_dotnet = any_path(lambda path: path.endswith(RUNTIME_DOTNET_SUFFIXES) or path.endswith(".sln"))
         has_rust = any_path(lambda path: path == "cargo.toml" or path.endswith(".rs"))
         has_go = any_path(lambda path: path == "go.mod" or path.endswith(".go"))
 
@@ -3147,8 +3148,8 @@ class AgentEngine:
             reasons.append("The draft does not contain Rust project files requested by the prompt.")
         if ("golang" in lower or re.search(r"\bgo\b", lower)) and (has_web or has_native_source) and not has_go:
             reasons.append("The draft does not contain Go project files requested by the prompt.")
-        if any(term in lower for term in ("c#", "dotnet", ".net", "wpf")) and (has_web or has_native_source) and not has_dotnet:
-            reasons.append("The draft does not contain .NET/C# project files requested by the prompt.")
+        if any(term in lower for term in ("c#", "csharp", "f#", "fsharp", "visual basic", "vb.net", "dotnet", ".net", "wpf")) and (has_web or has_native_source) and not has_dotnet:
+            reasons.append("The draft does not contain .NET project files requested by the prompt.")
 
         return reasons
 

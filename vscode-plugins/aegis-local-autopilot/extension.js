@@ -2191,8 +2191,10 @@ function inferProjectLanguages(files, importantContents) {
   if (extensions.has('.ts') || extensions.has('.tsx')) languages.add('TypeScript');
   if (extensions.has('.js') || extensions.has('.jsx') || names.has('package.json')) languages.add('JavaScript');
   if (extensions.has('.py') || names.has('pyproject.toml') || names.has('requirements.txt')) languages.add('Python');
-  if (extensions.has('.cpp') || extensions.has('.cc') || extensions.has('.c') || extensions.has('.h') || extensions.has('.hpp')) languages.add('C/C++');
+  if (extensions.has('.cpp') || extensions.has('.cc') || extensions.has('.cxx') || extensions.has('.c') || extensions.has('.h') || extensions.has('.hpp')) languages.add('C/C++');
   if (extensions.has('.cs') || Array.from(names).some((name) => name.endsWith('.csproj') || name.endsWith('.sln'))) languages.add('C#/.NET');
+  if (extensions.has('.fs') || extensions.has('.fsi') || extensions.has('.fsx') || Array.from(names).some((name) => name.endsWith('.fsproj'))) languages.add('F#/.NET');
+  if (extensions.has('.vb') || Array.from(names).some((name) => name.endsWith('.vbproj'))) languages.add('VB.NET');
   if (extensions.has('.rs') || names.has('cargo.toml')) languages.add('Rust');
   if (extensions.has('.go') || names.has('go.mod')) languages.add('Go');
   if (extensions.has('.java') || names.has('pom.xml') || Array.from(names).some((name) => name.includes('build.gradle'))) languages.add('Java/JVM');

@@ -6,6 +6,11 @@ from ..schemas import WorkspaceFile, WorkspaceProjectManifest
 from .contracts import AgentDraft
 
 
+DOTNET_PROJECT_SUFFIXES = (".csproj", ".fsproj", ".vbproj")
+DOTNET_SOURCE_SUFFIXES = (".cs", ".fs", ".fsi", ".fsx", ".vb", ".xaml")
+DOTNET_SUFFIXES = DOTNET_PROJECT_SUFFIXES + DOTNET_SOURCE_SUFFIXES
+
+
 def draft_change_paths(draft: AgentDraft) -> set[str]:
     return {change.path.replace("\\", "/").lower().strip("/") for change in draft.changes}
 
@@ -24,8 +29,7 @@ def draft_has_concrete_source_surface(draft: AgentDraft) -> bool:
         ".hpp",
         ".asm",
         ".rc",
-        ".cs",
-        ".xaml",
+        *DOTNET_SOURCE_SUFFIXES,
         ".py",
         ".rs",
         ".go",
@@ -126,7 +130,7 @@ def manifest_stack_family(manifest: WorkspaceProjectManifest | None) -> str:
         return "desktop"
     if any(term in text for term in ("cpp", "c++", "cmake", "visual studio", "win32", "windows-internals", "kernel-driver")):
         return "native-cpp"
-    if any(term in text for term in ("dotnet", ".net", "c#", "csharp", "wpf", "winforms")):
+    if any(term in text for term in ("dotnet", ".net", "c#", "csharp", "f#", "fsharp", "vb.net", "visual basic", "wpf", "winforms")):
         return "dotnet"
     if "python" in text:
         return "python"
@@ -171,7 +175,7 @@ def draft_stack_families(draft: AgentDraft) -> set[str]:
         for path in paths
     ):
         families.add("python")
-    if any(path.endswith((".csproj", ".cs", ".xaml")) or path.endswith(".sln") for path in paths):
+    if any(path.endswith(DOTNET_SUFFIXES) or path.endswith(".sln") for path in paths):
         families.add("dotnet")
     if any(path == "cargo.toml" or path.endswith(".rs") for path in paths):
         families.add("rust")
@@ -193,7 +197,7 @@ def workspace_stack_family(files: list[WorkspaceFile]) -> str:
         for path in paths
     )
     has_tauri_host = any(path.startswith("src-tauri/") for path in paths)
-    has_wpf_host = any(path.endswith("mainwindow.xaml") or path.endswith(".csproj") for path in paths) and any(
+    has_wpf_host = any(path.endswith("mainwindow.xaml") or path.endswith(DOTNET_PROJECT_SUFFIXES) for path in paths) and any(
         path.endswith(".xaml")
         for path in paths
     )
@@ -204,7 +208,7 @@ def workspace_stack_family(files: list[WorkspaceFile]) -> str:
         path in {"cmakelists.txt", "cmakepresets.json", "makefile"}
         for path in paths
     ) or any(path.endswith((".cpp", ".cxx", ".cc", ".c", ".h", ".hpp", ".asm", ".rc", ".inf")) for path in paths)
-    has_dotnet = any(path.endswith((".csproj", ".fsproj", ".vbproj", ".cs", ".xaml")) for path in paths)
+    has_dotnet = any(path.endswith(DOTNET_SUFFIXES) for path in paths)
     has_python = any(path in {"pyproject.toml", "requirements.txt", "setup.py", "setup.cfg"} for path in paths) or any(
         path.endswith(".py") and path != "build.py"
         for path in paths
@@ -228,7 +232,7 @@ def workspace_stack_family(files: list[WorkspaceFile]) -> str:
 def stack_family_label(family: str) -> str:
     return {
         "native-cpp": "native C++/CMake/Visual Studio",
-        "dotnet": ".NET/C#",
+        "dotnet": ".NET",
         "python": "Python",
         "rust": "Rust",
         "go": "Go",
@@ -301,9 +305,7 @@ def important_project_path(path: str) -> bool:
         ".sln",
         ".vcxproj",
         ".vcxproj.filters",
-        ".csproj",
-        ".fsproj",
-        ".vbproj",
+        *DOTNET_PROJECT_SUFFIXES,
         ".props",
         ".targets",
         ".c",
@@ -312,8 +314,7 @@ def important_project_path(path: str) -> bool:
         ".cxx",
         ".h",
         ".hpp",
-        ".cs",
-        ".xaml",
+        *DOTNET_SOURCE_SUFFIXES,
         ".py",
         ".rs",
         ".go",
@@ -355,8 +356,8 @@ def draft_has_desktop_host_surface(draft: AgentDraft) -> bool:
         return True
     if any(path.startswith("src-tauri/") for path in paths):
         return True
-    if any(path.endswith("mainwindow.xaml") or path.endswith(".csproj") for path in paths) and any(
-        path.endswith(".xaml") or path.endswith(".cs") for path in paths
+    if any(path.endswith("mainwindow.xaml") or path.endswith(DOTNET_PROJECT_SUFFIXES) for path in paths) and any(
+        path.endswith(".xaml") for path in paths
     ):
         return True
 

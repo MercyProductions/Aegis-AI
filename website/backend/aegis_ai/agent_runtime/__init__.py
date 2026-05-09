@@ -1,5 +1,6 @@
 from .contracts import AgentDraft, MissionAnchor
 from .draft_analysis import (
+    DOTNET_SUFFIXES,
     draft_change_paths,
     draft_change_payload_size,
     draft_has_concrete_source_surface,
@@ -16,6 +17,7 @@ from .response_changes import sanitize_model_change_paths
 
 __all__ = [
     "AgentDraft",
+    "DOTNET_SUFFIXES",
     "MissionAnchor",
     "draft_change_paths",
     "draft_change_payload_size",

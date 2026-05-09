@@ -12,7 +12,7 @@ from .memory import ProjectMemory, utc_now
 from .quality import quality_dashboard
 from .safety import is_safe_to_read
 from .validation import detect_validation_commands
-from .workspace import BUILD_FILE_SUFFIXES, WorkspaceScanner
+from .workspace import BUILD_FILE_SUFFIXES, SOURCE_CODE_SUFFIXES, WorkspaceScanner
 
 
 DEPENDENCY_FILES = {
@@ -31,32 +31,10 @@ DEPENDENCY_FILES = {
 }
 RISK_ORDER = {"low": 0, "moderate": 1, "high": 2, "dangerous_architectural_change": 3}
 ROLLBACK_ORDER = {"simple": 0, "moderate": 1, "complex": 2, "high": 3}
-PATH_EXTENSIONS = (
-    "csproj",
-    "fsproj",
-    "vbproj",
-    "vcxproj",
-    "slnx",
-    "tsx",
-    "jsx",
-    "cpp",
-    "hpp",
-    "yaml",
-    "toml",
-    "json",
-    "sln",
-    "py",
-    "js",
-    "ts",
-    "cs",
-    "fsi",
-    "fsx",
-    "fs",
-    "vb",
-    "c",
-    "h",
-    "md",
-    "yml",
+PATH_SUFFIXES = BUILD_FILE_SUFFIXES | SOURCE_CODE_SUFFIXES | {".json", ".md", ".toml", ".yaml", ".yml"}
+PATH_EXTENSIONS = tuple(
+    suffix.removeprefix(".")
+    for suffix in sorted(PATH_SUFFIXES, key=lambda item: (-len(item), item))
 )
 PATH_PATTERN = re.compile(
     r"([A-Za-z0-9_./\\-]+\.(?:" + "|".join(PATH_EXTENSIONS) + r"))"
