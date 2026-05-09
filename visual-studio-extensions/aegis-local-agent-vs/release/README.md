@@ -200,7 +200,7 @@ Aegis can scan the solution and refresh persistent local memory. For daily-drive
 
 The scanner reads:
 
-- the `.sln` file and all detected `.csproj` / `.vcxproj` files
+- the `.sln` / `.slnx` file and all detected `.csproj` / `.fsproj` / `.vbproj` / `.vcxproj` files
 - project references, assembly references, target frameworks, NuGet packages, include paths, and C++ configurations
 - startup project, active project, active document, selected code, and Solution Explorer selection
 - README, TODO, config, XAML, test, source, and project files
@@ -231,7 +231,7 @@ Aegis does not send the whole solution to the model. For chat, review, roadmap, 
 - current Error List / Build output when relevant
 - persistent `.aegis` memory
 
-This keeps model prompts smaller, reduces hallucinated file edits, and helps the agent preserve existing C#, C++, WPF, ASP.NET, and Unity architecture.
+This keeps model prompts smaller, reduces hallucinated file edits, and helps the agent preserve existing C#, F#, Visual Basic, C++, WPF, ASP.NET, and Unity architecture.
 
 ## Roadmap Workflow
 
@@ -241,8 +241,9 @@ This keeps model prompts smaller, reduces hallucinated file edits, and helps the
 
 ## Supported Project Workflows
 
-- C#: reads `.csproj`, target frameworks, NuGet `PackageReference` entries, namespaces, classes, and WPF XAML files.
-- C++: reads `.vcxproj`, header/source pairs, include paths, project configurations, and linker/compiler diagnostics from Visual Studio output.
+- C#/.NET: reads `.csproj`, target frameworks, NuGet `PackageReference` entries, namespaces, classes, and WPF XAML files.
+- F# and Visual Basic: recognizes `.fsproj` and `.vbproj` projects, indexes modules/types/functions/imports, and keeps managed project validation hints available.
+- C++: reads `.vcxproj`, header/source pairs, include paths, project configurations, common `.cpp` / `.cc` / `.cxx` and header suffixes, and linker/compiler diagnostics from Visual Studio output.
 - Unity: recognizes `Assets/`, `Packages/`, and `ProjectSettings/`, avoids `Library/` and `Temp/`, and flags `MonoBehaviour` scripts for Unity-safe planning.
 
 ## Safety Model

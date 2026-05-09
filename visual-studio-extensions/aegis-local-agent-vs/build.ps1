@@ -215,6 +215,41 @@ function Assert-SafeEditRollbackGuards {
   }
 }
 
+function Assert-SolutionScannerParityGuards {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$ProjectDirectory
+  )
+
+  $scannerText = Get-Content -Raw -LiteralPath (Join-Path $ProjectDirectory "Services\SolutionScanner.cs")
+  $intelligenceText = Get-Content -Raw -LiteralPath (Join-Path $ProjectDirectory "Services\SolutionIntelligenceService.cs")
+
+  $issues = @()
+  foreach ($suffix in @(".fsproj", ".vbproj", ".slnx", ".cc", ".cxx")) {
+    if ($scannerText -notmatch [regex]::Escape($suffix)) {
+      $issues += "SolutionScanner must recognize $suffix during solution context scans."
+    }
+  }
+  foreach ($suffix in @(".fs", ".fsi", ".fsx", ".vb", ".fsproj", ".vbproj", ".slnx", ".cc", ".cxx", ".hxx")) {
+    if ($intelligenceText -notmatch [regex]::Escape($suffix)) {
+      $issues += "SolutionIntelligenceService must index $suffix for smart context parity."
+    }
+  }
+  if ($scannerText -notmatch '"Visual Basic"' -or $scannerText -notmatch '"F#"') {
+    $issues += "SolutionScanner must classify F# and Visual Basic project types."
+  }
+  if ($intelligenceText -notmatch 'AnalyzeFSharp' -or $intelligenceText -notmatch 'AnalyzeVisualBasic') {
+    $issues += "SolutionIntelligenceService must keep F# and Visual Basic symbol analysis paths."
+  }
+  if ($intelligenceText -notmatch 'xaml \+ "\.vb"') {
+    $issues += "SolutionIntelligenceService must preserve Visual Basic XAML code-behind relationships."
+  }
+
+  if ($issues.Count -gt 0) {
+    throw "Visual Studio solution scanner parity validation failed:`n - $($issues -join "`n - ")"
+  }
+}
+
 Assert-VisualStudioCommandTable `
   -VsctPath (Join-Path $projectDir "AegisLocalAgentPackage.vsct") `
   -CommandIdsPath (Join-Path $projectDir "CommandIds.cs") `
@@ -223,6 +258,7 @@ Assert-VisualStudioCommandTable `
 Assert-DiagnosticRedactionGuards -ProjectDirectory $projectDir
 Assert-UrlNormalizationGuards -ProjectDirectory $projectDir
 Assert-SafeEditRollbackGuards -ProjectDirectory $projectDir
+Assert-SolutionScannerParityGuards -ProjectDirectory $projectDir
 
 if ($ValidateOnly) {
   Write-Host "Visual Studio package validation guards passed."

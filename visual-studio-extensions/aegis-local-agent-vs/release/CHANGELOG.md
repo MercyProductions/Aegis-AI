@@ -21,6 +21,7 @@
 - Hardened health-check, rollback, and command error diagnostics so user-visible exception details are redacted, and packaging now fails if those paths drift back to raw exception messages.
 - Hardened authorization header redaction so `Authorization: Bearer/Basic/Digest ...` values cannot leave trailing credentials visible in diagnostics.
 - Hardened Aegis Core contract mismatch diagnostics so unexpected `api_version` and `kind` values are redacted, and packaging now fails if those paths drift back to raw values.
+- Improved solution scanning and smart context indexing for `.fsproj`, `.vbproj`, `.slnx`, F#/Visual Basic symbols/imports, Visual Basic XAML code-behind, and newer C++ source/header suffixes.
 - Updated install and troubleshooting documentation to make manual rescan the expected first-run indexing workflow.
 - Kept `DOGFOODING_NOTES.md` in the source tree to track real-solution test coverage, observed issues, and remaining manual GUI gaps.
 

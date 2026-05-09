@@ -72,6 +72,7 @@ Actions:
 - Added Core adaptive personal engineering intelligence so local workflow/style preferences, recurring project patterns, habit signals, context personalization, and resettable inspectable preference memory can guide clients without cloud calls or hidden persistence.
 - Tightened personal preference filtering so token-like secret fields stay blocked while harmless preference names containing `key`, such as `keyboard_layout`, still persist.
 - Improved cross-client source suffix parity so Core simulation path parsing, Website draft guardrails, and VS Code language summaries recognize F#, Visual Basic, XAML, and C++ source/project surfaces consistently.
+- Improved Visual Studio extension scan/intelligence parity so `.fsproj`, `.vbproj`, `.slnx`, F#/Visual Basic source symbols/imports, Visual Basic XAML code-behind, and newer C++ suffixes are represented in local solution context.
 
 Validation completed:
 

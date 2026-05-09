@@ -19,7 +19,9 @@ namespace Aegis.LocalAgent.VisualStudio.Services
 
         private static readonly HashSet<string> IndexedExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            ".cs", ".xaml", ".cpp", ".c", ".h", ".hpp", ".csproj", ".vcxproj", ".props", ".targets", ".sln",
+            ".cs", ".fs", ".fsi", ".fsx", ".vb", ".xaml",
+            ".cpp", ".cc", ".cxx", ".c", ".h", ".hh", ".hpp", ".hxx", ".ixx", ".inl",
+            ".csproj", ".fsproj", ".vbproj", ".vcxproj", ".props", ".targets", ".sln", ".slnx",
             ".config", ".json", ".md", ".txt"
         };
 
@@ -28,6 +30,14 @@ namespace Aegis.LocalAgent.VisualStudio.Services
         private static readonly Regex CSharpTypePattern = new Regex(@"\b(class|interface|struct|enum|record)\s+([A-Za-z_][A-Za-z0-9_]*)", RegexOptions.Compiled);
         private static readonly Regex CSharpMethodPattern = new Regex(@"^\s*(?:public|private|protected|internal|static|virtual|override|abstract|sealed|async|extern|partial|\s)+[\w<>\[\],\?\.]+\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(", RegexOptions.Compiled);
         private static readonly Regex UsingPattern = new Regex(@"^\s*using\s+([A-Za-z_][A-Za-z0-9_.]*)\s*;", RegexOptions.Compiled);
+        private static readonly Regex FSharpModulePattern = new Regex(@"^\s*module\s+([A-Za-z_][A-Za-z0-9_.]*)", RegexOptions.Compiled);
+        private static readonly Regex FSharpOpenPattern = new Regex(@"^\s*open\s+([A-Za-z_][A-Za-z0-9_.]*)", RegexOptions.Compiled);
+        private static readonly Regex FSharpTypePattern = new Regex(@"^\s*type\s+([A-Za-z_][A-Za-z0-9_]*)", RegexOptions.Compiled);
+        private static readonly Regex FSharpFunctionPattern = new Regex(@"^\s*let\s+(?:rec\s+)?([A-Za-z_][A-Za-z0-9_']*)", RegexOptions.Compiled);
+        private static readonly Regex VisualBasicNamespacePattern = new Regex(@"^\s*Namespace\s+([A-Za-z_][A-Za-z0-9_.]*)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex VisualBasicImportsPattern = new Regex(@"^\s*Imports\s+([A-Za-z_][A-Za-z0-9_.]*)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex VisualBasicTypePattern = new Regex(@"^\s*(?:Public|Private|Friend|Protected|Partial|NotInheritable|MustInherit|\s)*(Class|Interface|Structure|Enum|Module)\s+([A-Za-z_][A-Za-z0-9_]*)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex VisualBasicMethodPattern = new Regex(@"^\s*(?:Public|Private|Friend|Protected|Shared|Overrides|Overridable|Async|\s)*(Sub|Function)\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex XamlClassPattern = new Regex(@"x:Class\s*=\s*[""']([^""']+)[""']", RegexOptions.Compiled);
         private static readonly Regex CppTypePattern = new Regex(@"\b(class|struct|enum)\s+([A-Za-z_][A-Za-z0-9_]*)", RegexOptions.Compiled);
         private static readonly Regex CppFunctionPattern = new Regex(@"^\s*(?:[\w:<>\*&~]+\s+)+([A-Za-z_][A-Za-z0-9_:~]*)\s*\([^;]*\)\s*(?:const\s*)?(?:\{|;)?", RegexOptions.Compiled);
@@ -359,13 +369,27 @@ namespace Aegis.LocalAgent.VisualStudio.Services
                 case ".cs":
                     AnalyzeCSharp(text, analysis);
                     break;
+                case ".fs":
+                case ".fsi":
+                case ".fsx":
+                    AnalyzeFSharp(text, analysis);
+                    break;
+                case ".vb":
+                    AnalyzeVisualBasic(text, analysis);
+                    break;
                 case ".xaml":
                     AnalyzeXaml(text, analysis);
                     break;
                 case ".cpp":
+                case ".cc":
+                case ".cxx":
                 case ".c":
                 case ".h":
+                case ".hh":
                 case ".hpp":
+                case ".hxx":
+                case ".ixx":
+                case ".inl":
                     AnalyzeCpp(text, analysis);
                     break;
             }
@@ -408,6 +432,88 @@ namespace Aegis.LocalAgent.VisualStudio.Services
                 if (method.Success && !IsControlWord(method.Groups[1].Value))
                 {
                     analysis.Symbols.Add(NewSymbol(analysis, "method", method.Groups[1].Value, currentNamespace, i + 1, line));
+                }
+            }
+        }
+
+        private static void AnalyzeFSharp(string text, FileAnalysis analysis)
+        {
+            var currentModule = string.Empty;
+            var lines = SplitLines(text);
+            for (var i = 0; i < lines.Length; i++)
+            {
+                var line = lines[i];
+                var module = FSharpModulePattern.Match(line);
+                if (module.Success)
+                {
+                    currentModule = module.Groups[1].Value;
+                    analysis.Symbols.Add(NewSymbol(analysis, "module", module.Groups[1].Value.Split('.').Last(), NamespacePart(module.Groups[1].Value), i + 1, line));
+                    continue;
+                }
+
+                var open = FSharpOpenPattern.Match(line);
+                if (open.Success)
+                {
+                    analysis.Dependencies.Add(new DependencyEntry
+                    {
+                        Project = analysis.Project,
+                        Source = analysis.File,
+                        Target = open.Groups[1].Value,
+                        Kind = "Open",
+                        Detail = "F# namespace import"
+                    });
+                }
+
+                var type = FSharpTypePattern.Match(line);
+                if (type.Success)
+                {
+                    analysis.Symbols.Add(NewSymbol(analysis, "type", type.Groups[1].Value, currentModule, i + 1, line));
+                }
+
+                var function = FSharpFunctionPattern.Match(line);
+                if (function.Success && !IsControlWord(function.Groups[1].Value))
+                {
+                    analysis.Symbols.Add(NewSymbol(analysis, "function", function.Groups[1].Value, currentModule, i + 1, line));
+                }
+            }
+        }
+
+        private static void AnalyzeVisualBasic(string text, FileAnalysis analysis)
+        {
+            var currentNamespace = string.Empty;
+            var lines = SplitLines(text);
+            for (var i = 0; i < lines.Length; i++)
+            {
+                var line = lines[i];
+                var namespaceMatch = VisualBasicNamespacePattern.Match(line);
+                if (namespaceMatch.Success)
+                {
+                    currentNamespace = namespaceMatch.Groups[1].Value;
+                }
+
+                var imports = VisualBasicImportsPattern.Match(line);
+                if (imports.Success)
+                {
+                    analysis.Dependencies.Add(new DependencyEntry
+                    {
+                        Project = analysis.Project,
+                        Source = analysis.File,
+                        Target = imports.Groups[1].Value,
+                        Kind = "Imports",
+                        Detail = "Visual Basic namespace import"
+                    });
+                }
+
+                var type = VisualBasicTypePattern.Match(line);
+                if (type.Success)
+                {
+                    analysis.Symbols.Add(NewSymbol(analysis, type.Groups[1].Value.ToLowerInvariant(), type.Groups[2].Value, currentNamespace, i + 1, line));
+                }
+
+                var method = VisualBasicMethodPattern.Match(line);
+                if (method.Success && !IsControlWord(method.Groups[2].Value))
+                {
+                    analysis.Symbols.Add(NewSymbol(analysis, "method", method.Groups[2].Value, currentNamespace, i + 1, line));
                 }
             }
         }
@@ -524,8 +630,9 @@ namespace Aegis.LocalAgent.VisualStudio.Services
             {
                 foreach (var xaml in project.XamlFiles)
                 {
-                    var codeBehind = xaml + ".cs";
-                    if (!File.Exists(Path.Combine(project.Root, codeBehind)))
+                    var codeBehind = new[] { xaml + ".cs", xaml + ".vb" }
+                        .FirstOrDefault(candidate => File.Exists(Path.Combine(project.Root, candidate)));
+                    if (codeBehind == null)
                     {
                         continue;
                     }
@@ -546,8 +653,18 @@ namespace Aegis.LocalAgent.VisualStudio.Services
         {
             var sources = context.SymbolIndex
                 .Where(symbol => symbol.File.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)
+                    || symbol.File.EndsWith(".fs", StringComparison.OrdinalIgnoreCase)
+                    || symbol.File.EndsWith(".fsi", StringComparison.OrdinalIgnoreCase)
+                    || symbol.File.EndsWith(".fsx", StringComparison.OrdinalIgnoreCase)
+                    || symbol.File.EndsWith(".vb", StringComparison.OrdinalIgnoreCase)
                     || symbol.File.EndsWith(".cpp", StringComparison.OrdinalIgnoreCase)
-                    || symbol.File.EndsWith(".h", StringComparison.OrdinalIgnoreCase))
+                    || symbol.File.EndsWith(".cc", StringComparison.OrdinalIgnoreCase)
+                    || symbol.File.EndsWith(".cxx", StringComparison.OrdinalIgnoreCase)
+                    || symbol.File.EndsWith(".h", StringComparison.OrdinalIgnoreCase)
+                    || symbol.File.EndsWith(".hh", StringComparison.OrdinalIgnoreCase)
+                    || symbol.File.EndsWith(".hpp", StringComparison.OrdinalIgnoreCase)
+                    || symbol.File.EndsWith(".hxx", StringComparison.OrdinalIgnoreCase)
+                    || symbol.File.EndsWith(".ixx", StringComparison.OrdinalIgnoreCase))
                 .Select(symbol => symbol.File)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
@@ -909,7 +1026,11 @@ namespace Aegis.LocalAgent.VisualStudio.Services
         {
             var name = Path.GetFileName(relative);
             return name.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase)
+                || name.EndsWith(".fsproj", StringComparison.OrdinalIgnoreCase)
+                || name.EndsWith(".vbproj", StringComparison.OrdinalIgnoreCase)
                 || name.EndsWith(".vcxproj", StringComparison.OrdinalIgnoreCase)
+                || name.EndsWith(".vcxproj.filters", StringComparison.OrdinalIgnoreCase)
+                || name.EndsWith(".slnx", StringComparison.OrdinalIgnoreCase)
                 || name.EndsWith(".props", StringComparison.OrdinalIgnoreCase)
                 || name.EndsWith(".targets", StringComparison.OrdinalIgnoreCase)
                 || name.EndsWith(".config", StringComparison.OrdinalIgnoreCase)

@@ -308,6 +308,7 @@ namespace Aegis.LocalAgent.VisualStudio.Services
             }
             if (extension == ".vcxproj") return "C++";
             if (extension == ".fsproj") return "F#";
+            if (extension == ".vbproj") return "Visual Basic";
             if (extension == ".pyproj") return "Python";
             return string.IsNullOrWhiteSpace(extension) ? (kind ?? "Project") : extension.TrimStart('.').ToUpperInvariant();
         }
@@ -345,11 +346,17 @@ namespace Aegis.LocalAgent.VisualStudio.Services
                 {
                     context.XamlFiles.Add(file);
                 }
-                else if (extension.Equals(".h", StringComparison.OrdinalIgnoreCase) || extension.Equals(".hpp", StringComparison.OrdinalIgnoreCase))
+                else if (extension.Equals(".h", StringComparison.OrdinalIgnoreCase)
+                    || extension.Equals(".hh", StringComparison.OrdinalIgnoreCase)
+                    || extension.Equals(".hpp", StringComparison.OrdinalIgnoreCase)
+                    || extension.Equals(".hxx", StringComparison.OrdinalIgnoreCase))
                 {
                     context.HeaderFiles.Add(file);
                 }
-                else if (extension.Equals(".cpp", StringComparison.OrdinalIgnoreCase) || extension.Equals(".c", StringComparison.OrdinalIgnoreCase))
+                else if (extension.Equals(".cpp", StringComparison.OrdinalIgnoreCase)
+                    || extension.Equals(".cc", StringComparison.OrdinalIgnoreCase)
+                    || extension.Equals(".cxx", StringComparison.OrdinalIgnoreCase)
+                    || extension.Equals(".c", StringComparison.OrdinalIgnoreCase))
                 {
                     context.SourceFiles.Add(file);
                 }
@@ -459,7 +466,12 @@ namespace Aegis.LocalAgent.VisualStudio.Services
 
             foreach (var project in context.Projects)
             {
-                if (project.DetectedType == "C#" || project.DetectedType == "ASP.NET" || project.DetectedType == "WPF" || project.DetectedType == "Unity/C#")
+                if (project.DetectedType == "C#"
+                    || project.DetectedType == "F#"
+                    || project.DetectedType == "Visual Basic"
+                    || project.DetectedType == "ASP.NET"
+                    || project.DetectedType == "WPF"
+                    || project.DetectedType == "Unity/C#")
                 {
                     yield return $"Build {project.Name}";
                 }
@@ -474,7 +486,10 @@ namespace Aegis.LocalAgent.VisualStudio.Services
                 || name.Equals("Directory.Build.props", StringComparison.OrdinalIgnoreCase)
                 || name.Equals("Directory.Build.targets", StringComparison.OrdinalIgnoreCase)
                 || name.EndsWith(".sln", StringComparison.OrdinalIgnoreCase)
+                || name.EndsWith(".slnx", StringComparison.OrdinalIgnoreCase)
                 || name.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase)
+                || name.EndsWith(".fsproj", StringComparison.OrdinalIgnoreCase)
+                || name.EndsWith(".vbproj", StringComparison.OrdinalIgnoreCase)
                 || name.EndsWith(".vcxproj", StringComparison.OrdinalIgnoreCase)
                 || name.EndsWith(".vcxproj.filters", StringComparison.OrdinalIgnoreCase)
                 || name.EndsWith(".props", StringComparison.OrdinalIgnoreCase)
