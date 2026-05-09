@@ -987,3 +987,21 @@ Validation completed:
 
 - VS Code package lint: pass via `node scripts/lint-package.js`.
 - VS Code VSIX package: pass; package lint ran before archive creation.
+
+## 2026-05-09 - VS Code Package Lint Alias
+
+Focus:
+
+- Remove a small validation workflow papercut found during stabilization.
+- Make the package-lint release gate directly runnable through npm without remembering the script path.
+
+Actions:
+
+- Added `npm run lint:package` as a direct alias for `node scripts/lint-package.js`.
+- Documented the alias in the root changelog and development log.
+
+Validation completed:
+
+- VS Code package lint alias: pass via `npm run lint:package`.
+- VS Code lint: pass.
+- VS Code VSIX package: pass; package lint ran before archive creation.

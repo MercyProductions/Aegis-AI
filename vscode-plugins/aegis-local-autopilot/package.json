@@ -299,6 +299,7 @@
   "scripts": {
     "compile": "node --check extension.js",
     "lint": "npm run compile && node scripts/lint-package.js",
+    "lint:package": "node scripts/lint-package.js",
     "package": "node scripts/package-release.js",
     "install-local": "npm run package && node scripts/install-local.js",
     "check": "npm run compile",
