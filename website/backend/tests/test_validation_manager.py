@@ -5,10 +5,17 @@ import tempfile
 import unittest
 from pathlib import Path
 import sys
+from unittest.mock import patch
+
+from fastapi.testclient import TestClient
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from aegis_ai import main
+from aegis_ai.agent import AgentEngine
+from aegis_ai.settings import Settings
 from aegis_ai.validation import ValidationManager
+from aegis_ai.workspace import WorkspaceManager
 
 
 class ValidationManagerTests(unittest.TestCase):
@@ -436,6 +443,41 @@ class ValidationManagerTests(unittest.TestCase):
 
         self.manager.clear_profile(self.workspace)
         self.assertIsNone(self.manager.load_profile(self.workspace))
+
+    def test_validation_profile_api_reports_damaged_profile_path(self) -> None:
+        project_root = Path(self.tempdir.name)
+        aegis_dir = self.workspace / ".aegis"
+        aegis_dir.mkdir(parents=True, exist_ok=True)
+        (aegis_dir / "validation_profile.json").mkdir()
+        settings = Settings(
+            _env_file=None,
+            default_workspace="workspace",
+            aegis_database_path="data/test.sqlite3",
+        )
+        workspace_manager = WorkspaceManager(project_root, settings)
+        agent = AgentEngine(project_root, settings)
+
+        with (
+            patch.object(main, "workspace_manager", workspace_manager),
+            patch.object(main, "agent", agent),
+            TestClient(main.app) as client,
+        ):
+            save_response = client.put(
+                "/api/validation/profile",
+                params={"workspace_root": str(self.workspace)},
+                json={"command": "python -m pytest"},
+            )
+            clear_response = client.put(
+                "/api/validation/profile",
+                params={"workspace_root": str(self.workspace)},
+                json={"command": ""},
+            )
+
+        self.assertEqual(save_response.status_code, 503)
+        self.assertEqual(clear_response.status_code, 503)
+        self.assertIn("Could not update .aegis/validation_profile.json", save_response.json()["detail"])
+        self.assertIn("Could not update .aegis/validation_profile.json", clear_response.json()["detail"])
+        self.assertFalse((aegis_dir / ".validation_profile.json.tmp").exists())
 
     def test_remember_success_does_not_override_manual_recipe(self) -> None:
         self.manager.save_profile(

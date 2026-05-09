@@ -2455,16 +2455,22 @@ async def update_validation_profile(
     root = _resolve_workspace_or_400(workspace_root)
 
     command = request.command.strip()
-    if command:
-        agent.validation.save_profile(
-            root,
-            command=command,
-            label=request.label.strip() or command,
-            source="manual",
-            notes=request.notes.strip(),
-        )
-    else:
-        agent.validation.clear_profile(root)
+    try:
+        if command:
+            agent.validation.save_profile(
+                root,
+                command=command,
+                label=request.label.strip() or command,
+                source="manual",
+                notes=request.notes.strip(),
+            )
+        else:
+            agent.validation.clear_profile(root)
+    except OSError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Could not update {agent.validation.PROFILE_PATH}: {exc}",
+        ) from exc
 
     return agent.validation.profile_snapshot(root)
 

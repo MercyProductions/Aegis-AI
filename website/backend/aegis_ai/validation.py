@@ -44,7 +44,7 @@ class ValidationManager:
 
     def load_profile(self, workspace_root: Path) -> ValidationRecipe | None:
         path = self._profile_path(workspace_root)
-        if not path.exists():
+        if not self._is_file(path):
             return None
 
         try:
@@ -87,13 +87,16 @@ class ValidationManager:
 
         path = self._profile_path(workspace_root)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(recipe.model_dump_json(indent=2), encoding="utf-8")
+        self._write_profile(path, recipe.model_dump_json(indent=2))
         return recipe
 
     def clear_profile(self, workspace_root: Path) -> None:
         path = self._profile_path(workspace_root)
-        if path.exists():
-            path.unlink()
+        if not path.exists():
+            return
+        if not self._is_file(path):
+            raise OSError(f"{path} is not a regular file")
+        path.unlink()
 
     def remember_success(self, workspace_root: Path, recipe: ValidationRecipe) -> ValidationRecipe:
         current = self.load_profile(workspace_root)
@@ -607,7 +610,7 @@ class ValidationManager:
 
     def _command_history_payload(self, workspace_root: Path) -> dict | None:
         path = workspace_root / self.COMMAND_HISTORY_PATH
-        if not path.exists() or not path.is_file():
+        if not self._is_file(path):
             return None
 
         try:
@@ -626,7 +629,7 @@ class ValidationManager:
 
     def _manifest_payload(self, workspace_root: Path) -> dict | None:
         path = workspace_root / self.PROJECT_MANIFEST_PATH
-        if not path.exists() or not path.is_file():
+        if not self._is_file(path):
             return None
 
         try:
@@ -762,7 +765,7 @@ class ValidationManager:
 
     def _read_json_object(self, path: Path) -> dict | None:
         try:
-            if path.stat().st_size > 512_000:
+            if not self._is_file(path) or path.stat().st_size > 512_000:
                 return None
             payload = json.loads(path.read_text(encoding="utf-8-sig", errors="replace"))
         except (OSError, json.JSONDecodeError):
@@ -819,6 +822,19 @@ class ValidationManager:
             return path.is_file()
         except OSError:
             return False
+
+    def _write_profile(self, path: Path, text: str) -> None:
+        tmp = path.with_name(f".{path.name}.tmp")
+        try:
+            tmp.write_text(text + "\n", encoding="utf-8")
+            tmp.replace(path)
+        except OSError:
+            try:
+                if tmp.is_file():
+                    tmp.unlink()
+            except OSError:
+                pass
+            raise
 
     def _is_dir(self, path: Path) -> bool:
         try:
