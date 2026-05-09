@@ -1,6 +1,7 @@
 *.vsix
 release/
 scripts/
+install.ps1
 .aegis/
 .gitignore
 DETECTED_MODELS.md

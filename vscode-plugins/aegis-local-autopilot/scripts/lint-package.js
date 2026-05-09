@@ -77,7 +77,7 @@ for (const file of ['extension.js', 'README.md', 'media/aegis.svg', '.vscodeigno
 }
 
 const ignoreText = fs.readFileSync(path.join(root, '.vscodeignore'), 'utf8');
-for (const privateFile of ['.gitignore', 'DETECTED_MODELS.md', 'DOGFOODING_NOTES.md']) {
+for (const privateFile of ['.gitignore', 'DETECTED_MODELS.md', 'DOGFOODING_NOTES.md', 'install.ps1']) {
   const escaped = privateFile.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const linePattern = new RegExp(`(^|\\r?\\n)${escaped}(\\r?\\n|$)`);
   if (!linePattern.test(ignoreText)) {

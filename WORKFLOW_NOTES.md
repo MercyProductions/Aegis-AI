@@ -94,6 +94,7 @@ Fixes applied:
 | 2026-05-09 | Visual Studio profile targeting | VS 2022 and VS 18 have different Aegis extension versions installed. | Medium | Daily GUI checks must name the exact Visual Studio instance/profile under test. |
 | 2026-05-09 | VS Code packaging | VSIX archive included repository-only dogfooding notes and local detected model inventory. | Medium | Excluded those files from packaging and added a lint guard. |
 | 2026-05-09 | Extension release metadata | VS Code repository metadata used a local `file:` URL and Visual Studio MoreInfo used a localhost placeholder. | Medium | Pointed both at GitHub and added package/build guards. |
+| 2026-05-09 | VS Code package contents | VSIX archive included the source-tree `install.ps1` helper, which is only useful before packaging. | Low | Excluded it from the VSIX and added a lint guard. |
 
 ## Daily Workflow Checklist
 

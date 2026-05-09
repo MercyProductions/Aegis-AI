@@ -154,3 +154,21 @@ Validation completed:
 - VS Code VSIX package: pass; repository metadata points to GitHub.
 - Visual Studio extension build/package: pass.
 - Visual Studio VSIX archive inspection: pass; MoreInfo points to GitHub and internal notes/model inventory/repository-only files are absent.
+
+## 2026-05-09 - VS Code Package Content Follow-up
+
+Focus:
+
+- Keep the VS Code VSIX archive limited to runtime files and package metadata.
+- Avoid shipping source-tree helper scripts that are useful before installation but confusing after packaging.
+
+Actions:
+
+- Excluded `install.ps1` from the VS Code VSIX archive.
+- Extended VS Code package lint so `install.ps1` remains source-only.
+
+Validation completed:
+
+- VS Code extension lint: pass.
+- VS Code VSIX package: pass.
+- VSIX archive inspection: pass; the package contains only `extension.vsixmanifest`, `[Content_Types].xml`, readme, package metadata, license, `extension.js`, and media icons.
