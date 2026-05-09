@@ -424,3 +424,21 @@ Validation completed:
 - Website focused frontend API/runtime/task tests: pass, 40 tests.
 - Website frontend production build: pass, no Vite chunk-size warning.
 - Desktop Release build and quick smoke: pass.
+
+## 2026-05-09 - Website Core Bridge Malformed JSON Handling
+
+Focus:
+
+- Keep Website degraded-mode reporting precise when something other than Aegis Core answers on the Core port.
+- Preserve HTTP reachability/status details when Core bridge responses are malformed JSON.
+
+Actions:
+
+- Updated the Website Core bridge to catch JSON parsing failures after the HTTP response status is known.
+- Added regression coverage for an HTTP 200 Core health response that returns HTML instead of a `/v1` JSON envelope.
+
+Validation completed:
+
+- Website Core bridge and runtime-health tests: pass, 11 tests.
+- Website Core bridge, config, runtime-health, and model-inventory tests: pass, 23 tests.
+- Website backend compile check: pass.

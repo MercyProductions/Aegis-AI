@@ -199,7 +199,17 @@ class AegisCoreBridge:
                 response = await client.request(method, self._url(path), params=params, json=json)
             status_code = response.status_code
             response.raise_for_status()
-            envelope = response.json()
+            try:
+                envelope = response.json()
+            except ValueError as exc:
+                return CoreBridgeResult(
+                    reachable=True,
+                    ok=False,
+                    status_code=status_code,
+                    kind="",
+                    data=None,
+                    error=f"Core response was not valid JSON: {exc}",
+                )
             if not isinstance(envelope, dict):
                 return CoreBridgeResult(
                     reachable=True,

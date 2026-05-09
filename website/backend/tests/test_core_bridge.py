@@ -113,6 +113,22 @@ def test_core_bridge_rejects_unexpected_contract_kind(tmp_path: Path) -> None:
     assert "kind mismatch" in result.error
 
 
+def test_core_bridge_marks_malformed_json_response_reachable(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text="<html>not Aegis Core JSON</html>")
+
+    bridge = AegisCoreBridge("http://127.0.0.1:8788", transport=httpx.MockTransport(handler))
+    result = asyncio.run(bridge.health_status(workspace))
+
+    assert result.reachable is True
+    assert result.ok is False
+    assert result.status_code == 200
+    assert "not valid JSON" in result.error
+
+
 def test_low_risk_runtime_status_validates_all_expected_contracts(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
