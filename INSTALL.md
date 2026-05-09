@@ -65,6 +65,7 @@ VS Code extension:
 ```powershell
 cd vscode-plugins\aegis-local-autopilot
 npm run lint
+npm run lint:package
 npm run package
 code --install-extension .\release\aegis-local-autopilot-0.1.1.vsix --force
 ```

@@ -1022,3 +1022,21 @@ Validation completed:
 
 - Website config update tests: pass, 3 tests.
 - Git ignore check: pass for generated `new-workspace/`, `workspace-two/`, and `fallback-workspace/` files.
+
+## 2026-05-09 - VS Code Package Lint Documentation
+
+Focus:
+
+- Keep daily release documentation aligned with the direct package-lint npm alias.
+- Make the command easy to discover from the root install guide, extension README, and release install guide.
+
+Actions:
+
+- Added `npm run lint:package` to the VS Code build/package command examples.
+- Clarified that package and install-local flows also run the package lint gate before VSIX creation.
+
+Validation completed:
+
+- VS Code package lint alias: pass via `npm run lint:package`.
+- VS Code VSIX package: pass; package lint ran before archive creation.
+- Git diff whitespace check: pass.

@@ -23,6 +23,7 @@
 - Hardened hybrid provider key deletion so missing keys still return a harmless `removed: false`, while OS credential-store backend failures surface as `503` errors instead of being mistaken for absent keys.
 - Hardened Core diagnostic redaction so provider URLs containing query-string keys are scrubbed before cloud connection errors reach clients or logs.
 - Hardened Core provider error redaction so authorization headers, JSON key fields, and URL credentials are redacted inline while preserving actionable provider diagnostics.
+- Documented the direct VS Code `npm run lint:package` validation step in install and release instructions.
 - Added experimental Aegis Core autonomous task orchestration with supervised goal planning, local queue state, approval gates, validation state, rollback metadata, and memory updates without uncontrolled file editing.
 - Added experimental Aegis Core multi-agent specialization with Planner, Architect, Coder, Reviewer, Tester, Repair, and Documentation roles assigned to orchestration tasks.
 - Added experimental Aegis Core workflow automation with safe scheduled/triggered maintenance jobs, `/v1/jobs`, `aegis jobs`, generated project health reports, and `.aegis/jobs-log.md` history while preserving approval gates for risky actions.

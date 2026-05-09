@@ -25,6 +25,7 @@ From the extension folder:
 ```powershell
 npm run compile
 npm run lint
+npm run lint:package
 npm run package
 ```
 
@@ -49,6 +50,8 @@ For extension development:
 ```powershell
 npm run install-local
 ```
+
+The package and install-local scripts run the package lint gate before creating the VSIX, so command activation drift and release-only file leaks fail early.
 
 Manual install:
 

@@ -28,6 +28,7 @@ From this extension folder:
 ```powershell
 npm run compile
 npm run lint
+npm run lint:package
 npm run package
 ```
 
@@ -46,6 +47,7 @@ npm run install-local
 ```
 
 That compiles, lints, packages a `.vsix`, and installs it into VS Code.
+The package script also runs `lint:package` before creating the archive, so release-only metadata drift is caught in both manual and install-local flows.
 
 Manual VSIX install:
 
