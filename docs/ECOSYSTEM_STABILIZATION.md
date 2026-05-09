@@ -47,6 +47,7 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 | Website dependency profiling | Improved | Damaged marker directories and lockfile paths no longer distort onboarding stack, package-manager, entry-point, or database summaries. |
 | Website checkpoint restore | Improved | Restore now validates checkpoint IDs, damaged manifests, backup paths, and missing backup files before touching workspace files. |
 | Website safe apply | Improved | Apply refuses to edit when checkpoint creation fails and reports later write/delete failures with checkpoint context. |
+| Website frontend bundle | Improved | Production builds split React, icons, API calls, app utilities, and app styles into stable chunks, removing the default Vite large-chunk warning without raising the warning limit. |
 | Validation detection | Improved | Core now lists JS test/build validation commands only when matching package scripts exist, ignores project files in dependency/build folders, ignores damaged root build-marker directories, and avoids duplicate default-command detection during validation runs. |
 | Validation execution | Improved | Core blocks unsafe custom validation commands and returns structured missing-tool/start-failed/timeout failures. |
 | Validation logging | Improved | Validation output is redacted before API responses and disk writes; log write failures do not crash validation. |
@@ -78,7 +79,7 @@ Ran during this pass:
 - Visual Studio rollback hardening `.\build.ps1`: pass, regenerated `release/AegisLocalAgentVs.vsix`
 - Visual Studio rollback cross-solution/path hardening `.\build.ps1`: pass, regenerated `release/AegisLocalAgentVs.vsix`
 - Website frontend tests: 21 files / 169 tests passed
-- Website frontend production build: pass, Vite reported the existing large main chunk warning
+- Website frontend production build: pass, no Vite chunk-size warning
 - Website backend tests: 739 tests and 155 subtests passed
 - Website workspace setup regression and helper tests for damaged `.aegis` paths: 8 tests passed
 - Website validation manager damaged-marker/profile-persistence regression tests: 21 tests and 4 subtests passed

@@ -373,7 +373,10 @@ class WorkspaceManager:
         if not create:
             return resolved
 
-        resolved.mkdir(parents=True, exist_ok=True)
+        try:
+            resolved.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            raise ValueError(f"workspace root could not be created: {resolved}") from exc
         if migrate_legacy and is_default_workspace:
             self._migrate_legacy_workspace_if_needed(resolved)
         return resolved

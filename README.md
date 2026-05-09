@@ -27,7 +27,11 @@ See `aegis-core/docs/SYSTEM_ARCHITECTURE.md` for the target ecosystem architectu
 
 Current stabilization notes live in `docs/ECOSYSTEM_STABILIZATION.md`.
 
-Product utilization notes now live in `WORKFLOW_NOTES.md`.
+Product utilization and long-term workflow refinement notes now live in `WORKFLOW_NOTES.md`.
+
+Release candidate validation is tracked in `ECOSYSTEM_VALIDATION_REPORT.md`. The latest pass verified Core startup, Website startup, real web chat, workspace scan/setup, roadmap/memory/diagnostics contracts, validation, apply/rollback, desktop smoke screenshots, VS Code VSIX install, Visual Studio VSIX packaging, failure/degraded modes, and the full backend/frontend/Core test suites.
+
+Install and daily dogfooding setup instructions live in `INSTALL.md`. Current daily evidence is tracked in `DOGFOODING_NOTES.md`.
 
 ## Desktop App
 
@@ -86,6 +90,8 @@ From the repo root, launch it with:
 ```
 
 The desktop app is configured to use that embedded backend by default, so the repo can be restored from GitHub without depending on the old `Website\ChatBot` folder.
+
+For daily use, run Aegis Core on `8788` first, then run `website\launch.ps1`. The Website remains usable when Core is offline, but shared roadmap, memory, diagnostics, clients, and task state are degraded until Core comes back.
 
 ## What It Supports
 

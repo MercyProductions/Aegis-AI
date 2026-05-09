@@ -38,10 +38,13 @@ function Invoke-WithConfigMutationLock {
 }
 
 function Test-HttpReady {
-    param([string]$Url)
+    param(
+        [string]$Url,
+        [int]$TimeoutSeconds = 5
+    )
 
     try {
-        Invoke-WebRequest -UseBasicParsing $Url | Out-Null
+        Invoke-WebRequest -UseBasicParsing $Url -TimeoutSec $TimeoutSeconds | Out-Null
         return $true
     } catch {
         return $false

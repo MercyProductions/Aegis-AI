@@ -50,6 +50,61 @@ std::vector<std::string> ParseStringArray(const JsonValue& value)
     return out;
 }
 
+std::string CoreEnvelopeError(const JsonValue& envelope)
+{
+    const JsonValue& data = envelope["data"];
+    const std::string error = data["error"].AsString();
+    if (!error.empty()) {
+        return error;
+    }
+    const std::string message = data["message"].AsString();
+    if (!message.empty()) {
+        return message;
+    }
+    const std::string detail = envelope["detail"].AsString();
+    if (!detail.empty()) {
+        return detail;
+    }
+
+    const JsonValue& deprecations = envelope["deprecations"];
+    if (deprecations.IsArray() && !deprecations.array_value.empty()) {
+        std::ostringstream joined;
+        for (size_t i = 0; i < deprecations.array_value.size(); ++i) {
+            if (i > 0) {
+                joined << "; ";
+            }
+            joined << deprecations.array_value[i].AsString();
+        }
+        const std::string text = joined.str();
+        if (!text.empty()) {
+            return text;
+        }
+    }
+
+    return "Core returned ok=false.";
+}
+
+void ValidateCoreEnvelope(const JsonValue& envelope, const std::string& expected_kind, bool require_ok = false)
+{
+    if (!envelope.IsObject()) {
+        throw std::runtime_error("Aegis Core returned a non-object response.");
+    }
+
+    const std::string api_version = envelope["api_version"].AsString();
+    if (api_version != "v1") {
+        throw std::runtime_error("Aegis Core response used unexpected api_version: " + (api_version.empty() ? std::string("missing") : api_version) + ".");
+    }
+
+    const std::string kind = envelope["kind"].AsString();
+    if (kind != expected_kind) {
+        throw std::runtime_error("Aegis Core response kind mismatch: expected " + expected_kind + ", got " + (kind.empty() ? std::string("missing") : kind) + ".");
+    }
+
+    if (require_ok && envelope.Has("ok") && !envelope["ok"].AsBool(true)) {
+        throw std::runtime_error("Aegis Core " + expected_kind + " failed: " + CoreEnvelopeError(envelope));
+    }
+}
+
 std::vector<WorkspaceFile> ParseWorkspaceFiles(const JsonValue& value)
 {
     std::vector<WorkspaceFile> files;
@@ -4263,7 +4318,12 @@ void AegisClient::RegisterCoreClient(
     body << "\"version\":" << JsonString(version) << ",";
     body << "\"capabilities\":" << JsonStringArray(capabilities);
     body << "}";
-    (void)RequireJson(HttpPostJson(CoreEndpoint("/v1/clients/register"), body.str()), "register Aegis Core client");
+    const std::string response = RequireJson(HttpPostJson(CoreEndpoint("/v1/clients/register"), body.str()), "register Aegis Core client");
+    const JsonParseResult parsed = ParseJson(response);
+    if (!parsed.ok) {
+        throw std::runtime_error(parsed.error);
+    }
+    ValidateCoreEnvelope(parsed.value, "client.registered", true);
 }
 
 AegisCoreDashboardInfo AegisClient::GetCoreDashboard(const std::string& workspace_root)
@@ -4274,6 +4334,7 @@ AegisCoreDashboardInfo AegisClient::GetCoreDashboard(const std::string& workspac
     if (!parsed.ok) {
         throw std::runtime_error(parsed.error);
     }
+    ValidateCoreEnvelope(parsed.value, "ecosystem.dashboard", true);
     AegisCoreDashboardInfo dashboard = ParseCoreDashboard(parsed.value);
     if (dashboard.workspace_root.empty()) {
         dashboard.workspace_root = workspace_root;

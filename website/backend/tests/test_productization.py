@@ -15,7 +15,7 @@ from aegis_ai import main
 from aegis_ai.agent import AgentEngine
 from aegis_ai.distributed_runtime import DistributedRuntimeManager
 from aegis_ai.productization import PRODUCTIZATION_API_VERSION, ProductizationEngine
-from aegis_ai.schemas import EnterprisePolicyProfile, ExecutionQueueItem, PluginManifest
+from aegis_ai.schemas import EnterprisePolicyProfile, ExecutionQueueItem, ModelAttemptInfo, PluginManifest
 from aegis_ai.settings import Settings
 from aegis_ai.storage import EventStore, utc_now
 from aegis_ai.workspace import WorkspaceManager
@@ -109,6 +109,43 @@ class ProductizationTests(unittest.TestCase):
         self.assertEqual(snapshot.recovery.interrupted_tasks[0].id, task_id)
         self.assertTrue(any(metric.name == "database_integrity" for metric in snapshot.metrics))
         self.assertEqual(saved[0].api_version, PRODUCTIZATION_API_VERSION)
+
+    def test_reliability_metrics_read_nested_model_attempt_telemetry(self) -> None:
+        task_id = self.store.create_task(
+            mode="chat",
+            workspace_root=self.workspace,
+            message="Route through model telemetry",
+            title="Telemetry task",
+            user_goal="Keep productization metrics stable",
+        )
+        self.store.record_model_attempts(
+            task_id=task_id,
+            workspace_root=self.workspace,
+            attempts=[
+                ModelAttemptInfo(
+                    attempt=1,
+                    role="chat",
+                    provider_id="ollama:test",
+                    provider_label="Ollama Test",
+                    provider_api="ollama",
+                    model="qwen2.5-coder:7b",
+                    status="succeeded",
+                    input_tokens=40,
+                    output_tokens=12,
+                    latency_ms=900,
+                )
+            ],
+        )
+
+        metrics = self.engine.reliability_metrics(
+            self.store,
+            project_root=self.workspace,
+            recovery=self.engine.recovery_snapshot(self.store, project_root=self.workspace, checkpoints=[]),
+        )
+
+        latency = next(metric for metric in metrics if metric.name == "average_model_latency_ms")
+        self.assertEqual(latency.value, 900)
+        self.assertIn("52 total token", latency.detail)
 
     def test_api_hardening_snapshot_plugin_lifecycle_and_policy(self) -> None:
         workspace_manager = WorkspaceManager(self.project_root, self.settings)

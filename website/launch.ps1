@@ -23,10 +23,13 @@ $RequirePartialConfigUpdate = $true
 $FrontendUrl = "http://127.0.0.1:5173"
 
 function Test-HttpReady {
-    param([string]$Url)
+    param(
+        [string]$Url,
+        [int]$TimeoutSeconds = 4
+    )
 
     try {
-        Invoke-WebRequest -UseBasicParsing $Url | Out-Null
+        Invoke-WebRequest -UseBasicParsing $Url -TimeoutSec $TimeoutSeconds | Out-Null
         return $true
     } catch {
         return $false
@@ -34,10 +37,13 @@ function Test-HttpReady {
 }
 
 function Get-HttpJson {
-    param([string]$Url)
+    param(
+        [string]$Url,
+        [int]$TimeoutSeconds = 4
+    )
 
     try {
-        $response = Invoke-WebRequest -UseBasicParsing $Url
+        $response = Invoke-WebRequest -UseBasicParsing $Url -Headers @{ Accept = "application/json" } -TimeoutSec $TimeoutSeconds
         if (-not $response.Content) {
             return $null
         }
@@ -242,6 +248,34 @@ function Stop-MismatchedAegisBackend {
     Stop-AegisBackendOnPort -Port $Port
 }
 
+function Test-BackendPortBlocked {
+    param(
+        [string]$Url,
+        [string]$ExpectedRoot,
+        [int]$Port
+    )
+
+    $listeners = @(Get-ListeningPids -Port $Port)
+    if ($listeners.Count -eq 0) {
+        return $false
+    }
+
+    $health = Get-HttpJson -Url $Url
+    if ($health -and $health.app -eq "Auralith OS" -and $health.project_root) {
+        $actualRoot = Normalize-PathForCompare -Path $health.project_root
+        $expected = Normalize-PathForCompare -Path $ExpectedRoot
+        if ($actualRoot -eq $expected) {
+            Write-Warning "Port $Port is already owned by this project's Aegis backend, but it is not ready. Check $BackendOut and $BackendErr before restarting."
+        } else {
+            Write-Warning "Port $Port is still running Aegis from '$($health.project_root)'. Stop that backend before starting this project."
+        }
+        return $true
+    }
+
+    Write-Warning "Port $Port is already in use but did not return Auralith OS backend health JSON. Stop that process or change the Aegis backend port."
+    return $true
+}
+
 function Test-FrontendReadyForRoot {
     param(
         [string]$Url,
@@ -294,6 +328,28 @@ function Stop-MismatchedAegisFrontend {
     } else {
         Write-Warning "Port $Port is already in use by another service. Stop it or change the Aegis frontend port."
     }
+}
+
+function Test-FrontendPortBlocked {
+    param(
+        [string]$ExpectedFrontendDir,
+        [int]$Port
+    )
+
+    $listeners = @(Get-ListeningPids -Port $Port)
+    if ($listeners.Count -eq 0) {
+        return $false
+    }
+
+    foreach ($listenerPid in $listeners) {
+        if (Test-ProcessLineageContainsPath -ProcessId $listenerPid -ExpectedPath $ExpectedFrontendDir) {
+            Write-Warning "Port $Port is already owned by this project's frontend, but it is not ready. Check $FrontendOut and $FrontendErr before restarting."
+            return $true
+        }
+    }
+
+    Write-Warning "Port $Port is already in use by another service. Stop it or change the Aegis frontend port."
+    return $true
 }
 
 function Wait-HttpReady {
@@ -450,13 +506,22 @@ if (-not (Test-BackendReadyForRoot -Url $BackendHealthUrl -ExpectedRoot $Root -R
 
 if (-not (Test-BackendReadyForRoot -Url $BackendHealthUrl -ExpectedRoot $Root -RequiredRoutes $RequiredBackendRoutes -RequirePartialConfigUpdate $RequirePartialConfigUpdate)) {
     $health = Get-HttpJson -Url $BackendHealthUrl
-    if ($health -and $health.app -eq "Auralith OS") {
-        Write-Warning "Aegis backend on port 8787 is from this project but does not expose the expected API contract. Restarting it."
-        Stop-AegisBackendOnPort -Port 8787
+    if ($health -and $health.project_root) {
+        $actualRoot = Normalize-PathForCompare -Path $health.project_root
+        $expectedRoot = Normalize-PathForCompare -Path $Root
+        if ($actualRoot -eq $expectedRoot) {
+            Write-Warning "Aegis backend on port 8787 is from this project but does not expose the expected API contract. Restarting it."
+            Stop-AegisBackendOnPort -Port 8787
+        }
     }
 }
 
+$backendPortBlocked = $false
 if (-not (Test-BackendReadyForRoot -Url $BackendHealthUrl -ExpectedRoot $Root -RequiredRoutes $RequiredBackendRoutes -RequirePartialConfigUpdate $RequirePartialConfigUpdate)) {
+    $backendPortBlocked = Test-BackendPortBlocked -Url $BackendHealthUrl -ExpectedRoot $Root -Port 8787
+}
+
+if (-not $backendPortBlocked -and -not (Test-BackendReadyForRoot -Url $BackendHealthUrl -ExpectedRoot $Root -RequiredRoutes $RequiredBackendRoutes -RequirePartialConfigUpdate $RequirePartialConfigUpdate)) {
     Write-Host "Starting Aegis API..."
     Start-Process -FilePath "powershell.exe" `
         -WorkingDirectory $Root `
@@ -470,7 +535,12 @@ if (-not (Test-FrontendReadyForRoot -Url $FrontendUrl -ExpectedFrontendDir $Fron
     Stop-MismatchedAegisFrontend -Url $FrontendUrl -ExpectedFrontendDir $FrontendDir -Port 5173
 }
 
+$frontendPortBlocked = $false
 if (-not (Test-FrontendReadyForRoot -Url $FrontendUrl -ExpectedFrontendDir $FrontendDir -Port 5173)) {
+    $frontendPortBlocked = Test-FrontendPortBlocked -ExpectedFrontendDir $FrontendDir -Port 5173
+}
+
+if (-not $frontendPortBlocked -and -not (Test-FrontendReadyForRoot -Url $FrontendUrl -ExpectedFrontendDir $FrontendDir -Port 5173)) {
     Write-Host "Starting Aegis UI..."
     Start-Process -FilePath "powershell.exe" `
         -WorkingDirectory $Root `

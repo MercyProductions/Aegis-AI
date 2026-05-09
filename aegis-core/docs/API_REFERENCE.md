@@ -128,13 +128,44 @@ New clients should use `/v1`. Responses are wrapped in this envelope:
 {
   "ok": true,
   "api_version": "v1",
+  "contract_version": "2026.05.09",
   "kind": "memory.summary",
   "workspace": "C:/path/to/project",
-  "data": {}
+  "data": {},
+  "stability": "stable",
+  "deprecated": false,
+  "deprecations": []
 }
 ```
 
 The unversioned endpoints above remain for migration compatibility.
+
+Core `/v1` is the shared runtime contract for Desktop, Website, VS Code, and Visual Studio. Website-specific product APIs stay under Website `/api`; when Website needs shared runtime state it should call Core through its read-only bridge (`GET /api/core-runtime`) and preserve these Core envelopes.
+
+The canonical schema package is `aegis_core.contracts`. It defines request models, the Core envelope, stable runtime data models, and schema-only experimental shapes for patch proposals and rollback results. Contract additions must be backwards compatible: clients may ignore unknown fields, and optional fields may be absent.
+
+Contract stability:
+
+| Contract kind | Stability | Notes |
+| --- | --- | --- |
+| `health`, `models`, `settings`, `settings.updated` | stable | Shared runtime status and configuration. |
+| `workspace.scan`, `workspace.roadmap` | stable | Shared indexing and roadmap outputs. |
+| `memory.summary`, `diagnostics.summary` | stable | Shared memory and diagnostics summaries. |
+| `client.registered`, `clients.list` | stable | Cross-client registry. |
+| `task.created`, `tasks.list`, `task.updated` | stable | Cross-client task record lifecycle. |
+| `validation` | stable | Validation discovery/run shape. |
+| `ecosystem.dashboard` | stable | Aggregated dashboard for Desktop and Website bridge. |
+| `branding.tokens` | experimental | Visual/client token sharing may still change. |
+| `agent.continue.plan`, `agent.repair.plan` | experimental | Plan-only agent contracts; no file edits are applied. |
+| `patch.proposal`, `rollback.entry`, `rollback.result` | experimental schema-only | Defined for future compatibility; not active Core endpoints yet. |
+
+Shared request body conventions:
+
+- Workspace operations use `workspace`.
+- Website compatibility endpoints may accept `workspace_root` and translate it to Core `workspace`.
+- Cross-client task records use `title`, `kind`, `source_client`, optional `request`, and optional `metadata`.
+- Task status values are `planned`, `running`, `waiting_for_approval`, `blocked`, `completed`, `cancelled`, and `rolled_back`.
+- Continue and repair endpoints are plan-only and never apply file edits.
 
 ## GET /v1/health
 

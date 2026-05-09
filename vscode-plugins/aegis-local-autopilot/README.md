@@ -72,7 +72,16 @@ Run `Aegis: Run First-Run Setup` to repeat this flow.
 
 ## Aegis Core Sync
 
-When Aegis Core is running, the VS Code extension registers itself through `/v1/clients/register`, includes Core in health checks, and creates shared task records during Agent Mode. Those tasks are visible to the Desktop App ecosystem dashboard and other Auralith clients that point at the same workspace.
+When Aegis Core is running, the VS Code extension now treats `/v1` as the preferred shared runtime source for:
+
+- health, settings, models, memory, diagnostics, and validation health checks
+- local model inventory through `/v1/models`, with direct Ollama fallback
+- workspace scan metadata through `/v1/workspaces/scan`, with VS Code local scan fallback
+- project roadmap generation through `/v1/workspaces/roadmap`, with local model fallback
+- shared validation through `/v1/validation`, with terminal validation fallback
+- client registration and shared Agent Mode task records
+
+Those task records are visible to the Desktop App ecosystem dashboard and other Auralith clients that point at the same workspace.
 
 Set `aegisLocalAutopilot.coreUrl` if Core is not running on `http://127.0.0.1:8788`. The extension normalizes common local inputs such as `127.0.0.1:8788` or pasted `/v1/...` endpoint URLs back to the Core base URL. If Core is offline, VS Code stays usable in degraded local mode.
 

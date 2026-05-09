@@ -96,3 +96,294 @@ Validation completed:
 Known next checks:
 
 - Perform manual live UI click-through in Desktop, VS Code, and Visual Studio when an interactive session is available.
+
+## 2026-05-09 - Autonomous Stabilization Tranche
+
+Focus:
+
+- Continue long-term stabilization without expanding scope.
+- Validate the consolidated ecosystem before pushing updates.
+- Fix only realistic reliability, release, or trust issues found during validation.
+
+Actions:
+
+- Confirmed the working tree was clean and the GitHub remote is `https://github.com/MercyProductions/Aegis-AI.git`.
+- Ran high-signal validation across Aegis Core, Website backend/frontend, Desktop, VS Code extension, and Visual Studio extension.
+- Found a VS Code release packaging hygiene issue: the generated VSIX included repository-only files, dogfooding notes, and local detected model inventory.
+- Updated `.vscodeignore` to exclude `.gitignore`, `DETECTED_MODELS.md`, and `DOGFOODING_NOTES.md` from VSIX archives.
+- Added a package lint guard so those release-only exclusions are required.
+- Made the VS Code package script run package lint before creating the VSIX.
+- Left the source notes in the repo; only the release archive contents changed.
+
+Validation completed:
+
+- Aegis Core tests: pass, 51 tests.
+- Website backend tests: pass, 776 tests and 155 subtests.
+- Website frontend tests: pass, 21 files and 169 tests.
+- Website frontend build: pass; at this point it still emitted the large main chunk warning that was resolved later in the day.
+- Website smoke script: pass, including frontend/backend checks, workspace setup, generated file apply/read-back, validation, readiness, and real chat.
+- Desktop smoke build/launch: pass, with nonblank login/setup/dashboard captures.
+- VS Code extension compile: pass.
+- VS Code extension lint: pass, including release exclusion guard.
+- VS Code VSIX package: pass; archive contents now exclude local model inventory and dogfooding notes.
+- Visual Studio extension build/package: pass.
+
+Friction recorded:
+
+- `npm test -- --runInBand` is a Jest habit and not valid for this Vitest project. The project command is `npm test`.
+- VS Code packaging reports `extension.js` as large at about 250 KB. This is a warning, not a release blocker, but future maintainability work should consider splitting only when it pays for itself.
+
+## 2026-05-09 - Extension Release Metadata Follow-up
+
+Focus:
+
+- Keep extension release packages professional and free of local placeholders.
+- Add build-time checks so packaging hygiene does not depend on memory.
+
+Actions:
+
+- Replaced the VS Code extension `repository.url` value from `file:../..` to `https://github.com/MercyProductions/Aegis-AI.git`.
+- Extended VS Code package lint so release metadata must point to the GitHub repository.
+- Replaced the Visual Studio VSIX `MoreInfo` placeholder `https://localhost/aegis-local-agent` with the GitHub repository URL in both manifest sources.
+- Removed `DOGFOODING_NOTES.md` from the Visual Studio VSIX content list and from the generated release folder.
+- Extended the Visual Studio build script to reject packaged VSIX archives containing localhost placeholder URLs, internal dogfooding notes, local detected model inventory, or repository-only `.gitignore` files.
+
+Validation completed:
+
+- VS Code extension lint: pass.
+- VS Code VSIX package: pass; repository metadata points to GitHub.
+- Visual Studio extension build/package: pass.
+- Visual Studio VSIX archive inspection: pass; MoreInfo points to GitHub and internal notes/model inventory/repository-only files are absent.
+
+## 2026-05-09 - VS Code Package Content Follow-up
+
+Focus:
+
+- Keep the VS Code VSIX archive limited to runtime files and package metadata.
+- Avoid shipping source-tree helper scripts that are useful before installation but confusing after packaging.
+
+Actions:
+
+- Excluded `install.ps1` from the VS Code VSIX archive.
+- Extended VS Code package lint so `install.ps1` remains source-only.
+
+Validation completed:
+
+- VS Code extension lint: pass.
+- VS Code VSIX package: pass.
+- VSIX archive inspection: pass; the package contains only `extension.vsixmanifest`, `[Content_Types].xml`, readme, package metadata, license, `extension.js`, and media icons.
+
+## 2026-05-09 - VS Code Release Script Hardening
+
+Focus:
+
+- Make the VS Code package and local install scripts reliable from Windows workspaces with spaces or shell metacharacters in the path.
+- Keep release automation small and testable.
+
+Actions:
+
+- Replaced shell-string package/install calls with a shared argument-array command runner.
+- Passed relative VSIX paths to `vsce` and `code` so the full repository path is not reparsed through nested Windows command layers.
+- Added a package lint guard that rejects `execSync` shell command strings in the release scripts.
+
+Validation completed:
+
+- VS Code extension lint: pass.
+- VS Code package script: pass.
+- VS Code local install script: pass.
+- VSIX archive inspection: pass; the package still contains only runtime files and package metadata.
+
+## 2026-05-09 - VS Code Installer Wrapper Hardening
+
+Focus:
+
+- Avoid maintaining two separate local install flows for the VS Code extension.
+- Keep the human-facing PowerShell installer aligned with the validated npm/Node packaging path.
+
+Actions:
+
+- Changed `install.ps1` to call `npm run install-local` instead of separately packaging, discovering the newest VSIX, and invoking `code` directly.
+- Added an explicit npm availability check with a setup-oriented error message.
+
+Validation completed:
+
+- VS Code extension lint: pass.
+- VS Code PowerShell installer: pass; it packages and installs the VSIX through the hardened local install path.
+- VSIX archive inspection: pass; packaged contents remain limited to runtime files and package metadata.
+
+## 2026-05-09 - Website Launcher Probe Hardening
+
+Focus:
+
+- Keep daily website startup responsive when a local backend, frontend, or Ollama endpoint is half-responsive.
+- Preserve the existing launch flow while tightening readiness probes.
+
+Actions:
+
+- Added explicit short timeouts to `website/launch.ps1` HTTP readiness and JSON probes.
+- Added an `Accept: application/json` header to launcher JSON probes.
+
+Validation completed:
+
+- Website launcher PowerShell syntax check: pass.
+- Website launch script: pass; Auralith OS reported ready at `http://127.0.0.1:5173`.
+- Website smoke test without chat: pass; frontend/backend identity, partial config, workspace setup, diff/apply/readback, validation, and readiness checks completed.
+
+## 2026-05-09 - Website Launch Port-Conflict Hardening
+
+Focus:
+
+- Avoid starting duplicate backend or frontend processes when ports `8787` or `5173` are already occupied by a non-ready or wrong service.
+- Keep launch failures understandable during daily startup.
+
+Actions:
+
+- Added backend blocked-port detection after mismatched-backend restart attempts.
+- Added frontend blocked-port detection after mismatched-frontend checks.
+- Kept the existing ownership checks that restart Aegis instances from the wrong project folder.
+
+Validation completed:
+
+- Website launcher PowerShell syntax check: pass.
+- Mocked backend/frontend blocked-port probes: pass.
+- Website launch script: pass; Auralith OS reported ready at `http://127.0.0.1:5173`.
+- Website smoke test without chat: pass.
+
+## 2026-05-09 - Website Validation Timeout Hardening
+
+Focus:
+
+- Keep website smoke/e2e validation from hanging indefinitely when local services are wedged.
+- Preserve the existing validation workflows and only bound their HTTP calls.
+
+Actions:
+
+- Added configurable request timeouts to `website/scripts/smoke-web.ps1`.
+- Added a separate longer chat timeout for the optional real-model smoke leg.
+- Added timeout handling to the e2e wrapper's backend/frontend reachability probes.
+
+Validation completed:
+
+- Website smoke/e2e PowerShell syntax checks: pass.
+- Website smoke test without chat with explicit request timeout: pass.
+- Direct backend/frontend readiness probes with 5 second timeouts: pass.
+
+Remaining risk:
+
+- Full browser e2e exceeded the 180 second command budget during this pass and should be investigated separately; no fresh e2e temp workspace was created by that timed-out run.
+
+## 2026-05-09 - Aegis Core Starter Hardening
+
+Focus:
+
+- Make the shared Core runtime starter fail clearly when port `8788` is occupied by the wrong service.
+- Prefer the project virtual environment when one exists.
+
+Actions:
+
+- Updated `aegis-core/scripts/start-core.ps1` to verify the `/v1/health` envelope has `api_version: v1` and `kind: health` before accepting an already-running service.
+- Added contract-version reporting for already-running Core instances.
+- Added Python resolution that prefers `.venv\Scripts\python.exe` and falls back to `python` on PATH with clearer setup errors.
+- Added an import preflight for `aegis_core.server` and `uvicorn` before starting the server.
+
+Validation completed:
+
+- Aegis Core start script syntax check: pass.
+- Aegis Core import preflight: pass.
+- Aegis Core start script against an already-running Core instance: pass; reported contract `2026.05.09`.
+- Aegis Core contract tests: pass, 51 tests.
+- Aegis Core compile check: pass.
+
+## 2026-05-09 - Aegis Core Starter Edge-Case Hardening
+
+Focus:
+
+- Keep Core startup errors clear when port `8788` is occupied by a non-Core service that returns HTTP 200 with a malformed body.
+
+Actions:
+
+- Split the start script's HTTP reachability check from JSON envelope parsing.
+- Added explicit probe reasons for HTTP errors, invalid JSON, unexpected envelopes, and unexpected status responses.
+- Included the probe reason in the wrong-service error message.
+
+Validation completed:
+
+- Aegis Core start script syntax check: pass.
+- Aegis Core start script against an already-running Core instance: pass; reported contract `2026.05.09`.
+- Mocked malformed JSON probe: pass; reported `invalid_json` while keeping the port marked reachable.
+- Aegis Core contract tests: pass, 51 tests.
+- Aegis Core compile check: pass.
+
+## 2026-05-09 - Website Browser E2E Project Switch Hardening
+
+Focus:
+
+- Turn the full browser e2e timeout into actionable validation output.
+- Fix the project-switch file preview race found by the browser e2e flow.
+
+Actions:
+
+- Added configurable Node-side fetch timeouts to `website/scripts/e2e-web.mjs` for backend API calls and readiness probes.
+- Changed website file preview loading to read from the latest workspace root reference when a project switch has just updated the active root.
+- Cleaned the failed e2e debug workspace after the project-switch fix was validated.
+
+Validation completed:
+
+- Website e2e script syntax check: pass.
+- Website focused frontend tests: pass, 32 tests.
+- Website smoke test without chat and with explicit request timeout: pass.
+- Website full browser e2e: pass; temporary workspace cleaned up.
+- Website frontend production build: pass; at this point it still emitted the large-chunk warning that was resolved later in the day.
+
+## 2026-05-09 - Website Frontend Chunk Budget Hardening
+
+Focus:
+
+- Resolve the recurring Website production build chunk warning without raising Vite's warning limit.
+- Keep the change scoped to build output shape, not user-facing behavior.
+
+Actions:
+
+- Replaced static object chunk names in `website/frontend/vite.config.ts` with an explicit `manualChunks` function.
+- Split React, icons, frontend API calls, app utilities, and app styles into stable chunks so the monolithic protected app shell no longer crosses the default warning threshold.
+- Updated the current stabilization docs to reflect the new build baseline.
+
+Validation completed:
+
+- Website frontend production build: pass, no Vite chunk-size warning.
+- Website focused frontend tests: pass, 38 tests.
+
+## 2026-05-09 - Website Acceptance URL Propagation Hardening
+
+Focus:
+
+- Keep alternate-port web validation reliable when `acceptance-web.ps1` is run directly.
+- Remove drift between the acceptance gate's initial live URL checks and the child doctor, smoke, and e2e scripts.
+
+Actions:
+
+- Updated `website/scripts/acceptance-web.ps1` to resolve and trim its `Root`, `BackendUrl`, and `FrontendUrl` parameters once.
+- Changed acceptance child steps to call `doctor-web.ps1`, `smoke-web.ps1`, and `e2e-web.ps1` directly with the same root and URL parameters instead of invoking npm scripts that fall back to default ports.
+- Documented the direct alternate-port acceptance command in `website/README.md`.
+
+Validation completed:
+
+- Website acceptance script syntax check: pass.
+- Website acceptance gate with explicit trailing-slash URLs: pass; validate, doctor, real-chat smoke, and full browser e2e completed.
+
+## 2026-05-09 - VS Code Command Activation Guard
+
+Focus:
+
+- Prevent VS Code extension package drift where a contributed command can ship without activation, or an activation event can point at a removed command.
+- Keep release validation headless and cheap.
+
+Actions:
+
+- Extended `vscode-plugins/aegis-local-autopilot/scripts/lint-package.js` to compare all contributed commands with all `onCommand:` activation events.
+- Kept the existing required-command checks, release metadata checks, and VSIX exclusion checks intact.
+
+Validation completed:
+
+- VS Code extension lint: pass.
+- VS Code VSIX package: pass; packaged contents remain limited to runtime files and package metadata.

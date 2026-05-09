@@ -11,9 +11,23 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
-        manualChunks: {
-          'react-vendor': ['react', 'react-dom'],
-          'icon-vendor': ['lucide-react']
+        manualChunks(id) {
+          const moduleId = id.replaceAll('\\', '/');
+          if (moduleId.includes('/node_modules/react/') || moduleId.endsWith('/node_modules/react/index.js')) {
+            return 'react-vendor';
+          }
+          if (moduleId.includes('/node_modules/react-dom/')) {
+            return 'react-vendor';
+          }
+          if (moduleId.includes('/node_modules/lucide-react/')) {
+            return 'icon-vendor';
+          }
+          if (moduleId.includes('/src/api.ts')) {
+            return 'app-api';
+          }
+          if (moduleId.includes('/src/utils/') || moduleId.includes('/src/styles/appStyles.ts')) {
+            return 'app-support';
+          }
         }
       }
     }

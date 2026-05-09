@@ -348,8 +348,9 @@ class ProductizationEngine:
         validation_passes = sum(outcome.validation_passes for outcome in outcomes)
         repair_tasks = [outcome for outcome in outcomes if outcome.repair_count > 0]
         repaired_successes = [outcome for outcome in repair_tasks if outcome.success]
-        average_latency = mean([attempt.latency_ms for attempt in attempts if attempt.latency_ms is not None] or [0])
-        token_total = sum((attempt.input_tokens or 0) + (attempt.output_tokens or 0) for attempt in attempts)
+        attempt_infos = [entry.attempt for entry in attempts]
+        average_latency = mean([attempt.latency_ms for attempt in attempt_infos if attempt.latency_ms is not None] or [0])
+        token_total = sum((attempt.input_tokens or 0) + (attempt.output_tokens or 0) for attempt in attempt_infos)
         runtime_observability = runtime.observability if runtime else None
         runtime_total_jobs = (
             runtime_observability.queued_jobs

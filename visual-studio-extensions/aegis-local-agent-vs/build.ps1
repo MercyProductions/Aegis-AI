@@ -23,6 +23,10 @@ function Invoke-MSBuild {
 }
 
 New-Item -ItemType Directory -Force -Path $release | Out-Null
+$staleDogfoodingNotes = Join-Path $release "DOGFOODING_NOTES.md"
+if (Test-Path -LiteralPath $staleDogfoodingNotes) {
+  Remove-Item -LiteralPath $staleDogfoodingNotes -Force
+}
 Invoke-MSBuild @($solution, "/t:Clean", "/p:Configuration=Release", "/p:DeployExtension=false")
 Invoke-MSBuild @($solution, "/t:Restore", "/p:Configuration=Release")
 Invoke-MSBuild @($solution, "/t:Build", "/p:Configuration=Release", "/p:DeployExtension=false")
@@ -46,10 +50,10 @@ Copy-Item -LiteralPath (Join-Path $root "INSTALL.md") -Destination (Join-Path $r
 Copy-Item -LiteralPath (Join-Path $root "CHANGELOG.md") -Destination (Join-Path $release "CHANGELOG.md") -Force
 Copy-Item -LiteralPath (Join-Path $root "RELEASE_NOTES.md") -Destination (Join-Path $release "RELEASE_NOTES.md") -Force
 Copy-Item -LiteralPath (Join-Path $root "TROUBLESHOOTING.md") -Destination (Join-Path $release "TROUBLESHOOTING.md") -Force
-Copy-Item -LiteralPath (Join-Path $root "DOGFOODING_NOTES.md") -Destination (Join-Path $release "DOGFOODING_NOTES.md") -Force
 
 $projectText = Get-Content -Raw -LiteralPath $project
 $expectedVersion = [regex]::Match($projectText, "<Version>([^<]+)</Version>").Groups[1].Value
+$expectedMoreInfo = "https://github.com/MercyProductions/Aegis-AI"
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 
 $assemblyPath = Join-Path $projectDir "bin\Release\AegisLocalAgentVs.dll"
@@ -98,6 +102,37 @@ try {
   if ($manifestText -notmatch "Version=`"$([regex]::Escape($expectedVersion))`"") {
     throw "VSIX manifest version does not match project version $expectedVersion."
   }
+
+  if ($manifestText -notmatch "<MoreInfo>$([regex]::Escape($expectedMoreInfo))</MoreInfo>") {
+    throw "VSIX manifest MoreInfo must point to $expectedMoreInfo."
+  }
+
+  if ($manifestText -match "localhost") {
+    throw "VSIX manifest contains a localhost placeholder URL."
+  }
+
+  foreach ($packageEntry in $zip.Entries) {
+    if ($packageEntry.FullName -like "*DOGFOODING_NOTES.md") {
+      throw "VSIX package must not include internal dogfooding notes."
+    }
+  }
+
+  if ($manifestText -match "DETECTED_MODELS") {
+    throw "VSIX manifest must not reference local detected model inventory."
+  }
+
+  foreach ($packageEntry in $zip.Entries) {
+    if ($packageEntry.FullName -like "*DETECTED_MODELS.md") {
+      throw "VSIX package must not include local detected model inventory."
+    }
+  }
+
+  foreach ($packageEntry in $zip.Entries) {
+    if ($packageEntry.FullName -like "*.gitignore") {
+      throw "VSIX package must not include repository-only .gitignore files."
+    }
+  }
+
 } finally {
   $zip.Dispose()
 }

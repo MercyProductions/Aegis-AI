@@ -7,9 +7,14 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from fastapi.testclient import TestClient
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from aegis_ai import main
+from aegis_ai.core_bridge import CoreBridgeResult
 from aegis_ai.llm import LocalModelClient
+from aegis_ai.llm import LocalModelInventory, LocalModelRecord
 from aegis_ai.model_registry import ModelRegistryManager
 from aegis_ai.providers.base import provider_capability_flags
 from aegis_ai.schemas import ModelRegistryProviderUpsertRequest
@@ -161,6 +166,90 @@ class ModelInventoryTests(unittest.TestCase):
             registry = manager.delete_provider("image:local")
 
         self.assertNotIn("image:local", {provider.id for provider in registry.providers})
+
+    def test_models_endpoint_overlays_core_inventory_without_replacing_website_shape(self) -> None:
+        settings = Settings(
+            _env_file=None,
+            DEFAULT_WORKSPACE="workspace",
+            AEGIS_MODEL_API="ollama",
+            AEGIS_MODEL_ENDPOINT="http://127.0.0.1:11434",
+            AEGIS_MODEL_NAME="qwen2.5-coder:7b",
+        )
+
+        class FakeAgent:
+            async def model_inventory(self) -> LocalModelInventory:
+                return LocalModelInventory(
+                    active_model="qwen2.5-coder:7b",
+                    active_api="ollama",
+                    active_endpoint="http://127.0.0.1:11434",
+                    message="Website inventory ready.",
+                    models=[
+                        LocalModelRecord(
+                            id="ollama:qwen2.5-coder:7b",
+                            name="qwen2.5-coder:7b",
+                            provider="Ollama",
+                            api="ollama",
+                            endpoint="http://127.0.0.1:11434",
+                            local=True,
+                            configured=True,
+                            available=True,
+                            ready=True,
+                            message="Configured model ready.",
+                        )
+                    ],
+                )
+
+        class FakeWorkspaceManager:
+            def __init__(self, root: Path):
+                self.root = root
+
+            def resolve_workspace(self, workspace_root: str | None) -> Path:
+                path = self.root / (workspace_root or "workspace")
+                path.mkdir(parents=True, exist_ok=True)
+                return path
+
+        class FakeCoreBridge:
+            async def model_status(self, workspace: Path) -> CoreBridgeResult:
+                data = {
+                    "reachable": True,
+                    "installed_models": ["qwen2.5-coder:7b", "qwen3-coder:30b"],
+                    "selected_model": "qwen3-coder:30b",
+                }
+                return CoreBridgeResult(
+                    True,
+                    True,
+                    200,
+                    "models",
+                    data,
+                    {
+                        "ok": True,
+                        "api_version": "v1",
+                        "contract_version": "2026.05.09",
+                        "kind": "models",
+                        "data": data,
+                    },
+                )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir)
+            with (
+                patch.object(main, "settings", settings),
+                patch.object(main, "PROJECT_ROOT", project_root),
+                patch.object(main, "agent", FakeAgent()),
+                patch.object(main, "workspace_manager", FakeWorkspaceManager(project_root)),
+                patch.object(main, "model_registry", ModelRegistryManager(project_root, settings)),
+                patch.object(main, "core_bridge", FakeCoreBridge()),
+                TestClient(main.app) as client,
+            ):
+                response = client.get("/api/models")
+
+        self.assertEqual(response.status_code, 200, response.text)
+        payload = response.json()
+        self.assertEqual(payload["active_model"], "qwen2.5-coder:7b")
+        self.assertEqual(payload["core_runtime_status"], "connected")
+        model_ids = {item["id"] for item in payload["models"]}
+        self.assertIn("ollama:qwen2.5-coder:7b", model_ids)
+        self.assertIn("aegis-core:qwen3-coder:30b", model_ids)
 
 
 if __name__ == "__main__":

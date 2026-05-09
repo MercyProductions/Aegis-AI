@@ -4,7 +4,7 @@
     <Identity Id="AegisLocalAgentVs.5f6b5c6a-4b9a-4c29-8b48-c88e6e2b53b8" Version="0.1.1" Language="en-US" Publisher="Aegis" />
     <DisplayName>Aegis Local Agent</DisplayName>
     <Description xml:space="preserve">Local-first Visual Studio coding agent for Ollama, solution scanning, safe proposals, build validation, and project memory.</Description>
-    <MoreInfo>https://localhost/aegis-local-agent</MoreInfo>
+    <MoreInfo>https://github.com/MercyProductions/Aegis-AI</MoreInfo>
     <License>LICENSE.txt</License>
     <Icon>Resources\AegisIcon.png</Icon>
     <PreviewImage>Resources\AegisIcon.png</PreviewImage>

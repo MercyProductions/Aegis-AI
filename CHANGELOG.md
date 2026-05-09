@@ -4,7 +4,12 @@
 
 ### Stabilization
 
+- Fixed Website workspace resolution so uncreatable or invalid workspace roots return clean `400` API errors instead of `500` stack traces.
+- Fixed the Website UI E2E mock routing so tests intercept both direct backend URLs and the Vite `/api` proxy.
+- Added release candidate install and validation documentation for daily dogfooding.
 - Added focused Aegis Core regression tests for `/v1` client registration, shared tasks, dashboard contracts, scan caching, and flexible CLI JSON output.
+- Hardened the Aegis Core start script so existing services on `8788` must return the versioned `/v1/health` envelope before being treated as Core.
+- Hardened the Aegis Core start script so malformed JSON responses on `8788` are reported as wrong-service port conflicts instead of falling through to a confusing server bind failure.
 - Improved the Aegis Core CLI so `--json` works before or after the subcommand.
 - Hardened the Aegis Core CLI so shared task persistence failures return clean nonzero errors and JSON payloads instead of tracebacks.
 - Hardened Aegis Core path safety so ignored folders and secret-like filenames are handled case-insensitively and relative to the workspace before scanning.
@@ -50,20 +55,50 @@
 - Hardened Website checkpoint restore so checkpoint IDs stay folder-local and damaged manifests or backup paths return clean errors instead of unsafe restores or server failures.
 - Hardened Website checkpoint restore preflight so missing backup files fail clearly before any workspace files are restored or removed.
 - Hardened Website apply changes so checkpoint creation failures stop the apply before files are touched and later write/delete failures return warnings with checkpoint context.
+- Hardened Website launcher probes with explicit local HTTP timeouts so half-responsive backend, frontend, or Ollama endpoints do not make startup appear frozen.
+- Hardened Website launch port handling so occupied backend/frontend ports produce clear warnings instead of launching duplicate doomed processes.
+- Hardened Website smoke and e2e validation probes with explicit HTTP timeouts so validation fails clearly when local services stop responding.
+- Hardened Website browser e2e backend calls with bounded fetch timeouts so stalled API requests fail with actionable errors.
+- Fixed Website project-switch file previews so file reads use the current workspace root instead of stale React state after switching projects.
+- Split Website frontend API, utility, style, React, and icon code into explicit Vite chunks so production builds stay under the default chunk warning budget without raising the warning limit.
+- Fixed the Website acceptance gate so custom backend/frontend URLs are passed through to doctor, smoke, and browser e2e scripts instead of falling back to default ports.
 - Hardened Desktop backend/Core URL settings so local host:port inputs, trailing endpoint paths, and empty values normalize before runtime requests or config writes.
 - Hardened Desktop Core dashboard loading so a shared registration failure no longer blocks dashboard reads when Core is otherwise reachable.
 - Hardened VS Code Ollama/Core URL settings so common local inputs normalize before model detection, health checks, and shared Core sync.
 - Hardened VS Code local API error reporting so Core/Ollama HTTP failures surface parsed, redacted detail text instead of raw JSON bodies.
+- Hardened VS Code VSIX packaging so local dogfooding notes, detected model inventories, and repository-only files are excluded from release archives.
+- Hardened VS Code release metadata so packaged extensions point at the GitHub repository instead of a local filesystem path.
+- Hardened VS Code VSIX contents so the source-tree install helper is excluded from the shipped extension archive.
+- Hardened VS Code package/install scripts so Windows workspace paths with spaces or `&` no longer break VSIX creation or local installation.
+- Hardened VS Code package lint so every contributed command must have a matching activation event and every command activation must point to a contributed command.
+- Simplified the VS Code PowerShell installer so it delegates to the same validated local install path as npm.
 - Hardened Visual Studio Ollama/Core URL settings so common local inputs normalize before model calls, health checks, and shared Core registration.
 - Hardened Visual Studio Health Check so Core reachability and client registration are reported separately with useful Core error details.
+- Hardened Visual Studio VSIX metadata and packaging so MoreInfo points to GitHub and internal dogfooding/model-inventory files are excluded.
 - Added product-utilization workflow notes for daily Auralith dogfooding.
+- Started the long-term workflow refinement cadence so repeated daily-use friction is tracked before new feature work.
 - Documented the current stabilization and validation pass.
 
 ### Validation
 
+- Ecosystem release candidate validation passed for Core startup, Website launch, real web chat smoke, UI E2E, Core/Website API workflows, Core-offline and backend-offline degraded behavior, simulated Ollama failure, rollback after failed validation, VS Code VSIX install, Visual Studio VSIX packaging, desktop GUI smoke, and Core CLI/package checks.
 - Aegis Core pytest, compile, CLI/API smoke checks pass.
+- Aegis Core start script detects an already-running Core instance and reports its contract version.
+- Aegis Core start-script probe handling validates malformed JSON responses without starting another server on the occupied port.
 - Desktop App build passes.
 - VS Code extension lint and VSIX packaging pass.
+- VS Code package lint now runs before VSIX packaging and verifies release-only exclusions.
+- VS Code VSIX archive inspection confirms only runtime/package metadata files are shipped.
+- VS Code local install script passes after packaging from the current Windows workspace path.
+- VS Code PowerShell install helper passes through the hardened local install path.
+- VS Code package lint now verifies contributed command and activation-event parity.
 - Visual Studio extension build and VSIX packaging pass.
+- Visual Studio VSIX packaging now verifies manifest MoreInfo and rejects localhost placeholders or internal notes in the archive.
 - Website frontend tests/build and backend test suite pass.
+- Website launch script and smoke workflow pass from the current Windows workspace path.
+- Website launch blocked-port probes validate occupied backend/frontend port handling.
+- Website smoke workflow passes with explicit request timeouts.
+- Website full browser e2e passes after project-switch file preview hardening.
+- Website frontend production build passes without the prior Vite chunk-size warning.
+- Website acceptance gate passes with explicit backend/frontend URL parameters.
 - Full validation notes are tracked in `docs/ECOSYSTEM_STABILIZATION.md`.

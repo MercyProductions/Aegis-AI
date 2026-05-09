@@ -10,6 +10,8 @@ const backendUrl = stripTrailingSlash(process.env.AEGIS_E2E_BACKEND_URL || 'http
 const frontendUrl = stripTrailingSlash(process.env.AEGIS_E2E_FRONTEND_URL || 'http://127.0.0.1:5173');
 const keepWorkspace = process.env.AEGIS_E2E_KEEP_WORKSPACE === '1';
 const headed = process.env.AEGIS_E2E_HEADED === '1';
+const apiTimeoutMs = readPositiveIntegerEnv('AEGIS_E2E_API_TIMEOUT_MS', 90_000);
+const readinessFetchTimeoutMs = readPositiveIntegerEnv('AEGIS_E2E_READY_FETCH_TIMEOUT_MS', 5_000);
 const workspaceRoot = path.join(root, '.tmp', `e2e-web-${timestamp()}-${process.pid}`);
 const alternateProjectRoot = path.join(workspaceRoot, 'project-switch-fixture');
 const conversationStorageKey = 'aegis.web.conversations.v1';
@@ -23,6 +25,18 @@ const detailPanelSectionsStorageKey = 'aegis.detailPanelSections.v1';
 let browser;
 let page;
 let cleanupWorkspace = false;
+
+function apiRoutePattern(pathname) {
+  return `**${pathname}`;
+}
+
+async function routeApi(pageInstance, pathname, handler) {
+  await pageInstance.route(apiRoutePattern(pathname), handler);
+}
+
+async function unrouteApi(pageInstance, pathname) {
+  await pageInstance.unroute(apiRoutePattern(pathname));
+}
 
 try {
   await waitForJson(`${backendUrl}/api/health`, (health) => Boolean(health?.ready), 'backend health');
@@ -541,14 +555,18 @@ async function waitForChatScrollAtBottom(page, label, timeout = 10_000) {
 }
 
 async function apiJson(method, pathname, body) {
-  const response = await fetch(`${backendUrl}${pathname}`, {
-    method,
-    headers: {
-      Accept: 'application/json',
-      ...(body === undefined ? {} : { 'Content-Type': 'application/json' })
+  const response = await fetchWithTimeout(
+    `${backendUrl}${pathname}`,
+    {
+      method,
+      headers: {
+        Accept: 'application/json',
+        ...(body === undefined ? {} : { 'Content-Type': 'application/json' })
+      },
+      body: body === undefined ? undefined : JSON.stringify(body)
     },
-    body: body === undefined ? undefined : JSON.stringify(body)
-  });
+    apiTimeoutMs
+  );
   const text = await response.text();
   if (!response.ok) {
     throw new Error(`${method} ${pathname} failed with ${response.status}: ${text}`);
@@ -565,9 +583,10 @@ async function expectWorkspaceFile(relativePath, expectedContent) {
 }
 
 async function expectWorkspaceFileMissing(relativePath) {
-  const response = await fetch(
+  const response = await fetchWithTimeout(
     `${backendUrl}/api/file?workspace_root=${encodeURIComponent(workspaceRoot)}&path=${encodeURIComponent(relativePath)}`,
-    { headers: { Accept: 'application/json' } }
+    { headers: { Accept: 'application/json' } },
+    apiTimeoutMs
   );
   assert(response.status === 404, `${relativePath} should have been removed by checkpoint restore, got ${response.status}.`);
 }
@@ -986,7 +1005,7 @@ async function exerciseHeaderModelSwitcher(page) {
     };
   }
 
-  await page.route(`${backendUrl}/api/models`, async (route) => {
+  await routeApi(page, '/api/models', async (route) => {
     await route.fulfill({
       status: 200,
       headers: { 'content-type': 'application/json' },
@@ -1016,7 +1035,7 @@ async function exerciseHeaderModelSwitcher(page) {
     });
   });
 
-  await page.route(`${backendUrl}/api/model-manager`, async (route) => {
+  await routeApi(page, '/api/model-manager', async (route) => {
     await route.fulfill({
       status: 200,
       headers: { 'content-type': 'application/json' },
@@ -1049,7 +1068,7 @@ async function exerciseHeaderModelSwitcher(page) {
     });
   });
 
-  await page.route(`${backendUrl}/api/model-registry`, async (route) => {
+  await routeApi(page, '/api/model-registry', async (route) => {
     await route.fulfill({
       status: 200,
       headers: { 'content-type': 'application/json' },
@@ -1067,7 +1086,7 @@ async function exerciseHeaderModelSwitcher(page) {
     });
   });
 
-  await page.route(`${backendUrl}/api/config`, async (route) => {
+  await routeApi(page, '/api/config', async (route) => {
     if (route.request().method() !== 'POST') {
       await route.continue();
       return;
@@ -1107,10 +1126,10 @@ async function exerciseHeaderModelSwitcher(page) {
   await waitForLocatorText(modelButton, 'qwen2.5-coder:7b', 'header model restored after quick switcher test');
 
   assert(configSaves === 2, `Expected two mocked model config saves, got ${configSaves}.`);
-  await page.unroute(`${backendUrl}/api/models`);
-  await page.unroute(`${backendUrl}/api/model-manager`);
-  await page.unroute(`${backendUrl}/api/model-registry`);
-  await page.unroute(`${backendUrl}/api/config`);
+  await unrouteApi(page, '/api/models');
+  await unrouteApi(page, '/api/model-manager');
+  await unrouteApi(page, '/api/model-registry');
+  await unrouteApi(page, '/api/config');
 }
 
 async function exerciseMalformedPersistedUiState(page) {
@@ -1299,7 +1318,7 @@ async function exerciseDetailsPanelVisibilityPreference(page) {
 
 async function exercisePinnedContextFiles(page) {
   let pinnedRequestPayload = null;
-  await page.route(`${backendUrl}/api/chat/stream`, async (route) => {
+  await routeApi(page, '/api/chat/stream', async (route) => {
     pinnedRequestPayload = JSON.parse(route.request().postData() || '{}');
     await route.fulfill({
       status: 200,
@@ -1344,7 +1363,7 @@ async function exercisePinnedContextFiles(page) {
     Array.isArray(pinnedRequestPayload.context_paths) && pinnedRequestPayload.context_paths.includes('tracked.txt'),
     `Expected pinned context_paths to include tracked.txt, got ${JSON.stringify(pinnedRequestPayload.context_paths)}.`
   );
-  await page.unroute(`${backendUrl}/api/chat/stream`);
+  await unrouteApi(page, '/api/chat/stream');
 
   await clickUnique(page.getByRole('button', { name: 'New session', exact: true }), 'new session after pinned context test');
   await waitForLocatorCount(page.getByText('Welcome to Auralith OS', { exact: true }), 1, 'empty session after pinned context test');
@@ -1368,7 +1387,7 @@ async function exerciseGeneratedChangeApplyScopes(page) {
       content: 'all change applied\n'
     }
   ];
-  await page.route(`${backendUrl}/api/chat/stream`, async (route) => {
+  await routeApi(page, '/api/chat/stream', async (route) => {
     applyScopeRequests += 1;
     const payload = JSON.parse(route.request().postData() || '{}');
     const message = String(payload.message || '');
@@ -1440,7 +1459,7 @@ async function exerciseGeneratedChangeApplyScopes(page) {
       ].join('\n')
     });
   });
-  await page.route(`${backendUrl}/api/validate`, async (route) => {
+  await routeApi(page, '/api/validate', async (route) => {
     manualApplyValidationRequests += 1;
     const validationFailed = manualApplyValidationRequests === 1;
     const validationSummary = validationFailed ? 'Manual apply validation failed.' : 'Manual apply validation passed.';
@@ -2004,8 +2023,8 @@ async function exerciseGeneratedChangeApplyScopes(page) {
     manualApplyValidationRequests === 2,
     `Expected validation after each manual apply operation, got ${manualApplyValidationRequests}.`
   );
-  await page.unroute(`${backendUrl}/api/chat/stream`);
-  await page.unroute(`${backendUrl}/api/validate`);
+  await unrouteApi(page, '/api/chat/stream');
+  await unrouteApi(page, '/api/validate');
   await runValidationToggle.uncheck();
 
   await clickUnique(page.getByRole('button', { name: 'New session', exact: true }), 'new session after apply scope test');
@@ -2019,7 +2038,7 @@ async function exerciseManualApplyWarningStatus(page) {
   await writeFile(path.join(workspaceRoot, retryPath), retryExistingContent, 'utf8');
 
   let warningStatusRequests = 0;
-  await page.route(`${backendUrl}/api/chat/stream`, async (route) => {
+  await routeApi(page, '/api/chat/stream', async (route) => {
     warningStatusRequests += 1;
     await route.fulfill({
       status: 200,
@@ -2143,7 +2162,7 @@ async function exerciseManualApplyWarningStatus(page) {
   await expectWorkspaceFile(retryPath, retryGeneratedContent);
 
   assert(warningStatusRequests === 1, `Expected one warning status stream request, got ${warningStatusRequests}.`);
-  await page.unroute(`${backendUrl}/api/chat/stream`);
+  await unrouteApi(page, '/api/chat/stream');
 
   await clickUnique(page.getByRole('button', { name: 'New session', exact: true }), 'new session after warning status test');
   await waitForLocatorCount(page.getByText('Welcome to Auralith OS', { exact: true }), 1, 'empty session after warning status test');
@@ -2157,7 +2176,7 @@ async function exerciseSamePathWarningPrecision(page) {
   await writeFile(path.join(workspaceRoot, samePath), createdContent, 'utf8');
 
   let samePathRequests = 0;
-  await page.route(`${backendUrl}/api/chat/stream`, async (route) => {
+  await routeApi(page, '/api/chat/stream', async (route) => {
     samePathRequests += 1;
     await route.fulfill({
       status: 200,
@@ -2242,7 +2261,7 @@ async function exerciseSamePathWarningPrecision(page) {
   );
 
   assert(samePathRequests === 1, `Expected one same-path warning stream request, got ${samePathRequests}.`);
-  await page.unroute(`${backendUrl}/api/chat/stream`);
+  await unrouteApi(page, '/api/chat/stream');
 
   await clickUnique(page.getByRole('button', { name: 'New session', exact: true }), 'new session after same-path warning test');
   await waitForLocatorCount(page.getByText('Welcome to Auralith OS', { exact: true }), 1, 'empty session after same-path warning test');
@@ -2263,7 +2282,7 @@ async function exerciseGeneratedChangeReviewRestore(page) {
   await writeFile(path.join(checkpointFilesRoot, updatePath), oldContent, 'utf8');
 
   let restoreRequests = 0;
-  await page.route(`${backendUrl}/api/chat/stream`, async (route) => {
+  await routeApi(page, '/api/chat/stream', async (route) => {
     restoreRequests += 1;
     await route.fulfill({
       status: 200,
@@ -2397,7 +2416,7 @@ async function exerciseGeneratedChangeReviewRestore(page) {
   );
 
   assert(restoreRequests === 1, `Expected one saved review stream request, got ${restoreRequests}.`);
-  await page.unroute(`${backendUrl}/api/chat/stream`);
+  await unrouteApi(page, '/api/chat/stream');
 
   await clickUnique(page.getByRole('button', { name: 'New session', exact: true }), 'new session after restore review test');
   await waitForLocatorCount(page.getByText('Welcome to Auralith OS', { exact: true }), 1, 'empty session after restore review test');
@@ -2421,7 +2440,7 @@ async function exerciseComposerDraftRestore(page) {
   assert(storedDraft === draftText, 'Composer draft was not saved to local storage.');
 
   let draftRequests = 0;
-  await page.route(`${backendUrl}/api/chat/stream`, async (route) => {
+  await routeApi(page, '/api/chat/stream', async (route) => {
     draftRequests += 1;
     await route.fulfill({
       status: 200,
@@ -2450,7 +2469,7 @@ async function exerciseComposerDraftRestore(page) {
   const remainingDraft = await page.evaluate((storageKey) => localStorage.getItem(storageKey), composerDraftStorageKey);
   assert(remainingDraft === null, 'Composer draft was not cleared after sending.');
   assert(draftRequests === 1, `Expected one draft stream request, got ${draftRequests}.`);
-  await page.unroute(`${backendUrl}/api/chat/stream`);
+  await unrouteApi(page, '/api/chat/stream');
 }
 
 async function exerciseCurrentChatExport(page, userMessage, assistantMessage) {
@@ -2486,7 +2505,7 @@ async function exerciseChatAutoScroll(page) {
   ].join('\n');
 
   let autoScrollRequests = 0;
-  await page.route(`${backendUrl}/api/chat/stream`, async (route) => {
+  await routeApi(page, '/api/chat/stream', async (route) => {
     autoScrollRequests += 1;
     await route.fulfill({
       status: 200,
@@ -2512,7 +2531,7 @@ async function exerciseChatAutoScroll(page) {
   await waitForChatScrollAtBottom(page, 'chat auto-scroll after long response');
 
   assert(autoScrollRequests === 1, `Expected one auto-scroll stream request, got ${autoScrollRequests}.`);
-  await page.unroute(`${backendUrl}/api/chat/stream`);
+  await unrouteApi(page, '/api/chat/stream');
 
   await clickUnique(page.getByRole('button', { name: 'New session', exact: true }), 'new session after auto-scroll test');
   await waitForLocatorCount(page.getByText('Welcome to Auralith OS', { exact: true }), 1, 'empty session after auto-scroll test');
@@ -2523,7 +2542,7 @@ async function exerciseQueuedPromptTray(page) {
 
   let streamRequests = 0;
   const streamMessages = [];
-  await page.route(`${backendUrl}/api/chat/stream`, async (route) => {
+  await routeApi(page, '/api/chat/stream', async (route) => {
     streamRequests += 1;
     const payload = JSON.parse(route.request().postData() || '{}');
     streamMessages.push(payload.message);
@@ -2638,12 +2657,12 @@ async function exerciseQueuedPromptTray(page) {
     streamMessages.join(' | ') === 'start a slow queue tray test | second queued prompt should go next',
     `Queued prompts streamed in the wrong order: ${streamMessages.join(' | ')}`
   );
-  await page.unroute(`${backendUrl}/api/chat/stream`);
+  await unrouteApi(page, '/api/chat/stream');
 }
 
 async function exerciseStopActiveResponse(page) {
   let stopRequests = 0;
-  await page.route(`${backendUrl}/api/chat/stream`, async (route) => {
+  await routeApi(page, '/api/chat/stream', async (route) => {
     stopRequests += 1;
     await delay(1_200);
     await route
@@ -2683,7 +2702,7 @@ async function exerciseStopActiveResponse(page) {
     1_000
   );
   assert(stopRequests === 1, `Expected one stopped stream request, got ${stopRequests}.`);
-  await page.unroute(`${backendUrl}/api/chat/stream`);
+  await unrouteApi(page, '/api/chat/stream');
 }
 
 async function exerciseResponsiveShell(page) {
@@ -2874,7 +2893,7 @@ async function waitForJson(url, predicate, label) {
   let lastError = '';
   while (Date.now() < deadline) {
     try {
-      const response = await fetch(url, { headers: { Accept: 'application/json' } });
+      const response = await fetchWithTimeout(url, { headers: { Accept: 'application/json' } }, readinessFetchTimeoutMs);
       const payload = await response.json();
       if (predicate(payload)) return payload;
       lastError = JSON.stringify(payload);
@@ -2891,7 +2910,7 @@ async function waitForHttpOk(url, label) {
   let lastStatus = '';
   while (Date.now() < deadline) {
     try {
-      const response = await fetch(url);
+      const response = await fetchWithTimeout(url, {}, readinessFetchTimeoutMs);
       if (response.ok) return;
       lastStatus = String(response.status);
     } catch (error) {
@@ -2900,6 +2919,21 @@ async function waitForHttpOk(url, label) {
     await delay(500);
   }
   throw new Error(`Timed out waiting for ${label}: ${lastStatus}`);
+}
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = apiTimeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`Timed out after ${timeoutMs}ms fetching ${url}`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function findBrowserExecutable() {
@@ -2941,6 +2975,13 @@ function delay(ms) {
 
 function stripTrailingSlash(value) {
   return value.replace(/\/+$/, '');
+}
+
+function readPositiveIntegerEnv(name, fallback) {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 function timestamp() {

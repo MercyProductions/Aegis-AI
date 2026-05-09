@@ -41,6 +41,12 @@ Use `npm run validate` for the offline frontend/backend test suite. Use `npm run
 `npm run smoke:web`, and `npm run e2e:web` once the app is running from `.\launch.ps1`.
 Use `npm run acceptance:web` before calling a web change done; it runs the offline validation,
 runtime doctor, backend smoke flow, and real browser e2e flow in sequence.
+For alternate live ports, call the acceptance script directly so the same URLs flow through
+doctor, smoke, and e2e:
+
+```powershell
+.\scripts\acceptance-web.ps1 -BackendUrl http://127.0.0.1:8793 -FrontendUrl http://127.0.0.1:5177
+```
 
 Or double-click:
 

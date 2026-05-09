@@ -26,6 +26,23 @@ function Invoke-NpmScript {
     }
 }
 
+function Invoke-WebsiteScript {
+    param(
+        [string]$Name,
+        [string[]]$Arguments = @()
+    )
+
+    $scriptPath = Join-Path $Root "scripts\$Name"
+    if (-not (Test-Path -LiteralPath $scriptPath)) {
+        throw "Website script is missing at $scriptPath."
+    }
+
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath @Arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "$Name failed with exit code $LASTEXITCODE"
+    }
+}
+
 function Invoke-Step {
     param(
         [string]$Name,
@@ -47,6 +64,9 @@ function Invoke-Step {
     }
 }
 
+$Root = (Resolve-Path -LiteralPath $Root).Path
+$BackendUrl = $BackendUrl.TrimEnd("/")
+$FrontendUrl = $FrontendUrl.TrimEnd("/")
 Set-Location -LiteralPath $Root
 
 Write-Host ""
@@ -65,15 +85,27 @@ if (-not (Test-HttpReady -Url $backendHealthUrl) -or -not (Test-HttpReady -Url $
 }
 
 Invoke-Step -Name "Runtime doctor" -Command {
-    Invoke-NpmScript -Arguments @("run", "doctor:web")
+    Invoke-WebsiteScript -Name "doctor-web.ps1" -Arguments @(
+        "-Root", $Root,
+        "-BackendUrl", $BackendUrl,
+        "-FrontendUrl", $FrontendUrl
+    )
 }
 
 Invoke-Step -Name "Backend smoke flow" -Command {
-    Invoke-NpmScript -Arguments @("run", "smoke:web")
+    Invoke-WebsiteScript -Name "smoke-web.ps1" -Arguments @(
+        "-Root", $Root,
+        "-BackendUrl", $BackendUrl,
+        "-FrontendUrl", $FrontendUrl
+    )
 }
 
 Invoke-Step -Name "Browser e2e flow" -Command {
-    Invoke-NpmScript -Arguments @("run", "e2e:web")
+    Invoke-WebsiteScript -Name "e2e-web.ps1" -Arguments @(
+        "-Root", $Root,
+        "-BackendUrl", $BackendUrl,
+        "-FrontendUrl", $FrontendUrl
+    )
 }
 
 Write-Host ""

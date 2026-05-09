@@ -1565,6 +1565,10 @@ export interface AppConfig {
   feedback_max_excerpt_chars: number;
   feedback_hash_content: boolean;
   env_exists: boolean;
+  core_runtime_reachable?: boolean;
+  core_runtime_status?: string;
+  core_contract_version?: string;
+  core_runtime_message?: string;
 }
 
 export interface ConfigUpdateRequest {
@@ -1611,6 +1615,10 @@ export interface HealthResponse {
   enabled_provider_count?: number;
   role_count?: number;
   recommendations?: string[];
+  core_runtime_reachable?: boolean;
+  core_runtime_status?: string;
+  core_contract_version?: string;
+  core_runtime_message?: string;
 }
 
 export interface ModelCapabilities {
@@ -1657,6 +1665,10 @@ export interface ModelInventoryResponse {
   fallback_supported: boolean;
   message: string;
   models: ModelInfo[];
+  core_runtime_reachable?: boolean;
+  core_runtime_status?: string;
+  core_contract_version?: string;
+  core_runtime_message?: string;
 }
 
 export interface ModelRegistryProvider {

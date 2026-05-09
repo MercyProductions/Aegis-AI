@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -136,8 +137,9 @@ def run_validation(workspace: str | Path, command: list[str] | None = None, time
         return result
 
     try:
+        run_command = _resolve_validation_command(selected)
         completed = subprocess.run(
-            selected,
+            run_command,
             cwd=str(root),
             capture_output=True,
             text=True,
@@ -185,6 +187,18 @@ def run_validation(workspace: str | Path, command: list[str] | None = None, time
     }
     append_validation_log(root, result)
     return result
+
+
+def _resolve_validation_command(command: list[str]) -> list[str]:
+    if os.name != "nt" or not command:
+        return command
+    executable = str(command[0])
+    name = Path(executable).name.lower()
+    if name in {"npm", "pnpm", "yarn"}:
+        resolved = shutil.which(executable) or shutil.which(f"{executable}.cmd")
+        if resolved:
+            return [resolved, *command[1:]]
+    return command
 
 
 def is_safe_validation_command(command: list[str]) -> bool:
