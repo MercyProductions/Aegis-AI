@@ -307,6 +307,25 @@ Validation completed:
 - Aegis Core contract test suite: pass.
 - Repository whitespace check: pass.
 
+## 2026-05-09 - Core Nested Workspace Validation Boundaries
+
+Focus:
+
+- Keep parent ecosystem workspaces from inheriting validation commands from nested subprojects.
+- Preserve direct .NET project discovery for simple workspaces.
+
+Actions:
+
+- Added nested workspace boundary pruning for validation project-file discovery when child folders have their own package, Python, Rust, CMake, or solution markers.
+- Added a regression for a native Desktop-style parent workspace containing a nested Visual Studio extension .NET solution.
+- Updated validation discovery documentation.
+
+Validation completed:
+
+- Aegis Core validation detection regression slice: pass.
+- Aegis Core contract test suite: pass.
+- Repository whitespace check: pass.
+
 ## 2026-05-09 - Completion Selected Model Guard
 
 Focus:

@@ -16,6 +16,14 @@ from .safety import is_ignored_path, is_safe_to_read
 
 VALIDATION_LOG_FILE = "validation-log.md"
 DOTNET_PROJECT_SUFFIXES = {".csproj", ".fsproj", ".vbproj"}
+NESTED_WORKSPACE_MARKER_FILES = {
+    "package.json",
+    "pyproject.toml",
+    "requirements.txt",
+    "cargo.toml",
+    "cmakelists.txt",
+}
+NESTED_WORKSPACE_MARKER_SUFFIXES = {".sln", ".slnx"}
 
 
 @dataclass
@@ -117,7 +125,12 @@ def _has_project_file(root: Path, suffixes: set[str], max_seen: int = 5000) -> b
     seen = 0
     for dirpath, dirnames, filenames in os.walk(root):
         base = Path(dirpath)
-        dirnames[:] = [name for name in dirnames if not is_ignored_path(base / name, root)]
+        dirnames[:] = [
+            name
+            for name in dirnames
+            if not is_ignored_path(base / name, root)
+            and not _is_nested_workspace_boundary(base / name, root)
+        ]
         for filename in filenames:
             seen += 1
             if seen > max_seen:
@@ -125,6 +138,28 @@ def _has_project_file(root: Path, suffixes: set[str], max_seen: int = 5000) -> b
             path = base / filename
             if path.suffix.lower() in suffixes and is_safe_to_read(path, root):
                 return True
+    return False
+
+
+def _is_nested_workspace_boundary(path: Path, root: Path) -> bool:
+    try:
+        resolved_path = path.resolve()
+        resolved_root = root.resolve()
+        resolved_path.relative_to(resolved_root)
+    except (OSError, RuntimeError, ValueError):
+        return True
+    if resolved_path == resolved_root:
+        return False
+
+    try:
+        children = path.iterdir()
+    except OSError:
+        return False
+    for child in children:
+        if not _is_root_file(child, root):
+            continue
+        if child.name.lower() in NESTED_WORKSPACE_MARKER_FILES or child.suffix.lower() in NESTED_WORKSPACE_MARKER_SUFFIXES:
+            return True
     return False
 
 

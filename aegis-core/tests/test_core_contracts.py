@@ -2864,6 +2864,28 @@ def test_validation_detection_treats_dotnet_solution_as_dotnet(tmp_path: Path) -
     assert "dotnet build" in [item.name for item in detect_validation_commands(workspace)]
 
 
+def test_validation_detection_ignores_nested_workspace_project_files(tmp_path: Path) -> None:
+    workspace = tmp_path / "mixed-ecosystem-project"
+    workspace.mkdir()
+    (workspace / "Desktop.sln").write_text(
+        'Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Desktop", "Desktop.vcxproj", "{33333333-3333-3333-3333-333333333333}"\n',
+        encoding="utf-8",
+    )
+    (workspace / "Desktop.vcxproj").write_text("<Project />\n", encoding="utf-8")
+
+    extension = workspace / "extensions" / "agent-vs"
+    extension.mkdir(parents=True)
+    (extension / "AgentVs.sln").write_text(
+        'Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AgentVs", "src\\AgentVs.csproj", "{44444444-4444-4444-4444-444444444444}"\n',
+        encoding="utf-8",
+    )
+    project = extension / "src" / "AgentVs.csproj"
+    project.parent.mkdir()
+    project.write_text("<Project />\n", encoding="utf-8")
+
+    assert "dotnet build" not in [item.name for item in detect_validation_commands(workspace)]
+
+
 def test_validation_detection_ignores_damaged_root_build_markers(tmp_path: Path) -> None:
     workspace = tmp_path / "damaged-root-markers-project"
     workspace.mkdir()
