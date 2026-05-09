@@ -101,6 +101,20 @@ Fixes applied:
 - Added short HTTP timeouts to launcher readiness and JSON probes.
 - Kept the existing service ownership and route-contract checks intact.
 
+### 2026-05-09 - Website Launch Port-Conflict Hardening
+
+Context:
+- The launcher could warn that a backend or frontend port was occupied, then continue and start another process into the same port.
+- That creates noisy logs and makes the actual startup blocker harder to see.
+
+What worked:
+- Mocked occupied backend and frontend port probes returned blocked states with clear warnings.
+- Live website launch and smoke checks still passed.
+
+Fixes applied:
+- Added blocked-port checks before starting backend or frontend processes.
+- Preserved the existing behavior that can restart known Aegis services from the wrong project folder.
+
 ### 2026-05-09 - Aegis Core Starter Hardening
 
 Context:
@@ -170,6 +184,7 @@ Fixes applied:
 | 2026-05-09 | VS Code release scripts | Package/install commands broke when the workspace path contained spaces and `&`. | Medium | Replaced shell command strings with a shared command runner and relative VSIX args. |
 | 2026-05-09 | VS Code installer | PowerShell installer duplicated the npm/Node install path. | Low | Made it delegate to `npm run install-local` and validated the wrapper. |
 | 2026-05-09 | Website launcher | HTTP readiness probes had no explicit timeout, so half-responsive local services could stall startup. | Medium | Added short launch probe timeouts and validated launch/smoke. |
+| 2026-05-09 | Website launcher | Occupied backend/frontend ports could still lead to duplicate startup attempts after a warning. | Medium | Added blocked-port guards and validated mocked/live launch paths. |
 | 2026-05-09 | Aegis Core startup | Core starter accepted any HTTP 200 at `/v1/health` and did not prefer a project virtualenv. | Medium | Verify the Core health envelope, report contract version, and resolve Python predictably. |
 | 2026-05-09 | Aegis Core startup | A non-Core service returning HTTP 200 with invalid JSON could be treated as unreachable. | Medium | Mark malformed responses reachable and report `invalid_json` as the startup blocker. |
 

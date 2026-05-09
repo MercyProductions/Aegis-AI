@@ -56,6 +56,7 @@
 - Hardened Website checkpoint restore preflight so missing backup files fail clearly before any workspace files are restored or removed.
 - Hardened Website apply changes so checkpoint creation failures stop the apply before files are touched and later write/delete failures return warnings with checkpoint context.
 - Hardened Website launcher probes with explicit local HTTP timeouts so half-responsive backend, frontend, or Ollama endpoints do not make startup appear frozen.
+- Hardened Website launch port handling so occupied backend/frontend ports produce clear warnings instead of launching duplicate doomed processes.
 - Hardened Desktop backend/Core URL settings so local host:port inputs, trailing endpoint paths, and empty values normalize before runtime requests or config writes.
 - Hardened Desktop Core dashboard loading so a shared registration failure no longer blocks dashboard reads when Core is otherwise reachable.
 - Hardened VS Code Ollama/Core URL settings so common local inputs normalize before model detection, health checks, and shared Core sync.
@@ -88,4 +89,5 @@
 - Visual Studio VSIX packaging now verifies manifest MoreInfo and rejects localhost placeholders or internal notes in the archive.
 - Website frontend tests/build and backend test suite pass.
 - Website launch script and smoke workflow pass from the current Windows workspace path.
+- Website launch blocked-port probes validate occupied backend/frontend port handling.
 - Full validation notes are tracked in `docs/ECOSYSTEM_STABILIZATION.md`.

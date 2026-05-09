@@ -229,6 +229,26 @@ Validation completed:
 - Website launch script: pass; Auralith OS reported ready at `http://127.0.0.1:5173`.
 - Website smoke test without chat: pass; frontend/backend identity, partial config, workspace setup, diff/apply/readback, validation, and readiness checks completed.
 
+## 2026-05-09 - Website Launch Port-Conflict Hardening
+
+Focus:
+
+- Avoid starting duplicate backend or frontend processes when ports `8787` or `5173` are already occupied by a non-ready or wrong service.
+- Keep launch failures understandable during daily startup.
+
+Actions:
+
+- Added backend blocked-port detection after mismatched-backend restart attempts.
+- Added frontend blocked-port detection after mismatched-frontend checks.
+- Kept the existing ownership checks that restart Aegis instances from the wrong project folder.
+
+Validation completed:
+
+- Website launcher PowerShell syntax check: pass.
+- Mocked backend/frontend blocked-port probes: pass.
+- Website launch script: pass; Auralith OS reported ready at `http://127.0.0.1:5173`.
+- Website smoke test without chat: pass.
+
 ## 2026-05-09 - Aegis Core Starter Hardening
 
 Focus:
