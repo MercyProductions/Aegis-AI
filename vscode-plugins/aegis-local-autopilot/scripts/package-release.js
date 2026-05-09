@@ -10,6 +10,12 @@ const outName = `${manifest.name}-${manifest.version}.vsix`;
 const outFile = path.join(releaseDir, outName);
 const outArg = path.join('release', outName);
 
+cp.execFileSync(process.execPath, ['--check', path.join(root, 'extension.js')], {
+  cwd: root,
+  stdio: 'inherit',
+  windowsHide: true
+});
+
 cp.execFileSync(process.execPath, [path.join(root, 'scripts', 'lint-package.js')], {
   cwd: root,
   stdio: 'inherit',

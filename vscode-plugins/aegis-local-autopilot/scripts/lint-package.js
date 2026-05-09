@@ -155,6 +155,11 @@ for (const scriptFile of ['scripts/package-release.js', 'scripts/install-local.j
   }
 }
 
+const packageReleaseText = fs.readFileSync(path.join(root, 'scripts/package-release.js'), 'utf8');
+if (!/--check/.test(packageReleaseText) || !/extension\.js/.test(packageReleaseText)) {
+  fail('scripts/package-release.js must compile-check extension.js before creating the VSIX.');
+}
+
 assertCmdQuoting('plain', 'plain');
 assertCmdQuoting('path with spaces', '"path with spaces"');
 assertCmdQuoting('C:\\Aegis^Tools\\package', '"C:\\Aegis^^Tools\\package"');

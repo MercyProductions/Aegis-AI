@@ -1040,3 +1040,21 @@ Validation completed:
 - VS Code package lint alias: pass via `npm run lint:package`.
 - VS Code VSIX package: pass; package lint ran before archive creation.
 - Git diff whitespace check: pass.
+
+## 2026-05-09 - VS Code Package Compile Guard
+
+Focus:
+
+- Keep `npm run package` and `npm run install-local` from shipping a VSIX when `extension.js` has a syntax error.
+- Align the release script with the documented install-local behavior.
+
+Actions:
+
+- Added an explicit `node --check extension.js` gate to `scripts/package-release.js` before package lint and VSIX creation.
+- Added a package-lint guard so the compile check cannot silently drift out of the release script.
+
+Validation completed:
+
+- VS Code extension lint: pass, including compile and package lint guards.
+- VS Code VSIX package: pass; `package-release.js` syntax-checked `extension.js` before linting and packaging.
+- Git diff whitespace check: pass.
