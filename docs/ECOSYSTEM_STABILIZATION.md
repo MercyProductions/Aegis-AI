@@ -100,6 +100,7 @@ Ran during this pass:
 - VS Code package lint and extension syntax check after Unity metadata context hardening: pass
 - VS Code package lint and extension syntax check after generated/runtime proposal guard hardening: pass
 - VS Code package lint and extension syntax check after editor secret path guard parity: pass
+- VS Code package lint and extension syntax check after dot-segment proposal path guard hardening: pass
 - Visual Studio package validation guards and Release build after generated/runtime safe-edit hardening: pass
 - Visual Studio package validation guards and Release build after editor secret path guard parity: pass
 - Website focused frontend API/runtime/task tests: 40 tests passed
@@ -138,6 +139,7 @@ Ran during this pass:
 - Hardened Website, VS Code, and Visual Studio safe-edit guards so generated proposals cannot write into Unity `Library`, `Temp`, or `Logs` runtime folders, and Website apply blocks ignored dependency/runtime or hidden folders before file writes.
 - Hardened Website workspace scan, context, read, and apply paths so `.env`, token/password, private-key, and certificate-like filenames stay out of model context and generated writes while safe names such as `.gitignore` and `tokenizer.py` remain usable.
 - Aligned VS Code and Visual Studio safe-edit secret filename guards with Core and Website coverage for password, API-key, auth, SSH-key, and keystore-like files while preserving ordinary source names such as `tokenizer.py`.
+- Hardened VS Code proposal path safety so dot-segment paths such as `src/../README.md` are rejected before apply.
 - Hardened Core validation detection so ignored dependency/build folders do not trigger false `.NET` build suggestions.
 - Hardened Core validation detection so damaged root build-marker directories do not trigger false Cargo, Python, CMake, pnpm, or Yarn suggestions.
 - Reduced Core validation startup overhead by avoiding duplicate validation-command detection.

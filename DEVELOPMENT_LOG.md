@@ -1,5 +1,21 @@
 # Development Log
 
+## 2026-05-09 - VS Code Dot-Segment Proposal Path Guard
+
+Focus:
+
+- Keep VS Code proposal paths explicit and normalized before any generated edit can be applied.
+- Reject traversal-style `.` and `..` path segments early, even when final path resolution would stay inside the workspace.
+
+Actions:
+
+- Updated `isBlockedRelativePath` to block `.` and `..` segments in proposed edit paths.
+- Added VS Code package lint coverage for `../README.md`, `src/../README.md`, and `src/./README.md` while preserving ordinary relative paths.
+
+Validation completed:
+
+- VS Code package lint and extension syntax check: pass.
+
 ## 2026-05-09 - Editor Secret Path Guard Parity
 
 Focus:

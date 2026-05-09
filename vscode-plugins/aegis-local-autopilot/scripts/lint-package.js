@@ -191,6 +191,7 @@ assertBuildFileDetection(buildFileClassifier);
 assertProjectRiskPattern(extensionText);
 assertPythonLockfilePatterns(extensionText);
 assertGeneratedFolderSafety(extensionText);
+assertRelativePathSegmentSafety(extensionText);
 assertSecretFileSafety(extensionText);
 const blockedProposalFormatter = loadExtensionFunction(extensionText, 'formatBlockedProposalEditSummary');
 assertBlockedProposalEditSummary(blockedProposalFormatter);
@@ -635,6 +636,23 @@ function assertGeneratedFolderSafety(source) {
   for (const segment of ['library', 'temp', 'logs']) {
     if (!source.includes(`'${segment}'`)) {
       fail(`BLOCKED_PATH_SEGMENTS must include generated/runtime folder '${segment}'.`);
+    }
+  }
+}
+
+function assertRelativePathSegmentSafety(source) {
+  const isBlockedRelativePath = loadExtensionFunction(source, 'isBlockedRelativePath', {
+    BLOCKED_PATH_SEGMENTS: new Set(),
+    SECRET_FILE_PATTERNS: []
+  });
+  for (const file of ['.', '..', '../README.md', 'src/../README.md', 'src/./README.md']) {
+    if (!isBlockedRelativePath(file)) {
+      fail(`isBlockedRelativePath must block dot-segment proposal path ${file}.`);
+    }
+  }
+  for (const file of ['src/README.md', 'src/module.ts']) {
+    if (isBlockedRelativePath(file)) {
+      fail(`isBlockedRelativePath must allow ordinary relative path ${file}.`);
     }
   }
 }

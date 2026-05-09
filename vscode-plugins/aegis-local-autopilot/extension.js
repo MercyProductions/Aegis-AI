@@ -3369,6 +3369,9 @@ function isBlockedRelativePath(relativePath) {
     return true;
   }
   for (const segment of segments) {
+    if (segment === '.' || segment === '..') {
+      return true;
+    }
     if (BLOCKED_PATH_SEGMENTS.has(segment.toLowerCase())) {
       return true;
     }

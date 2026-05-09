@@ -19,6 +19,7 @@
 - Improved Unity local fallback snapshots so package manifests, package lockfiles, key `ProjectSettings` metadata, and assembly-definition files are treated as important context/build files.
 - Hardened proposal path safety so Unity `Library` and `Temp` folders are blocked alongside `Logs` and other generated/dependency folders.
 - Hardened secret proposal path safety for password, API-key, auth, SSH-key, and keystore-like filenames while avoiding false positives such as `tokenizer.py`.
+- Hardened proposal path safety so `.` and `..` path segments are rejected before apply.
 
 ## 0.1.0 - Release Candidate
 
