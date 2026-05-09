@@ -69,6 +69,7 @@ BENCHMARK_SUITES: tuple[BenchmarkSuite, ...] = (
         expected_display="554",
     ),
 )
+MAX_MODEL_BENCHMARK_JSON_BYTES = 512_000
 
 
 class ModelBenchmarkManager:
@@ -455,11 +456,7 @@ class ModelBenchmarkManager:
     def _append_results(self, results: list[ModelBenchmarkResult]) -> None:
         existing = self._load_results()
         combined = sorted([*existing, *results], key=lambda result: result.created_at, reverse=True)[:500]
-        self.results_path.parent.mkdir(parents=True, exist_ok=True)
-        self.results_path.write_text(
-            json.dumps([result.model_dump() for result in combined], indent=2, ensure_ascii=True),
-            encoding="utf-8",
-        )
+        self._write_json_list(self.results_path, [result.model_dump() for result in combined])
 
     def _job_progress_message(self, job: ModelBenchmarkJobInfo) -> str:
         if job.total_runs <= 0:
@@ -511,29 +508,21 @@ class ModelBenchmarkManager:
         jobs = [existing for existing in self._load_jobs() if existing.id != job.id]
         jobs.insert(0, job)
         jobs = sorted(jobs, key=lambda item: item.created_at, reverse=True)[:100]
-        self.jobs_path.parent.mkdir(parents=True, exist_ok=True)
-        self.jobs_path.write_text(
-            json.dumps([item.model_dump() for item in jobs], indent=2, ensure_ascii=True),
-            encoding="utf-8",
-        )
+        self._write_json_list(self.jobs_path, [item.model_dump() for item in jobs])
 
     def _load_jobs(self) -> list[ModelBenchmarkJobInfo]:
-        if not self.jobs_path.exists():
-            return []
-        try:
-            payload = json.loads(self.jobs_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return []
-        if not isinstance(payload, list):
-            return []
+        payload = self._read_json_list(self.jobs_path)
         jobs: list[ModelBenchmarkJobInfo] = []
         for item in payload:
             if not isinstance(item, dict):
                 continue
             try:
-                jobs.append(ModelBenchmarkJobInfo.model_validate(item))
-            except ValueError:
+                job = ModelBenchmarkJobInfo.model_validate(item)
+            except (TypeError, ValueError):
                 continue
+            if not job.id:
+                continue
+            jobs.append(job)
         return jobs
 
     def _recover_interrupted_jobs(self) -> None:
@@ -547,30 +536,42 @@ class ModelBenchmarkManager:
                 job.message = "Benchmark job was interrupted by a backend restart."
                 changed = True
         if changed:
-            self.jobs_path.parent.mkdir(parents=True, exist_ok=True)
-            self.jobs_path.write_text(
-                json.dumps([item.model_dump() for item in jobs], indent=2, ensure_ascii=True),
-                encoding="utf-8",
-            )
+            self._write_json_list(self.jobs_path, [item.model_dump() for item in jobs])
 
     def _load_results(self) -> list[ModelBenchmarkResult]:
-        if not self.results_path.exists():
-            return []
-        try:
-            payload = json.loads(self.results_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return []
-        if not isinstance(payload, list):
-            return []
+        payload = self._read_json_list(self.results_path)
         results: list[ModelBenchmarkResult] = []
         for item in payload:
             if not isinstance(item, dict):
                 continue
             try:
                 results.append(ModelBenchmarkResult.model_validate(item))
-            except ValueError:
+            except (TypeError, ValueError):
                 continue
         return results
+
+    def _read_json_list(self, path: Path) -> list[Any]:
+        try:
+            if not path.exists() or not path.is_file() or path.stat().st_size > MAX_MODEL_BENCHMARK_JSON_BYTES:
+                return []
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return []
+        return payload if isinstance(payload, list) else []
+
+    def _write_json_list(self, path: Path, payload: list[dict[str, Any]]) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(f".{path.name}.tmp")
+        try:
+            tmp.write_text(json.dumps(payload, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
+            tmp.replace(path)
+        except OSError:
+            try:
+                if tmp.is_file():
+                    tmp.unlink()
+            except OSError:
+                pass
+            raise
 
     def _suite_score(self, latest_by_suite: dict[str, ModelBenchmarkResult], suite_id: str) -> float | None:
         result = latest_by_suite.get(suite_id)

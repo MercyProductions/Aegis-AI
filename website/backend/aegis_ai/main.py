@@ -1728,6 +1728,8 @@ async def run_model_benchmarks(request: ModelBenchmarkRunRequest) -> ModelBenchm
         return await model_benchmarks.run(request)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except OSError as exc:
+        raise HTTPException(status_code=503, detail=f"Could not update model benchmark records: {exc}") from exc
 
 
 @app.get("/api/model-benchmarks/jobs", response_model=list[ModelBenchmarkJobInfo])
@@ -1741,6 +1743,8 @@ async def start_model_benchmark_job(request: ModelBenchmarkRunRequest) -> ModelB
         return model_benchmarks.start_job(request)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except OSError as exc:
+        raise HTTPException(status_code=503, detail=f"Could not update model benchmark records: {exc}") from exc
 
 
 @app.post("/api/model-benchmarks/jobs/{job_id}/cancel", response_model=ModelBenchmarkJobInfo)
@@ -1749,6 +1753,8 @@ async def cancel_model_benchmark_job(job_id: str) -> ModelBenchmarkJobInfo:
         return model_benchmarks.cancel_job(job_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except OSError as exc:
+        raise HTTPException(status_code=503, detail=f"Could not update model benchmark records: {exc}") from exc
 
 
 @app.get("/api/media/capabilities", response_model=MediaCapabilitiesResponse)

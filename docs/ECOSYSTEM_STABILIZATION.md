@@ -43,6 +43,7 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 | Website validation profiles | Improved | Manual validation profile updates now use atomic writes, clean failed temp files, and report damaged profile paths as clear API errors. |
 | Website memory notes | Improved | Memory-note files are confined to the memory directory, damaged memory paths degrade with clear API errors, writes are atomic, malformed confidence input is tolerated, and rapid note IDs are collision-safe. |
 | Website model manager | Improved | Damaged model-operation and pull-log JSON paths are skipped safely, invalid operation records are ignored, and operation history writes are atomic. |
+| Website model benchmarks | Improved | Damaged benchmark result/job stores are skipped safely, blank job records are ignored, and benchmark state writes are atomic. |
 | Website dependency profiling | Improved | Damaged marker directories and lockfile paths no longer distort onboarding stack, package-manager, entry-point, or database summaries. |
 | Website checkpoint restore | Improved | Restore now validates checkpoint IDs, damaged manifests, backup paths, and missing backup files before touching workspace files. |
 | Website safe apply | Improved | Apply refuses to edit when checkpoint creation fails and reports later write/delete failures with checkpoint context. |
@@ -82,6 +83,7 @@ Ran during this pass:
 - Website workspace setup regression and helper tests for damaged `.aegis` paths: 8 tests passed
 - Website validation manager damaged-marker/profile-persistence regression tests: 21 tests and 4 subtests passed
 - Website model-manager damaged-log regression tests: 4 tests passed
+- Website model-benchmark damaged-store regression tests: 7 tests passed
 - Website checkpoint restore, apply safety, memory-note persistence, and dependency-profile tests: 60 workspace/storage tests passed
 - Website backend `python -m compileall aegis_ai`: pass
 
@@ -126,6 +128,7 @@ Ran during this pass:
 - Hardened Website validation profile updates so damaged profile paths return clear API errors and failed writes do not leave temporary files behind.
 - Hardened Website memory note persistence so category-derived filenames cannot escape the memory directory, damaged memory paths degrade with clear API errors, note writes are atomic, malformed confidence input is tolerated, and same-millisecond creations get unique IDs.
 - Hardened Website model-manager snapshot reads so damaged `logs/model-manager/operations.json` and model-pull summary paths cannot break the local model dashboard.
+- Hardened Website model-benchmark persistence so damaged benchmark result/job JSON paths cannot break snapshots, blank job records are ignored, and failed state writes return clear API errors.
 - Hardened Website dependency profiling so damaged marker directories and lockfile paths do not distort onboarding stack summaries.
 - Hardened Website checkpoint restore so invalid checkpoint IDs, non-file manifests, and escaped backup paths fail safely before workspace files are restored or removed.
 - Hardened Website checkpoint restore preflight so missing backup files fail clearly before any workspace files are restored or removed.
