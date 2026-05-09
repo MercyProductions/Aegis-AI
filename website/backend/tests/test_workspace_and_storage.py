@@ -1104,6 +1104,44 @@ int main() {
         self.assertTrue((workspace / "memory" / f"{payload['id']}.json").is_file())
         self.assertFalse((workspace / ".aegis").exists())
 
+    def test_memory_manager_degrades_when_memory_storage_path_is_file(self) -> None:
+        workspace = (self.project_root / "workspace").resolve()
+        workspace.mkdir(parents=True, exist_ok=True)
+        memory_path = workspace / "memory"
+        memory_path.write_text("damaged memory path", encoding="utf-8")
+
+        manager = MemoryManager(workspace)
+
+        self.assertEqual(manager.notes, {})
+        self.assertIn("not a directory", manager.storage_warning)
+        with self.assertRaisesRegex(OSError, "Could not initialize memory storage"):
+            manager.create_note("Blocked", "Cannot write through a file path.", "insight")
+        self.assertEqual(memory_path.read_text(encoding="utf-8"), "damaged memory path")
+
+    def test_memory_api_reports_damaged_memory_storage_path(self) -> None:
+        workspace = (self.project_root / "workspace").resolve()
+        workspace.mkdir(parents=True, exist_ok=True)
+        (workspace / "memory").write_text("damaged memory path", encoding="utf-8")
+        workspace_manager = WorkspaceManager(self.project_root, self.settings)
+
+        with (
+            patch.object(main, "workspace_manager", workspace_manager),
+            TestClient(main.app) as client,
+        ):
+            get_response = client.get("/api/memory", params={"workspace_root": str(workspace)})
+            create_response = client.post(
+                "/api/memory",
+                params={"workspace_root": str(workspace)},
+                json={"title": "Blocked", "content": "Cannot write.", "category": "insight"},
+            )
+
+        self.assertEqual(get_response.status_code, 200)
+        self.assertEqual(get_response.json()["notes"], [])
+        self.assertIn("not a directory", "\n".join(get_response.json()["warnings"]))
+        self.assertEqual(create_response.status_code, 503)
+        self.assertIn("Could not update memory notes", create_response.json()["detail"])
+        self.assertIn("not a directory", create_response.json()["detail"])
+
     def test_repair_attempts_round_trip(self) -> None:
         store = EventStore(self.project_root, self.settings)
         workspace = (self.project_root / "workspace").resolve()

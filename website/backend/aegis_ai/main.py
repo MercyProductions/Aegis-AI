@@ -3728,6 +3728,7 @@ async def get_memory_notes(
 
     return {
         "workspace_root": str(root),
+        "warnings": [memory.storage_warning] if memory.storage_warning else [],
         "notes": [
             {
                 "id": n.id,
@@ -3753,18 +3754,21 @@ async def create_memory_note(request: dict, workspace_root: str | None = Query(d
     from .memory_manager import MemoryManager
 
     memory = MemoryManager(root)
-    note = memory.create_note(
-        title=request.get("title", "Untitled"),
-        content=request.get("content", ""),
-        category=request.get("category", "insight"),
-        tags=request.get("tags", []),
-        related_files=request.get("related_files", [])
-    )
-    note = memory.update_note(
-        note.id,
-        pinned=bool(request.get("pinned", False)),
-        confidence=request.get("confidence", note.confidence),
-    ) or note
+    try:
+        note = memory.create_note(
+            title=request.get("title", "Untitled"),
+            content=request.get("content", ""),
+            category=request.get("category", "insight"),
+            tags=request.get("tags", []),
+            related_files=request.get("related_files", [])
+        )
+        note = memory.update_note(
+            note.id,
+            pinned=bool(request.get("pinned", False)),
+            confidence=request.get("confidence", note.confidence),
+        ) or note
+    except OSError as exc:
+        raise HTTPException(status_code=503, detail=f"Could not update memory notes: {exc}") from exc
     _invalidate_workspace_caches(root)
 
     return {
@@ -3883,9 +3887,14 @@ async def update_memory_note(
     from .memory_manager import MemoryManager
 
     memory = MemoryManager(root)
-    note = memory.update_note(note_id, **request)
+    try:
+        note = memory.update_note(note_id, **request)
+    except OSError as exc:
+        raise HTTPException(status_code=503, detail=f"Could not update memory notes: {exc}") from exc
 
     if not note:
+        if memory.storage_warning:
+            raise HTTPException(status_code=503, detail=f"Could not read memory notes: {memory.storage_warning}")
         raise HTTPException(status_code=404, detail="Note not found")
 
     _invalidate_workspace_caches(root)
@@ -3910,7 +3919,13 @@ async def delete_memory_note(note_id: str, workspace_root: str | None = Query(de
     from .memory_manager import MemoryManager
 
     memory = MemoryManager(root)
-    if not memory.delete_note(note_id):
+    try:
+        deleted = memory.delete_note(note_id)
+    except OSError as exc:
+        raise HTTPException(status_code=503, detail=f"Could not update memory notes: {exc}") from exc
+    if not deleted:
+        if memory.storage_warning:
+            raise HTTPException(status_code=503, detail=f"Could not read memory notes: {memory.storage_warning}")
         raise HTTPException(status_code=404, detail="Note not found")
 
     _invalidate_workspace_caches(root)

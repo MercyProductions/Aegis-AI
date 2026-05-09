@@ -42,8 +42,13 @@ class MemoryManager:
 
     def __init__(self, storage_path: Path):
         self.storage_path = storage_path / "memory"
-        self.storage_path.mkdir(parents=True, exist_ok=True)
         self.notes: dict[str, MemoryNote] = {}
+        self.storage_warning = ""
+        try:
+            self._ensure_storage_dir()
+        except OSError as exc:
+            self.storage_warning = str(exc)
+            return
         self._load_all_notes()
 
     def _load_all_notes(self):
@@ -69,6 +74,7 @@ class MemoryManager:
         related_files: list[str] = None
     ) -> MemoryNote:
         """Create a new memory note."""
+        self._ensure_storage_dir()
         now_dt = datetime.now(UTC)
         now = now_dt.isoformat()
         note_id = self._new_note_id(category, now_dt)
@@ -127,6 +133,7 @@ class MemoryManager:
         if note_id not in self.notes:
             return False
 
+        self._ensure_storage_dir()
         try:
             note_file = self._note_path(note_id)
         except ValueError:
@@ -197,6 +204,7 @@ class MemoryManager:
 
     def _save_note(self, note: MemoryNote):
         """Save a note to storage."""
+        self._ensure_storage_dir()
         note_file = self._note_path(note.id)
         payload = {
             "id": note.id,
@@ -246,6 +254,15 @@ class MemoryManager:
             return json.dumps(data, indent=2)
 
         return ""
+
+    def _ensure_storage_dir(self) -> None:
+        try:
+            if self.storage_path.exists() and not self.storage_path.is_dir():
+                raise OSError(f"{self.storage_path} is not a directory")
+            self.storage_path.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            raise OSError(f"Could not initialize memory storage at {self.storage_path}: {exc}") from exc
+        self.storage_warning = ""
 
     def _new_note_id(self, category: str, now_dt: datetime) -> str:
         base = f"{self._slugify_identifier(category)}_{int(now_dt.timestamp() * 1000)}"
