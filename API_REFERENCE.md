@@ -183,6 +183,7 @@ Hybrid model routing:
 - Cloud routes require client-visible warnings, explicit approval, sanitized context metadata, and provider keys stored in OS credential storage.
 - Secret-like, ignored, and outside-workspace files are excluded from cloud context.
 - Provider inventory and route responses include `credential_store_healthy` and `credential_store_errors` so clients can tell the difference between "no cloud key stored" and "the OS credential store could not be inspected."
+- CLI parity: `python -m aegis_core.cli route --provider lm_studio --model local-model --context-file src/App.tsx --json` previews the same provider selection and sanitized context metadata as `/v1/models/route`.
 
 Autonomous task orchestration:
 

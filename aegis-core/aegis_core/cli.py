@@ -73,6 +73,10 @@ def main(argv: list[str] | None = None) -> int:
             sub.add_argument("--difficulty", default=None, help="Optional difficulty label: simple, medium, or hard.")
             sub.add_argument("--allow-cloud", action="store_true", help="Allow a cloud route to be considered after visible approval.")
             sub.add_argument("--cloud-approved", action="store_true", help="Confirm the user approved sending sanitized context to cloud.")
+            sub.add_argument("--provider", dest="provider_id", help="Preferred provider id such as ollama, lm_studio, openai, anthropic, google, or openrouter.")
+            sub.add_argument("--model", help="Preferred model name for the selected local or approved cloud provider.")
+            sub.add_argument("--context-file", dest="context_files", action="append", default=[], help="Workspace-relative context file to preview. Can be supplied more than once.")
+            sub.add_argument("--local-failure-reason", help="Optional reason local routing is being escalated or reviewed.")
         if name == "orchestrate":
             sub.add_argument("--goal", help="Create a new approval-gated orchestration goal.")
             sub.add_argument("--source-client", default="cli", help="Client creating the orchestration goal.")
@@ -180,6 +184,10 @@ def main(argv: list[str] | None = None) -> int:
                 args.difficulty,
                 allow_cloud=args.allow_cloud,
                 cloud_approved=args.cloud_approved,
+                context_files=args.context_files,
+                local_failure_reason=args.local_failure_reason,
+                preferred_provider=args.provider_id,
+                preferred_model=args.model,
             )
         elif args.command == "orchestrate":
             if args.goal:

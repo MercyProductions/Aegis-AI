@@ -129,6 +129,25 @@ Validation completed:
 - Aegis Core contract test suite: pass, 114 tests.
 - Repository whitespace check: pass.
 
+## 2026-05-09 - Core Route CLI Parity
+
+Focus:
+
+- Make the local-first route planner usable from the CLI with the same provider and context controls available through `/v1/models/route`.
+- Preserve sanitized context previews for command-line dry-runs.
+
+Actions:
+
+- Added `aegis route` flags for `--provider`, `--model`, repeated `--context-file`, and `--local-failure-reason`.
+- Wired those flags into the existing hybrid model router instead of adding a separate CLI-only path.
+- Added a subprocess regression proving CLI route previews keep `lm_studio` local while blocking `.env` context.
+
+Validation completed:
+
+- Aegis Core CLI route regression slice: pass, 2 tests.
+- Aegis Core contract test suite: pass, 115 tests.
+- Repository whitespace check: pass.
+
 ## 2026-05-09 - Autonomous Stabilization Tranche
 
 Focus:

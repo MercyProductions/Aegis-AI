@@ -232,6 +232,8 @@ Returns a route plan. Core selects Ollama/local models by default and marks clou
 
 Explicit local provider requests stay local. For example, `provider_id: "lm_studio"` selects the configured local LM Studio OpenAI-compatible server and does not turn into an OpenAI/OpenRouter cloud fallback candidate.
 
+CLI route previews use the same planner. Use `python -m aegis_core.cli route --provider lm_studio --model local-model --context-file src/App.tsx --json` to inspect provider selection, approval state, warnings, and sanitized context metadata without making a completion call.
+
 Task routing defaults:
 
 | Task type | Default route |

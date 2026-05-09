@@ -21,6 +21,7 @@ cd aegis-core
 python -m aegis_core.cli health --workspace ..
 python -m aegis_core.cli scan --workspace ..
 python -m aegis_core.cli roadmap --workspace ..
+python -m aegis_core.cli route --workspace .. --task-type hard_debugging --provider lm_studio --model local-model --context-file src/App.tsx --json
 python -m aegis_core.cli simulate --workspace .. --objective "Refactor one service safely" --approach "Minimal adapter"
 python -m aegis_core.cli operations --workspace ..
 python -m aegis_core.cli personal --workspace .. --preference planning_depth=balanced

@@ -138,6 +138,50 @@ def test_workspace_scan_cache_reuses_unchanged_scan(tmp_path: Path) -> None:
     assert all(item["persisted"] for item in first["memory_artifacts"])
 
 
+def test_cli_route_accepts_provider_model_and_context_files(tmp_path: Path) -> None:
+    workspace = tmp_path / "cli-route-project"
+    workspace.mkdir()
+    aegis_dir = workspace / ".aegis"
+    aegis_dir.mkdir()
+    (aegis_dir / "config.json").write_text(
+        json.dumps({"model_routing_mode": "cloud_allowed", "preferred_cloud_provider": "openai"}),
+        encoding="utf-8",
+    )
+    (workspace / "src.py").write_text("print('ok')\n", encoding="utf-8")
+    (workspace / ".env").write_text("API_KEY=secret\n", encoding="utf-8")
+    core_root = Path(__file__).resolve().parents[1]
+
+    result = run_cli(
+        core_root,
+        "--json",
+        "route",
+        "--workspace",
+        str(workspace),
+        "--task-type",
+        "hard_debugging",
+        "--allow-cloud",
+        "--cloud-approved",
+        "--provider",
+        "lm_studio",
+        "--model",
+        "local-lmstudio-model",
+        "--context-file",
+        "src.py",
+        "--context-file",
+        ".env",
+        "--local-failure-reason",
+        "prefer a local OpenAI-compatible server",
+    )
+
+    assert result["selected"]["provider_id"] == "lm_studio"
+    assert result["selected"]["model"] == "local-lmstudio-model"
+    assert result["selected"]["local"] is True
+    assert result["cloud_ready"] is False
+    assert result["context"]["included_files"] == ["src.py"]
+    assert result["context"]["blocked_files"][0]["path"] == ".env"
+    assert [candidate["provider_id"] for candidate in result["fallback_order"]] == ["lm_studio"]
+
+
 def test_workspace_scan_handles_malformed_package_dependency_shapes(tmp_path: Path) -> None:
     workspace = tmp_path / "malformed-package-project"
     workspace.mkdir()
