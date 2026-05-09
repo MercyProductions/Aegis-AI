@@ -13,10 +13,15 @@ This first pass is intentionally small. It consolidates common backend responsib
 
 ## What Core Owns
 
-- Ollama model detection, health checks, routing defaults, and fallback metadata
+- Ollama model detection, health checks, routing defaults, fallback metadata, and local-first hybrid model route planning
 - Workspace scanning, language/framework detection, file index, dependency graph, and symbol index
 - Project memory files in `.aegis/`
 - Roadmap generation from local scan data
+- Autonomous task orchestration for large goals, stored as approval-gated local queues
+- Specialized local agent roles for planning, architecture, coding, review, testing, repair, and documentation
+- Safe scheduled and trigger-based maintenance jobs for scans, reports, roadmap refreshes, TODO review, documentation drift, and validation status
+- Project health scoring, trend tracking, risk detection, and quality reports
+- Local knowledge graph for files, symbols, systems, APIs, UI components, services, tasks, roadmap items, decisions, bugs, validation failures, and historical relationships
 - Validation command detection and safe opt-in execution
 - Agent planning placeholders that propose next steps without applying edits
 - Diagnostics and local logs
@@ -29,6 +34,10 @@ This first pass is intentionally small. It consolidates common backend responsib
 
 - It does not replace the existing clients in one jump.
 - It does not auto-edit files.
+- It does not turn autonomy into uncontrolled file mutation; orchestration pauses for approval before edits and risky commands.
+- It does not run scheduled jobs as a hidden daemon; clients or a local host invoke due or trigger-based jobs explicitly.
+- It does not send data to cloud models unless a client explicitly approves a sanitized context plan.
+- It does not store provider API keys in plaintext config files; optional provider keys must live in OS credential storage.
 - It does not implement cloud accounts, licensing, or update infrastructure.
 - It does not run destructive commands.
 
@@ -45,6 +54,15 @@ python -m aegis_core.cli continue --workspace ..
 python -m aegis_core.cli repair --workspace ..
 python -m aegis_core.cli dashboard --workspace ..
 python -m aegis_core.cli tasks --workspace ..
+python -m aegis_core.cli providers --workspace ..
+python -m aegis_core.cli agents --workspace ..
+python -m aegis_core.cli jobs --workspace ..
+python -m aegis_core.cli jobs --workspace .. --run daily-project-scan
+python -m aegis_core.cli quality --workspace .. --record
+python -m aegis_core.cli knowledge --workspace .. --record
+python -m aegis_core.cli knowledge --workspace .. --query "What systems depend on aegis-core/aegis_core/server.py?"
+python -m aegis_core.cli route --workspace .. --task-type hard_debugging
+python -m aegis_core.cli orchestrate --workspace .. --goal "Stabilize the extension packaging flow"
 ```
 
 After installing the package, the same commands are available through:
@@ -57,6 +75,15 @@ aegis continue --workspace <path>
 aegis repair --workspace <path>
 aegis dashboard --workspace <path>
 aegis tasks --workspace <path>
+aegis providers --workspace <path>
+aegis agents --workspace <path>
+aegis jobs --workspace <path>
+aegis jobs --workspace <path> --trigger project_opened
+aegis quality --workspace <path> --record
+aegis knowledge --workspace <path> --record
+aegis knowledge --workspace <path> --query "What areas of the project are most unstable?"
+aegis route --workspace <path> --task-type code_completion
+aegis orchestrate --workspace <path> --goal "Stabilize one workflow"
 ```
 
 Validation is conservative. `aegis validate` detects commands. Add `--run` to execute the first safe detected command.
@@ -87,18 +114,93 @@ Use the versioned client contract for new integrations:
 ```text
 GET  /v1/health
 GET  /v1/models
+GET  /v1/providers
+POST /v1/models/route
+POST /v1/models/completions
 GET  /v1/settings
 POST /v1/workspaces/scan
 POST /v1/workspaces/roadmap
 GET  /v1/memory
 GET  /v1/diagnostics
 POST /v1/clients/register
+GET  /v1/agents
 GET  /v1/tasks
 POST /v1/tasks
+GET  /v1/orchestration
+POST /v1/orchestration/plan
+POST /v1/orchestration/step
+GET  /v1/jobs
+POST /v1/jobs/run
+GET  /v1/quality
+POST /v1/quality/snapshot
+GET  /v1/knowledge/graph
+POST /v1/knowledge/graph
+POST /v1/knowledge/query
 GET  /v1/ecosystem/dashboard
 ```
 
 See `docs/API_REFERENCE.md`.
+
+## Hybrid Model Router
+
+Aegis Core is local-first. The default routing mode is `local_only`, so normal chat, explanations, code completion, code review, roadmap generation, and smaller fixes stay on Ollama at `http://127.0.0.1:11434`.
+
+Optional providers are exposed as route candidates only:
+
+- OpenAI
+- Anthropic
+- Google
+- OpenRouter
+- LM Studio local server at `http://127.0.0.1:1234`
+
+Cloud providers require all of the following before Core will call them:
+
+- `model_routing_mode` set to `hybrid` or `cloud_allowed`
+- the client requests cloud consideration
+- the client confirms user approval after showing sanitized files/context
+- a provider API key stored in OS credential storage
+
+Core excludes secret-like, ignored, and outside-workspace files from cloud context and redacts secret-like lines before context is sent.
+
+## Autonomous Task Orchestration
+
+Core can turn a larger development goal into a local staged queue. The queue is intentionally supervised:
+
+- Each goal records an objective, affected systems, required files, risk level, validation plan, rollback plan, and approval gates.
+- Each queued task has one owner agent: Planner, Architect, Coder, Reviewer, Tester, Repair, or Documentation.
+- Queue statuses are `pending`, `in_progress`, `blocked`, `needs_approval`, `validating`, `completed`, and `failed`.
+- Each task moves through inspect, plan, propose changes, wait for approval, apply approved changes, validate, and summarize.
+- Core records state and memory, but clients remain responsible for showing diffs/context and applying approved file edits.
+- Validation commands only run after approval when the step involves build/test/lint execution.
+- Agent decisions are appended to `agent-history.json` so clients can show who made each recommendation.
+
+Orchestration state is written to `.aegis/orchestration-queue.json` and `.aegis/active-orchestration.json`. Progress updates `roadmap.md`, `decisions.md`, `validation-log.md`, and `agent-history.json`.
+
+## Workflow Automation
+
+Core exposes safe maintenance jobs through `/v1/jobs`, `POST /v1/jobs/run`, and `aegis jobs`.
+
+Default jobs cover daily project scans, weekly roadmap updates, dependency review, build health checks, stale TODO scans, documentation drift checks, recent-change summaries, broken-reference checks, project health reports, quality intelligence snapshots, next-best-task suggestions, and validation status checks.
+
+Jobs may automatically scan, summarize, report, recommend, and write generated `.aegis` memory/log files. They still require approval before editing project files, deleting files, installing packages, running build/test/lint commands, or sending context to cloud models. Job history is appended to `.aegis/jobs-log.md`.
+
+## Quality Intelligence
+
+Core exposes project health through `/v1/quality`, `POST /v1/quality/snapshot`, and `aegis quality`.
+
+Quality snapshots track build/test/lint status, TODO count, known bugs, dependency drift, complexity hotspots, failing files, stale documentation, repeated repair attempts, model failures, large risky diffs, and files that change most often. Recorded snapshots are stored in `.aegis/health-history.json` and generate `.aegis/daily-health-report.md` plus `.aegis/weekly-quality-summary.md`.
+
+Planner Agent reads the quality dashboard when creating an orchestration plan, so broken validation, repeated failures, untested areas, and high-risk files can influence task order and warnings.
+
+## Knowledge Graph
+
+Core exposes semantic project understanding through `/v1/knowledge/graph`, `POST /v1/knowledge/graph`, `/v1/knowledge/query`, and `aegis knowledge`.
+
+The graph links files, symbols, systems, APIs, UI components, services, tasks, roadmap items, architecture decisions, known issues, validation failures, risks, and agent-history events. Relationship types include `uses`, `depends_on`, `calls`, `implements`, `breaks`, `related_to`, `tested_by`, and `mentioned_in_roadmap`.
+
+Recorded graphs are written to `.aegis/knowledge-graph.json` and `.aegis/knowledge-summary.md`. Query support is deterministic and local: it answers relationship questions from graph evidence rather than sending project context to a model.
+
+Planner Agent reads graph summaries while creating orchestration plans so impacted systems, related decisions/issues, and suggested context files can influence task order and risk.
 
 ## Memory
 
@@ -108,9 +210,9 @@ Workspace-local memory lives under:
 .aegis/
 ```
 
-Core writes generated files such as `project-summary.md`, `roadmap.md`, `file-index.json`, `dependency-graph.json`, `symbol-index.json`, `validation-log.md`, and `core-log.md`.
+Core writes generated files such as `project-summary.md`, `roadmap.md`, `daily-health-report.md`, `weekly-quality-summary.md`, `knowledge-summary.md`, `file-index.json`, `dependency-graph.json`, `symbol-index.json`, `validation-log.md`, `jobs-log.md`, and `core-log.md`.
 
-Shared ecosystem files include `clients.json` for connected client registrations, `tasks.json` for cross-client task visibility, and `scan-cache.json` for faster repeated workspace scans.
+Shared ecosystem files include `clients.json` for connected client registrations, `tasks.json` for cross-client task visibility, `health-history.json` for quality trends, `knowledge-graph.json` for semantic project relationships, `jobs-state.json` for maintenance job state, `orchestration-queue.json` for staged autonomous goals, and `scan-cache.json` for faster repeated workspace scans.
 
 ## Migration Direction
 

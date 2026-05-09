@@ -18,6 +18,7 @@ Actions:
 - Hardened shared Core config parsing so malformed settings degrade to defaults.
 - Hardened shared Ollama URL parsing and model health diagnostics for malformed local endpoint settings, pasted API paths, and credential-like URL text.
 - Hardened Ollama model inventory parsing so malformed `/api/tags` payloads do not break shared health/model endpoints.
+- Hardened hybrid provider inventory so credential-store read failures are visible to clients instead of being flattened into missing cloud keys.
 - Added explicit Core task-status API errors for bad statuses and missing task IDs.
 - Hardened shared task record loading so malformed local task metadata and timestamps do not break dashboards or status updates.
 - Hardened shared client registry loading so malformed local client records and mixed timestamp types do not break dashboard client lists.
@@ -64,10 +65,19 @@ Actions:
 - Hardened Visual Studio Health Check so Core reachability and Core client registration failures are reported separately with parsed error details.
 - Kept unrelated dirty worktree changes out of scope.
 - Recorded workflow friction in `WORKFLOW_NOTES.md`.
+- Added Core predictive planning and change simulation so planned edits can be scored for impacted files, affected systems, dependency ripple, architecture drift, validation cost, rollback complexity, and safer scenario choices before implementation.
+- Added Core engineering operations so release readiness, technical debt, lifecycle stage, risk monitoring, maintenance scheduling, productivity bottlenecks, and cross-project coordination can be reviewed from a single read-only dashboard.
+- Added Core adaptive personal engineering intelligence so local workflow/style preferences, recurring project patterns, habit signals, context personalization, and resettable inspectable preference memory can guide clients without cloud calls or hidden persistence.
+- Tightened personal preference filtering so token-like secret fields stay blocked while harmless preference names containing `key`, such as `keyboard_layout`, still persist.
 
 Validation completed:
 
-- Aegis Core contract test suite: pass, 44 tests.
+- Aegis Core contract test suite: pass, 83 tests.
+- Aegis Core simulate CLI smoke test: pass for single forecast and scenario comparison.
+- Aegis Core operations endpoint regressions: pass for single-project coordination and cross-project awareness.
+- Aegis Core personal intelligence endpoint regressions: pass for read-only default behavior, explicit profile persistence, secret-like preference filtering, reset behavior, and cross-project pattern detection.
+- Aegis Core personal preference filtering regression: pass for preserving safe `keyboard_layout` while dropping `api_key`.
+- Aegis Core personal CLI smoke/reset: pass.
 - Aegis Core compile check: pass.
 - Aegis Core BOM-prefixed package framework detection regression test: pass.
 - Aegis Core malformed client registry regression test: pass.
@@ -76,6 +86,7 @@ Validation completed:
 - Aegis Core workspace scan malformed package/stat-race regression tests: pass.
 - Aegis Core Ollama URL normalization and malformed-health regression tests: pass.
 - Aegis Core malformed Ollama model inventory regression tests: pass.
+- Aegis Core provider inventory credential-store failure regression: pass.
 - Aegis Core validation startup-failure regression test: pass.
 - VS Code extension lint and package: pass.
 - VS Code extension memory-write hardening lint: pass.
@@ -387,3 +398,224 @@ Validation completed:
 
 - VS Code extension lint: pass.
 - VS Code VSIX package: pass; packaged contents remain limited to runtime files and package metadata.
+
+## 2026-05-09 - Visual Studio Command Table Guard
+
+Focus:
+
+- Prevent Visual Studio extension command drift where a VSCT menu item, C# command ID, or handler registration changes without the others.
+- Keep the guard inside the existing VSIX packaging path so daily release validation catches drift early.
+
+Actions:
+
+- Added Visual Studio command table validation to `visual-studio-extensions/aegis-local-agent-vs/build.ps1`.
+- The build now checks VSCT button IDs, command `IDSymbol` values, `CommandIds.cs` constants, and `AegisCommands` registrations before packaging.
+
+Validation completed:
+
+- Visual Studio extension build/package: pass; command table validation ran before the VSIX was produced.
+
+## 2026-05-09 - Validation Documentation Refresh
+
+Focus:
+
+- Keep the living stabilization reports aligned with the current test and packaging baseline.
+- Remove stale validation wording that still described older Core test counts and the prior Website build warning.
+
+Actions:
+
+- Updated `docs/ECOSYSTEM_STABILIZATION.md` with the current Core, Website, Desktop, VS Code, and Visual Studio validation state.
+- Updated `VALIDATION_REPORT.md` so the main validation table reflects the latest package guards and the warning-free Website production build.
+- Clarified older migration-phase validation rows so superseded Website build warnings are clearly historical, not current regressions.
+
+Validation completed:
+
+- Aegis Core tests: pass, 51 tests.
+- VS Code extension lint/package: pass.
+- Website focused frontend API/runtime/task tests: pass, 40 tests.
+- Website frontend production build: pass, no Vite chunk-size warning.
+- Desktop Release build and quick smoke: pass.
+
+## 2026-05-09 - Website Core Bridge Malformed JSON Handling
+
+Focus:
+
+- Keep Website degraded-mode reporting precise when something other than Aegis Core answers on the Core port.
+- Preserve HTTP reachability/status details when Core bridge responses are malformed JSON.
+
+Actions:
+
+- Updated the Website Core bridge to catch JSON parsing failures after the HTTP response status is known.
+- Added regression coverage for an HTTP 200 Core health response that returns HTML instead of a `/v1` JSON envelope.
+
+Validation completed:
+
+- Website Core bridge and runtime-health tests: pass, 11 tests.
+- Website Core bridge, config, runtime-health, and model-inventory tests: pass, 23 tests.
+- Website backend compile check: pass.
+
+## 2026-05-09 - VS Code Request Diagnostic Redaction
+
+Focus:
+
+- Keep VS Code Core/Ollama degraded-mode messages useful without exposing local workspace query strings in timeout or invalid-JSON errors.
+
+Actions:
+
+- Replaced full `url.href` request diagnostics with a `formatRequestTarget` helper that keeps origin and endpoint path while dropping query parameters.
+- Added a VS Code package lint guard so full request URL logging cannot be reintroduced accidentally.
+
+Validation completed:
+
+- VS Code extension lint: pass.
+- VS Code VSIX package: pass; package lint ran before archive creation.
+
+## 2026-05-09 - Visual Studio Ollama Error Hardening
+
+Focus:
+
+- Make Visual Studio model detection and chat failures actionable when Ollama returns HTTP errors, empty bodies, or malformed JSON.
+
+Actions:
+
+- Replaced raw `EnsureSuccessStatusCode()` usage in the Visual Studio Ollama client with bounded error extraction from Ollama JSON/text responses.
+- Added contextual parsing errors for empty or invalid Ollama JSON responses during model listing and chat.
+- Disposed HTTP response objects consistently in the model and chat paths.
+
+Validation completed:
+
+- Visual Studio extension build/package: pass; command-table and VSIX metadata guards ran before packaging.
+
+## 2026-05-09 - Desktop Runtime Error Detail Hardening
+
+Focus:
+
+- Keep Desktop degraded-mode messages useful across Website backend and Aegis Core error envelope shapes.
+
+Actions:
+
+- Expanded the shared desktop HTTP error-detail extractor to recognize top-level `error`, top-level `message`, and nested `data.error`/`data.message` fields in addition to FastAPI `detail`.
+- Normalized and bounded extracted error details before they are shown in Desktop health/runtime messages.
+
+Validation completed:
+
+- Desktop Release build: pass, 0 warnings.
+
+## 2026-05-09 - Aegis Core Hybrid Model Router
+
+Focus:
+
+- Add local-first hybrid model routing to Aegis Core without migrating existing Website or IDE workflows.
+- Keep cloud providers optional, approval-gated, and unable to receive secret-like workspace context.
+
+Actions:
+
+- Added shared Core settings for `local_only`, `hybrid`, and `cloud_allowed` routing modes, local model roles, LM Studio URL, preferred cloud provider/model, max context, and cost warnings.
+- Added provider inventory and route contracts for Ollama, LM Studio, OpenAI, Anthropic, Google, and OpenRouter.
+- Added OS credential storage hooks for provider API keys; keys are not stored in `.aegis/config.json`.
+- Added route planning that keeps normal tasks local and marks hard debugging/repo-wide planning cloud routes as approval-required until clients show sanitized context and receive approval.
+- Added an experimental gated completion endpoint that rejects cloud calls without routing mode permission, approval, sanitized context, and stored credentials.
+- Documented the new router contracts in Core and ecosystem API/architecture docs.
+
+Validation completed:
+
+- Aegis Core contract tests: pass, 56 tests.
+- Aegis Core compile check: pass.
+
+## 2026-05-09 - Aegis Core Autonomous Task Orchestration
+
+Focus:
+
+- Let Core organize larger goals into supervised staged work without enabling uncontrolled edits or risky commands.
+
+Actions:
+
+- Added `.aegis/orchestration-queue.json` and `.aegis/active-orchestration.json` state for objective, task queue, active step, approval gates, validation results, rollback metadata, and safety notes.
+- Added `/v1/orchestration/plan`, `/v1/orchestration`, and `/v1/orchestration/step` contracts.
+- Added CLI support through `aegis orchestrate`.
+- Kept file edits, deletions, package installs, build/test/lint validation, and cloud context behind explicit approval gates.
+- Wired completed orchestration tasks into `roadmap.md`, `decisions.md`, `validation-log.md`, and `agent-history.json`.
+
+Validation completed:
+
+- Aegis Core contract tests: pass, 61 tests.
+
+## 2026-05-09 - Aegis Core Multi-Agent Specialization
+
+Focus:
+
+- Make Core orchestration feel like a small supervised local development team without loosening approval gates.
+
+Actions:
+
+- Added Planner, Architect, Coder, Reviewer, Tester, Repair, and Documentation agent profiles.
+- Added `/v1/agents` and `aegis agents` for roster/coordination metadata.
+- Assigned every orchestration queue task a single `owner_agent`.
+- Added active-agent, agent-pipeline, agent-decision, and coordination-conflict fields to orchestration dashboard responses.
+- Recorded agent decisions in `agent-history.json`.
+
+Validation completed:
+
+- Aegis Core contract tests: pass, 63 tests including agent roster, owned orchestration tasks, approval gates, and coordination-conflict reporting.
+
+## 2026-05-09 - Aegis Core Workflow Automation
+
+Focus:
+
+- Let Core run safe recurring and trigger-based maintenance workflows without becoming an uncontrolled background editor.
+
+Actions:
+
+- Added `/v1/jobs`, `/v1/jobs/run`, and `aegis jobs`.
+- Added default maintenance jobs for daily project scans, weekly roadmap updates, dependency review, build health checks, stale TODO scans, documentation drift, recent changes, broken references, project health reports, next-best-task suggestions, and validation status checks.
+- Stored job state in `.aegis/jobs-state.json` and appended run history to `.aegis/jobs-log.md`.
+- Kept build/test/lint execution behind explicit approval; jobs may only scan, summarize, report, recommend, and write generated `.aegis` memory/log files automatically.
+- Updated contracts, API docs, architecture docs, runtime consolidation notes, and client compatibility guidance.
+
+Validation completed:
+
+- Aegis Core contract tests: pass, 69 tests including job dashboard, safe job run logs, due scheduled jobs, trigger execution, approval-gated build health, and broken-reference reporting.
+
+## 2026-05-09 - Aegis Core Observability and Quality Intelligence
+
+Focus:
+
+- Make Core aware of local project health over time without adding unsafe automation.
+- Use quality trends to guide supervised Planner Agent decisions before future work starts.
+
+Actions:
+
+- Added the `quality.dashboard` and `quality.snapshot` Core contracts.
+- Added `/v1/quality`, `/v1/quality/snapshot`, and `aegis quality`.
+- Added `.aegis/health-history.json` snapshot tracking plus generated daily and weekly quality reports.
+- Added health scoring, validation/build/test/lint status extraction, dependency drift, TODO/known-bug counts, stale documentation checks, complexity hotspots, risky diff detection, repeated repair/model failure signals, and frequently changed file tracking.
+- Added a safe `quality-intelligence-snapshot` maintenance job that writes only generated `.aegis` health artifacts.
+- Wired Planner Agent orchestration planning to read quality data and surface risk-aware guidance.
+- Updated API, architecture, runtime consolidation, client responsibility, and compatibility docs.
+
+Validation completed:
+
+- Aegis Core contract tests: pass, 74 tests including quality dashboard, read-only dashboard behavior, snapshot history, trend detection, quality job execution, and Planner integration.
+
+## 2026-05-09 - Aegis Core Knowledge Graph Intelligence
+
+Focus:
+
+- Move Core from simple file indexing toward local semantic project understanding.
+- Keep graph intelligence deterministic, local-first, and advisory instead of granting edit authority.
+
+Actions:
+
+- Added the `knowledge.graph` and `knowledge.query` Core contracts.
+- Added `/v1/knowledge/graph`, `/v1/knowledge/query`, and `aegis knowledge`.
+- Added `.aegis/knowledge-graph.json` and `.aegis/knowledge-summary.md` generated artifacts.
+- Built graph nodes for files, systems, symbols, services, UI components, APIs, tasks, roadmap items, architecture decisions, bugs, validation failures, risks, and agent-history events.
+- Added relationship edges for `uses`, `depends_on`, `calls`, `implements`, `breaks`, `related_to`, `tested_by`, and `mentioned_in_roadmap`.
+- Added deterministic query support for dependents, unstable modules, roadmap/module links, API feature links, and historical context.
+- Added graph clusters, architecture hotspots, unstable modules, and a visualization subset for future Desktop graph views.
+- Wired Planner Agent orchestration planning to read graph summaries for impacted systems, related history, and suggested context.
+- Updated API, architecture, runtime consolidation, client responsibility, and compatibility docs.
+
+Validation completed:
+
+- Aegis Core contract tests: pass, 77 tests including graph persistence, read-only graph behavior, API/file/doc/validation relationships, graph query responses, and Planner graph integration.

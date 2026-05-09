@@ -219,6 +219,20 @@ Fixes applied:
 - Package lint now fails if any contributed command lacks `onCommand:` activation.
 - Package lint now fails if any `onCommand:` activation references a command that is not contributed.
 
+### 2026-05-09 - Visual Studio Command Table Guard
+
+Context:
+- The Visual Studio VSIX build already checked manifest metadata and packaged resources, but it did not verify that VSCT command IDs, C# constants, and command registrations stayed aligned.
+- Command drift is easy to miss in headless packaging because the VSIX can build while a menu action is no longer wired to a handler.
+
+What worked:
+- The current VSCT buttons, VSCT command symbols, `CommandIds.cs` constants, and `AegisCommands` registrations are synchronized.
+- The release build now fails before packaging if that contract drifts.
+
+Fixes applied:
+- Added a command table parity guard to the Visual Studio extension build script.
+- Re-ran the Visual Studio VSIX build and package flow successfully.
+
 ### 2026-05-08 - Product Utilization Kickoff
 
 Context:
@@ -255,6 +269,7 @@ Fixes applied:
 | 2026-05-09 | Visual Studio profile targeting | VS 2022 and VS 18 have different Aegis extension versions installed. | Medium | Daily GUI checks must name the exact Visual Studio instance/profile under test. |
 | 2026-05-09 | VS Code packaging | VSIX archive included repository-only dogfooding notes and local detected model inventory. | Medium | Excluded those files from packaging and added a lint guard. |
 | 2026-05-09 | Extension release metadata | VS Code repository metadata used a local `file:` URL and Visual Studio MoreInfo used a localhost placeholder. | Medium | Pointed both at GitHub and added package/build guards. |
+| 2026-05-09 | Visual Studio command table | VSIX packaging did not verify VSCT command IDs, C# constants, and registered handlers stayed aligned. | Medium | Added a command table parity guard to the Visual Studio build script. |
 | 2026-05-09 | VS Code package contents | VSIX archive included the source-tree `install.ps1` helper, which is only useful before packaging. | Low | Excluded it from the VSIX and added a lint guard. |
 | 2026-05-09 | VS Code release scripts | Package/install commands broke when the workspace path contained spaces and `&`. | Medium | Replaced shell command strings with a shared command runner and relative VSIX args. |
 | 2026-05-09 | VS Code manifest | Package lint checked only a required command subset, leaving future contributed-command activation drift possible. | Low | Added full contributed-command/activation parity checks. |

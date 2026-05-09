@@ -22,6 +22,10 @@ MEMORY_FILES = {
     "decisions": "decisions.md",
     "known_issues": "known-issues.md",
     "validation_log": "validation-log.md",
+    "jobs_log": "jobs-log.md",
+    "daily_health_report": "daily-health-report.md",
+    "weekly_quality_summary": "weekly-quality-summary.md",
+    "knowledge_summary": "knowledge-summary.md",
 }
 
 
@@ -46,6 +50,9 @@ def diagnostics_summary(workspace: str | Path) -> dict[str, Any]:
         "core_log": "core-log.md",
         "extension_log": "extension-log.md",
         "validation_log": "validation-log.md",
+        "jobs_log": "jobs-log.md",
+        "health_history": "health-history.json",
+        "knowledge_graph": "knowledge-graph.json",
         "agent_history": "agent-history.json",
     }
     logs: dict[str, dict[str, Any]] = {}
@@ -67,7 +74,12 @@ def dashboard_summary(workspace: str | Path) -> dict[str, Any]:
     memory = shared_memory_summary(root)
     diagnostics = diagnostics_summary(root)
     validation = validation_summary(root)
-    active_tasks = [task for task in tasks if task.get("status") in {"planned", "running", "waiting_for_approval", "blocked"}]
+    active_tasks = [
+        task
+        for task in tasks
+        if task.get("status")
+        in {"planned", "running", "waiting_for_approval", "pending", "in_progress", "needs_approval", "validating", "blocked"}
+    ]
     stale_tasks = [task for task in active_tasks if _task_age_hours(task) >= 24]
     return {
         "workspace": str(root),

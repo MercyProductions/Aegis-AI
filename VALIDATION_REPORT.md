@@ -16,15 +16,15 @@ The mature Website `/api` backend, frontend tests/build, Aegis Core `/v1` contra
 
 | Area | Command or check | Result |
 | --- | --- | --- |
-| Aegis Core tests | `python -m pytest tests -q` from `aegis-core` | Passed: 45 tests |
+| Aegis Core tests | `python -m pytest tests -q` from `aegis-core` | Passed: 51 tests |
 | Website backend | `npm run backend:test` from `website` | Passed: 764 tests, 155 subtests |
 | Productization targeted regression | `python -m pytest backend/tests/test_productization.py -q` | Passed: 5 tests |
 | Website frontend tests | `npm test -- --run` from `website` | Passed: 21 files, 169 tests |
-| Website frontend build | `npm run build` from `website` | Passed, with existing Vite large-chunk warning |
+| Website frontend build | `npm run build` from `website` | Passed, no Vite large-chunk warning |
 | VS Code extension compile | `npm run compile` | Passed |
-| VS Code extension package | `npm run package` | Passed, produced `release/aegis-local-autopilot-0.1.1.vsix` |
+| VS Code extension package | `npm run package` | Passed, produced `release/aegis-local-autopilot-0.1.1.vsix` after release lint and command activation parity checks |
 | VS Code clean install smoke | `code --install-extension ... --force` into temp dirs | Passed, listed `aegis.aegis-local-autopilot@0.1.1` |
-| Visual Studio extension package | `powershell -File .\build.ps1` | Passed, produced `release/AegisLocalAgentVs.vsix` |
+| Visual Studio extension package | `powershell -File .\build.ps1` | Passed, command table parity checked, produced `release/AegisLocalAgentVs.vsix` |
 | Desktop build | `powershell -File .\build.ps1` | Passed, 0 warnings, 0 errors |
 | Desktop smoke | `scripts\smoke-desktop.ps1 -UseIsolatedAppData` | Passed, captured nonblank login/setup/dashboard and backend ready before/after |
 
@@ -142,6 +142,21 @@ Add small client smoke commands that can be run headlessly or semi-headlessly:
 - Visual Studio experimental instance smoke that opens a tiny solution and verifies tool window, health, solution detection, and rollback.
 - Desktop smoke assertion for Core dashboard loaded/degraded states.
 
+## Latest Stabilization Addendum
+
+Date: 2026-05-09
+
+Additional validation and documentation cleanup:
+
+- Aegis Core full test suite now passes at 51 tests.
+- Website production build now passes without the prior Vite large-chunk warning.
+- Website focused frontend API/runtime/task tests passed: 40 tests.
+- VS Code package lint and VSIX packaging passed with command contribution/activation parity checks.
+- Visual Studio VSIX packaging passed with command table/handler parity validation.
+- Desktop Release build and quick smoke passed with backend reachable before and after launch.
+
+Historical phase tables below preserve the result at the time each migration phase ran. Superseded warnings are called out there as historical and should be read against this latest baseline.
+
 ## Runtime Consolidation Phase 1
 
 Date: 2026-05-09
@@ -163,7 +178,7 @@ Tests run:
 | Website focused config/health | `python -m pytest backend/tests/test_runtime_health.py backend/tests/test_config_update.py -q` | Passed: 3 tests |
 | Website backend suite | `npm run backend:test` | Passed: 768 tests, 155 subtests |
 | Website frontend tests | `npm test -- --run` | Passed: 21 files, 169 tests |
-| Website frontend build | `npm run build` | Passed, with existing Vite large-chunk warning |
+| Website frontend build | `npm run build` | Passed; this historical run still emitted the Vite large-chunk warning that was later resolved |
 | Live Core bridge | `GET /api/core-runtime` against running Website 8787 and Core 8788 | Passed: 200, `health`, `ecosystem.dashboard` envelopes present |
 
 No rich Website workflows were migrated in this phase.
@@ -188,7 +203,7 @@ Tests run:
 | Website Core bridge targeted tests | `python -m pytest backend/tests/test_core_bridge.py -q` | Passed: 5 tests |
 | Website backend suite | `npm run backend:test` from `website` | Passed: 769 tests, 155 subtests |
 | Website frontend tests | `npm test -- --run` from `website` | Passed: 21 files, 169 tests |
-| Website frontend build | `npm run build` from `website` | Passed, with existing Vite large-chunk warning |
+| Website frontend build | `npm run build` from `website` | Passed; this historical run still emitted the Vite large-chunk warning that was later resolved |
 | VS Code extension compile | `npm run compile` | Passed |
 | VS Code extension package | `npm run package` | Passed, produced `release/aegis-local-autopilot-0.1.1.vsix` |
 | Visual Studio extension package | `powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1` | Passed, produced `release/AegisLocalAgentVs.vsix` |

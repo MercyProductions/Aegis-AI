@@ -21,7 +21,8 @@ from aegis_core.contracts import (
     validate_contract_envelope,
 )
 from aegis_core.memory import ProjectMemory
-from aegis_core.ollama import OllamaClient
+from aegis_core.model_router import provider_inventory, route_model
+from aegis_core.ollama import OllamaClient, OllamaStatus
 from aegis_core.safety import is_ignored_path, is_safe_to_edit, is_safe_to_read, is_secret_like
 from aegis_core.server import create_app
 from aegis_core.tasks import list_tasks, update_task_status
@@ -262,6 +263,13 @@ def test_v1_endpoint_family_smoke_contracts(tmp_path: Path) -> None:
         ("/v1/branding", {}, "branding.tokens"),
         ("/v1/clients", {"workspace": str(workspace)}, "clients.list"),
         ("/v1/tasks", {"workspace": str(workspace)}, "tasks.list"),
+        ("/v1/agents", {}, "agents.roster"),
+        ("/v1/orchestration", {"workspace": str(workspace)}, "orchestration.dashboard"),
+        ("/v1/jobs", {"workspace": str(workspace)}, "jobs.dashboard"),
+        ("/v1/quality", {"workspace": str(workspace)}, "quality.dashboard"),
+        ("/v1/knowledge/graph", {"workspace": str(workspace)}, "knowledge.graph"),
+        ("/v1/operations", {"workspace": str(workspace)}, "operations.dashboard"),
+        ("/v1/personal-intelligence", {"workspace": str(workspace)}, "personal.intelligence"),
         ("/v1/ecosystem/dashboard", {"workspace": str(workspace)}, "ecosystem.dashboard"),
     ]
 
@@ -311,6 +319,60 @@ def test_v1_endpoint_family_smoke_contracts(tmp_path: Path) -> None:
         ),
         ("/v1/agent/continue", {"workspace": str(workspace), "request": "continue safely"}, "agent.continue.plan", True),
         ("/v1/agent/repair", {"workspace": str(workspace)}, "agent.repair.plan", None),
+        (
+            "/v1/orchestration/plan",
+            {"workspace": str(workspace), "goal": "Stabilize one safe workflow", "source_client": "pytest"},
+            "orchestration.plan",
+            True,
+        ),
+        (
+            "/v1/jobs/run",
+            {"workspace": str(workspace), "job_id": "validation-status-check"},
+            "jobs.run",
+            True,
+        ),
+        ("/v1/quality/snapshot", {"workspace": str(workspace)}, "quality.snapshot", True),
+        ("/v1/knowledge/graph", {"workspace": str(workspace)}, "knowledge.graph", True),
+        (
+            "/v1/knowledge/query",
+            {"workspace": str(workspace), "query": "What areas of the project are most unstable?"},
+            "knowledge.query",
+            True,
+        ),
+        (
+            "/v1/simulation/change",
+            {
+                "workspace": str(workspace),
+                "objective": "Safely update README.md validation notes",
+                "files": ["README.md"],
+                "approach": "Minimal documentation update",
+            },
+            "simulation.change",
+            True,
+        ),
+        (
+            "/v1/simulation/compare",
+            {
+                "workspace": str(workspace),
+                "objective": "Improve validation workflow without broad rewrites",
+                "approaches": ["Minimal adapter and focused test", "Large rewrite of validation runtime"],
+            },
+            "simulation.compare",
+            True,
+        ),
+        (
+            "/v1/operations/dashboard",
+            {"workspace": str(workspace), "project_roots": []},
+            "operations.dashboard",
+            True,
+        ),
+        (
+            "/v1/personal-intelligence/profile",
+            {"workspace": str(workspace), "project_roots": [], "preferences": {"planning_depth": "balanced"}},
+            "personal.intelligence",
+            True,
+        ),
+        ("/v1/personal-intelligence/reset", {"workspace": str(workspace)}, "personal.intelligence.reset", True),
     ]
 
     created_task_id = None
@@ -354,6 +416,21 @@ def test_contract_catalog_covers_unified_phase_runtime_shapes() -> None:
         "validation",
         "agent.continue.plan",
         "agent.repair.plan",
+        "agents.roster",
+        "orchestration.plan",
+        "orchestration.dashboard",
+        "orchestration.step",
+        "jobs.dashboard",
+        "jobs.run",
+        "quality.dashboard",
+        "quality.snapshot",
+        "knowledge.graph",
+        "knowledge.query",
+        "simulation.change",
+        "simulation.compare",
+        "operations.dashboard",
+        "personal.intelligence",
+        "personal.intelligence.reset",
         "patch.proposal",
         "rollback.entry",
         "rollback.result",
@@ -382,6 +459,585 @@ def test_schema_only_patch_and_rollback_contracts_validate() -> None:
     assert validate_contract_envelope(make_envelope("patch.proposal", model_dump(patch), "C:/workspace")).kind == "patch.proposal"
     assert validate_contract_envelope(make_envelope("rollback.entry", model_dump(rollback), "C:/workspace")).kind == "rollback.entry"
     assert validate_contract_envelope(make_envelope("rollback.result", model_dump(rollback_result), "C:/workspace")).kind == "rollback.result"
+
+
+def test_specialized_agent_roster_contract_lists_safe_roles() -> None:
+    client = TestClient(create_app())
+
+    response = client.get("/v1/agents")
+
+    assert response.status_code == 200
+    assert_core_contract(response.json(), "agents.roster")
+    data = response.json()["data"]
+    agent_ids = [agent["id"] for agent in data["agents"]]
+    assert agent_ids == ["planner", "architect", "coder", "reviewer", "tester", "repair", "documentation"]
+    coder = next(agent for agent in data["agents"] if agent["id"] == "coder")
+    tester = next(agent for agent in data["agents"] if agent["id"] == "tester")
+    assert "file_edit" in coder["approval_gates"]
+    assert "build_command" in tester["approval_gates"]
+    assert "Agents may propose changes, but file edits require approval." in data["coordination_rules"]
+
+
+def test_jobs_dashboard_lists_scheduled_and_triggered_maintenance(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    client = TestClient(create_app())
+
+    response = client.get("/v1/jobs", params={"workspace": str(workspace)})
+
+    assert response.status_code == 200
+    assert_core_contract(response.json(), "jobs.dashboard")
+    data = response.json()["data"]
+    job_ids = {job["id"] for job in data["scheduled_jobs"]}
+    assert {
+        "daily-project-scan",
+        "weekly-roadmap-update",
+        "dependency-review",
+        "build-health-check",
+        "stale-todo-scan",
+        "documentation-drift-check",
+    }.issubset(job_ids)
+    assert any(job["id"] == "daily-project-scan" for job in data["due_jobs"])
+    assert "build_command" in {gate["id"] for gate in data["approval_rules"]["approval_required_for"]}
+    assert any(trigger["id"] == "project_opened" for trigger in data["triggers"])
+
+
+def test_safe_job_run_writes_jobs_log_and_scan_artifacts(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/v1/jobs/run",
+        json={"workspace": str(workspace), "job_id": "daily-project-scan"},
+    )
+
+    assert response.status_code == 200
+    assert_core_contract(response.json(), "jobs.run")
+    result = response.json()["data"]["results"][0]
+    assert result["id"] == "daily-project-scan"
+    assert result["status"] == "completed"
+    assert result["approval_required"] is False
+    assert (workspace / ".aegis" / "jobs-log.md").is_file()
+    assert "Daily Project Scan" in (workspace / ".aegis" / "jobs-log.md").read_text(encoding="utf-8")
+    assert (workspace / ".aegis" / "project-summary.md").is_file()
+
+
+def test_build_health_job_requires_approval_before_validation(tmp_path: Path, monkeypatch) -> None:
+    workspace = make_workspace(tmp_path)
+    client = TestClient(create_app())
+    calls: list[Path] = []
+
+    def fake_validation(root, command=None):
+        calls.append(Path(root))
+        return {"ok": True, "command": ["npm", "test"], "returncode": 0, "stdout": "ok", "stderr": ""}
+
+    monkeypatch.setattr("aegis_core.jobs.run_validation", fake_validation)
+
+    blocked = client.post(
+        "/v1/jobs/run",
+        json={"workspace": str(workspace), "job_id": "build-health-check"},
+    )
+    assert blocked.status_code == 200
+    blocked_result = blocked.json()["data"]["results"][0]
+    assert blocked_result["status"] == "needs_approval"
+    assert blocked_result["approval_required"] is True
+    assert "build_command" in {gate["id"] for gate in blocked_result["approval_gates"]}
+    assert calls == []
+
+    approved = client.post(
+        "/v1/jobs/run",
+        json={"workspace": str(workspace), "job_id": "build-health-check", "approval": True},
+    )
+    assert approved.status_code == 200
+    approved_result = approved.json()["data"]["results"][0]
+    assert approved_result["status"] == "completed"
+    assert calls == [workspace.resolve()]
+
+
+def test_triggered_jobs_run_project_opened_safe_workflows(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/v1/jobs/run",
+        json={"workspace": str(workspace), "trigger": "project_opened"},
+    )
+
+    assert response.status_code == 200
+    assert_core_contract(response.json(), "jobs.run")
+    data = response.json()["data"]
+    result_ids = {result["id"] for result in data["results"]}
+    assert {"daily-project-scan", "stale-todo-scan", "project-health-report", "next-best-task"}.issubset(result_ids)
+    assert data["trigger"] == "project_opened"
+    assert (workspace / ".aegis" / "jobs-log.md").is_file()
+
+
+def test_due_jobs_run_scheduled_workflows_without_risky_command_approval(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/v1/jobs/run",
+        json={"workspace": str(workspace), "run_due": True},
+    )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["run_due"] is True
+    by_id = {result["id"]: result for result in data["results"]}
+    assert by_id["daily-project-scan"]["status"] == "completed"
+    assert by_id["build-health-check"]["status"] == "needs_approval"
+    assert by_id["build-health-check"]["approval_required"] is True
+    assert (workspace / ".aegis" / "jobs-state.json").is_file()
+
+
+def test_broken_references_job_reports_missing_markdown_targets(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    (workspace / "docs.md").write_text("[Missing](missing-file.md)\n", encoding="utf-8")
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/v1/jobs/run",
+        json={"workspace": str(workspace), "job_id": "broken-references-check"},
+    )
+
+    assert response.status_code == 200
+    result = response.json()["data"]["results"][0]
+    assert result["status"] == "completed"
+    assert result["metrics"]["broken_references"][0]["target"] == "missing-file.md"
+
+
+def test_quality_dashboard_reports_score_risks_and_statuses(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    (workspace / ".aegis").mkdir(exist_ok=True)
+    (workspace / ".aegis" / "validation-log.md").write_text(
+        "## 2026-05-09T00:00:00Z - failed\n\nCommand: `npm test`\n\n```text\nsrc/app.ts: failed assertion\n```\n\n",
+        encoding="utf-8",
+    )
+    (workspace / "src").mkdir()
+    (workspace / "src" / "app.ts").write_text("export function run() {\n  // FIXME: broken path\n}\n", encoding="utf-8")
+    client = TestClient(create_app())
+
+    response = client.get("/v1/quality", params={"workspace": str(workspace)})
+
+    assert response.status_code == 200
+    assert_core_contract(response.json(), "quality.dashboard")
+    data = response.json()["data"]
+    assert data["score"] < 100
+    assert data["statuses"]["test"]["status"] == "failed"
+    assert "validation" in data["failing_systems"]
+    assert any(item["path"].endswith("src/app.ts") for item in data["high_risk_files"])
+    assert data["recommended_next_improvement"]
+
+
+def test_quality_dashboard_does_not_record_history_without_snapshot(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    client = TestClient(create_app())
+
+    response = client.get("/v1/quality", params={"workspace": str(workspace)})
+
+    assert response.status_code == 200
+    assert_core_contract(response.json(), "quality.dashboard")
+    assert not (workspace / ".aegis" / "health-history.json").exists()
+    assert not (workspace / ".aegis" / "daily-health-report.md").exists()
+
+
+def test_quality_snapshot_records_history_and_reports(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    client = TestClient(create_app())
+
+    response = client.post("/v1/quality/snapshot", json={"workspace": str(workspace)})
+
+    assert response.status_code == 200
+    assert_core_contract(response.json(), "quality.snapshot")
+    data = response.json()["data"]
+    assert (workspace / ".aegis" / "health-history.json").is_file()
+    assert (workspace / ".aegis" / "daily-health-report.md").is_file()
+    assert (workspace / ".aegis" / "weekly-quality-summary.md").is_file()
+    history = json.loads((workspace / ".aegis" / "health-history.json").read_text(encoding="utf-8"))
+    assert history[-1]["score"] == data["score"]
+    assert data["report_paths"]["daily_health_report"].endswith("daily-health-report.md")
+
+
+def test_quality_trend_detects_degrading_snapshot(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    client = TestClient(create_app())
+
+    first = client.post("/v1/quality/snapshot", json={"workspace": str(workspace)})
+    assert first.status_code == 200
+    for index in range(20):
+        (workspace / f"todo_{index}.py").write_text(f"# TODO: cleanup {index}\n", encoding="utf-8")
+    second = client.post("/v1/quality/snapshot", json={"workspace": str(workspace)})
+
+    assert second.status_code == 200
+    trend = second.json()["data"]["trend"]
+    assert trend["direction"] in {"degrading", "stable"}
+    assert trend["score_delta"] <= 0
+
+
+def test_quality_job_records_snapshot_and_reports(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/v1/jobs/run",
+        json={"workspace": str(workspace), "job_id": "quality-intelligence-snapshot"},
+    )
+
+    assert response.status_code == 200
+    result = response.json()["data"]["results"][0]
+    assert result["id"] == "quality-intelligence-snapshot"
+    assert result["status"] == "completed"
+    assert "score" in result["metrics"]
+    assert (workspace / ".aegis" / "health-history.json").is_file()
+
+
+def test_knowledge_graph_links_files_apis_docs_and_validation(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    src = workspace / "src"
+    src.mkdir()
+    (src / "service.py").write_text(
+        "class ItemService:\n    def list_items(self):\n        return []\n",
+        encoding="utf-8",
+    )
+    (src / "api.py").write_text(
+        "from fastapi import FastAPI\nfrom .service import ItemService\napp = FastAPI()\n@app.get('/v1/items')\ndef list_items():\n    return ItemService().list_items()\n",
+        encoding="utf-8",
+    )
+    (src / "ui.tsx").write_text(
+        "export function ItemsPanel() {\n  fetch('/v1/items');\n  return null;\n}\n",
+        encoding="utf-8",
+    )
+    tests = workspace / "tests"
+    tests.mkdir()
+    (tests / "test_service.py").write_text("from src.service import ItemService\n", encoding="utf-8")
+    (workspace / ".aegis").mkdir(exist_ok=True)
+    (workspace / ".aegis" / "roadmap.md").write_text("- Build item API workflow for ItemsPanel\n", encoding="utf-8")
+    (workspace / ".aegis" / "decisions.md").write_text("## API Boundary\n\n- What changed: ItemService backs the item API.\n", encoding="utf-8")
+    (workspace / ".aegis" / "known-issues.md").write_text("- bug: /v1/items fails when src/api.py changes\n", encoding="utf-8")
+    (workspace / ".aegis" / "validation-log.md").write_text(
+        "## 2026-05-09T00:00:00Z - failed\n\nCommand: `pytest`\n\n```text\nsrc/api.py: failed\n```\n",
+        encoding="utf-8",
+    )
+    client = TestClient(create_app())
+
+    response = client.post("/v1/knowledge/graph", json={"workspace": str(workspace)})
+
+    assert response.status_code == 200
+    assert_core_contract(response.json(), "knowledge.graph")
+    data = response.json()["data"]
+    node_ids = {node["id"] for node in data["nodes"]}
+    edge_types = {(edge["source"], edge["target"], edge["type"]) for edge in data["edges"]}
+    assert "file:src/api.py" in node_ids
+    assert "api:get:/v1/items" in node_ids
+    assert any(source == "file:src/api.py" and target == "file:src/service.py" and edge_type == "uses" for source, target, edge_type in edge_types)
+    assert any(target == "api:get:/v1/items" and edge_type == "implements" for _, target, edge_type in edge_types)
+    assert any(edge_type == "mentioned_in_roadmap" for _, _, edge_type in edge_types)
+    assert any(edge_type == "breaks" for _, _, edge_type in edge_types)
+    assert (workspace / ".aegis" / "knowledge-graph.json").is_file()
+    assert (workspace / ".aegis" / "knowledge-summary.md").is_file()
+
+
+def test_knowledge_graph_get_is_read_only(tmp_path: Path) -> None:
+    workspace = tmp_path / "knowledge-readonly"
+    workspace.mkdir()
+    (workspace / "src.py").write_text("def run():\n    return True\n", encoding="utf-8")
+    client = TestClient(create_app())
+
+    response = client.get("/v1/knowledge/graph", params={"workspace": str(workspace)})
+
+    assert response.status_code == 200
+    assert_core_contract(response.json(), "knowledge.graph")
+    assert not (workspace / ".aegis").exists()
+
+
+def test_knowledge_query_answers_dependents_and_unstable_modules(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    src = workspace / "src"
+    src.mkdir()
+    (src / "service.py").write_text("class ItemService:\n    pass\n", encoding="utf-8")
+    (src / "api.py").write_text("from .service import ItemService\n", encoding="utf-8")
+    (workspace / ".aegis").mkdir(exist_ok=True)
+    (workspace / ".aegis" / "validation-log.md").write_text(
+        "## 2026-05-09T00:00:00Z - failed\n\nCommand: `pytest`\n\n```text\nsrc/service.py: failed\n```\n",
+        encoding="utf-8",
+    )
+    client = TestClient(create_app())
+    client.post("/v1/knowledge/graph", json={"workspace": str(workspace)})
+
+    dependents = client.post(
+        "/v1/knowledge/query",
+        json={"workspace": str(workspace), "query": "What systems depend on this file?", "focus": "src/service.py"},
+    )
+    unstable = client.post(
+        "/v1/knowledge/query",
+        json={"workspace": str(workspace), "query": "What areas of the project are most unstable?"},
+    )
+
+    assert dependents.status_code == 200
+    assert_core_contract(dependents.json(), "knowledge.query")
+    assert any(answer["title"] == "src/api.py" for answer in dependents.json()["data"]["answers"])
+    assert unstable.status_code == 200
+    assert_core_contract(unstable.json(), "knowledge.query")
+    assert unstable.json()["data"]["answers"]
+
+
+def test_change_simulation_forecasts_risk_and_impact(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    src = workspace / "src"
+    src.mkdir()
+    (src / "service.py").write_text(
+        "class ItemService:\n    def list_items(self):\n        return []\n",
+        encoding="utf-8",
+    )
+    (src / "api.py").write_text("from .service import ItemService\n", encoding="utf-8")
+    tests = workspace / "tests"
+    tests.mkdir()
+    (tests / "test_service.py").write_text("from src.service import ItemService\n", encoding="utf-8")
+    append_validation_log(
+        workspace,
+        {
+            "ok": False,
+            "command": ["python", "-m", "pytest"],
+            "stderr": "src/service.py: failed: ItemService regression",
+        },
+    )
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/v1/simulation/change",
+        json={
+            "workspace": str(workspace),
+            "objective": "Refactor src/service.py while preserving API behavior",
+            "files": ["src/service.py"],
+            "approach": "Minimal adapter and focused test-first fix",
+        },
+    )
+
+    assert response.status_code == 200
+    assert_core_contract(response.json(), "simulation.change")
+    data = response.json()["data"]
+    assert data["focus_files"] == ["src/service.py"]
+    assert data["risk_level"] in {"moderate", "high", "dangerous_architectural_change"}
+    assert data["confidence"] >= 60
+    assert any(item["path"] == "src/service.py" for item in data["impacted_files"])
+    assert data["dependency_ripple"]["summary"]
+    assert data["roadmap_forecast"]["implementation_difficulty"] in {"moderate", "hard", "very_hard"}
+    assert data["ui"]["predicted_impact"]
+    assert data["rollback_complexity"]["checkpoint_required"] is True
+
+
+def test_simulation_compare_ranks_incremental_approach_over_rewrite(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    src = workspace / "src"
+    src.mkdir()
+    (src / "service.py").write_text("class PlannerService:\n    pass\n", encoding="utf-8")
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/v1/simulation/compare",
+        json={
+            "workspace": str(workspace),
+            "objective": "Improve src/service.py planning behavior safely",
+            "files": ["src/service.py"],
+            "approaches": [
+                "Minimal adapter with focused validation",
+                "Large rewrite and replace the planning architecture",
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert_core_contract(response.json(), "simulation.compare")
+    data = response.json()["data"]
+    assert data["recommended_approach"] == "Minimal adapter with focused validation"
+    simulations = {item["approach"]: item for item in data["simulations"]}
+    assert simulations["Large rewrite and replace the planning architecture"]["risk_score"] >= simulations["Minimal adapter with focused validation"]["risk_score"]
+    assert data["comparison"][0]["approach"] == "Minimal adapter with focused validation"
+
+
+def test_operations_dashboard_coordinates_release_debt_and_lifecycle(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    src = workspace / "src"
+    src.mkdir()
+    for index in range(12):
+        (src / f"module_{index}.py").write_text(
+            f"def run_{index}():\n    return {index}\n# FIXME quick fix: stabilize this path\n",
+            encoding="utf-8",
+        )
+    append_validation_log(
+        workspace,
+        {
+            "ok": False,
+            "command": ["python", "-m", "pytest"],
+            "stderr": "src/module_1.py: failed validation",
+        },
+    )
+    (workspace / ".aegis" / "agent-history.json").write_text(
+        json.dumps(
+            [
+                {"event": "repair_attempt", "agent_id": "repair", "summary": "temporary workaround"},
+                {"event": "repair_attempt", "agent_id": "repair", "summary": "quick fix follow-up"},
+            ]
+        ),
+        encoding="utf-8",
+    )
+    client = TestClient(create_app())
+
+    response = client.get("/v1/operations", params={"workspace": str(workspace)})
+
+    assert response.status_code == 200
+    assert_core_contract(response.json(), "operations.dashboard")
+    data = response.json()["data"]
+    assert data["lifecycle"]["stage"] in {"prototype", "active_development", "stabilization", "release_candidate", "maintenance_mode"}
+    assert data["release_readiness"]["status"] in {"blocked", "not_ready", "nearly_ready", "ready"}
+    assert data["release_plan"]["milestones"]
+    assert data["release_plan"]["validation_checkpoints"]
+    assert data["technical_debt"]["signals"]
+    assert data["technical_debt"]["cleanup_recommendations"]
+    assert data["task_coordination"]["validation_tasks"]
+    assert data["maintenance_schedule"]["validation_sweeps"]
+    assert data["productivity_intelligence"]["automation_opportunities"]
+    assert data["operations_dashboard"]["next_action"]
+    assert data["approval_policy"]["uncontrolled_autonomy"] is False
+
+
+def test_operations_dashboard_surfaces_cross_project_awareness(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    other = tmp_path / "other-project"
+    other.mkdir()
+    (other / "README.md").write_text("# Other Project\n", encoding="utf-8")
+    (other / "package.json").write_text(
+        json.dumps({"scripts": {"test": "node smoke.js"}, "dependencies": {"vite": "^7.0.0", "react": "^19.0.0"}}, indent=2),
+        encoding="utf-8",
+    )
+    (other / "smoke.js").write_text("console.log('ok')\n", encoding="utf-8")
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/v1/operations/dashboard",
+        json={
+            "workspace": str(workspace),
+            "project_roots": [str(other), str(tmp_path / "missing-project")],
+        },
+    )
+
+    assert response.status_code == 200
+    assert_core_contract(response.json(), "operations.dashboard")
+    cross_project = response.json()["data"]["cross_project_awareness"]
+    assert len(cross_project["projects"]) == 2
+    assert cross_project["unavailable_projects"]
+    assert "Vite" in cross_project["shared_tooling"]
+    assert cross_project["coordination_notes"]
+
+
+def test_personal_intelligence_learns_style_preferences_and_resets_profile(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    src = workspace / "src"
+    components = src / "components"
+    services = src / "services"
+    api = src / "api"
+    components.mkdir(parents=True)
+    services.mkdir(parents=True)
+    api.mkdir(parents=True)
+    (services / "ProjectService.ts").write_text(
+        "export class ProjectService {\n"
+        "  loadProject(id: string) {\n"
+        "    if (!id) return null;\n"
+        "    return { id };\n"
+        "  }\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    (components / "DashboardPanel.tsx").write_text(
+        "export function DashboardPanel() {\n"
+        "  return <section className=\"panel\">Ready</section>;\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    (api / "routes.ts").write_text("export const route = '/v1/projects';\n", encoding="utf-8")
+    ProjectMemory(workspace).append_decision("Use approval-gated small tasks for stabilization.", affected_files=["src/services/ProjectService.ts"])
+    client = TestClient(create_app())
+
+    readonly = client.get("/v1/personal-intelligence", params={"workspace": str(workspace)})
+
+    assert readonly.status_code == 200
+    assert_core_contract(readonly.json(), "personal.intelligence")
+    assert readonly.json()["data"]["preference_memory"]["persisted"] is False
+
+    response = client.post(
+        "/v1/personal-intelligence/profile",
+        json={
+            "workspace": str(workspace),
+            "preferences": {
+                "planning_depth": "deep",
+                "validation_detail": "detailed",
+                "keyboard_layout": "default",
+                "preferred_models": {"local": "qwen2.5-coder"},
+                "api_key": "should-not-be-stored",
+            },
+            "persist": True,
+        },
+    )
+
+    assert response.status_code == 200
+    assert_core_contract(response.json(), "personal.intelligence")
+    data = response.json()["data"]
+    preferences = data["preference_memory"]["stored_preferences"]
+    assert preferences["planning_depth"] == "deep"
+    assert preferences["validation_detail"] == "detailed"
+    assert preferences["keyboard_layout"] == "default"
+    assert preferences["preferred_models"]["local"] == "qwen2.5-coder"
+    assert "api_key" not in preferences
+    assert data["learned_signals"]["preferred_frameworks"]
+    assert data["coding_style_awareness"]["formatting_tendencies"]["indentation"] in {"spaces", "tabs", "mixed"}
+    assert data["context_personalization"]["planning_depth"] == "deep"
+    assert data["privacy"]["local_first"] is True
+    profile_path = Path(data["preference_memory"]["profile_path"])
+    assert profile_path.exists()
+    assert "should-not-be-stored" not in profile_path.read_text(encoding="utf-8")
+
+    reset = client.post("/v1/personal-intelligence/reset", json={"workspace": str(workspace)})
+
+    assert reset.status_code == 200
+    assert_core_contract(reset.json(), "personal.intelligence.reset")
+    assert reset.json()["data"]["reset"] is True
+    assert not profile_path.exists()
+
+
+def test_personal_intelligence_surfaces_cross_project_patterns(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    other = tmp_path / "other-pattern-project"
+    other.mkdir()
+    for root in (workspace, other):
+        (root / "src" / "auth").mkdir(parents=True, exist_ok=True)
+        (root / "src" / "api").mkdir(parents=True, exist_ok=True)
+        (root / "tests").mkdir(exist_ok=True)
+        (root / "src" / "auth" / "LoginService.ts").write_text(
+            "export class LoginService {\n  signIn(user: string) { return Boolean(user); }\n}\n",
+            encoding="utf-8",
+        )
+        (root / "src" / "api" / "client.ts").write_text("export const clientRoute = '/api/login';\n", encoding="utf-8")
+        (root / "tests" / "login.test.ts").write_text("test('login', () => expect(true).toBe(true));\n", encoding="utf-8")
+    (other / "README.md").write_text("# Other Pattern Project\n", encoding="utf-8")
+    (other / "package.json").write_text(
+        json.dumps({"scripts": {"test": "vitest"}, "dependencies": {"vite": "^7.0.0", "react": "^19.0.0"}}, indent=2),
+        encoding="utf-8",
+    )
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/v1/personal-intelligence/profile",
+        json={"workspace": str(workspace), "project_roots": [str(other), str(tmp_path / "missing")]},
+    )
+
+    assert response.status_code == 200
+    assert_core_contract(response.json(), "personal.intelligence")
+    patterns = response.json()["data"]["project_pattern_recognition"]
+    system_names = {item["system"] for item in patterns["recurring_systems"]}
+    assert {"auth", "api", "validation"}.intersection(system_names)
+    assert len(patterns["projects_analyzed"]) == 2
+    assert patterns["unavailable_projects"]
+    assert patterns["suggested_templates"]
 
 
 def test_known_client_contract_parsing_tolerates_missing_optional_fields() -> None:
@@ -491,6 +1147,190 @@ def test_v1_known_client_contracts_match_desktop_vscode_and_visual_studio(tmp_pa
     client_ids = {item["client_id"] for item in data["clients"]}
     assert {"auralith-desktop", "aegis-vscode", "aegis-visual-studio"}.issubset(client_ids)
     assert any(item["id"] == task_id for item in data["active_tasks"])
+
+
+def test_orchestration_plan_creates_safe_queue_and_memory(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    (workspace / ".env").write_text("API_KEY=secret\n", encoding="utf-8")
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/v1/orchestration/plan",
+        json={
+            "workspace": str(workspace),
+            "goal": "Install package, remove dead code, and use OpenAI only if approved",
+            "source_client": "pytest",
+            "context_files": ["README.md", ".env"],
+        },
+    )
+
+    assert response.status_code == 200
+    assert_core_contract(response.json(), "orchestration.plan")
+    data = response.json()["data"]
+    assert data["current_goal"].startswith("Install package")
+    assert data["plan"]["risk"] == "high"
+    assert data["plan"]["quality"]["score"] <= 100
+    assert data["plan"]["quality"]["top_risks"]
+    assert data["plan"]["knowledge"]["node_count"] > 0
+    assert data["plan"]["simulation"]["risk_level"] in {"high", "dangerous_architectural_change"}
+    assert data["plan"]["simulation"]["split_recommended"] is True
+    assert data["plan"]["planner_guidance"]
+    assert data["task_list"][0]["status"] == "in_progress"
+    assert data["task_list"][0]["active_step"] == "inspect"
+    assert len(data["task_list"]) == 8
+    assert data["active_agent"]["id"] == "planner"
+    assert [task["owner_agent"] for task in data["task_list"]] == [
+        "planner",
+        "architect",
+        "planner",
+        "coder",
+        "reviewer",
+        "tester",
+        "repair",
+        "documentation",
+    ]
+    assert len(data["agent_pipeline"]) == 7
+    gate_ids = {gate["id"] for gate in data["plan"]["approval_gates"]}
+    assert {"file_edit", "file_delete", "build_command", "install_package", "cloud_context"}.issubset(gate_ids)
+    assert data["plan"]["blocked_context"][0]["path"] == ".env"
+    assert (workspace / ".aegis" / "orchestration-queue.json").is_file()
+    assert "Active Orchestration" in (workspace / ".aegis" / "roadmap.md").read_text(encoding="utf-8")
+    history = json.loads((workspace / ".aegis" / "agent-history.json").read_text(encoding="utf-8"))
+    assert any(item.get("event") == "orchestration_created" for item in history)
+    assert any(item.get("event") == "agent_decision" and item.get("agent_id") == "planner" for item in history)
+
+
+def test_orchestration_step_requires_approval_before_apply_and_validation(tmp_path: Path, monkeypatch) -> None:
+    workspace = make_workspace(tmp_path)
+    client = TestClient(create_app())
+    plan_response = client.post(
+        "/v1/orchestration/plan",
+        json={"workspace": str(workspace), "goal": "Stabilize build workflow", "source_client": "pytest"},
+    )
+    tasks = plan_response.json()["data"]["task_list"]
+    apply_task_id = next(task["id"] for task in tasks if task["owner_agent"] == "coder")
+    validation_task_id = next(task["id"] for task in tasks if task["owner_agent"] == "tester")
+
+    proposal = client.post(
+        "/v1/orchestration/step",
+        json={"workspace": str(workspace), "task_id": apply_task_id, "action": "propose"},
+    )
+    assert proposal.status_code == 200
+    assert_core_contract(proposal.json(), "orchestration.step")
+    assert proposal.json()["data"]["pending_approvals"][0]["task_id"] == apply_task_id
+
+    blocked_apply = client.post(
+        "/v1/orchestration/step",
+        json={"workspace": str(workspace), "task_id": apply_task_id, "action": "apply"},
+    )
+    assert blocked_apply.status_code == 200
+    assert blocked_apply.json()["data"]["pending_approvals"][0]["active_step"] == "wait_for_approval"
+
+    approved = client.post(
+        "/v1/orchestration/step",
+        json={"workspace": str(workspace), "task_id": apply_task_id, "action": "approve", "approval": True},
+    )
+    assert approved.status_code == 200
+    assert approved.json()["data"]["active_task"]["active_step"] == "apply_approved_changes"
+
+    applied = client.post(
+        "/v1/orchestration/step",
+        json={
+            "workspace": str(workspace),
+            "task_id": apply_task_id,
+            "action": "apply",
+            "approval": True,
+            "affected_files": ["src/app.py"],
+        },
+    )
+    assert applied.status_code == 200
+    apply_task = next(task for task in applied.json()["data"]["task_list"] if task["id"] == apply_task_id)
+    assert apply_task["status"] == "validating"
+    assert apply_task["affected_files"] == ["src/app.py"]
+
+    validation_block = client.post(
+        "/v1/orchestration/step",
+        json={"workspace": str(workspace), "task_id": validation_task_id, "action": "validate"},
+    )
+    assert validation_block.status_code == 200
+    assert validation_block.json()["data"]["pending_approvals"][0]["active_step"] == "wait_for_validation_approval"
+
+    monkeypatch.setattr(
+        "aegis_core.orchestration.run_validation",
+        lambda workspace, command=None: {"ok": True, "command": ["npm", "test"], "returncode": 0, "stdout": "ok", "stderr": ""},
+    )
+    validation_run = client.post(
+        "/v1/orchestration/step",
+        json={"workspace": str(workspace), "task_id": validation_task_id, "action": "validate", "approval": True},
+    )
+    assert validation_run.status_code == 200
+    validation_task = next(task for task in validation_run.json()["data"]["task_list"] if task["id"] == validation_task_id)
+    assert validation_task["latest_validation"]["ok"] is True
+    assert validation_task["active_step"] == "summarize"
+
+    completed = client.post(
+        "/v1/orchestration/step",
+        json={"workspace": str(workspace), "task_id": validation_task_id, "action": "complete", "summary": "Validated staged workflow."},
+    )
+    assert completed.status_code == 200
+    assert "Validated staged workflow" in (workspace / ".aegis" / "decisions.md").read_text(encoding="utf-8")
+    assert "orchestration task passed" in (workspace / ".aegis" / "validation-log.md").read_text(encoding="utf-8")
+    history = json.loads((workspace / ".aegis" / "agent-history.json").read_text(encoding="utf-8"))
+    assert any(item.get("event") == "agent_decision" and item.get("agent_id") == "coder" for item in history)
+    assert any(item.get("event") == "agent_decision" and item.get("agent_id") == "tester" for item in history)
+
+
+def test_orchestration_dashboard_surfaces_agent_file_conflicts(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    client = TestClient(create_app())
+    plan_response = client.post(
+        "/v1/orchestration/plan",
+        json={"workspace": str(workspace), "goal": "Coordinate a risky shared file edit", "source_client": "pytest"},
+    )
+    tasks = plan_response.json()["data"]["task_list"]
+    coder_task_id = next(task["id"] for task in tasks if task["owner_agent"] == "coder")
+    repair_task_id = next(task["id"] for task in tasks if task["owner_agent"] == "repair")
+
+    for task_id in (coder_task_id, repair_task_id):
+        response = client.post(
+            "/v1/orchestration/step",
+            json={
+                "workspace": str(workspace),
+                "task_id": task_id,
+                "action": "apply",
+                "approval": True,
+                "affected_files": ["src/shared.py"],
+            },
+        )
+        assert response.status_code == 200
+
+    dashboard = client.get("/v1/orchestration", params={"workspace": str(workspace)})
+
+    assert dashboard.status_code == 200
+    data = dashboard.json()["data"]
+    conflict = data["coordination"]["conflicts"][0]
+    assert conflict["path"] == "src/shared.py"
+    assert {claim["agent_id"] for claim in conflict["claims"]} == {"coder", "repair"}
+
+
+def test_orchestration_validation_requires_approval_for_detected_commands(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    client = TestClient(create_app())
+    plan_response = client.post(
+        "/v1/orchestration/plan",
+        json={"workspace": str(workspace), "goal": "Inspect and validate safely", "source_client": "pytest"},
+    )
+    first_task_id = plan_response.json()["data"]["task_list"][0]["id"]
+
+    response = client.post(
+        "/v1/orchestration/step",
+        json={"workspace": str(workspace), "task_id": first_task_id, "action": "validate"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["pending_approvals"][0]["task_id"] == first_task_id
+    assert data["pending_approvals"][0]["active_step"] == "wait_for_validation_approval"
 
 
 def test_shared_mutation_apis_report_unwritable_memory_root(tmp_path: Path) -> None:
@@ -660,9 +1500,46 @@ def test_invalid_config_values_fall_back_safely(tmp_path: Path) -> None:
     assert config.default_model == AegisConfig.default_model
     assert config.fallback_models == AegisConfig.fallback_models
     assert config.max_context_chars == AegisConfig.max_context_chars
+    assert config.model_routing_mode == "local_only"
+    assert config.lm_studio_url == AegisConfig.lm_studio_url
+    assert config.cloud_cost_warnings is True
     assert config.auto_scan_on_open is False
     assert config.validation_preferences == ("npm test", "npm run build")
     assert config.memory_dir_name == AegisConfig.memory_dir_name
+
+
+def test_hybrid_model_settings_are_sanitized(tmp_path: Path) -> None:
+    workspace = tmp_path / "hybrid-settings-project"
+    aegis_dir = workspace / ".aegis"
+    aegis_dir.mkdir(parents=True)
+    (aegis_dir / "config.json").write_text(
+        json.dumps(
+            {
+                "lm_studio_url": "127.0.0.1:1234/v1/chat/completions",
+                "model_routing_mode": "cloud-allowed",
+                "default_local_model": "local-default",
+                "local_small_model": "local-small",
+                "local_coder_model": "local-coder",
+                "local_embedding_model": "local-embed",
+                "preferred_cloud_provider": "OpenRouter",
+                "preferred_cloud_model": "openrouter-model",
+                "cloud_cost_warnings": "false",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    config = load_config(workspace)
+
+    assert config.lm_studio_url == "http://127.0.0.1:1234"
+    assert config.model_routing_mode == "cloud_allowed"
+    assert config.default_local_model == "local-default"
+    assert config.local_small_model == "local-small"
+    assert config.local_coder_model == "local-coder"
+    assert config.local_embedding_model == "local-embed"
+    assert config.preferred_cloud_provider == "openrouter"
+    assert config.preferred_cloud_model == "openrouter-model"
+    assert config.cloud_cost_warnings is False
 
 
 def test_ollama_url_config_normalizes_common_local_values(tmp_path: Path) -> None:
@@ -717,6 +1594,171 @@ def test_ollama_model_listing_ignores_malformed_entries(monkeypatch) -> None:
 
     assert client.list_models() == ["granite-code:8b", "qwen3-coder:30b"]
     assert client.health().selected_model == "qwen3-coder:30b"
+
+
+class DummyCredentialStore:
+    available = True
+
+    def __init__(self, keys: dict[str, str] | None = None):
+        self.keys = keys or {}
+
+    def has_provider_key(self, provider_id: str) -> bool:
+        return provider_id in self.keys
+
+    def read_provider_key(self, provider_id: str) -> str | None:
+        return self.keys.get(provider_id)
+
+
+class BrokenCredentialStore(DummyCredentialStore):
+    def has_provider_key(self, provider_id: str) -> bool:
+        raise RuntimeError("credential backend unavailable")
+
+
+def test_model_router_is_local_first_and_blocks_secret_context(tmp_path: Path, monkeypatch) -> None:
+    workspace = tmp_path / "router-local-project"
+    workspace.mkdir()
+    (workspace / "src.py").write_text("print('ok')\n", encoding="utf-8")
+    (workspace / ".env").write_text("API_KEY=secret\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "aegis_core.model_router.OllamaClient.health",
+        lambda self: OllamaStatus(True, 3, ["qwen3-coder:30b", "qwen2.5-coder:7b"], "qwen3-coder:30b", []),
+    )
+
+    route = route_model(workspace, "code_completion", context_files=["src.py", ".env"], credentials=DummyCredentialStore())
+
+    assert route["selected"]["provider_id"] == "ollama"
+    assert route["selected"]["model"] == "qwen3-coder:30b"
+    assert route["approval_required"] is False
+    assert route["context"]["included_files"] == ["src.py"]
+    assert route["context"]["blocked_files"][0]["path"] == ".env"
+    assert "Secret-like" in route["warnings"][0]
+
+
+def test_model_router_requires_cloud_approval_in_hybrid_mode(tmp_path: Path, monkeypatch) -> None:
+    workspace = tmp_path / "router-hybrid-project"
+    aegis_dir = workspace / ".aegis"
+    aegis_dir.mkdir(parents=True)
+    (aegis_dir / "config.json").write_text(
+        json.dumps({"model_routing_mode": "hybrid", "preferred_cloud_provider": "openai"}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "aegis_core.model_router.OllamaClient.health",
+        lambda self: OllamaStatus(True, 4, ["qwen3-coder:30b"], "qwen3-coder:30b", []),
+    )
+
+    route = route_model(workspace, "hard_debugging", credentials=DummyCredentialStore({"openai": "stored"}))
+
+    assert route["selected"]["provider_id"] == "ollama"
+    assert route["approval_required"] is True
+    assert route["fallback_order"][1]["provider_id"] == "openai"
+    assert route["fallback_order"][1]["status"] == "approval_required"
+    assert route["cloud_reason"] == "client_approval_required"
+
+
+def test_model_router_selects_approved_cloud_when_allowed(tmp_path: Path, monkeypatch) -> None:
+    workspace = tmp_path / "router-cloud-project"
+    aegis_dir = workspace / ".aegis"
+    aegis_dir.mkdir(parents=True)
+    (aegis_dir / "config.json").write_text(
+        json.dumps(
+            {
+                "model_routing_mode": "cloud_allowed",
+                "preferred_cloud_provider": "openrouter",
+                "preferred_cloud_model": "anthropic/claude-sonnet",
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "aegis_core.model_router.OllamaClient.health",
+        lambda self: OllamaStatus(True, 4, ["qwen3-coder:30b"], "qwen3-coder:30b", []),
+    )
+
+    route = route_model(
+        workspace,
+        "hard_debugging",
+        allow_cloud=True,
+        cloud_approved=True,
+        local_failure_reason="local model could not explain the failing trace",
+        credentials=DummyCredentialStore({"openrouter": "stored"}),
+    )
+
+    assert route["selected"]["provider_id"] == "openrouter"
+    assert route["selected"]["model"] == "anthropic/claude-sonnet"
+    assert route["cloud_ready"] is True
+    assert route["approval_required"] is False
+    assert any("Cost warning" in warning for warning in route["warnings"])
+
+
+def test_model_router_selects_approved_cloud_for_repo_planning(tmp_path: Path, monkeypatch) -> None:
+    workspace = tmp_path / "router-planning-project"
+    aegis_dir = workspace / ".aegis"
+    aegis_dir.mkdir(parents=True)
+    (aegis_dir / "config.json").write_text(
+        json.dumps({"model_routing_mode": "hybrid", "preferred_cloud_provider": "openai", "preferred_cloud_model": "gpt-4.1"}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "aegis_core.model_router.OllamaClient.health",
+        lambda self: OllamaStatus(True, 4, ["qwen3-coder:30b"], "qwen3-coder:30b", []),
+    )
+
+    route = route_model(
+        workspace,
+        "repo_wide_planning",
+        allow_cloud=True,
+        cloud_approved=True,
+        credentials=DummyCredentialStore({"openai": "stored"}),
+    )
+
+    assert route["selected"]["provider_id"] == "openai"
+    assert route["task_type"] == "repo_wide_planning"
+    assert route["cloud_ready"] is True
+    assert route["approval_required"] is False
+
+
+def test_model_router_contract_endpoint_returns_versioned_route(tmp_path: Path, monkeypatch) -> None:
+    workspace = tmp_path / "router-api-project"
+    workspace.mkdir()
+    monkeypatch.setattr(
+        "aegis_core.model_router.OllamaClient.health",
+        lambda self: OllamaStatus(True, 5, ["qwen3-coder:30b"], "qwen3-coder:30b", []),
+    )
+    client = TestClient(create_app())
+
+    response = client.post("/v1/models/route", json={"workspace": str(workspace), "task_type": "simple_explanation"})
+
+    assert response.status_code == 200
+    assert_core_contract(response.json(), "model.route")
+    data = response.json()["data"]
+    assert data["selected"]["provider_id"] == "ollama"
+    assert data["mode"] == "local_only"
+
+
+def test_provider_inventory_reports_credential_store_read_failures(tmp_path: Path) -> None:
+    workspace = tmp_path / "provider-inventory-project"
+    workspace.mkdir()
+
+    inventory = provider_inventory(workspace, credentials=BrokenCredentialStore())
+
+    assert inventory["credential_store_available"] is True
+    assert inventory["credential_store_healthy"] is False
+    assert inventory["credential_store_errors"]
+    assert {item["provider_id"] for item in inventory["credential_store_errors"]} == {"openai", "anthropic", "google", "openrouter"}
+    assert all(item["error"] for item in inventory["credential_store_errors"])
+    assert all("secret-like" in item["error"] for item in inventory["credential_store_errors"])
+    assert all(not item["key_stored"] for item in inventory["providers"] if item["requires_key"])
+
+
+def test_provider_key_endpoint_rejects_unknown_provider() -> None:
+    client = TestClient(create_app())
+
+    response = client.post("/v1/providers/not-a-provider/key", json={"api_key": "dummy"})
+
+    assert response.status_code == 400
+    assert "Unsupported provider" in response.json()["detail"]
 
 
 def test_ollama_health_handles_malformed_model_payload(monkeypatch) -> None:

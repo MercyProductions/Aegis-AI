@@ -24,6 +24,10 @@ Canonical schemas: `aegis-core/aegis_core/contracts.py`
 | --- | --- | --- | --- | --- | --- | --- |
 | `GET /v1/health` | `health` | stable | Not direct today | `/api/core-runtime` and `/api/health` adapter | Direct health check | Direct health check |
 | `GET /v1/models` | `models` | stable | Via dashboard model status | `/api/core-runtime` and `/api/models` adapter | Direct model inventory, Ollama fallback | Not direct today |
+| `GET /v1/providers` | `model.providers` | experimental | Not direct today | Future adapter candidate | Not direct today | Not direct today |
+| `POST /v1/models/route` | `model.route` | experimental | Not direct today | Future routing bridge candidate | Future route preview candidate | Future health/route preview candidate |
+| `POST /v1/models/completions` | `model.completion` | experimental | Not direct today | Future gated provider candidate | Not direct today | Not direct today |
+| `POST/DELETE /v1/providers/{provider_id}/key` | `provider.key.status` | experimental | Not direct today | Future settings bridge candidate | Not direct today | Not direct today |
 | `GET /v1/settings` | `settings` | stable | Not direct today | `/api/core-runtime` and `/api/config` adapter | Direct health/settings check | Not direct today |
 | `POST /v1/settings` | `settings.updated` | stable | Not direct today | Best-effort sync after `POST /api/config` | Not direct today | Not direct today |
 | `POST /v1/workspaces/scan` | `workspace.scan` | stable | Not direct today | Future bridge candidate | Direct scan metadata, local scan fallback | Not direct today |
@@ -33,9 +37,20 @@ Canonical schemas: `aegis-core/aegis_core/contracts.py`
 | `GET /v1/branding` | `branding.tokens` | experimental | Via dashboard branding | Not direct today | Not direct today | Not direct today |
 | `POST /v1/clients/register` | `client.registered` | stable | Direct registration | Future bridge candidate | Direct registration | Direct registration |
 | `GET /v1/clients` | `clients.list` | stable | Via dashboard client count | Not direct today | Not direct today | Not direct today |
+| `GET /v1/agents` | `agents.roster` | experimental | Future agent activity panel candidate | Future bridge candidate | Future sidebar/status candidate | Future tool window candidate |
 | `POST /v1/tasks` | `task.created` | stable | Not direct today | Future task mirror candidate | Direct task create | Not direct today |
 | `GET /v1/tasks` | `tasks.list` | stable | Via dashboard active/recent task counts | Not direct today | Not direct today | Not direct today |
 | `POST /v1/tasks/{task_id}/status` | `task.updated` | stable | Not direct today | Future task mirror candidate | Direct task status update | Not direct today |
+| `POST /v1/orchestration/plan` | `orchestration.plan` | experimental | Future supervised-goal UI candidate | Future bridge candidate, keep `/api` workflows intact | Future supervised agent-mode candidate | Future supervised agent-mode candidate |
+| `GET /v1/orchestration` | `orchestration.dashboard` | experimental | Future dashboard panel candidate | Future `/api/core-runtime` summary candidate | Future status panel candidate | Future tool window status candidate |
+| `POST /v1/orchestration/step` | `orchestration.step` | experimental | Future approval UI candidate | Future bridge candidate only after frontend approval UI exists | Future approval step candidate | Future approval step candidate |
+| `GET /v1/jobs` | `jobs.dashboard` | experimental | Future maintenance panel candidate | Future `/api/core-runtime` summary candidate | Future project-open trigger candidate | Future solution-open trigger candidate |
+| `POST /v1/jobs/run` | `jobs.run` | experimental | Future explicit job run/approval UI candidate | Future backend adapter candidate; do not auto-run risky jobs | Future trigger/due runner candidate | Future trigger/due runner candidate |
+| `GET /v1/quality` | `quality.dashboard` | experimental | Future quality/risk dashboard candidate | Future `/api/core-runtime` quality summary candidate | Future status/sidebar risk candidate | Future tool window risk candidate |
+| `POST /v1/quality/snapshot` | `quality.snapshot` | experimental | Future explicit snapshot action or safe scheduled runner | Future backend adapter candidate; generated `.aegis` reports only | Future project-open or explicit snapshot candidate | Future solution-open or explicit snapshot candidate |
+| `GET /v1/knowledge/graph` | `knowledge.graph` | experimental | Future relationship visualization candidate | Future `/api/core-runtime` graph summary candidate | Future context-selection candidate | Future solution graph candidate |
+| `POST /v1/knowledge/graph` | `knowledge.graph` | experimental | Future explicit graph refresh candidate | Future backend adapter candidate; generated `.aegis` artifacts only | Future project-open or explicit graph refresh candidate | Future solution-open or explicit graph refresh candidate |
+| `POST /v1/knowledge/query` | `knowledge.query` | experimental | Future impacted-systems query candidate | Future relationship query adapter candidate | Future “why this file?” and context query candidate | Future file/solution impact query candidate |
 | `POST /v1/validation` | `validation` | stable | Via dashboard validation commands | Future validation bridge candidate | Direct validation run, local terminal fallback on Core connection failure | Not direct today |
 | `POST /v1/agent/continue` | `agent.continue.plan` | experimental | Not direct today | Future plan-only bridge candidate | Not direct today | Not direct today |
 | `POST /v1/agent/repair` | `agent.repair.plan` | experimental | Not direct today | Future plan-only bridge candidate | Not direct today | Not direct today |
@@ -104,6 +119,11 @@ Compatibility expectation:
 - Registration and task-sync responses must match the expected Core envelope and `ok` state.
 - Registration failures are logged and skipped rather than blocking IDE workflows.
 - Core health/models/settings/scan/roadmap/memory/diagnostics/validation failures degrade to existing VS Code local or direct Ollama fallbacks where available.
+- Hybrid model router endpoints are not consumed yet; when adopted, VS Code must show Core `context.included_files`, `context.blocked_files`, warnings, and require explicit approval before cloud fallback.
+- Orchestration endpoints are not consumed yet; when adopted, VS Code must keep diff preview/apply/rollback local to the extension and use Core only for staged queue state, approval metadata, validation summaries, and memory updates.
+- Jobs endpoints are not consumed yet; when adopted, VS Code may run `project_opened` and `many_files_changed` triggers, but must surface `needs_approval` for build/test/lint jobs instead of running them silently.
+- Quality endpoints are not consumed yet; when adopted, VS Code should surface Core risk warnings before editing high-risk files and can trigger snapshots only as generated `.aegis` health artifacts.
+- Knowledge endpoints are not consumed yet; when adopted, VS Code should use graph queries for context selection and impacted-system warnings while keeping diff/apply/rollback local.
 - Proposal, apply, rollback, and workspace-specific UX remain extension-owned.
 
 ### Visual Studio Extension
@@ -119,6 +139,9 @@ Compatibility expectation:
 - Registration requires the expected `client.registered` envelope and `ok` state.
 - Registration failures surface as health-check warnings.
 - Solution detection, selected code review, build/error workflow, approval, rollback, and local intelligence remain extension-owned.
+- Jobs endpoints are not consumed yet; when adopted, Visual Studio may run solution-open/build-failed triggers and must keep build execution approval visible.
+- Quality endpoints are not consumed yet; when adopted, Visual Studio should treat quality snapshots as generated `.aegis` reporting and keep source edits/build execution behind existing approvals.
+- Knowledge endpoints are not consumed yet; when adopted, Visual Studio should use them for solution impact, selected-file dependents, and build-error context only.
 
 ## Next Migration Candidates
 
@@ -126,6 +149,9 @@ Low-risk candidates:
 
 - Website task graph can mirror or link Core `tasks.list` records without replacing SQLite task history.
 - Visual Studio can add read-only `workspace.scan`, `workspace.roadmap`, and `validation` calls.
+- Desktop, VS Code, and Visual Studio can add read-only job dashboards and explicit trigger buttons for safe maintenance workflows.
+- Desktop, Website, VS Code, and Visual Studio can add read-only quality dashboards and explicit snapshot buttons for generated health reports.
+- Desktop can render the `knowledge.graph.visualization` subset; IDE clients can add read-only impact/context queries.
 - Desktop smoke can assert Core dashboard loaded/degraded fields in the UI.
 - Website workspace scan and validation can consume Core summaries as hints without replacing Website orchestration.
 

@@ -10,7 +10,7 @@ Shared local-first runtime work now lives in:
 aegis-core/
 ```
 
-Aegis Core is the consolidation layer for the Desktop App, Website, VS Code extension, and Visual Studio extension. It provides reusable Ollama integration, workspace scanning, memory, roadmap generation, validation detection, diagnostics, and plan-only agent workflows through a Python service layer, local FastAPI API, and optional `aegis` CLI.
+Aegis Core is the consolidation layer for the Desktop App, Website, VS Code extension, and Visual Studio extension. It provides reusable Ollama integration, workspace scanning, memory, roadmap generation, validation detection, diagnostics, predictive change simulation, engineering operations intelligence, adaptive personal engineering intelligence, and plan-only agent workflows through a Python service layer, local FastAPI API, and optional `aegis` CLI.
 
 The current integration phase adds a shared `/v1` API for cross-client memory, tasks, diagnostics, model settings, client registration, and a desktop dashboard data source at `/v1/ecosystem/dashboard`.
 
@@ -21,6 +21,9 @@ cd aegis-core
 python -m aegis_core.cli health --workspace ..
 python -m aegis_core.cli scan --workspace ..
 python -m aegis_core.cli roadmap --workspace ..
+python -m aegis_core.cli simulate --workspace .. --objective "Refactor one service safely" --approach "Minimal adapter"
+python -m aegis_core.cli operations --workspace ..
+python -m aegis_core.cli personal --workspace .. --preference planning_depth=balanced
 ```
 
 See `aegis-core/docs/SYSTEM_ARCHITECTURE.md` for the target ecosystem architecture.

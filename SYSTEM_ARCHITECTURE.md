@@ -20,7 +20,9 @@ flowchart LR
   Api["Website Backend /api\nFastAPI on 8787"]
   Bridge["Core Bridge\n/api/core-runtime"]
   Core["Aegis Core /v1\nFastAPI on 8788"]
+  Creds["OS Credential Store\nprovider keys"]
   Ollama["Ollama\nLocal models on 11434"]
+  Providers["Optional Cloud Providers\napproval required"]
   Workspace["Workspace files\n.aegis local memory"]
   Store["Website SQLite\nwebsite/data/aegis.sqlite3"]
 
@@ -35,6 +37,8 @@ flowchart LR
   Api --> Store
   Api --> Workspace
   Core --> Ollama
+  Core --> Creds
+  Core -. approved sanitized context .-> Providers
   Core --> Workspace
 ```
 
@@ -61,14 +65,84 @@ Default port: `http://127.0.0.1:8787`.
 Aegis Core is the shared local runtime contract. It must stay small, stable, local-first, and safe for Desktop, Website, VS Code, and Visual Studio to call:
 
 - Core health and local model status.
+- Local-first hybrid model routing, provider inventory, and gated completion contracts.
 - Shared settings stored in workspace-local `.aegis/config.json`.
 - Workspace scan and roadmap generation.
 - Shared memory summaries and diagnostics.
 - Client registration and client listing.
 - Shared tasks, task status, and dashboard aggregation.
+- Supervised autonomous task orchestration: goal planning, local queue state, specialized owner agents, approval gates, validation state, and memory updates.
+- Safe scheduled and trigger-based maintenance jobs for proactive scans, summaries, reports, roadmap refreshes, TODO review, documentation drift, and validation status.
+- Project quality intelligence: health scoring, trend snapshots, risk detection, daily/weekly quality reports, and Planner Agent guidance.
+- Knowledge graph and deep project understanding: semantic relationships between files, systems, APIs, UI components, services, tasks, roadmap items, decisions, bugs, validation failures, and history.
+- Predictive planning and change simulation: read-only forecasts for impacted files, affected systems, build/test risk, dependency ripple, architecture drift, validation cost, rollback complexity, and scenario comparison.
+- Autonomous engineering operations: release planning, technical debt tracking, lifecycle awareness, long-term risk monitoring, maintenance scheduling, productivity intelligence, and cross-project coordination.
+- Adaptive personal engineering intelligence: local preference memory, workflow/style learning, recurring project pattern recognition, personalized recommendations, habit analysis, and resettable user-controlled profile state.
 - Validation summary/run.
 - Plan-only continue and repair flows.
 - Branding tokens shared by clients.
+
+Hybrid routing is privacy-first:
+
+- Default mode is `local_only`.
+- Normal chat, code completion, code review, roadmap generation, and smaller fixes stay local on Ollama unless clients explicitly request a route plan that considers cloud.
+- Cloud providers require visible warnings, user approval, sanitized context metadata, and API keys in OS credential storage.
+- Core rejects secret-like, ignored, or outside-workspace files from cloud context.
+
+Autonomous orchestration is supervised by design:
+
+- Core may create and advance a staged queue, but it does not blindly edit files.
+- Planner, Architect, Coder, Reviewer, Tester, Repair, and Documentation agents are local roles sharing `.aegis` memory.
+- File edits, deletion, package installs, build/test/lint commands, and cloud context all require explicit approval gates.
+- Clients own the approval UI, diff display, patch application, and rollback execution.
+- Core records progress in `.aegis/orchestration-queue.json`, `.aegis/active-orchestration.json`, `roadmap.md`, `decisions.md`, `validation-log.md`, and `agent-history.json`.
+
+Workflow automation is safe by default:
+
+- Core exposes job state through `/v1/jobs` and job execution through `/v1/jobs/run`.
+- Jobs may scan, summarize, report, recommend, and write generated `.aegis` memory/log files.
+- Jobs do not edit project source, delete files, install packages, run build/test/lint commands, or send cloud context without explicit approval.
+- Job state is stored in `.aegis/jobs-state.json`; job history is appended to `.aegis/jobs-log.md`.
+
+Quality intelligence is observability for local projects:
+
+- Core exposes the current health dashboard through `/v1/quality` and records history through `/v1/quality/snapshot`.
+- Snapshots are stored in `.aegis/health-history.json`.
+- Generated reports are written to `.aegis/daily-health-report.md` and `.aegis/weekly-quality-summary.md`.
+- The dashboard combines validation status, dependency drift, TODOs, known bugs, stale docs, complexity hotspots, repeated repairs, model failures, risky diffs, and frequently changed files.
+- Planner Agent reads this data while creating orchestration plans so broken builds, repeated failures, high-risk files, and missing tests can be prioritized before speculative work.
+
+Knowledge graph intelligence is relationship context for local projects:
+
+- Core exposes the graph through `/v1/knowledge/graph` and deterministic relationship queries through `/v1/knowledge/query`.
+- Persisted graph state lives in `.aegis/knowledge-graph.json`; generated summaries live in `.aegis/knowledge-summary.md`.
+- Relationship types include `uses`, `depends_on`, `calls`, `implements`, `breaks`, `related_to`, `tested_by`, and `mentioned_in_roadmap`.
+- Graph data is safe for future Desktop visualization because the response includes clusters, hotspots, unstable modules, and a visualization-friendly subset.
+- Planner Agent reads graph summaries so impacted systems, related decisions/issues, and suggested context files can guide safer plans.
+
+Predictive simulation is the planning guardrail before edits:
+
+- Core exposes `/v1/simulation/change` for one planned change and `/v1/simulation/compare` for implementation approach comparison.
+- Forecasts combine scan data, graph relationships, quality trends, validation logs, dependency ripple, unstable modules, and requested context files.
+- The response is UI-ready: predicted impact, confidence score, affected systems, validation cost, rollback complexity, build/test risks, and architecture drift warnings.
+- Planner Agent consumes the simulation summary while creating orchestration plans and inserts a dedicated risk-splitting task when a forecast is high risk.
+- Simulation is advisory and read-only; clients still own approval, diffs, patch application, validation execution, and rollback.
+
+Autonomous engineering operations is the long-term coordination layer:
+
+- Core exposes `/v1/operations` for a single project and `/v1/operations/dashboard` when clients want to include additional local project roots.
+- Operations reads existing Core intelligence: quality trends, knowledge graph, shared tasks, maintenance jobs, validation status, roadmap state, technical debt signals, and project history.
+- The dashboard returns release readiness, release milestones, implementation phases, validation checkpoints, debt signals, cleanup/refactor/stability priorities, lifecycle stage, risk monitoring, maintenance schedules, productivity bottlenecks, and suggested next actions.
+- Cross-project awareness is advisory: shared libraries, shared tooling, repeated architecture patterns, and unavailable project roots are surfaced so humans can coordinate updates safely.
+- Operations does not make release decisions or execute risky work. It may recommend; humans approve edits, commands, package updates, cloud calls, and major project decisions.
+
+Adaptive personal engineering intelligence is the local alignment layer:
+
+- Core exposes `/v1/personal-intelligence` for read-only local analysis, `/v1/personal-intelligence/profile` for optional profile persistence, and `/v1/personal-intelligence/reset` for clearing local profile memory.
+- Profile state lives in `.aegis/personal-engineering-profile.json` only when explicitly persisted or when explicit preferences are supplied.
+- The service learns from local project structure, frameworks, naming conventions, architecture patterns, validation workflows, task ordering, coding style, recurring systems, quality signals, and open work.
+- It adapts roadmap guidance, diff explanation style, planning depth, summary format, validation detail, and agent guidance while preserving safety gates.
+- It does not store source contents, credentials, API keys, tokens, secrets, or provider credentials. Secret-like preference keys are filtered before persistence.
 
 Core `/v1` responses use the shared envelope from `aegis-core/aegis_core/contracts.py`:
 
@@ -110,6 +184,9 @@ Current Core integrations:
 - `/v1/clients/register`
 - `/v1/tasks`
 - `/v1/tasks/{task_id}/status`
+- `/v1/orchestration`
+- `/v1/orchestration/plan`
+- `/v1/orchestration/step`
 
 ### Visual Studio Extension
 
@@ -182,7 +259,7 @@ Duplicate logic is now tracked in `DEPRECATION_PLAN.md`. Removal is allowed only
 
 The current daily dogfooding release candidate keeps the established runtime split:
 
-- Core owns shared `/v1` contracts for health, models, settings, workspace scan, roadmap, memory summary, diagnostics, clients, tasks, validation, and plan-only continue/repair.
+- Core owns shared `/v1` contracts for health, models, hybrid model routing, settings, workspace scan, roadmap, memory summary, diagnostics, clients, tasks, supervised orchestration, validation, and plan-only continue/repair.
 - Website `/api` owns rich product workflows, chat, generated changes, apply, checkpoint restore, Website memory CRUD, task UX, auth/session, and advanced product surfaces.
 - Desktop and Website can continue using `/api` when Core is offline.
 - VS Code and Visual Studio keep local IDE-specific apply/rollback behavior while gradually reading shared state from Core.

@@ -73,6 +73,8 @@ VS Code and Visual Studio try to show the parsed Core error detail for failed sh
 
 If a client reports an unexpected Core `api_version` or response `kind`, it is usually talking to an old Core process or the wrong base URL. Restart Core on `http://127.0.0.1:8788`, confirm `/v1/health` returns `api_version: v1`, and remove any pasted endpoint path from the client setting so only the base URL remains.
 
+If the Website reports Core as reachable but degraded with `Core response was not valid JSON`, port `8788` is answering HTTP but not serving the expected Aegis Core `/v1` envelope. Stop the process on that port and restart Aegis Core, then confirm `http://127.0.0.1:8788/v1/health` returns JSON with `api_version: v1`.
+
 Expected degraded behavior when Core is offline:
 
 - VS Code: logs Core registration/task/model/scan/roadmap/validation warnings and falls back to local or direct Ollama paths where available.

@@ -17,6 +17,17 @@
 - Hardened Aegis Core config loading so malformed shared settings fall back safely instead of breaking startup/health checks.
 - Hardened shared Ollama URL settings so common local URLs are normalized, API-path pastes are reduced to base URLs, credential-like endpoint text is rejected, and malformed URLs report model health failures instead of breaking diagnostics.
 - Hardened Ollama model inventory parsing so malformed `/api/tags` payloads become health diagnostics instead of client-visible exceptions.
+- Added an experimental Aegis Core hybrid model router with local-first defaults, optional OpenAI/Anthropic/Google/OpenRouter/LM Studio provider inventory, cloud approval gates, sanitized context previews, and OS credential storage for provider keys.
+- Improved hybrid provider inventory so OS credential-store inspection failures are surfaced through `credential_store_healthy` and `credential_store_errors` instead of looking like simply missing provider keys.
+- Added experimental Aegis Core autonomous task orchestration with supervised goal planning, local queue state, approval gates, validation state, rollback metadata, and memory updates without uncontrolled file editing.
+- Added experimental Aegis Core multi-agent specialization with Planner, Architect, Coder, Reviewer, Tester, Repair, and Documentation roles assigned to orchestration tasks.
+- Added experimental Aegis Core workflow automation with safe scheduled/triggered maintenance jobs, `/v1/jobs`, `aegis jobs`, generated project health reports, and `.aegis/jobs-log.md` history while preserving approval gates for risky actions.
+- Added experimental Aegis Core observability and quality intelligence with `/v1/quality`, `/v1/quality/snapshot`, `aegis quality`, `.aegis/health-history.json`, daily/weekly quality reports, risk detection, and Planner Agent guidance.
+- Added experimental Aegis Core knowledge graph intelligence with `/v1/knowledge/graph`, `/v1/knowledge/query`, `aegis knowledge`, `.aegis/knowledge-graph.json`, relationship queries, visualization data, and Planner Agent graph guidance.
+- Added experimental Aegis Core predictive planning and change simulation with `/v1/simulation/change`, `/v1/simulation/compare`, `aegis simulate`, impact/risk/validation/rollback forecasts, architecture drift warnings, scenario comparison, and Planner Agent split-task guidance.
+- Added experimental Aegis Core engineering operations with `/v1/operations`, `/v1/operations/dashboard`, `aegis operations`, release readiness, technical debt tracking, lifecycle awareness, risk monitoring, maintenance scheduling, productivity intelligence, and cross-project awareness.
+- Added experimental Aegis Core adaptive personal engineering intelligence with `/v1/personal-intelligence`, `/v1/personal-intelligence/profile`, `/v1/personal-intelligence/reset`, `aegis personal`, local preference memory, workflow/style learning, reusable pattern suggestions, habit analysis, context personalization, and inspectable resettable privacy controls.
+- Improved personal preference filtering so secret-like keys remain blocked while legitimate names such as `keyboard_layout` are preserved.
 - Improved `/v1/tasks/{task_id}/status` error responses for missing tasks and unsupported statuses.
 - Hardened shared task loading so malformed local task records do not break task listing, dashboard sorting, or status summary updates.
 - Hardened shared client registry loading so malformed local client records do not break cross-client dashboard sorting.
@@ -62,10 +73,13 @@
 - Fixed Website project-switch file previews so file reads use the current workspace root instead of stale React state after switching projects.
 - Split Website frontend API, utility, style, React, and icon code into explicit Vite chunks so production builds stay under the default chunk warning budget without raising the warning limit.
 - Fixed the Website acceptance gate so custom backend/frontend URLs are passed through to doctor, smoke, and browser e2e scripts instead of falling back to default ports.
+- Hardened the Website-to-Core adapter so HTTP 200 responses with malformed JSON are reported as reachable degraded Core responses instead of being mistaken for offline Core.
 - Hardened Desktop backend/Core URL settings so local host:port inputs, trailing endpoint paths, and empty values normalize before runtime requests or config writes.
 - Hardened Desktop Core dashboard loading so a shared registration failure no longer blocks dashboard reads when Core is otherwise reachable.
+- Hardened Desktop HTTP diagnostics so backend/Core error envelopes using `error`, `message`, or nested `data` details surface as bounded user-facing messages.
 - Hardened VS Code Ollama/Core URL settings so common local inputs normalize before model detection, health checks, and shared Core sync.
 - Hardened VS Code local API error reporting so Core/Ollama HTTP failures surface parsed, redacted detail text instead of raw JSON bodies.
+- Hardened VS Code request diagnostics so invalid JSON and timeout errors report endpoint paths without leaking workspace query strings.
 - Hardened VS Code VSIX packaging so local dogfooding notes, detected model inventories, and repository-only files are excluded from release archives.
 - Hardened VS Code release metadata so packaged extensions point at the GitHub repository instead of a local filesystem path.
 - Hardened VS Code VSIX contents so the source-tree install helper is excluded from the shipped extension archive.
@@ -74,7 +88,10 @@
 - Simplified the VS Code PowerShell installer so it delegates to the same validated local install path as npm.
 - Hardened Visual Studio Ollama/Core URL settings so common local inputs normalize before model calls, health checks, and shared Core registration.
 - Hardened Visual Studio Health Check so Core reachability and client registration are reported separately with useful Core error details.
+- Hardened Visual Studio Ollama client errors so HTTP failures, empty responses, and malformed JSON produce clear bounded diagnostics.
 - Hardened Visual Studio VSIX metadata and packaging so MoreInfo points to GitHub and internal dogfooding/model-inventory files are excluded.
+- Hardened Visual Studio VSIX packaging so VSCT command buttons, command symbols, C# command IDs, and registered handlers must stay synchronized.
+- Refreshed stabilization validation docs so Core test counts, Website build status, historical migration-phase caveats, VS Code packaging guards, Visual Studio command-table guards, and Desktop smoke status match the current baseline.
 - Added product-utilization workflow notes for daily Auralith dogfooding.
 - Started the long-term workflow refinement cadence so repeated daily-use friction is tracked before new feature work.
 - Documented the current stabilization and validation pass.
@@ -94,6 +111,7 @@
 - VS Code package lint now verifies contributed command and activation-event parity.
 - Visual Studio extension build and VSIX packaging pass.
 - Visual Studio VSIX packaging now verifies manifest MoreInfo and rejects localhost placeholders or internal notes in the archive.
+- Visual Studio VSIX packaging now verifies command table/handler parity before building.
 - Website frontend tests/build and backend test suite pass.
 - Website launch script and smoke workflow pass from the current Windows workspace path.
 - Website launch blocked-port probes validate occupied backend/frontend port handling.

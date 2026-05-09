@@ -22,6 +22,14 @@ Aegis Core owns reusable intelligence and workflow services:
 - Project and solution memory
 - File indexing, dependency graphs, and symbol indexes
 - Roadmap generation
+- Supervised autonomous task orchestration
+- Specialized local agent roles
+- Safe workflow automation and scheduled maintenance jobs
+- Project quality intelligence, health trends, and risk reports
+- Knowledge graph and semantic project relationship queries
+- Predictive planning, change simulation, architecture drift warnings, and scenario comparison
+- Engineering operations for release readiness, debt, lifecycle, maintenance, productivity, and cross-project coordination
+- Adaptive personal engineering intelligence for local preference memory, workflow/style learning, reusable pattern suggestions, habit analysis, and context personalization
 - Validation command detection and safe execution
 - Agent planning, repair planning, rollback metadata, and approval contracts
 - Diagnostics and logs
@@ -52,6 +60,13 @@ Default assumptions:
 - Secrets and protected paths are not read or edited.
 - Edits are proposal-first and approval-based.
 - Validation commands are explicit and non-destructive.
+- Autonomous orchestration means staged queues, specialized owner agents, and approval gates, not uncontrolled edits.
+- Scheduled jobs can scan, summarize, report, and recommend, but risky actions still require approval.
+- Quality snapshots write generated `.aegis` observability artifacts, not source changes.
+- Knowledge graph refreshes write generated `.aegis` relationship artifacts, not source changes.
+- Change simulations are advisory and read-only; they do not apply edits, run risky commands, or send cloud context.
+- Engineering operations dashboards recommend coordination work but do not make release decisions or run risky actions.
+- Personal engineering profiles are local, inspectable, resettable, and persisted only when explicitly requested or when explicit preferences are supplied.
 
 ## Migration Strategy
 
@@ -62,8 +77,16 @@ Default assumptions:
 5. Validation detection and logs move into Core.
 6. Shared tasks flow through `.aegis/tasks.json` and `/v1/tasks`.
 7. The Desktop App reads `/v1/ecosystem/dashboard` for connected clients, active projects, model status, diagnostics, roadmap summaries, and recent activity.
-8. Agent planning and repair loops move into Core.
-9. Clients keep UI approvals and editor-native affordances.
+8. Specialized agent roles are exposed through `/v1/agents`.
+9. Supervised goal queues flow through `.aegis/orchestration-queue.json` and `/v1/orchestration/*`.
+10. Maintenance jobs flow through `.aegis/jobs-state.json`, `.aegis/jobs-log.md`, and `/v1/jobs`.
+11. Project health trends flow through `.aegis/health-history.json`, generated quality reports, and `/v1/quality`.
+12. Semantic project relationships flow through `.aegis/knowledge-graph.json`, generated graph summaries, and `/v1/knowledge/*`.
+13. Predictive planning forecasts flow through `/v1/simulation/*` and feed Planner Agent task ordering.
+14. Engineering operations dashboards flow through `/v1/operations/*`.
+15. Adaptive personal engineering guidance flows through `/v1/personal-intelligence/*`.
+16. Agent planning and repair loops move into Core.
+17. Clients keep UI approvals, diff/apply/rollback, and editor-native affordances.
 
 ## Shared API Layer
 
@@ -90,10 +113,133 @@ Task statuses are intentionally plain:
 - `planned`
 - `running`
 - `waiting_for_approval`
+- `pending`
+- `in_progress`
+- `needs_approval`
+- `validating`
 - `blocked`
 - `completed`
+- `failed`
 - `cancelled`
 - `rolled_back`
+
+## Supervised Orchestration
+
+Orchestration state is stored in `.aegis/orchestration-queue.json` and surfaced through:
+
+```text
+POST /v1/orchestration/plan
+GET  /v1/orchestration?workspace=C:/path/to/project
+POST /v1/orchestration/step
+```
+
+Core records the objective, task list, active step, pending approvals, validation results, and rollback metadata. Clients still own showing proposed diffs, collecting approval, applying files, and restoring checkpoints.
+
+Every orchestration task has an `owner_agent`. The current roles are Planner, Architect, Coder, Reviewer, Tester, Repair, and Documentation. Agent decisions are written to `agent-history.json`.
+
+## Workflow Automation
+
+Maintenance job state is stored in `.aegis/jobs-state.json` and surfaced through:
+
+```text
+GET  /v1/jobs?workspace=C:/path/to/project
+POST /v1/jobs/run
+```
+
+Default jobs cover daily project scan, weekly roadmap update, dependency review, build health check, stale TODO scan, documentation drift check, recent changes summary, broken references check, project health report, quality intelligence snapshot, next best task, and validation status check.
+
+Jobs may write generated `.aegis` memory and logs, including `.aegis/jobs-log.md`. They do not edit source files, delete files, install packages, run build/test/lint commands, or send cloud context without explicit approval. Clients or a local host invoke due jobs and triggers; Core does not run a hidden background daemon.
+
+## Quality Intelligence
+
+Project quality state is stored in `.aegis/health-history.json` and surfaced through:
+
+```text
+GET  /v1/quality?workspace=C:/path/to/project
+POST /v1/quality/snapshot
+```
+
+The dashboard reports current health score, trend, warnings, failing systems, high-risk files, complexity hotspots, cleanup tasks, and recommended next improvement. Snapshots generate `.aegis/daily-health-report.md` and `.aegis/weekly-quality-summary.md`.
+
+Planner Agent reads this dashboard when planning supervised work, so repeated validation failures, risky files, stale docs, and untested core modules can influence task order.
+
+## Knowledge Graph
+
+Knowledge graph state is stored in `.aegis/knowledge-graph.json` and surfaced through:
+
+```text
+GET  /v1/knowledge/graph?workspace=C:/path/to/project
+POST /v1/knowledge/graph
+POST /v1/knowledge/query
+```
+
+The graph links files, symbols, systems, APIs, UI components, services, tasks, roadmap items, architecture decisions, bugs, validation failures, risks, and agent-history events. Relationships include `uses`, `depends_on`, `calls`, `implements`, `breaks`, `related_to`, `tested_by`, and `mentioned_in_roadmap`.
+
+Desktop can later render the visualization subset for system relationships, dependency clusters, unstable modules, roadmap links, and hotspots. Agents already consume graph summaries for impacted systems, related history, and suggested context.
+
+## Predictive Planning And Change Simulation
+
+Change simulation is read-only strategy support before edits. It is surfaced through:
+
+```text
+POST /v1/simulation/change
+POST /v1/simulation/compare
+```
+
+The engine combines workspace scan data, the knowledge graph, quality intelligence, validation logs, dependency ripple, historical repair signals, requested focus files, and the proposed approach. It predicts:
+
+- affected systems and impacted files
+- likely build risks and likely test failures
+- dependency ripple and cross-system edges
+- architecture drift risk
+- implementation difficulty, task size, likely blockers, validation cost, and rollback complexity
+
+The response includes UI-ready fields for impact, confidence, validation cost, rollback complexity, and top warnings. Planner Agent consumes the simulation summary during orchestration planning and adds a dedicated split-planning task when high-risk or drift-prone work should be broken down before implementation.
+
+Simulation is advisory. Clients still own approvals, diff previews, patch application, validation execution, and rollback.
+
+## Autonomous Engineering Operations
+
+Engineering operations coordinates long-term project work without taking control away from humans. It is surfaced through:
+
+```text
+GET  /v1/operations?workspace=C:/path/to/project
+POST /v1/operations/dashboard
+```
+
+Operations combines current Core signals from quality intelligence, knowledge graph relationships, shared tasks, scheduled jobs, validation, roadmap memory, dependencies, and agent history. It reports:
+
+- release readiness, milestones, implementation phases, validation checkpoints, and release notes focus
+- technical debt signals, cleanup recommendations, refactor priorities, and stability tasks
+- lifecycle stage and recommendation mode
+- long-term risk monitoring for instability, validation failures, architecture complexity, dependency risk, and performance regressions
+- maintenance scheduling for refactor windows, dependency review, validation sweeps, optimization passes, and docs refreshes
+- productivity intelligence for recurring pain points, slow workflows, repeated manual tasks, bottlenecks, repeated bug categories, and automation opportunities
+- cross-project awareness for shared libraries, shared tooling, architecture patterns, and repeated systems
+
+Operations is read-only and recommendation-first. It may coordinate what should happen next, but file edits, deletions, validation/build commands, dependency installs, cloud context, and release decisions remain approval-gated.
+
+## Adaptive Personal Engineering Intelligence
+
+Personal intelligence is the local alignment layer for developer preferences and recurring work patterns. It is surfaced through:
+
+```text
+GET  /v1/personal-intelligence?workspace=C:/path/to/project
+POST /v1/personal-intelligence/profile
+POST /v1/personal-intelligence/reset
+```
+
+The default `GET` call is read-only and does not create or update profile state. `POST /v1/personal-intelligence/profile` may include explicit preferences and `persist: true`; persisted profile state lives in `.aegis/personal-engineering-profile.json`. `POST /v1/personal-intelligence/reset` deletes that local profile snapshot.
+
+The service summarizes:
+
+- preferred project structures, frameworks, naming conventions, architecture styles, validation workflows, and task ordering
+- coding style tendencies, abstraction preferences, commenting style, error handling style, UI layout patterns, and architecture decisions
+- recurring systems across projects, including API, auth, UI, agent, roadmap, persistence, validation, settings, and model-runtime patterns
+- personalized recommendations, workflow optimization opportunities, engineering habit signals, and agent guidance
+- context personalization for roadmap generation, diff explanations, planning depth, summaries, and validation detail
+
+Privacy constraints are explicit: no cloud calls, no source content persistence, no credentials, no API keys, and no token-like preference keys. The output includes the local profile path and reset controls so clients can make the feature transparent.
 
 ## Desktop Ecosystem Dashboard Contract
 

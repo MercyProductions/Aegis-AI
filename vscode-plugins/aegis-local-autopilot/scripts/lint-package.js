@@ -93,6 +93,11 @@ for (const file of ['extension.js', 'README.md', 'media/aegis.svg', '.vscodeigno
   }
 }
 
+const extensionText = fs.readFileSync(path.join(root, 'extension.js'), 'utf8');
+if (/\burl\.href\b/.test(extensionText)) {
+  fail('extension.js must not log full request URLs; use formatRequestTarget so workspace query strings stay out of diagnostics.');
+}
+
 for (const scriptFile of ['scripts/package-release.js', 'scripts/install-local.js', 'scripts/run-command.js']) {
   const scriptText = fs.readFileSync(path.join(root, scriptFile), 'utf8');
   if (/\bexecSync\s*\(/.test(scriptText)) {

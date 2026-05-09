@@ -34,18 +34,20 @@ namespace Aegis.LocalAgent.VisualStudio.Services
         public async Task<IReadOnlyList<OllamaModel>> ListModelsAsync(CancellationToken cancellationToken = default)
         {
             var settings = GetSettings();
-            var response = await Http.GetAsync($"{NormalizeBaseUrl(settings)}/api/tags", cancellationToken);
-            response.EnsureSuccessStatusCode();
-            var text = await response.Content.ReadAsStringAsync();
-            var json = JObject.Parse(text);
-            return json["models"]?
-                .Select(item => new OllamaModel
-                {
-                    Name = (string)item["name"] ?? (string)item["model"] ?? string.Empty
-                })
-                .Where(model => !string.IsNullOrWhiteSpace(model.Name))
-                .ToList()
-                ?? new List<OllamaModel>();
+            using (var response = await Http.GetAsync($"{NormalizeBaseUrl(settings)}/api/tags", cancellationToken))
+            {
+                await EnsureSuccessAsync(response, "list Ollama models");
+                var text = await response.Content.ReadAsStringAsync();
+                var json = ParseJsonObject(text, "list Ollama models");
+                return json["models"]?
+                    .Select(item => new OllamaModel
+                    {
+                        Name = (string)item["name"] ?? (string)item["model"] ?? string.Empty
+                    })
+                    .Where(model => !string.IsNullOrWhiteSpace(model.Name))
+                    .ToList()
+                    ?? new List<OllamaModel>();
+            }
         }
 
         public async Task<string> ChatWithFallbackAsync(string prompt, bool json = false, string preferredModel = null, CancellationToken cancellationToken = default)
@@ -106,12 +108,81 @@ namespace Aegis.LocalAgent.VisualStudio.Services
 
             using (var content = new StringContent(body.ToString(Formatting.None), Encoding.UTF8, "application/json"))
             {
-                var response = await Http.PostAsync($"{NormalizeBaseUrl(settings)}/api/chat", content, cancellationToken);
-                response.EnsureSuccessStatusCode();
-                var text = await response.Content.ReadAsStringAsync();
-                var parsed = JObject.Parse(text);
-                return ((string)parsed["message"]?["content"] ?? text).Trim();
+                using (var response = await Http.PostAsync($"{NormalizeBaseUrl(settings)}/api/chat", content, cancellationToken))
+                {
+                    await EnsureSuccessAsync(response, $"chat with Ollama model '{model}'");
+                    var text = await response.Content.ReadAsStringAsync();
+                    var parsed = ParseJsonObject(text, $"chat with Ollama model '{model}'");
+                    return ((string)parsed["message"]?["content"] ?? text).Trim();
+                }
             }
+        }
+
+        private static async Task EnsureSuccessAsync(HttpResponseMessage response, string action)
+        {
+            if (response.IsSuccessStatusCode)
+            {
+                return;
+            }
+
+            var text = await response.Content.ReadAsStringAsync();
+            var message = $"Could not {action}: Ollama returned HTTP {(int)response.StatusCode}";
+            var detail = ExtractErrorDetail(text);
+            if (!string.IsNullOrWhiteSpace(detail))
+            {
+                message += $" - {detail}";
+            }
+
+            throw new InvalidOperationException(message);
+        }
+
+        private static JObject ParseJsonObject(string responseText, string action)
+        {
+            if (string.IsNullOrWhiteSpace(responseText))
+            {
+                throw new InvalidOperationException($"Could not {action}: Ollama returned an empty response.");
+            }
+
+            try
+            {
+                return JObject.Parse(responseText);
+            }
+            catch (JsonException ex)
+            {
+                throw new InvalidOperationException($"Could not {action}: Ollama returned invalid JSON - {ex.Message}", ex);
+            }
+        }
+
+        private static string ExtractErrorDetail(string responseText)
+        {
+            if (string.IsNullOrWhiteSpace(responseText))
+            {
+                return string.Empty;
+            }
+
+            try
+            {
+                var parsed = JObject.Parse(responseText);
+                var detail = parsed.Value<string>("error")
+                    ?? parsed.Value<string>("message")
+                    ?? parsed.Value<string>("detail");
+                return TruncateDetail(detail);
+            }
+            catch (JsonException)
+            {
+                return TruncateDetail(responseText.Trim());
+            }
+        }
+
+        private static string TruncateDetail(string detail)
+        {
+            if (string.IsNullOrWhiteSpace(detail))
+            {
+                return string.Empty;
+            }
+
+            var normalized = detail.Replace("\r", " ").Replace("\n", " ").Trim();
+            return normalized.Length <= 240 ? normalized : normalized.Substring(0, 237) + "...";
         }
 
         private AegisSettingsSnapshot GetSettings()
