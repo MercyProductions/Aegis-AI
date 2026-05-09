@@ -22,6 +22,107 @@ function Invoke-MSBuild {
   }
 }
 
+function Convert-CommandIdValue {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Value
+  )
+
+  return [Convert]::ToInt32($Value.Substring(2), 16)
+}
+
+function Assert-VisualStudioCommandTable {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$VsctPath,
+    [Parameter(Mandatory = $true)]
+    [string]$CommandIdsPath,
+    [Parameter(Mandatory = $true)]
+    [string]$CommandRegistrationPath
+  )
+
+  $vsctText = Get-Content -Raw -LiteralPath $VsctPath
+  $commandIdsText = Get-Content -Raw -LiteralPath $CommandIdsPath
+  $registrationText = Get-Content -Raw -LiteralPath $CommandRegistrationPath
+
+  $buttonIds = @(
+    [regex]::Matches($vsctText, '<Button\b[^>]*\bid="(?<id>[^"]+)"') |
+      ForEach-Object { $_.Groups["id"].Value } |
+      Sort-Object -Unique
+  )
+
+  $symbolValues = @{}
+  foreach ($match in [regex]::Matches($vsctText, '<IDSymbol\s+name="(?<name>[^"]+)"\s+value="(?<value>0x[0-9A-Fa-f]+)"\s*/>')) {
+    $name = $match.Groups["name"].Value
+    if ($name.EndsWith("CommandId")) {
+      $symbolValues[$name] = $match.Groups["value"].Value
+    }
+  }
+
+  $constantValues = @{}
+  foreach ($match in [regex]::Matches($commandIdsText, 'public\s+const\s+int\s+(?<name>[A-Za-z0-9_]+)\s*=\s*(?<value>0x[0-9A-Fa-f]+)\s*;')) {
+    $constantValues[$match.Groups["name"].Value] = $match.Groups["value"].Value
+  }
+
+  $registeredConstants = @(
+    [regex]::Matches($registrationText, 'CommandIds\.(?<name>[A-Za-z0-9_]+)') |
+      ForEach-Object { $_.Groups["name"].Value } |
+      Sort-Object -Unique
+  )
+
+  $issues = @()
+
+  foreach ($buttonId in $buttonIds) {
+    if (-not $symbolValues.ContainsKey($buttonId)) {
+      $issues += "VSCT button '$buttonId' has no matching command IDSymbol."
+    }
+  }
+
+  foreach ($symbolName in ($symbolValues.Keys | Sort-Object)) {
+    if ($buttonIds -notcontains $symbolName) {
+      $issues += "VSCT command symbol '$symbolName' has no matching Button."
+    }
+
+    $constantName = $symbolName -replace 'CommandId$', ''
+    if (-not $constantValues.ContainsKey($constantName)) {
+      $issues += "VSCT command symbol '$symbolName' has no matching CommandIds.$constantName constant."
+      continue
+    }
+
+    $symbolValue = Convert-CommandIdValue $symbolValues[$symbolName]
+    $constantValue = Convert-CommandIdValue $constantValues[$constantName]
+    if ($symbolValue -ne $constantValue) {
+      $issues += "VSCT command symbol '$symbolName' value $($symbolValues[$symbolName]) does not match CommandIds.$constantName value $($constantValues[$constantName])."
+    }
+  }
+
+  foreach ($constantName in ($constantValues.Keys | Sort-Object)) {
+    $symbolName = "${constantName}CommandId"
+    if (-not $symbolValues.ContainsKey($symbolName)) {
+      $issues += "CommandIds.$constantName has no matching VSCT command symbol '$symbolName'."
+    }
+
+    if ($registeredConstants -notcontains $constantName) {
+      $issues += "CommandIds.$constantName is not registered in AegisCommands."
+    }
+  }
+
+  foreach ($registeredName in $registeredConstants) {
+    if (-not $constantValues.ContainsKey($registeredName)) {
+      $issues += "AegisCommands registers missing CommandIds.$registeredName."
+    }
+  }
+
+  if ($issues.Count -gt 0) {
+    throw "Visual Studio command table validation failed:`n - $($issues -join "`n - ")"
+  }
+}
+
+Assert-VisualStudioCommandTable `
+  -VsctPath (Join-Path $projectDir "AegisLocalAgentPackage.vsct") `
+  -CommandIdsPath (Join-Path $projectDir "CommandIds.cs") `
+  -CommandRegistrationPath (Join-Path $projectDir "Commands\AegisCommands.cs")
+
 New-Item -ItemType Directory -Force -Path $release | Out-Null
 $staleDogfoodingNotes = Join-Path $release "DOGFOODING_NOTES.md"
 if (Test-Path -LiteralPath $staleDogfoodingNotes) {

@@ -75,6 +75,7 @@
 - Hardened Visual Studio Ollama/Core URL settings so common local inputs normalize before model calls, health checks, and shared Core registration.
 - Hardened Visual Studio Health Check so Core reachability and client registration are reported separately with useful Core error details.
 - Hardened Visual Studio VSIX metadata and packaging so MoreInfo points to GitHub and internal dogfooding/model-inventory files are excluded.
+- Hardened Visual Studio VSIX packaging so VSCT command buttons, command symbols, C# command IDs, and registered handlers must stay synchronized.
 - Added product-utilization workflow notes for daily Auralith dogfooding.
 - Started the long-term workflow refinement cadence so repeated daily-use friction is tracked before new feature work.
 - Documented the current stabilization and validation pass.
@@ -94,6 +95,7 @@
 - VS Code package lint now verifies contributed command and activation-event parity.
 - Visual Studio extension build and VSIX packaging pass.
 - Visual Studio VSIX packaging now verifies manifest MoreInfo and rejects localhost placeholders or internal notes in the archive.
+- Visual Studio VSIX packaging now verifies command table/handler parity before building.
 - Website frontend tests/build and backend test suite pass.
 - Website launch script and smoke workflow pass from the current Windows workspace path.
 - Website launch blocked-port probes validate occupied backend/frontend port handling.

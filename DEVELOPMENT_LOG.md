@@ -387,3 +387,19 @@ Validation completed:
 
 - VS Code extension lint: pass.
 - VS Code VSIX package: pass; packaged contents remain limited to runtime files and package metadata.
+
+## 2026-05-09 - Visual Studio Command Table Guard
+
+Focus:
+
+- Prevent Visual Studio extension command drift where a VSCT menu item, C# command ID, or handler registration changes without the others.
+- Keep the guard inside the existing VSIX packaging path so daily release validation catches drift early.
+
+Actions:
+
+- Added Visual Studio command table validation to `visual-studio-extensions/aegis-local-agent-vs/build.ps1`.
+- The build now checks VSCT button IDs, command `IDSymbol` values, `CommandIds.cs` constants, and `AegisCommands` registrations before packaging.
+
+Validation completed:
+
+- Visual Studio extension build/package: pass; command table validation ran before the VSIX was produced.

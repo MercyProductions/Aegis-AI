@@ -66,7 +66,7 @@ Packaging/build:
 - Website acceptance gate with explicit backend/frontend URL parameters: passed.
 - VS Code extension lint/package: passed.
 - VS Code VSIX install through `code --install-extension --force`: passed; installed id `aegis.aegis-local-autopilot`.
-- Visual Studio extension build/package: passed; VSIX copied to `visual-studio-extensions/aegis-local-agent-vs/release/AegisLocalAgentVs.vsix`.
+- Visual Studio extension build/package: passed; VSIX copied to `visual-studio-extensions/aegis-local-agent-vs/release/AegisLocalAgentVs.vsix` after command table/handler parity validation.
 - Desktop build/smoke: passed with `0` warnings and `0` errors.
 
 ## What Failed And Was Fixed
@@ -81,7 +81,7 @@ The app correctly uses the Vite `/api` proxy in dev. The E2E harness only mocked
 
 ## Known Limitations
 
-- Visual Studio interactive tool-window load was not automated. The VSIX build/package, manifest version check, command resource check, and release copy all passed.
+- Visual Studio interactive tool-window load was not automated. The VSIX build/package, command table parity check, manifest version check, command resource check, and release copy all passed.
 - Website memory CRUD is still Website-owned and is not mirrored into Core memory summaries yet.
 - Core `patch.proposal`, `rollback.entry`, and `rollback.result` remain schema-only contracts. Active rollback remains Website/client-owned.
 - Core blocks arbitrary validation command overrides by design. Use detected safe commands or configured validation preferences.
