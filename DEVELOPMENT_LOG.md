@@ -1978,6 +1978,27 @@ Validation completed:
 - VS Code extension lint: pass.
 - Repository whitespace check: pass.
 
+## 2026-05-09 - Aegis Core Custom Validation Shim Safety
+
+Focus:
+
+- Prevent Core custom validation commands from running workspace-local or arbitrary-path executable shims that only look safe by basename.
+- Preserve normal detected validation behavior for bare tool names and standard Windows `.cmd`/`.exe` shims.
+
+Actions:
+
+- Blocked path-qualified validation executables unless they are the current Python interpreter path.
+- Stopped treating `.bat` aliases as safe validation shims.
+- Added Core validation regressions for workspace-relative shims, absolute shim paths, `.bat` aliases, arbitrary Python executable paths, and the allowed current Python interpreter.
+- Documented the custom validation shim safety contract in Core docs, root troubleshooting, and the changelog.
+
+Validation completed:
+
+- Aegis Core validation runner focused tests: pass.
+- Aegis Core contract suite: pass, 139 tests.
+- Aegis Core package compile check: pass.
+- Repository whitespace check: pass.
+
 ## 2026-05-09 - Website PowerShell Guard Windows Path Compatibility
 
 Focus:

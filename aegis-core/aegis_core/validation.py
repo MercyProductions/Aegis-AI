@@ -252,7 +252,10 @@ def _resolve_validation_command(command: list[str]) -> list[str]:
 def is_safe_validation_command(command: list[str]) -> bool:
     if not command:
         return False
-    executable = _normalized_executable_name(str(command[0]))
+    raw_executable = str(command[0])
+    if _is_path_qualified_executable(raw_executable) and not _is_current_python_executable(raw_executable):
+        return False
+    executable = _normalized_executable_name(raw_executable)
     args = [str(item) for item in command[1:]]
     if executable == "npm":
         return args in (["test"], ["run", "build"], ["run", "lint"], ["run", "typecheck"], ["run", "type-check"])
@@ -268,7 +271,7 @@ def is_safe_validation_command(command: list[str]) -> bool:
         return args == ["--build", "build"]
     if executable in {"powershell", "pwsh"}:
         return _is_safe_powershell_build_command(args)
-    if executable in {"python", "python.exe", "py", "py.exe"} or executable == Path(sys.executable).name.lower():
+    if executable in {"python", "py"} or _is_current_python_executable(raw_executable):
         return args == ["-m", "pytest"]
     return False
 
@@ -283,12 +286,31 @@ def _is_safe_powershell_build_command(args: list[str]) -> bool:
 
 
 def _normalized_executable_name(executable: str) -> str:
-    raw = str(executable).strip().strip('"').strip("'")
+    raw = _clean_executable_token(executable)
     name = raw.replace("\\", "/").rsplit("/", 1)[-1].lower()
-    for suffix in (".cmd", ".bat", ".exe"):
+    for suffix in (".cmd", ".exe"):
         if name.endswith(suffix):
             return name[: -len(suffix)]
     return name
+
+
+def _clean_executable_token(executable: str) -> str:
+    return str(executable).strip().strip('"').strip("'")
+
+
+def _is_path_qualified_executable(executable: str) -> bool:
+    raw = _clean_executable_token(executable)
+    return raw.startswith(".") or "/" in raw or "\\" in raw or ":" in raw
+
+
+def _is_current_python_executable(executable: str) -> bool:
+    raw = _clean_executable_token(executable)
+    if not _is_path_qualified_executable(raw):
+        return False
+    try:
+        return Path(raw).resolve() == Path(sys.executable).resolve()
+    except (OSError, RuntimeError, ValueError):
+        return False
 
 
 def _decode_output(value: Any) -> str:

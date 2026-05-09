@@ -2987,6 +2987,16 @@ def test_validation_runner_allows_windows_package_manager_shims() -> None:
     assert not validation_module.is_safe_validation_command(["powershell.exe", "-NoProfile", "-File", ".\\scripts\\install.ps1"])
 
 
+def test_validation_runner_blocks_path_qualified_or_batch_shims() -> None:
+    assert validation_module.is_safe_validation_command([sys.executable, "-m", "pytest"])
+    assert not validation_module.is_safe_validation_command(["./npm.cmd", "test"])
+    assert not validation_module.is_safe_validation_command([".\\npm.cmd", "test"])
+    assert not validation_module.is_safe_validation_command(["C:\\tools\\npm.cmd", "test"])
+    assert not validation_module.is_safe_validation_command(["npm.bat", "test"])
+    assert not validation_module.is_safe_validation_command([str(Path(sys.executable).with_name("not-current-python.exe")), "-m", "pytest"])
+    assert not validation_module.is_safe_validation_command(["tools/python.exe", "-m", "pytest"])
+
+
 def test_validation_runner_handles_safe_command_failures(tmp_path: Path) -> None:
     workspace = tmp_path / "pytest-project"
     workspace.mkdir()

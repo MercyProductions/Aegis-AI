@@ -81,7 +81,7 @@ When `run` is true, runs the provided command or first detected safe command and
 
 JavaScript package managers are script-aware: safe `npm`/`pnpm`/`yarn` test, lint, typecheck, and build commands are listed only when matching `package.json` scripts exist. Root `build.ps1` guard scripts are listed before lower-level CMake/.NET fallbacks and are constrained to an exact no-profile PowerShell invocation. Visual Studio solution files are treated as .NET validation targets only when they reference `.csproj`, `.fsproj`, or `.vbproj` projects; native C++ `.vcxproj` solutions are not mislabeled as `dotnet build`. Nested subprojects with their own manifests or solution files are treated as validation boundaries so their project files do not leak commands into parent ecosystem workspaces.
 
-Custom commands are still restricted to the built-in safe validation allow-list. Unsafe commands are logged as blocked and are not executed.
+Custom commands are still restricted to the built-in safe validation allow-list. Bare tool names and normal `.cmd`/`.exe` shims are accepted for known safe commands, but path-qualified wrappers and `.bat` aliases are blocked so workspace-local executables cannot masquerade as trusted validation tools. Unsafe commands are logged as blocked and are not executed.
 
 ## POST /agent/continue
 

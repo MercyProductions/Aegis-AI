@@ -86,7 +86,7 @@ aegis route --workspace <path> --task-type code_completion
 aegis orchestrate --workspace <path> --goal "Stabilize one workflow"
 ```
 
-Validation is conservative. `aegis validate` detects commands. Add `--run` to execute the first safe detected command.
+Validation is conservative. `aegis validate` detects commands. Add `--run` to execute the first safe detected command. Custom validation commands must use bare safe tool names or normal `.cmd`/`.exe` shims; path-qualified wrappers and `.bat` aliases are blocked before execution.
 
 For machine-readable output, use `--json` before or after the subcommand:
 

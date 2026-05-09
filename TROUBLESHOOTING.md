@@ -20,6 +20,8 @@ If `aegis tasks --create ... --json` returns `ok: false` with a persistence erro
 
 If validation reports `Validation command failed to start`, the command passed the safety allow-list but the OS could not launch it. Check that the tool is installed, available on `PATH`, and allowed by local permissions, then rerun the health check or validation command.
 
+Aegis Core custom validation commands are intentionally limited to bare safe tools such as `npm.cmd test`, `dotnet.exe build`, or `python -m pytest`. Path-qualified wrappers such as `.\npm.cmd test`, `C:\tools\npm.cmd test`, and `.bat` aliases are blocked so workspace-local executables cannot impersonate trusted validation tools.
+
 Website PowerShell validation is intentionally narrow. `powershell`, `powershell.exe`, `pwsh`, and `pwsh.exe` commands are allowed only for the exact root guard command `powershell -NoProfile -ExecutionPolicy Bypass -File ./build.ps1`, the Windows-style `.\build.ps1` form, or the `pwsh` equivalent. The same rule is used when `.aegis/command_history.json` is reused for validation discovery. If a broader PowerShell command is blocked, move the checks into the workspace `build.ps1` guard and rerun that validation command.
 
 Website validation history recovery also normalizes common Windows launcher aliases such as `.exe`, `.cmd`, and `.bat` before applying install, shell, publishing, and destructive-command blocks, including quoted Windows paths with spaces. Unsafe remembered commands are ignored by validation discovery, workspace readiness, and autopilot status next actions. If a previous command is not suggested again, rerun the intended safe validation command directly or save it as the workspace validation profile.
