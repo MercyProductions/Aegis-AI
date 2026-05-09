@@ -450,9 +450,13 @@ if (-not (Test-BackendReadyForRoot -Url $BackendHealthUrl -ExpectedRoot $Root -R
 
 if (-not (Test-BackendReadyForRoot -Url $BackendHealthUrl -ExpectedRoot $Root -RequiredRoutes $RequiredBackendRoutes -RequirePartialConfigUpdate $RequirePartialConfigUpdate)) {
     $health = Get-HttpJson -Url $BackendHealthUrl
-    if ($health -and $health.app -eq "Auralith OS") {
-        Write-Warning "Aegis backend on port 8787 is from this project but does not expose the expected API contract. Restarting it."
-        Stop-AegisBackendOnPort -Port 8787
+    if ($health -and $health.project_root) {
+        $actualRoot = Normalize-PathForCompare -Path $health.project_root
+        $expectedRoot = Normalize-PathForCompare -Path $Root
+        if ($actualRoot -eq $expectedRoot) {
+            Write-Warning "Aegis backend on port 8787 is from this project but does not expose the expected API contract. Restarting it."
+            Stop-AegisBackendOnPort -Port 8787
+        }
     }
 }
 

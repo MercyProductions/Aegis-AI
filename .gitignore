@@ -46,6 +46,7 @@ stress-artifacts/
 logs/
 crash-dumps/
 *.log
+.aegis/
 
 # Local environment and secrets
 .env

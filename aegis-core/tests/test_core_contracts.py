@@ -225,6 +225,90 @@ def test_v1_client_task_dashboard_contract(tmp_path: Path) -> None:
     assert missing_task.status_code == 404
 
 
+def test_v1_endpoint_family_smoke_contracts(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    client = TestClient(create_app())
+
+    get_endpoints = [
+        ("/v1/health", {"workspace": str(workspace)}, "health"),
+        ("/v1/models", {"workspace": str(workspace)}, "models"),
+        ("/v1/settings", {"workspace": str(workspace)}, "settings"),
+        ("/v1/memory", {"workspace": str(workspace)}, "memory.summary"),
+        ("/v1/diagnostics", {"workspace": str(workspace)}, "diagnostics.summary"),
+        ("/v1/branding", {}, "branding.tokens"),
+        ("/v1/clients", {"workspace": str(workspace)}, "clients.list"),
+        ("/v1/tasks", {"workspace": str(workspace)}, "tasks.list"),
+        ("/v1/ecosystem/dashboard", {"workspace": str(workspace)}, "ecosystem.dashboard"),
+    ]
+
+    for endpoint, params, kind in get_endpoints:
+        response = client.get(endpoint, params=params)
+        assert response.status_code == 200, endpoint
+        payload = response.json()
+        assert payload["ok"] is True, endpoint
+        assert payload["api_version"] == "v1", endpoint
+        assert payload["kind"] == kind, endpoint
+
+    post_endpoints = [
+        (
+            "/v1/settings",
+            {"workspace": str(workspace), "settings": {"auto_scan_on_open": False}},
+            "settings.updated",
+            True,
+        ),
+        ("/v1/workspaces/scan", {"workspace": str(workspace)}, "workspace.scan", True),
+        ("/v1/workspaces/roadmap", {"workspace": str(workspace)}, "workspace.roadmap", True),
+        ("/v1/validation", {"workspace": str(workspace), "run": False}, "validation", True),
+        (
+            "/v1/clients/register",
+            {
+                "workspace": str(workspace),
+                "client_id": "endpoint-family-client",
+                "client_type": "test",
+                "name": "Endpoint Family Test",
+            },
+            "client.registered",
+            True,
+        ),
+        (
+            "/v1/tasks",
+            {
+                "workspace": str(workspace),
+                "title": "Endpoint family task",
+                "kind": "test",
+                "source_client": "pytest",
+            },
+            "task.created",
+            True,
+        ),
+        ("/v1/agent/continue", {"workspace": str(workspace), "request": "continue safely"}, "agent.continue.plan", True),
+        ("/v1/agent/repair", {"workspace": str(workspace)}, "agent.repair.plan", None),
+    ]
+
+    created_task_id = None
+    for endpoint, body, kind, expected_ok in post_endpoints:
+        response = client.post(endpoint, json=body)
+        assert response.status_code == 200, endpoint
+        payload = response.json()
+        assert payload["api_version"] == "v1", endpoint
+        assert payload["kind"] == kind, endpoint
+        if expected_ok is not None:
+            assert payload["ok"] is expected_ok, endpoint
+        else:
+            assert isinstance(payload["ok"], bool), endpoint
+        if kind == "task.created":
+            created_task_id = payload["data"]["id"]
+
+    assert created_task_id
+    status_response = client.post(
+        f"/v1/tasks/{created_task_id}/status",
+        json={"workspace": str(workspace), "status": "completed", "summary": "Endpoint family status updated"},
+    )
+    assert status_response.status_code == 200
+    assert status_response.json()["kind"] == "task.updated"
+    assert status_response.json()["data"]["status"] == "completed"
+
+
 def test_shared_mutation_apis_report_unwritable_memory_root(tmp_path: Path) -> None:
     workspace = make_workspace(tmp_path)
     (workspace / ".aegis").write_text("not a directory", encoding="utf-8")
