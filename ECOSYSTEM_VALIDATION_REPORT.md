@@ -60,7 +60,7 @@ Packaging/build:
 - Aegis Core CLI health: passed.
 - Website backend tests: `776 passed, 155 subtests passed`.
 - Website frontend tests: `21 passed`, `169 tests passed`.
-- Website frontend build: passed.
+- Website frontend build: passed without the prior Vite chunk-size warning.
 - Website smoke script: passed.
 - Website UI E2E script: passed.
 - VS Code extension lint/package: passed.
@@ -83,7 +83,6 @@ The app correctly uses the Vite `/api` proxy in dev. The E2E harness only mocked
 - Visual Studio interactive tool-window load was not automated. The VSIX build/package, manifest version check, command resource check, and release copy all passed.
 - Website memory CRUD is still Website-owned and is not mirrored into Core memory summaries yet.
 - Core `patch.proposal`, `rollback.entry`, and `rollback.result` remain schema-only contracts. Active rollback remains Website/client-owned.
-- The Website production build still emits a Vite chunk-size warning for the main app chunk; build output succeeds.
 - Core blocks arbitrary validation command overrides by design. Use detected safe commands or configured validation preferences.
 
 ## Remaining Risks

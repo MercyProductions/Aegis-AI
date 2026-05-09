@@ -176,6 +176,20 @@ Fixes applied:
 - Added bounded Node-side fetches for e2e backend API and readiness calls.
 - Updated file preview loading to use the latest workspace root reference immediately after project switches.
 
+### 2026-05-09 - Website Frontend Chunk Budget Hardening
+
+Context:
+- The Website production build kept passing but still emitted Vite's default large-chunk warning.
+- The older roadmap claimed the warning had been resolved, so the daily validation notes and current build output had drifted apart.
+
+What worked:
+- A Vite manual chunk function removed the warning without changing app routes or raising the warning limit.
+- The largest generated chunks are now the app shell, React vendor, app support utilities, and API bridge instead of one warning-sized app bundle.
+
+Fixes applied:
+- Split React, icon, API, app utility, and app style modules into explicit chunks.
+- Updated the living stabilization docs so current validation matches the actual build baseline.
+
 ### 2026-05-08 - Product Utilization Kickoff
 
 Context:
@@ -220,6 +234,7 @@ Fixes applied:
 | 2026-05-09 | Website validation | Smoke/e2e wrapper HTTP probes could hang without explicit request timeouts. | Medium | Added bounded HTTP timeouts and validated smoke/readiness probes. |
 | 2026-05-09 | Website e2e | Full browser e2e exceeded the 180 second command budget during validation. | Medium | Investigated with bounded backend fetches; full e2e now passes. |
 | 2026-05-09 | Website project switching | File preview could read from stale workspace root state immediately after switching projects. | High | Fixed with latest-root reads and validated through full browser e2e. |
+| 2026-05-09 | Website build | Production build passed but still emitted the default Vite large-chunk warning. | Medium | Split stable internal chunks; build now passes without the warning. |
 | 2026-05-09 | Aegis Core startup | Core starter accepted any HTTP 200 at `/v1/health` and did not prefer a project virtualenv. | Medium | Verify the Core health envelope, report contract version, and resolve Python predictably. |
 | 2026-05-09 | Aegis Core startup | A non-Core service returning HTTP 200 with invalid JSON could be treated as unreachable. | Medium | Mark malformed responses reachable and report `invalid_json` as the startup blocker. |
 

@@ -120,7 +120,7 @@ Validation completed:
 - Aegis Core tests: pass, 51 tests.
 - Website backend tests: pass, 776 tests and 155 subtests.
 - Website frontend tests: pass, 21 files and 169 tests.
-- Website frontend build: pass, with the existing large main chunk warning.
+- Website frontend build: pass; at this point it still emitted the large main chunk warning that was resolved later in the day.
 - Website smoke script: pass, including frontend/backend checks, workspace setup, generated file apply/read-back, validation, readiness, and real chat.
 - Desktop smoke build/launch: pass, with nonblank login/setup/dashboard captures.
 - VS Code extension compile: pass.
@@ -333,4 +333,22 @@ Validation completed:
 - Website focused frontend tests: pass, 32 tests.
 - Website smoke test without chat and with explicit request timeout: pass.
 - Website full browser e2e: pass; temporary workspace cleaned up.
-- Website frontend production build: pass with the existing large-chunk warning.
+- Website frontend production build: pass; at this point it still emitted the large-chunk warning that was resolved later in the day.
+
+## 2026-05-09 - Website Frontend Chunk Budget Hardening
+
+Focus:
+
+- Resolve the recurring Website production build chunk warning without raising Vite's warning limit.
+- Keep the change scoped to build output shape, not user-facing behavior.
+
+Actions:
+
+- Replaced static object chunk names in `website/frontend/vite.config.ts` with an explicit `manualChunks` function.
+- Split React, icons, frontend API calls, app utilities, and app styles into stable chunks so the monolithic protected app shell no longer crosses the default warning threshold.
+- Updated the current stabilization docs to reflect the new build baseline.
+
+Validation completed:
+
+- Website frontend production build: pass, no Vite chunk-size warning.
+- Website focused frontend tests: pass, 38 tests.

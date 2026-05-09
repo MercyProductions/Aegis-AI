@@ -1,6 +1,6 @@
 # Auralith OS Stabilization Roadmap
 
-Last updated: May 7, 2026
+Last updated: May 9, 2026
 
 This document captures the current stabilization pass for the public website plus protected Auralith OS app shell. The goal is not feature expansion. The goal is to keep the platform fast, reliable, explainable, polished, and safe to trust every day.
 
@@ -28,6 +28,7 @@ The stabilization pass covered:
 - Initial bundle shape and optional panel loading.
 - Lazy-surface crash containment.
 - Optional route-surface code splitting for Hardening, Creative Studio, model selectors, and task summaries.
+- Stable internal Vite chunking for API, utility, style, React, and icon modules.
 - Live frontend/backend identity checks.
 - Frontend unit tests, production build, and backend pytest suite.
 
@@ -64,6 +65,7 @@ The stabilization pass covered:
 - Extracted the Creative Studio surface into `CreativeStudioSurface` and lazy-loaded it behind a route-level boundary.
 - Lazy-loaded the model selector and task status summary widgets so optional settings/tasks surfaces no longer inflate the initial protected app route.
 - Added browser E2E coverage for the lazy Hardening and Creative Studio routes, including horizontal-overflow checks.
+- Split frontend API, app support utilities, app styles, React, and icon modules into stable Vite chunks so the production build stays below the default chunk warning limit.
 
 ## Current Validation Baseline
 
@@ -83,13 +85,13 @@ Validation details:
 - Live smoke check: passed.
 - Browser E2E: passed, including public mobile route checks, protected-route auth gates, malformed auth cleanup, malformed persisted UI state recovery, lazy Hardening and Creative Studio route checks, protected laptop/mobile responsive shell checks, tablet/mobile settings modal checks, tablet/mobile authenticated overlay checks, and 50-session history stress.
 
-Bundle baseline:
+Current bundle baseline:
 
-- The prior Vite generated chunk warning is resolved without raising the warning limit. The initial protected app chunk is now about 494.7 kB after splitting optional route surfaces.
+- The prior Vite generated chunk warning is resolved without raising the warning limit. Current production output keeps the app shell around 218.2 kB, React vendor around 192.5 kB, app support around 87.9 kB, and API bridge around 16.1 kB.
 
 ## Critical Next Fixes
 
-- Continue extracting large protected workspace sections from `App.tsx` into dedicated modules so the initial route has more margin below the chunk warning and route surfaces stay independently testable.
+- Continue extracting large protected workspace sections from `App.tsx` into dedicated modules so route surfaces stay independently testable and the chunk budget remains healthy.
 - Add focused visual regression snapshots for the compact authenticated overlays after the next component extraction pass.
 - Add a focused visual regression pass for the public site, protected workspace shell, right observability panel, and auth pages.
 - Add auth-session cleanup or database isolation for repeated E2E account registration runs.
@@ -121,7 +123,7 @@ Bundle baseline:
 
 ## Performance Budget Targets
 
-- Initial protected app route should become code-split enough to remove the current Vite chunk warning.
+- Initial protected app route should remain below the default Vite chunk warning while `App.tsx` is gradually extracted into stable route modules.
 - Sidebar interactions should feel immediate during streaming and large history states.
 - Workspace file refreshes should avoid blocking route changes.
 - Background observability updates should not visibly disturb the active command/session workflow.
