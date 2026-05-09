@@ -29,6 +29,8 @@ DEPENDENCY_FILES = {
     "pdm.lock",
     "Cargo.toml",
     "Cargo.lock",
+    "go.mod",
+    "go.sum",
     "CMakeLists.txt",
     "Directory.Build.props",
     "Directory.Build.targets",

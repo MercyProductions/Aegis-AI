@@ -140,6 +140,7 @@ class ApprovalManager:
             "poetry.lock",
             "pdm.lock",
             "cargo.lock",
+            "go.sum",
         }:
             return 6, "Environment and lockfile changes can affect the whole workspace."
         if action == "create" and name in {

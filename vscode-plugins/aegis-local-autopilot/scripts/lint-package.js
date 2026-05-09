@@ -534,6 +534,17 @@ function assertProjectLanguageInference(inferrer) {
       fail(`inferProjectLanguages must detect ${expected} from Python lockfiles.`);
     }
   }
+
+  const nativeLockResult = inferrer(
+    [
+      { relative: 'Cargo.lock' },
+      { relative: 'go.sum' }
+    ],
+    []
+  );
+  if (!nativeLockResult.languages.includes('Rust') || !nativeLockResult.languages.includes('Go')) {
+    fail('inferProjectLanguages must detect Rust and Go workspaces from native lockfiles.');
+  }
 }
 
 function assertProjectCommandInference(inferrer) {
@@ -579,6 +590,9 @@ function assertPythonLockfilePatterns(source) {
     if (!source.includes(`^${escaped}\\.lock$`)) {
       fail(`extension lockfile safety patterns must include ${lockfile}.lock.`);
     }
+  }
+  if (!source.includes('^cargo\\.lock$') || !source.includes('^go\\.sum$')) {
+    fail('extension lockfile safety patterns must include Cargo.lock and go.sum.');
   }
 }
 

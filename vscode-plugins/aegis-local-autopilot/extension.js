@@ -83,6 +83,7 @@ const LOCKFILE_PATTERNS = [
   /^bun\.lock$/i,
   /^bun\.lockb$/i,
   /^cargo\.lock$/i,
+  /^go\.sum$/i,
   /^uv\.lock$/i,
   /^poetry\.lock$/i,
   /^pdm\.lock$/i
@@ -109,7 +110,9 @@ const IMPORTANT_FILE_PATTERNS = [
   /^setup\.py$/i,
   /^cmakelists\.txt$/i,
   /^cargo\.toml$/i,
+  /^cargo\.lock$/i,
   /^go\.mod$/i,
+  /^go\.sum$/i,
   /^pom\.xml$/i,
   /^build\.gradle/i,
   /^dockerfile$/i,
@@ -2204,8 +2207,8 @@ function inferProjectLanguages(files, importantContents) {
   if (extensions.has('.cs') || Array.from(names).some((name) => name.endsWith('.csproj') || name.endsWith('.sln') || name.endsWith('.slnx'))) languages.add('C#/.NET');
   if (extensions.has('.fs') || extensions.has('.fsi') || extensions.has('.fsx') || Array.from(names).some((name) => name.endsWith('.fsproj'))) languages.add('F#/.NET');
   if (extensions.has('.vb') || Array.from(names).some((name) => name.endsWith('.vbproj'))) languages.add('VB.NET');
-  if (extensions.has('.rs') || names.has('cargo.toml')) languages.add('Rust');
-  if (extensions.has('.go') || names.has('go.mod')) languages.add('Go');
+  if (extensions.has('.rs') || names.has('cargo.toml') || names.has('cargo.lock')) languages.add('Rust');
+  if (extensions.has('.go') || names.has('go.mod') || names.has('go.sum')) languages.add('Go');
   if (extensions.has('.java') || names.has('pom.xml') || Array.from(names).some((name) => name.includes('build.gradle'))) languages.add('Java/JVM');
   if (hasUnityProject) {
     languages.add('C#/.NET');

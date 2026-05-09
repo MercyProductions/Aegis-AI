@@ -37,6 +37,8 @@ SOURCE_CODE_SUFFIXES = {
     ".c",
     ".h",
     ".hpp",
+    ".go",
+    ".rs",
     ".xaml",
 }
 DEPENDENCY_GRAPH_SUFFIXES = SOURCE_CODE_SUFFIXES - {".xaml"}
@@ -93,6 +95,8 @@ LANGUAGE_BY_SUFFIX = {
     ".c": "C/C++",
     ".h": "C/C++ Header",
     ".hpp": "C++ Header",
+    ".go": "Go",
+    ".rs": "Rust",
     ".xaml": "XAML",
 }
 
@@ -109,6 +113,9 @@ BUILD_FILE_NAMES = {
     "poetry.lock",
     "pdm.lock",
     "Cargo.toml",
+    "Cargo.lock",
+    "go.mod",
+    "go.sum",
     "CMakeLists.txt",
     "Makefile",
 }

@@ -77,13 +77,25 @@ class ApprovalAndCommandTests(unittest.TestCase):
                 FileChange(action="update", path="uv.lock", content=""),
                 FileChange(action="update", path="poetry.lock", content=""),
                 FileChange(action="update", path="pdm.lock", content=""),
+                FileChange(action="update", path="Cargo.lock", content=""),
+                FileChange(action="update", path="go.sum", content=""),
             ]
         )
 
         self.assertEqual(approved, [])
         self.assertEqual(
             [item[0].path for item in blocked],
-            ["package-lock.json", "yarn.lock", "bun.lock", "bun.lockb", "uv.lock", "poetry.lock", "pdm.lock"],
+            [
+                "package-lock.json",
+                "yarn.lock",
+                "bun.lock",
+                "bun.lockb",
+                "uv.lock",
+                "poetry.lock",
+                "pdm.lock",
+                "Cargo.lock",
+                "go.sum",
+            ],
         )
         self.assertTrue(all(item[1].risk_level >= 5 for item in blocked))
 

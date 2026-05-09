@@ -381,7 +381,9 @@ def _dependency_manifests(root: Path) -> list[str]:
         "poetry.lock",
         "pdm.lock",
         "Cargo.toml",
+        "Cargo.lock",
         "go.mod",
+        "go.sum",
         "packages.config",
     }
     manifests = []

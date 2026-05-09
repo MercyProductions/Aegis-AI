@@ -483,6 +483,11 @@ class AutonomousEngineeringEngine:
                 "yarn.lock",
                 "bun.lock",
                 "bun.lockb",
+                "uv.lock",
+                "poetry.lock",
+                "pdm.lock",
+                "Cargo.lock",
+                "go.sum",
             ]
         risk = 0.25
         if _contains_any(goal, ARCHITECTURE_TERMS):

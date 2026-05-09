@@ -47,7 +47,7 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 | Website model manager | Improved | Damaged model-operation and pull-log JSON paths are skipped safely, invalid operation records are ignored, and operation history writes are atomic. |
 | Website model benchmarks | Improved | Damaged benchmark result/job stores are skipped safely, blank job records are ignored, and benchmark state writes are atomic. |
 | Website dependency profiling | Improved | Damaged marker directories and lockfile paths no longer distort onboarding stack, package-manager, entry-point, or database summaries, root `build.py` / `build.ps1` guard scripts are recorded before lower-level native validation fallbacks, and Python lockfile drift is tracked by watcher snapshots. |
-| Dependency lockfile safety | Improved | Core maintenance manifests, Website guided auto-apply scoring, and VS Code local fallback proposal guards now treat `uv.lock`, `poetry.lock`, and `pdm.lock` as dependency-wide lockfile surfaces. |
+| Dependency lockfile safety | Improved | Core maintenance manifests, Website guided auto-apply scoring, autonomous dependency projections, and VS Code local fallback proposal guards now treat JS, Python, Go, and Rust lockfiles as dependency-wide surfaces. |
 | Website creative assets | Improved | Generated media preview URLs use the shared API resource URL helper, so previews work through the Vite proxy and discovered backend ports instead of assuming `8787`. |
 | Website checkpoint restore | Improved | Restore now validates checkpoint IDs, damaged manifests, backup paths, and missing backup files before touching workspace files. |
 | Website safe apply | Improved | Apply refuses to edit when checkpoint creation fails and reports later write/delete failures with checkpoint context. |
@@ -87,6 +87,9 @@ Ran during this pass:
 - Website frontend API tests: pass, including memory and creative asset API base discovery regressions
 - Website frontend tests: 21 files / 172 tests passed
 - Website frontend production build: pass, no Vite chunk-size warning
+- Aegis Core Go/Rust lockfile/source metadata focused tests: 5 passed
+- Website approval/autonomous lockfile safety tests: 29 passed, 11 subtests passed
+- VS Code package lint and extension syntax check: pass
 - Website focused frontend API/runtime/task tests: 40 tests passed
 - Website acceptance gate with explicit backend/frontend URLs: pass
 - Website backend tests: 739 tests and 155 subtests passed

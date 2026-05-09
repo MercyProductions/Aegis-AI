@@ -1,5 +1,25 @@
 # Development Log
 
+## 2026-05-09 - Go/Rust Lockfile Metadata Safety
+
+Focus:
+
+- Keep Go and Rust dependency metadata aligned with the existing JS/Python lockfile safety posture.
+- Avoid local proposal, approval, and health signals treating `go.sum` or `Cargo.lock` as ordinary low-risk files.
+
+Actions:
+
+- Added `.go` and `.rs` source visibility plus `Cargo.lock`, `go.mod`, and `go.sum` build-file tracking to Aegis Core scans.
+- Added `Cargo.lock` and `go.sum` to Core dependency manifest, simulation, and maintenance metadata.
+- Extended Website guided approval and autonomous dependency projections to cover Go/Rust lockfiles.
+- Extended VS Code local fallback lockfile guards and language inference for Go/Rust lockfiles.
+
+Validation completed:
+
+- Aegis Core focused lockfile/source metadata tests: pass.
+- Website approval and autonomous engineering tests: pass.
+- VS Code package lint and syntax check: pass.
+
 ## 2026-05-09 - Website Creative Asset URL Alignment
 
 Focus:

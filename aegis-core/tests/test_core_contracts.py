@@ -306,6 +306,28 @@ def test_workspace_scan_tracks_python_lockfiles_as_build_files(tmp_path: Path) -
     assert "pdm.lock" in result["build_files"]
 
 
+def test_workspace_scan_tracks_go_rust_sources_and_lockfiles(tmp_path: Path) -> None:
+    workspace = tmp_path / "go-rust-lock-project"
+    workspace.mkdir()
+    (workspace / "Cargo.toml").write_text("[package]\nname = 'demo'\n", encoding="utf-8")
+    (workspace / "Cargo.lock").write_text("", encoding="utf-8")
+    (workspace / "go.mod").write_text("module example.com/demo\n", encoding="utf-8")
+    (workspace / "go.sum").write_text("", encoding="utf-8")
+    src = workspace / "src"
+    cmd = workspace / "cmd"
+    src.mkdir()
+    cmd.mkdir()
+    (src / "main.rs").write_text("// TODO verify rust entrypoint\nfn main() {}\n", encoding="utf-8")
+    (cmd / "main.go").write_text("// TODO verify go entrypoint\npackage main\n", encoding="utf-8")
+
+    result = WorkspaceScanner(workspace).scan(persist=False)
+
+    assert {"Cargo.toml", "Cargo.lock", "go.mod", "go.sum"}.issubset(set(result["build_files"]))
+    assert result["languages"]["Rust"] == 1
+    assert result["languages"]["Go"] == 1
+    assert {"src/main.rs", "cmd/main.go"} == {item["file"] for item in result["todo_comments"]}
+
+
 def test_workspace_scan_indexes_fsharp_and_visual_basic_symbols(tmp_path: Path) -> None:
     workspace = tmp_path / "dotnet-symbol-project"
     src = workspace / "src"
@@ -863,6 +885,29 @@ def test_quality_and_jobs_track_python_lock_dependency_manifests(tmp_path: Path)
     assert_core_contract(job.json(), "jobs.run")
     manifests = set(job.json()["data"]["results"][0]["metrics"]["manifests"])
     assert {"pyproject.toml", "uv.lock", "poetry.lock", "pdm.lock"}.issubset(manifests)
+
+
+def test_quality_and_jobs_track_go_rust_lock_dependency_manifests(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    (workspace / "Cargo.toml").write_text("[package]\nname = 'demo'\n", encoding="utf-8")
+    (workspace / "Cargo.lock").write_text("", encoding="utf-8")
+    (workspace / "go.mod").write_text("module example.com/demo\n", encoding="utf-8")
+    (workspace / "go.sum").write_text("", encoding="utf-8")
+    client = TestClient(create_app())
+
+    quality = client.get("/v1/quality", params={"workspace": str(workspace)})
+    job = client.post(
+        "/v1/jobs/run",
+        json={"workspace": str(workspace), "job_id": "dependency-review"},
+    )
+
+    assert quality.status_code == 200
+    assert_core_contract(quality.json(), "quality.dashboard")
+    assert quality.json()["data"]["current_snapshot"]["dependency_manifest_count"] >= 5
+    assert job.status_code == 200
+    assert_core_contract(job.json(), "jobs.run")
+    manifests = set(job.json()["data"]["results"][0]["metrics"]["manifests"])
+    assert {"Cargo.toml", "Cargo.lock", "go.mod", "go.sum"}.issubset(manifests)
 
 
 def test_quality_dashboard_reports_score_risks_and_statuses(tmp_path: Path) -> None:
