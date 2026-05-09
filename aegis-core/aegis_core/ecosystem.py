@@ -101,7 +101,7 @@ def _recent_activity(root: Path) -> list[dict[str, Any]]:
         return []
     try:
         data = json.loads(history_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
+    except (OSError, json.JSONDecodeError):
         return []
     if not isinstance(data, list):
         return []
@@ -141,8 +141,14 @@ def _suggested_actions(
 
 
 def _read_excerpt(path: Path, limit: int) -> str:
-    return scrub(path.read_text(encoding="utf-8", errors="ignore")[:limit])
+    try:
+        return scrub(path.read_text(encoding="utf-8", errors="ignore")[:limit])
+    except OSError:
+        return ""
 
 
 def _read_tail(path: Path, limit: int) -> str:
-    return scrub(path.read_text(encoding="utf-8", errors="ignore")[-limit:])
+    try:
+        return scrub(path.read_text(encoding="utf-8", errors="ignore")[-limit:])
+    except OSError:
+        return ""

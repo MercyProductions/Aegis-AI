@@ -106,7 +106,7 @@ def _load_tasks(memory: ProjectMemory) -> list[dict[str, Any]]:
         return []
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
+    except (OSError, json.JSONDecodeError):
         return []
     if isinstance(data, list):
         return [task for task in data if isinstance(task, dict)]
@@ -121,9 +121,12 @@ def _append_history(memory: ProjectMemory, event: dict[str, Any]) -> None:
     path = memory.root / "agent-history.json"
     try:
         history = json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
-    except json.JSONDecodeError:
+    except (OSError, json.JSONDecodeError):
         history = []
     if not isinstance(history, list):
         history = []
     history.append({"timestamp": utc_now(), **event})
-    path.write_text(json.dumps(history[-500:], indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    try:
+        path.write_text(json.dumps(history[-500:], indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    except OSError:
+        return

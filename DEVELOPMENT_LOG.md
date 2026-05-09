@@ -15,6 +15,7 @@ Actions:
 - Hardened shared Core safety checks for mixed-case ignored folders, token/password/auth-like files, and Windows temp-parent workspaces.
 - Hardened shared Core config parsing so malformed settings degrade to defaults.
 - Added explicit Core task-status API errors for bad statuses and missing task IDs.
+- Hardened dashboard/task memory reads so corrupted or unreadable `.aegis` files do not crash shared clients.
 - Kept unrelated dirty worktree changes out of scope.
 - Recorded workflow friction in `WORKFLOW_NOTES.md`.
 

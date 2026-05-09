@@ -65,7 +65,7 @@ def _load_clients(memory: ProjectMemory) -> dict[str, dict[str, Any]]:
         return {}
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
+    except (OSError, json.JSONDecodeError):
         return {}
     if isinstance(data, dict):
         return {str(key): value for key, value in data.items() if isinstance(value, dict)}

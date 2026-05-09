@@ -155,3 +155,21 @@ def test_invalid_config_values_fall_back_safely(tmp_path: Path) -> None:
     assert config.auto_scan_on_open is False
     assert config.validation_preferences == ("npm test", "npm run build")
     assert config.memory_dir_name == AegisConfig.memory_dir_name
+
+
+def test_dashboard_survives_unreadable_memory_files(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    aegis_dir = workspace / ".aegis"
+    aegis_dir.mkdir()
+    for name in ("clients.json", "tasks.json", "agent-history.json", "roadmap.md", "core-log.md"):
+        (aegis_dir / name).mkdir()
+
+    client = TestClient(create_app())
+    response = client.get("/v1/ecosystem/dashboard", params={"workspace": str(workspace)})
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["clients"] == []
+    assert data["active_tasks"] == []
+    assert data["recent_activity"] == []
+    assert data["roadmap"]["excerpt"] == ""
