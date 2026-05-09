@@ -21,6 +21,7 @@
 - Added an experimental Aegis Core hybrid model router with local-first defaults, optional OpenAI/Anthropic/Google/OpenRouter/LM Studio provider inventory, cloud approval gates, sanitized context previews, and OS credential storage for provider keys.
 - Improved hybrid provider inventory and route planning so OS credential-store inspection failures are surfaced through `credential_store_healthy` and `credential_store_errors` instead of looking like simply missing provider keys.
 - Hardened hybrid model routing so explicit local provider requests such as `lm_studio` stay local and are never reinterpreted as cloud fallback candidates.
+- Hardened hybrid model routing and provider key mutations so common provider aliases such as `LM Studio`, `lm-studio`, `open-router`, and `open router` resolve to canonical local/cloud provider IDs.
 - Improved the Aegis Core route CLI so provider/model overrides, context files, and local fallback reasons can be previewed with the same sanitized route planner used by `/v1/models/route`.
 - Fixed LM Studio completion calls so normalized local server URLs use the OpenAI-compatible `/v1/chat/completions` path.
 - Hardened provider completion parsing so invalid JSON or malformed provider response shapes return clean provider failures instead of internal parser exceptions.

@@ -276,32 +276,33 @@ def collect_cloud_context(root: Path, context_files: list[str], max_chars: int) 
 
 
 def store_provider_key(provider_id: str, api_key: str, credentials: CredentialStore | None = None) -> dict[str, Any]:
-    _validate_cloud_provider_id(provider_id)
+    provider = _validate_cloud_provider_id(provider_id)
     store = credentials or CredentialStore()
-    store.write_provider_key(provider_id, api_key)
-    return {"provider_id": provider_id.strip().lower(), "key_stored": True, "credential_store": "os"}
+    store.write_provider_key(provider, api_key)
+    return {"provider_id": provider, "key_stored": True, "credential_store": "os"}
 
 
 def delete_provider_key(provider_id: str, credentials: CredentialStore | None = None) -> dict[str, Any]:
-    _validate_provider_id(provider_id)
+    provider = _validate_provider_id(provider_id)
     store = credentials or CredentialStore()
-    removed = store.delete_provider_key(provider_id)
-    return {"provider_id": provider_id.strip().lower(), "removed": removed, "credential_store": "os"}
+    removed = store.delete_provider_key(provider)
+    return {"provider_id": provider, "removed": removed, "credential_store": "os"}
 
 
-def _validate_provider_id(provider_id: str) -> None:
-    provider = provider_id.strip().lower()
+def _validate_provider_id(provider_id: str) -> str:
+    provider = _normalize_provider_id(provider_id)
     if provider not in SUPPORTED_PROVIDER_IDS:
         supported = ", ".join(sorted(SUPPORTED_PROVIDER_IDS))
-        raise ValueError(f"Unsupported provider '{provider}'. Supported providers: {supported}.")
+        raise ValueError(f"Unsupported provider '{provider or ''}'. Supported providers: {supported}.")
+    return provider
 
 
-def _validate_cloud_provider_id(provider_id: str) -> None:
-    provider = provider_id.strip().lower()
-    _validate_provider_id(provider)
+def _validate_cloud_provider_id(provider_id: str) -> str:
+    provider = _validate_provider_id(provider_id)
     if provider in LOCAL_PROVIDER_IDS:
         supported = ", ".join(sorted(CLOUD_PROVIDER_IDS))
         raise ValueError(f"Provider '{provider}' does not use stored API keys. Key storage is supported for: {supported}.")
+    return provider
 
 
 def _cloud_provider(
@@ -387,7 +388,18 @@ def _local_candidate(
 
 def _normalize_provider_id(provider_id: str | None) -> str | None:
     text = (provider_id or "").strip().lower()
-    return text or None
+    if not text:
+        return None
+    canonical = text.replace("-", "_").replace(" ", "_")
+    aliases = {
+        "lmstudio": "lm_studio",
+        "lm_studio": "lm_studio",
+        "open_ai": "openai",
+        "openai": "openai",
+        "open_router": "openrouter",
+        "openrouter": "openrouter",
+    }
+    return aliases.get(canonical, text)
 
 
 def _local_model_for_role(config: AegisConfig, role: str, installed: list[str]) -> str:

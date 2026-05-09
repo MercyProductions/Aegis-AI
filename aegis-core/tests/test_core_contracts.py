@@ -2066,6 +2066,12 @@ class DummyCredentialStore:
     def read_provider_key(self, provider_id: str) -> str | None:
         return self.keys.get(provider_id)
 
+    def write_provider_key(self, provider_id: str, api_key: str) -> None:
+        self.keys[provider_id] = api_key
+
+    def delete_provider_key(self, provider_id: str) -> bool:
+        return self.keys.pop(provider_id, None) is not None
+
 
 class BrokenCredentialStore(DummyCredentialStore):
     def has_provider_key(self, provider_id: str) -> bool:
@@ -2192,6 +2198,55 @@ def test_model_router_honors_lm_studio_as_local_provider(tmp_path: Path, monkeyp
     assert route["approval_required"] is False
     assert route["cloud_ready"] is False
     assert [candidate["provider_id"] for candidate in route["fallback_order"]] == ["lm_studio"]
+
+
+def test_model_router_normalizes_provider_aliases(tmp_path: Path, monkeypatch) -> None:
+    workspace = tmp_path / "router-provider-alias-project"
+    aegis_dir = workspace / ".aegis"
+    aegis_dir.mkdir(parents=True)
+    (aegis_dir / "config.json").write_text(
+        json.dumps({"model_routing_mode": "cloud_allowed", "preferred_cloud_provider": "openai"}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "aegis_core.model_router.OllamaClient.health",
+        lambda self: OllamaStatus(True, 4, ["qwen3-coder:30b"], "qwen3-coder:30b", []),
+    )
+
+    local_route = route_model(
+        workspace,
+        "hard_debugging",
+        allow_cloud=True,
+        cloud_approved=True,
+        preferred_provider="LM Studio",
+        preferred_model="local-lmstudio-model",
+        local_failure_reason="prefer local",
+        credentials=DummyCredentialStore({"openrouter": "stored"}),
+    )
+    cloud_route = route_model(
+        workspace,
+        "hard_debugging",
+        allow_cloud=True,
+        cloud_approved=True,
+        preferred_provider="open-router",
+        local_failure_reason="local model could not explain the failing trace",
+        credentials=DummyCredentialStore({"openrouter": "stored"}),
+    )
+
+    assert local_route["selected"]["provider_id"] == "lm_studio"
+    assert [candidate["provider_id"] for candidate in local_route["fallback_order"]] == ["lm_studio"]
+    assert cloud_route["selected"]["provider_id"] == "openrouter"
+    assert cloud_route["cloud_ready"] is True
+
+
+def test_provider_key_mutations_normalize_provider_aliases() -> None:
+    store = DummyCredentialStore()
+
+    stored = model_router_module.store_provider_key("open-router", "stored-key", credentials=store)
+    deleted = model_router_module.delete_provider_key("open router", credentials=store)
+
+    assert stored == {"provider_id": "openrouter", "key_stored": True, "credential_store": "os"}
+    assert deleted == {"provider_id": "openrouter", "removed": True, "credential_store": "os"}
 
 
 def test_model_completion_lm_studio_request_is_not_reinterpreted_as_cloud(tmp_path: Path, monkeypatch) -> None:

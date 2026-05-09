@@ -186,6 +186,25 @@ Validation completed:
 - Aegis Core contract test suite: pass, 118 tests.
 - Repository whitespace check: pass.
 
+## 2026-05-09 - Provider Alias Normalization
+
+Focus:
+
+- Keep provider routing predictable across CLI, API, and UI clients that may send display-style provider names.
+- Avoid duplicate credential targets or unexpected local fallback caused by casing, spacing, or hyphen differences.
+
+Actions:
+
+- Canonicalized common provider aliases before routing and provider key mutation.
+- Added support for aliases such as `LM Studio`, `lm-studio`, `open-router`, and `open router`.
+- Added regressions proving local LM Studio aliases stay local and OpenRouter aliases use the canonical credential target.
+
+Validation completed:
+
+- Aegis Core provider alias/key mutation regression slice: pass, 9 tests.
+- Aegis Core contract test suite: pass, 129 tests.
+- Repository whitespace check: pass.
+
 ## 2026-05-09 - Provider Completion Shape Hardening
 
 Focus:

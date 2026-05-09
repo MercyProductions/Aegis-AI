@@ -281,7 +281,7 @@ Supported cloud provider ids:
 - `google`
 - `openrouter`
 
-Local providers such as `ollama` and `lm_studio` do not use stored API keys. Key storage requests for local providers are rejected before the OS credential store is touched.
+Local providers such as `ollama` and `lm_studio` do not use stored API keys. Key storage requests for local providers are rejected before the OS credential store is touched. Provider ids accept common casing, spacing, and hyphen aliases such as `LM Studio`, `lm-studio`, `open-router`, and `open router`; key mutations use canonical provider ids.
 
 ## DELETE /v1/providers/{provider_id}/key
 
