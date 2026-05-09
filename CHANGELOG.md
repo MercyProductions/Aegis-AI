@@ -75,6 +75,7 @@
 - Hardened Website launch port handling so occupied backend/frontend ports produce clear warnings instead of launching duplicate doomed processes.
 - Hardened Website smoke and e2e validation probes with explicit HTTP timeouts so validation fails clearly when local services stop responding.
 - Hardened Website browser e2e backend calls with bounded fetch timeouts so stalled API requests fail with actionable errors.
+- Hardened Website artifact hygiene so generated config-update workspace roots are ignored instead of appearing as release noise.
 - Fixed Website project-switch file previews so file reads use the current workspace root instead of stale React state after switching projects.
 - Split Website frontend API, utility, style, React, and icon code into explicit Vite chunks so production builds stay under the default chunk warning budget without raising the warning limit.
 - Fixed the Website acceptance gate so custom backend/frontend URLs are passed through to doctor, smoke, and browser e2e scripts instead of falling back to default ports.

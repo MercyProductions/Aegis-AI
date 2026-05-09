@@ -6,6 +6,9 @@ frontend/node_modules/
 frontend/dist/
 logs/
 data/
+new-workspace/
+workspace-two/
+fallback-workspace/
 workspace/**/node_modules/
 workspace/**/.venv/
 workspace/**/.aegis/

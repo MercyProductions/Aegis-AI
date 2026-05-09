@@ -1005,3 +1005,20 @@ Validation completed:
 - VS Code package lint alias: pass via `npm run lint:package`.
 - VS Code lint: pass.
 - VS Code VSIX package: pass; package lint ran before archive creation.
+
+## 2026-05-09 - Website Generated Workspace Ignore Hygiene
+
+Focus:
+
+- Keep release status clean after Website config-update and smoke-style validation runs.
+- Prevent generated throwaway workspace roots from surfacing as untracked source files if future runs create more than `.aegis` metadata.
+
+Actions:
+
+- Added `new-workspace/`, `workspace-two/`, and `fallback-workspace/` to `website/.gitignore`.
+- Kept the ignore scope limited to known generated Website validation roots instead of ignoring arbitrary workspace names.
+
+Validation completed:
+
+- Website config update tests: pass, 3 tests.
+- Git ignore check: pass for generated `new-workspace/`, `workspace-two/`, and `fallback-workspace/` files.
