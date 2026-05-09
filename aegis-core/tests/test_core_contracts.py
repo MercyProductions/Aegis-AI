@@ -10,6 +10,16 @@ from fastapi.testclient import TestClient
 import aegis_core.validation as validation_module
 from aegis_core.clients import list_clients
 from aegis_core.config import AegisConfig, load_config, memory_dir, update_config, write_default_config
+from aegis_core.contracts import (
+    CORE_CONTRACT_VERSION,
+    CONTRACTS,
+    PatchProposalData,
+    RollbackEntryData,
+    RollbackResultData,
+    make_envelope,
+    model_dump,
+    validate_contract_envelope,
+)
 from aegis_core.memory import ProjectMemory
 from aegis_core.ollama import OllamaClient
 from aegis_core.safety import is_ignored_path, is_safe_to_edit, is_safe_to_read, is_secret_like
@@ -50,6 +60,16 @@ def run_cli_raw(core_root: Path, *args: str) -> subprocess.CompletedProcess[str]
         text=True,
         check=False,
     )
+
+
+def assert_core_contract(payload: dict, kind: str) -> None:
+    envelope = validate_contract_envelope(payload)
+    assert envelope.api_version == "v1"
+    assert envelope.contract_version == CORE_CONTRACT_VERSION
+    assert envelope.kind == kind
+    assert envelope.stability in {"stable", "experimental", "deprecated"}
+    assert isinstance(envelope.deprecations, list)
+    assert envelope.deprecated is (envelope.stability == "deprecated")
 
 
 def test_cli_json_flag_works_before_or_after_subcommand(tmp_path: Path) -> None:
@@ -184,6 +204,7 @@ def test_v1_client_task_dashboard_contract(tmp_path: Path) -> None:
         },
     )
     assert registration.status_code == 200
+    assert_core_contract(registration.json(), "client.registered")
     assert registration.json()["data"]["client_id"] == "contract-test-client"
 
     created = client.post(
@@ -197,10 +218,12 @@ def test_v1_client_task_dashboard_contract(tmp_path: Path) -> None:
         },
     )
     assert created.status_code == 200
+    assert_core_contract(created.json(), "task.created")
     task_id = created.json()["data"]["id"]
 
     dashboard = client.get("/v1/ecosystem/dashboard", params={"workspace": str(workspace)})
     assert dashboard.status_code == 200
+    assert_core_contract(dashboard.json(), "ecosystem.dashboard")
     data = dashboard.json()["data"]
     assert any(item["client_id"] == "contract-test-client" for item in data["clients"])
     assert any(item["id"] == task_id for item in data["active_tasks"])
@@ -210,6 +233,7 @@ def test_v1_client_task_dashboard_contract(tmp_path: Path) -> None:
         json={"workspace": str(workspace), "status": "completed", "summary": "contract passed"},
     )
     assert updated.status_code == 200
+    assert_core_contract(updated.json(), "task.updated")
     assert updated.json()["data"]["status"] == "completed"
 
     invalid_status = client.post(
@@ -247,7 +271,11 @@ def test_v1_endpoint_family_smoke_contracts(tmp_path: Path) -> None:
         payload = response.json()
         assert payload["ok"] is True, endpoint
         assert payload["api_version"] == "v1", endpoint
+        assert payload["contract_version"] == CORE_CONTRACT_VERSION, endpoint
+        assert payload["deprecated"] is False, endpoint
+        assert payload["deprecations"] == [], endpoint
         assert payload["kind"] == kind, endpoint
+        assert_core_contract(payload, kind)
 
     post_endpoints = [
         (
@@ -291,7 +319,9 @@ def test_v1_endpoint_family_smoke_contracts(tmp_path: Path) -> None:
         assert response.status_code == 200, endpoint
         payload = response.json()
         assert payload["api_version"] == "v1", endpoint
+        assert payload["contract_version"] == CORE_CONTRACT_VERSION, endpoint
         assert payload["kind"] == kind, endpoint
+        assert_core_contract(payload, kind)
         if expected_ok is not None:
             assert payload["ok"] is expected_ok, endpoint
         else:
@@ -305,8 +335,86 @@ def test_v1_endpoint_family_smoke_contracts(tmp_path: Path) -> None:
         json={"workspace": str(workspace), "status": "completed", "summary": "Endpoint family status updated"},
     )
     assert status_response.status_code == 200
+    assert_core_contract(status_response.json(), "task.updated")
     assert status_response.json()["kind"] == "task.updated"
     assert status_response.json()["data"]["status"] == "completed"
+
+
+def test_contract_catalog_covers_unified_phase_runtime_shapes() -> None:
+    required = {
+        "health",
+        "models",
+        "settings",
+        "workspace.scan",
+        "workspace.roadmap",
+        "memory.summary",
+        "diagnostics.summary",
+        "task.created",
+        "tasks.list",
+        "validation",
+        "agent.continue.plan",
+        "agent.repair.plan",
+        "patch.proposal",
+        "rollback.entry",
+        "rollback.result",
+    }
+
+    assert required.issubset(CONTRACTS)
+    assert CONTRACTS["patch.proposal"].stability == "experimental"
+    assert CONTRACTS["rollback.result"].owner == "schema-only"
+
+
+def test_schema_only_patch_and_rollback_contracts_validate() -> None:
+    patch = PatchProposalData(
+        id="proposal-1",
+        workspace="C:/workspace",
+        summary="Update one file",
+        files=[{"path": "src/example.py", "action": "update", "summary": "Small compatibility change"}],
+    )
+    rollback = RollbackEntryData(
+        id="rollback-1",
+        workspace="C:/workspace",
+        checkpoint_path=".aegis/checkpoints/rollback-1",
+        files=["src/example.py"],
+    )
+    rollback_result = RollbackResultData(ok=True, workspace="C:/workspace", rollback_id="rollback-1", restored_files=["src/example.py"])
+
+    assert validate_contract_envelope(make_envelope("patch.proposal", model_dump(patch), "C:/workspace")).kind == "patch.proposal"
+    assert validate_contract_envelope(make_envelope("rollback.entry", model_dump(rollback), "C:/workspace")).kind == "rollback.entry"
+    assert validate_contract_envelope(make_envelope("rollback.result", model_dump(rollback_result), "C:/workspace")).kind == "rollback.result"
+
+
+def test_known_client_contract_parsing_tolerates_missing_optional_fields() -> None:
+    desktop_dashboard = make_envelope("ecosystem.dashboard", {}, "C:/workspace")
+    vscode_task = make_envelope("task.created", {"id": "task-compat"}, "C:/workspace")
+    visual_studio_health = make_envelope("health", {}, "C:/workspace")
+
+    assert_core_contract(desktop_dashboard, "ecosystem.dashboard")
+    assert_core_contract(vscode_task, "task.created")
+    assert_core_contract(visual_studio_health, "health")
+
+    dashboard_data = desktop_dashboard.get("data") if isinstance(desktop_dashboard.get("data"), dict) else {}
+    assert len(dashboard_data.get("clients") or []) == 0
+    assert len(dashboard_data.get("active_tasks") or []) == 0
+    assert (vscode_task.get("data") or {}).get("id") == "task-compat"
+    assert visual_studio_health["ok"] is True
+
+
+def test_v1_invalid_requests_return_useful_errors(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    client = TestClient(create_app())
+
+    missing_workspace = client.post("/v1/workspaces/scan", json={})
+    assert missing_workspace.status_code == 422
+    assert "detail" in missing_workspace.json()
+
+    missing_task = client.post("/v1/tasks/task-missing/status", json={"workspace": str(workspace), "status": "completed"})
+    assert missing_task.status_code == 404
+    assert "Task not found" in missing_task.json()["detail"]
+
+    bad_status = client.post("/v1/tasks/task-missing/status", json={"workspace": str(workspace), "status": "made-up-status"})
+    assert bad_status.status_code == 400
+    assert "Unsupported task status" in bad_status.json()["detail"]
 
 
 def test_v1_known_client_contracts_match_desktop_vscode_and_visual_studio(tmp_path: Path) -> None:

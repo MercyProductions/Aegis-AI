@@ -9,6 +9,8 @@ import httpx
 
 
 DEFAULT_CORE_API_URL = "http://127.0.0.1:8788"
+CORE_API_VERSION = "v1"
+CORE_CONTRACT_VERSION_FIELD = "contract_version"
 
 
 @dataclass(frozen=True)
@@ -89,17 +91,25 @@ class AegisCoreBridge:
         errors = [f"{name}: {result.error}" for name, result in results.items() if result.error]
         reachable = any(result.reachable for result in results.values())
         ok = bool(results["health"].ok)
+        contract_versions = {
+            name: str(result.envelope.get(CORE_CONTRACT_VERSION_FIELD))
+            for name, result in results.items()
+            if isinstance(result.envelope, dict) and result.envelope.get(CORE_CONTRACT_VERSION_FIELD)
+        }
+        contract_version = next(iter(contract_versions.values()), "")
 
         return {
             "ok": ok,
             "reachable": reachable,
             "core_url": self.base_url,
-            "api_version": "v1",
+            "api_version": CORE_API_VERSION,
+            "contract_version": contract_version,
+            "contract_versions": contract_versions,
             "workspace": workspace_text,
             "ownership": {
                 "shared_runtime": "aegis-core",
                 "application_runtime": "website-backend",
-                "migration_phase": "runtime-consolidation-phase-1",
+                "migration_phase": "unified-contract-client-compatibility-phase",
             },
             "health": results["health"].envelope,
             "models": results["models"].envelope,
@@ -155,3 +165,72 @@ class AegisCoreBridge:
                 data=None,
                 error=str(exc),
             )
+
+
+def core_envelope_data(envelope: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(envelope, dict):
+        return {}
+    data = envelope.get("data")
+    return data if isinstance(data, dict) else {}
+
+
+def core_task_to_website_task_summary(task: dict[str, Any] | None) -> dict[str, Any]:
+    source = task if isinstance(task, dict) else {}
+    metadata = source.get("metadata") if isinstance(source.get("metadata"), dict) else {}
+    return {
+        "id": str(source.get("id") or ""),
+        "title": str(source.get("title") or "Untitled task"),
+        "status": str(source.get("status") or "planned"),
+        "kind": str(source.get("kind") or "general"),
+        "source_client": str(source.get("source_client") or "unknown"),
+        "updated_at": str(source.get("updated_at") or source.get("created_at") or ""),
+        "summary": str(metadata.get("summary") or ""),
+    }
+
+
+def core_validation_to_website_validation(validation: dict[str, Any] | None) -> dict[str, Any]:
+    source = validation if isinstance(validation, dict) else {}
+    commands = source.get("commands") if isinstance(source.get("commands"), list) else []
+    normalized_commands = []
+    for command in commands:
+        if not isinstance(command, dict):
+            continue
+        raw = command.get("command")
+        normalized_commands.append(
+            {
+                "name": str(command.get("name") or ""),
+                "command": " ".join(str(part) for part in raw) if isinstance(raw, list) else str(raw or ""),
+                "reason": str(command.get("reason") or ""),
+            }
+        )
+
+    raw_run_command = source.get("command")
+    return {
+        "ok": bool(source.get("ok", True)),
+        "commands": normalized_commands,
+        "command": " ".join(str(part) for part in raw_run_command) if isinstance(raw_run_command, list) else str(raw_run_command or ""),
+        "returncode": source.get("returncode"),
+        "stdout": str(source.get("stdout") or ""),
+        "stderr": str(source.get("stderr") or ""),
+        "blocked": bool(source.get("blocked", False)),
+        "timed_out": bool(source.get("timed_out", False)),
+        "start_failed": bool(source.get("start_failed", False)),
+    }
+
+
+def core_dashboard_to_website_runtime_status(envelope: dict[str, Any] | None) -> dict[str, Any]:
+    data = core_envelope_data(envelope)
+    clients = data.get("clients") if isinstance(data.get("clients"), list) else []
+    active_tasks = data.get("active_tasks") if isinstance(data.get("active_tasks"), list) else []
+    recent_tasks = data.get("recent_tasks") if isinstance(data.get("recent_tasks"), list) else []
+    validation = data.get("validation") if isinstance(data.get("validation"), dict) else {}
+    model_status = data.get("model_status") if isinstance(data.get("model_status"), dict) else {}
+    return {
+        "workspace": str(data.get("workspace") or ""),
+        "client_count": len([item for item in clients if isinstance(item, dict)]),
+        "active_tasks": [core_task_to_website_task_summary(item) for item in active_tasks if isinstance(item, dict)],
+        "recent_tasks": [core_task_to_website_task_summary(item) for item in recent_tasks if isinstance(item, dict)],
+        "model_status": model_status,
+        "validation": core_validation_to_website_validation(validation),
+        "contract_version": str(envelope.get(CORE_CONTRACT_VERSION_FIELD) or "") if isinstance(envelope, dict) else "",
+    }

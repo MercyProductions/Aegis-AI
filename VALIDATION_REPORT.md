@@ -167,3 +167,45 @@ Tests run:
 | Live Core bridge | `GET /api/core-runtime` against running Website 8787 and Core 8788 | Passed: 200, `health`, `ecosystem.dashboard` envelopes present |
 
 No rich Website workflows were migrated in this phase.
+
+## Unified Contract + Client Compatibility Phase
+
+Date: 2026-05-09
+
+Changes validated:
+
+- Added the shared Core contract package at `aegis-core/aegis_core/contracts.py`.
+- Added `contract_version: 2026.05.09`, `stability`, `deprecated`, and `deprecations` to active `/v1` envelopes while preserving existing `ok`, `api_version`, `kind`, `workspace`, and `data`.
+- Added schema coverage for health, models, settings, workspace scan, roadmap, memory, diagnostics, tasks, validation, continue/repair, patch proposals, and rollback.
+- Added Website Core bridge adapters for Core dashboard, task, and validation compatibility summaries.
+- Added `CLIENT_COMPATIBILITY_MATRIX.md` and updated API/runtime architecture docs.
+
+Tests run:
+
+| Area | Command or check | Result |
+| --- | --- | --- |
+| Aegis Core tests | `python -m pytest tests -q` from `aegis-core` | Passed: 50 tests |
+| Website Core bridge targeted tests | `python -m pytest backend/tests/test_core_bridge.py -q` | Passed: 5 tests |
+| Website backend suite | `npm run backend:test` from `website` | Passed: 769 tests, 155 subtests |
+| Website frontend tests | `npm test -- --run` from `website` | Passed: 21 files, 169 tests |
+| Website frontend build | `npm run build` from `website` | Passed, with existing Vite large-chunk warning |
+| VS Code extension compile | `npm run compile` | Passed |
+| VS Code extension package | `npm run package` | Passed, produced `release/aegis-local-autopilot-0.1.1.vsix` |
+| Visual Studio extension package | `powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1` | Passed, produced `release/AegisLocalAgentVs.vsix` |
+| Desktop build | `powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1` | Passed, 0 warnings, 0 errors |
+| Website launcher | `powershell -NoProfile -ExecutionPolicy Bypass -File .\launch.ps1` from `website` | Passed; backend 8787 and frontend 5173 responded |
+| Live Core/Website contract smoke | Disposable `.tmp/unified-contract-smoke` workspace against 8788 and `/api/core-runtime` | Passed; all active Core endpoint families returned `contract_version: 2026.05.09` |
+
+Compatibility coverage added:
+
+- Core contract validation for every active `/v1` endpoint family.
+- Missing optional field compatibility checks for Desktop dashboard parsing, VS Code task ID parsing, and Visual Studio health JSON parsing assumptions.
+- Schema-only validation for `patch.proposal`, `rollback.entry`, and `rollback.result`.
+- Invalid request checks for missing required request bodies, unsupported task statuses, and missing task IDs.
+- Website adapter tests for missing optional Core task/validation/dashboard fields.
+
+Remaining caveats:
+
+- VS Code and Visual Studio interactive commands were not clicked in an IDE host during this phase. Compile/package and direct Core endpoint compatibility passed.
+- Desktop Core dashboard UI fields were not image/assertion-smoked; the Desktop build passed and the Core dashboard endpoint it reads passed live contract smoke.
+- Patch proposal and rollback contracts are schema-only. Existing client-owned apply/rollback workflows were intentionally not migrated.

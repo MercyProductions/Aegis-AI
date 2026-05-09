@@ -70,6 +70,17 @@ Aegis Core is the shared local runtime contract. It must stay small, stable, loc
 - Plan-only continue and repair flows.
 - Branding tokens shared by clients.
 
+Core `/v1` responses use the shared envelope from `aegis-core/aegis_core/contracts.py`:
+
+- `api_version: v1`
+- `contract_version: 2026.05.09`
+- `kind`
+- `workspace`
+- `data`
+- `stability`
+- `deprecated`
+- `deprecations`
+
 Default port: `http://127.0.0.1:8788`.
 
 ### Desktop Client
@@ -126,3 +137,14 @@ Phase 1 adds a read-only Website-to-Core bridge instead of migrating workflows:
 - Core stays independent of Website imports and Website-specific storage.
 
 See `RUNTIME_CONSOLIDATION.md` for the subsystem ownership matrix and migration order.
+
+## Unified Contract Phase
+
+The current contract stabilization pass keeps every existing client URL intact and adds a shared schema layer:
+
+- `aegis_core.contracts` defines Core request bodies, envelopes, stable runtime response shapes, and experimental schema-only patch/rollback shapes.
+- Core `/v1` endpoints now advertise a contract version and stability state while preserving `ok`, `api_version`, `kind`, `workspace`, and `data`.
+- Website bridge helpers adapt Core dashboard, task, and validation data into Website-friendly summaries for future `/api` shims.
+- `CLIENT_COMPATIBILITY_MATRIX.md` tracks which clients call which Core endpoints and whether each contract is stable, experimental, or schema-only.
+
+The next consolidation candidates are low-risk read or record-oriented flows: Website model status reads, Website task mirroring, IDE roadmap reads, and IDE validation reads. Chat, file apply, checkpoint restore, project builder, auth, Creative Studio, and advanced product workflows remain Website-owned.

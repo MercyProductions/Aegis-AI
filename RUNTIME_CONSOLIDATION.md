@@ -57,13 +57,32 @@ Core `/v1` responses use a stable envelope:
 {
   "ok": true,
   "api_version": "v1",
+  "contract_version": "2026.05.09",
   "kind": "workspace.scan",
   "workspace": "C:/path/to/project",
-  "data": {}
+  "data": {},
+  "stability": "stable",
+  "deprecated": false,
+  "deprecations": []
 }
 ```
 
 Website `/api` responses remain product-specific Pydantic response models. When Website consumes Core, it should preserve the Core envelope instead of flattening it into app-specific shapes.
+
+The canonical contract package is `aegis-core/aegis_core/contracts.py`. It defines:
+
+- shared request models for workspace, settings, client registration, tasks, validation, continue, and repair;
+- stable response data models for health, models, settings, workspace scan, roadmap, memory, diagnostics, tasks, validation, and dashboard;
+- experimental response data models for agent continue/repair;
+- schema-only experimental patch proposal and rollback models for future migration.
+
+Compatibility rules:
+
+- Keep `/v1` as the versioned URL namespace.
+- Keep `api_version`, `contract_version`, `kind`, `workspace`, and `data` in every successful Core envelope.
+- Add fields only in a backwards-compatible way. Clients must ignore unknown fields.
+- Optional fields may be absent. Contract tests cover missing optional fields for known Desktop, VS Code, and Visual Studio reads.
+- Use `stability`, `deprecated`, and `deprecations` before removing or changing behavior.
 
 Shared request bodies should follow these names:
 
@@ -95,6 +114,18 @@ The bridge reads:
 - `/v1/ecosystem/dashboard`
 
 It does not mutate Core state and does not replace existing Website `/api` workflows. If Core is unavailable, Website returns a degraded Core status rather than failing app health.
+
+## Unified Contract Phase
+
+This phase adds versioned contract metadata without changing existing client URLs:
+
+- Core envelopes now include `contract_version: 2026.05.09`, `stability`, `deprecated`, and `deprecations`.
+- `aegis_core.contracts` is the source of truth for shared request/response schemas.
+- Website `GET /api/core-runtime` now reports the Core contract versions it observed.
+- Website bridge adapters translate selected Core task, validation, and dashboard data into Website-friendly compatibility summaries for future `/api` shims.
+- Contract tests validate all active `/v1` endpoint families and the schema-only patch/rollback shapes.
+
+No active Website `/api` calls were replaced in this phase. The bridge and adapters are intentionally narrow so the mature frontend contract stays stable.
 
 ## Migration Strategy
 

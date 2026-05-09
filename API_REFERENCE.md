@@ -56,18 +56,23 @@ Returns a Website wrapper around stable Core `/v1` envelopes:
   "reachable": true,
   "core_url": "http://127.0.0.1:8788",
   "api_version": "v1",
+  "contract_version": "2026.05.09",
+  "contract_versions": {
+    "health": "2026.05.09",
+    "models": "2026.05.09"
+  },
   "workspace": "C:/path/to/project",
   "ownership": {
     "shared_runtime": "aegis-core",
     "application_runtime": "website-backend",
-    "migration_phase": "runtime-consolidation-phase-1"
+    "migration_phase": "unified-contract-client-compatibility-phase"
   },
-  "health": {"ok": true, "api_version": "v1", "kind": "health", "data": {}},
-  "models": {"ok": true, "api_version": "v1", "kind": "models", "data": {}},
-  "settings": {"ok": true, "api_version": "v1", "kind": "settings", "data": {}},
-  "memory": {"ok": true, "api_version": "v1", "kind": "memory.summary", "data": {}},
-  "diagnostics": {"ok": true, "api_version": "v1", "kind": "diagnostics.summary", "data": {}},
-  "dashboard": {"ok": true, "api_version": "v1", "kind": "ecosystem.dashboard", "data": {}},
+  "health": {"ok": true, "api_version": "v1", "contract_version": "2026.05.09", "kind": "health", "data": {}},
+  "models": {"ok": true, "api_version": "v1", "contract_version": "2026.05.09", "kind": "models", "data": {}},
+  "settings": {"ok": true, "api_version": "v1", "contract_version": "2026.05.09", "kind": "settings", "data": {}},
+  "memory": {"ok": true, "api_version": "v1", "contract_version": "2026.05.09", "kind": "memory.summary", "data": {}},
+  "diagnostics": {"ok": true, "api_version": "v1", "contract_version": "2026.05.09", "kind": "diagnostics.summary", "data": {}},
+  "dashboard": {"ok": true, "api_version": "v1", "contract_version": "2026.05.09", "kind": "ecosystem.dashboard", "data": {}},
   "errors": []
 }
 ```
@@ -82,33 +87,39 @@ All Core `/v1` responses use this envelope:
 {
   "ok": true,
   "api_version": "v1",
+  "contract_version": "2026.05.09",
   "kind": "contract.kind",
   "workspace": "C:/path/to/project",
-  "data": {}
+  "data": {},
+  "stability": "stable",
+  "deprecated": false,
+  "deprecations": []
 }
 ```
 
 Endpoint families:
 
-| Endpoint | Purpose |
-| --- | --- |
-| `GET /v1/health` | Shared Core, workspace, config, and Ollama health |
-| `GET /v1/models` | Shared local model inventory |
-| `GET /v1/settings` | Shared Core settings |
-| `POST /v1/settings` | Update shared Core settings |
-| `POST /v1/workspaces/scan` | Shared workspace scan/index |
-| `POST /v1/workspaces/roadmap` | Shared roadmap generation |
-| `GET /v1/memory` | Shared memory summary |
-| `GET /v1/diagnostics` | Shared diagnostics summary |
-| `GET /v1/branding` | Shared product/runtime/client tokens |
-| `POST /v1/clients/register` | Cross-client registration |
-| `GET /v1/clients` | Cross-client list |
-| `POST /v1/tasks` | Shared task creation |
-| `GET /v1/tasks` | Shared task list |
-| `POST /v1/tasks/{task_id}/status` | Shared task status update |
-| `POST /v1/validation` | Shared validation summary/run |
-| `POST /v1/agent/continue` | Plan-only continue from roadmap |
-| `POST /v1/agent/repair` | Plan-only repair from validation log |
-| `GET /v1/ecosystem/dashboard` | Shared clients/tasks/model/diagnostics dashboard |
+| Endpoint | Contract kind | Stability | Purpose |
+| --- | --- | --- | --- |
+| `GET /v1/health` | `health` | stable | Shared Core, workspace, config, and Ollama health |
+| `GET /v1/models` | `models` | stable | Shared local model inventory |
+| `GET /v1/settings` | `settings` | stable | Shared Core settings |
+| `POST /v1/settings` | `settings.updated` | stable | Update shared Core settings |
+| `POST /v1/workspaces/scan` | `workspace.scan` | stable | Shared workspace scan/index |
+| `POST /v1/workspaces/roadmap` | `workspace.roadmap` | stable | Shared roadmap generation |
+| `GET /v1/memory` | `memory.summary` | stable | Shared memory summary |
+| `GET /v1/diagnostics` | `diagnostics.summary` | stable | Shared diagnostics summary |
+| `GET /v1/branding` | `branding.tokens` | experimental | Shared product/runtime/client tokens |
+| `POST /v1/clients/register` | `client.registered` | stable | Cross-client registration |
+| `GET /v1/clients` | `clients.list` | stable | Cross-client list |
+| `POST /v1/tasks` | `task.created` | stable | Shared task creation |
+| `GET /v1/tasks` | `tasks.list` | stable | Shared task list |
+| `POST /v1/tasks/{task_id}/status` | `task.updated` | stable | Shared task status update |
+| `POST /v1/validation` | `validation` | stable | Shared validation summary/run |
+| `POST /v1/agent/continue` | `agent.continue.plan` | experimental | Plan-only continue from roadmap |
+| `POST /v1/agent/repair` | `agent.repair.plan` | experimental | Plan-only repair from validation log |
+| `GET /v1/ecosystem/dashboard` | `ecosystem.dashboard` | stable | Shared clients/tasks/model/diagnostics dashboard |
+
+Schema-only experimental contracts are defined in `aegis-core/aegis_core/contracts.py` for `patch.proposal`, `rollback.entry`, and `rollback.result`. They are intentionally not active write endpoints yet.
 
 See `aegis-core/docs/API_REFERENCE.md` for the Core-only details and examples.

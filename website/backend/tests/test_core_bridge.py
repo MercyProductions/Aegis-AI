@@ -11,7 +11,13 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from aegis_ai import main
-from aegis_ai.core_bridge import AegisCoreBridge, normalize_core_base_url
+from aegis_ai.core_bridge import (
+    AegisCoreBridge,
+    core_dashboard_to_website_runtime_status,
+    core_task_to_website_task_summary,
+    core_validation_to_website_validation,
+    normalize_core_base_url,
+)
 
 
 def test_normalize_core_base_url_accepts_common_local_inputs() -> None:
@@ -41,6 +47,7 @@ def test_core_bridge_reads_shared_runtime_status(tmp_path: Path) -> None:
             json={
                 "ok": True,
                 "api_version": "v1",
+                "contract_version": "2026.05.09",
                 "kind": kind,
                 "workspace": str(workspace.resolve()),
                 "data": {"path": request.url.path},
@@ -53,6 +60,8 @@ def test_core_bridge_reads_shared_runtime_status(tmp_path: Path) -> None:
     assert status["ok"] is True
     assert status["reachable"] is True
     assert status["core_url"] == "http://127.0.0.1:8788"
+    assert status["contract_version"] == "2026.05.09"
+    assert status["contract_versions"]["health"] == "2026.05.09"
     assert status["ownership"]["shared_runtime"] == "aegis-core"
     assert status["health"]["kind"] == "health"
     assert status["models"]["kind"] == "models"
@@ -102,3 +111,28 @@ def test_core_runtime_endpoint_delegates_to_core_bridge(tmp_path: Path) -> None:
     assert response.json()["ok"] is True
     assert response.json()["health"]["kind"] == "health"
     assert response.json()["workspace"] == str(workspace.resolve())
+
+
+def test_core_bridge_adapters_tolerate_missing_optional_fields() -> None:
+    task = core_task_to_website_task_summary({"id": "task-1"})
+    validation = core_validation_to_website_validation({"commands": [{"command": ["python", "-m", "pytest"]}]})
+    dashboard = core_dashboard_to_website_runtime_status(
+        {
+            "ok": True,
+            "api_version": "v1",
+            "contract_version": "2026.05.09",
+            "kind": "ecosystem.dashboard",
+            "data": {
+                "clients": [{"client_id": "desktop"}],
+                "active_tasks": [{"id": "task-1"}],
+                "validation": {"commands": [{"command": ["python", "-m", "pytest"]}]},
+            },
+        }
+    )
+
+    assert task["title"] == "Untitled task"
+    assert task["status"] == "planned"
+    assert validation["commands"][0]["command"] == "python -m pytest"
+    assert dashboard["client_count"] == 1
+    assert dashboard["active_tasks"][0]["id"] == "task-1"
+    assert dashboard["contract_version"] == "2026.05.09"

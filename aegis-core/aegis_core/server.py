@@ -5,6 +5,16 @@ from .agent import continue_from_roadmap, repair_from_last_validation
 from .branding import branding_tokens
 from .clients import ClientRegistryPersistenceError, list_clients, register_client
 from .config import load_config, update_config, write_default_config
+from .contracts import (
+    ClientRegistrationRequest,
+    ContinueRequest,
+    CreateTaskRequest,
+    SettingsRequest,
+    TaskStatusRequest,
+    ValidateRequest,
+    WorkspaceRequest,
+    make_envelope,
+)
 from .diagnostics import CoreLogger
 from .ecosystem import dashboard_summary, diagnostics_summary, shared_memory_summary
 from .ollama import OllamaClient
@@ -17,57 +27,13 @@ from .workspace import WorkspaceScanner
 def create_app():
     try:
         from fastapi import FastAPI, HTTPException
-        from pydantic import BaseModel
     except ImportError as exc:
         raise RuntimeError("Install Aegis Core API dependencies with `pip install -e .`.") from exc
-
-    class WorkspaceRequest(BaseModel):
-        workspace: str
-
-    class ContinueRequest(BaseModel):
-        workspace: str
-        request: str | None = None
-
-    class ValidateRequest(BaseModel):
-        workspace: str
-        run: bool = False
-        command: list[str] | None = None
-
-    class SettingsRequest(BaseModel):
-        workspace: str
-        settings: dict[str, Any]
-
-    class ClientRegistrationRequest(BaseModel):
-        workspace: str
-        client_id: str
-        client_type: str
-        name: str
-        version: str = "unknown"
-        capabilities: list[str] | None = None
-
-    class CreateTaskRequest(BaseModel):
-        workspace: str
-        title: str
-        kind: str = "general"
-        source_client: str = "unknown"
-        request: str | None = None
-        metadata: dict[str, Any] | None = None
-
-    class TaskStatusRequest(BaseModel):
-        workspace: str
-        status: str
-        summary: str | None = None
 
     app = FastAPI(title="Aegis Core", version="0.1.0")
 
     def envelope(kind: str, data: Any, workspace: str | None = None, ok: bool = True) -> dict[str, Any]:
-        return {
-            "ok": ok,
-            "api_version": "v1",
-            "kind": kind,
-            "workspace": str(Path(workspace).resolve()) if workspace else None,
-            "data": data,
-        }
+        return make_envelope(kind, data, workspace, ok)
 
     @app.get("/health")
     def health(workspace: str | None = None) -> dict[str, Any]:
