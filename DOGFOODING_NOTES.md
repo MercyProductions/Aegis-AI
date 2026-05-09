@@ -2,11 +2,11 @@
 
 Last updated: 2026-05-09
 
-Phase: Daily Dogfooding
+Phase: Daily Dogfooding and Long-Term Workflow Refinement
 
 Target stability release: `0.1.1`
 
-Automation: `auralith-dogfooding-follow-up`
+Automation: `auralith-dogfooding-follow-up` now runs as a weekly workflow refinement review.
 
 ## Goal
 
@@ -118,3 +118,14 @@ Daily follow-up automation was created so this phase continues across several da
 - Pick one broken/unfinished project for repair and rollback practice.
 - Open Visual Studio 2022 with the installed `0.1.1` extension and manually verify tool window, solution detection, health, roadmap, selected-code review, build/error workflow, approval, and rollback.
 - Repeat the daily checklist on Aegis ChatBot, then expand to the website project and C++ desktop project with real issues rather than synthetic feature work.
+
+## Long-Term Refinement Transition - 2026-05-09
+
+The ecosystem is now treated as the primary local development environment. Daily dogfooding continues, but repeated friction graduates into `WORKFLOW_NOTES.md` for long-term refinement decisions.
+
+Operating rules:
+
+- Do not add features because they are interesting.
+- Improve startup, indexing, roadmap quality, diff readability, validation clarity, rollback confidence, diagnostics, error messages, onboarding, and maintainability because real use shows they matter.
+- Keep edits approval-based, checkpointed, rollbackable, local-first, and conservative.
+- Prefer a small stable release with a clear changelog over a large rewrite.

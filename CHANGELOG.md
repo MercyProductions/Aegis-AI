@@ -60,6 +60,7 @@
 - Hardened Visual Studio Ollama/Core URL settings so common local inputs normalize before model calls, health checks, and shared Core registration.
 - Hardened Visual Studio Health Check so Core reachability and client registration are reported separately with useful Core error details.
 - Added product-utilization workflow notes for daily Auralith dogfooding.
+- Started the long-term workflow refinement cadence so repeated daily-use friction is tracked before new feature work.
 - Documented the current stabilization and validation pass.
 
 ### Validation
