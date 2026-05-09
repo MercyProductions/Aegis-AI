@@ -40,6 +40,8 @@ If validation results include a `validation_log.persisted: false` status or a `C
 
 If continue or repair agent responses include `Could not persist agent plan`, repair `.aegis/active-agent-plan.json` or `.aegis/active-repair-plan.json` so they are writable JSON files. The returned plan is still plan-only and approval-gated, but later clients may not find the saved handoff until the damaged path is fixed.
 
+If workspace scans include `memory_warnings` or a `memory_artifacts` entry with `persisted: false`, repair the named `.aegis` artifact path. The scan result is still usable for the current request, but cached scans, project summaries, architecture maps, dependency graphs, and symbol indexes may be stale or missing until those paths are fixed.
+
 ## Ollama
 
 Default local endpoint:

@@ -135,6 +135,7 @@ def test_workspace_scan_cache_reuses_unchanged_scan(tmp_path: Path) -> None:
     assert second["cache_hit"] is True
     assert second["cache_reason"] == "workspace file fingerprint unchanged"
     assert (workspace / ".aegis" / "scan-cache.json").exists()
+    assert all(item["persisted"] for item in first["memory_artifacts"])
 
 
 def test_workspace_scan_handles_malformed_package_dependency_shapes(tmp_path: Path) -> None:
@@ -2520,6 +2521,12 @@ def test_workspace_scan_survives_damaged_memory_write_targets(tmp_path: Path) ->
 
     assert result["workspace"] == str(workspace.resolve())
     assert result["file_count"] > 0
+    artifact_status = {Path(item["path"]).name: item for item in result["memory_artifacts"]}
+    assert artifact_status["file-index.json"]["persisted"] is False
+    assert artifact_status["project-summary.md"]["persisted"] is False
+    assert artifact_status["architecture-map.md"]["persisted"] is False
+    assert "memory_warnings" in result
+    assert any("file-index.json" in warning for warning in result["memory_warnings"])
     assert not (aegis_dir / ".file-index.json.tmp").exists()
     assert not (aegis_dir / ".project-summary.md.tmp").exists()
 

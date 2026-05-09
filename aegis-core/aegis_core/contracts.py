@@ -298,6 +298,8 @@ class WorkspaceScanData(ContractModel):
     scan_fingerprint: dict[str, Any] = Field(default_factory=dict)
     cache_hit: bool = False
     cache_reason: str | None = None
+    memory_artifacts: list[dict[str, Any]] = Field(default_factory=list)
+    memory_warnings: list[str] = Field(default_factory=list)
 
 
 class RoadmapData(ContractModel):

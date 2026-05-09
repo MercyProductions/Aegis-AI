@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .diagnostics import scrub
 from .memory import ProjectMemory
 from .safety import IGNORED_DIRS, is_ignored_path, is_safe_to_read
 
@@ -136,12 +137,11 @@ class WorkspaceScanner:
         if persist:
             memory = ProjectMemory(self.workspace)
             memory.ensure()
-            memory.write_json("file-index.json", self._file_index(files))
-            memory.write_json("dependency-graph.json", dependency_graph)
-            memory.write_json("symbol-index.json", symbol_index)
-            memory.write_json("scan-cache.json", {"fingerprint": fingerprint, "result": result})
-            memory.write_generated_markdown("project-summary.md", "Project Summary", render_project_summary(result))
-            memory.write_generated_markdown("architecture-map.md", "Architecture Map", render_architecture_map(result))
+            artifacts = self._persist_scan_artifacts(memory, files, dependency_graph, symbol_index, fingerprint, result)
+            result["memory_artifacts"] = artifacts
+            warnings = [str(item["warning"]) for item in artifacts if item.get("warning")]
+            if warnings:
+                result["memory_warnings"] = warnings
 
         return result
 
@@ -224,6 +224,59 @@ class WorkspaceScanner:
             return None
         result = cached.get("result")
         return result if isinstance(result, dict) else None
+
+    def _persist_scan_artifacts(
+        self,
+        memory: ProjectMemory,
+        files: list[Path],
+        dependency_graph: dict[str, Any],
+        symbol_index: dict[str, Any],
+        fingerprint: dict[str, Any],
+        result: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        artifacts = [
+            self._write_json_artifact(memory, "file-index.json", self._file_index(files)),
+            self._write_json_artifact(memory, "dependency-graph.json", dependency_graph),
+            self._write_json_artifact(memory, "symbol-index.json", symbol_index),
+            self._write_markdown_artifact(memory, "project-summary.md", "Project Summary", render_project_summary(result)),
+            self._write_markdown_artifact(memory, "architecture-map.md", "Architecture Map", render_architecture_map(result)),
+        ]
+        cached_result = dict(result)
+        cached_result["memory_artifacts"] = artifacts
+        warnings = [str(item["warning"]) for item in artifacts if item.get("warning")]
+        if warnings:
+            cached_result["memory_warnings"] = warnings
+        cache_payload = {"fingerprint": fingerprint, "result": cached_result}
+        artifacts.append(self._write_json_artifact(memory, "scan-cache.json", cache_payload))
+        return artifacts
+
+    def _write_json_artifact(self, memory: ProjectMemory, name: str, payload: Any) -> dict[str, Any]:
+        path = memory.root / name
+        warning = _target_warning(path)
+        if warning:
+            return _artifact_status(path, False, warning)
+        memory.write_json(name, payload)
+        try:
+            persisted = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else None
+        except (OSError, json.JSONDecodeError) as exc:
+            return _artifact_status(path, False, f"Could not persist scan artifact at {path}: {exc}")
+        if persisted != payload:
+            return _artifact_status(path, False, f"Could not persist scan artifact at {path}.")
+        return _artifact_status(path, True)
+
+    def _write_markdown_artifact(self, memory: ProjectMemory, name: str, title: str, body: str) -> dict[str, Any]:
+        path = memory.root / name
+        warning = _target_warning(path)
+        if warning:
+            return _artifact_status(path, False, warning)
+        memory.write_generated_markdown(name, title, body)
+        try:
+            persisted = path.read_text(encoding="utf-8") if path.is_file() else ""
+        except OSError as exc:
+            return _artifact_status(path, False, f"Could not persist scan artifact at {path}: {exc}")
+        if body.rstrip() not in persisted:
+            return _artifact_status(path, False, f"Could not persist scan artifact at {path}.")
+        return _artifact_status(path, True)
 
     def _detect_frameworks(self, files: list[Path]) -> list[str]:
         names = {path.name for path in files}
@@ -387,3 +440,19 @@ def render_architecture_map(scan: dict[str, Any]) -> str:
         "- Recent modified files",
         "- Areas with no nearby tests",
     ])
+
+
+def _target_warning(path: Path) -> str | None:
+    if path.parent.exists() and not path.parent.is_dir():
+        return f"Could not persist scan artifact because {path.parent} is not a directory."
+    if path.exists() and not path.is_file():
+        return f"Could not persist scan artifact because {path} is not a writable file."
+    return None
+
+
+def _artifact_status(path: Path, persisted: bool, warning: str | None = None) -> dict[str, Any]:
+    return {
+        "path": str(path),
+        "persisted": persisted,
+        "warning": scrub(warning) if warning else None,
+    }

@@ -35,6 +35,7 @@
 - Hardened Core roadmap generation so damaged roadmap artifact paths return explicit persistence failures while agent continuation still falls back to safe plan-only behavior.
 - Hardened Core validation runs so damaged validation-log paths are surfaced in result metadata instead of silently losing validation evidence.
 - Hardened Core continue/repair agent plans so damaged active-plan paths are surfaced as memory warnings instead of silently losing plan handoffs.
+- Hardened Core workspace scans so damaged scan artifact paths are surfaced in scan memory metadata instead of silently losing indexes, summaries, or cache updates.
 - Added experimental Aegis Core autonomous task orchestration with supervised goal planning, local queue state, approval gates, validation state, rollback metadata, and memory updates without uncontrolled file editing.
 - Added experimental Aegis Core multi-agent specialization with Planner, Architect, Coder, Reviewer, Tester, Repair, and Documentation roles assigned to orchestration tasks.
 - Added experimental Aegis Core workflow automation with safe scheduled/triggered maintenance jobs, `/v1/jobs`, `aegis jobs`, generated project health reports, and `.aegis/jobs-log.md` history while preserving approval gates for risky actions.

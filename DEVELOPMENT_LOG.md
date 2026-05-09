@@ -1251,3 +1251,23 @@ Validation completed:
 - Core continue/repair agent focused tests: pass, 6 tests.
 - Aegis Core contract tests: pass, 111 tests.
 - Git diff whitespace check: pass.
+
+## 2026-05-09 - Core Workspace Scan Artifact Persistence Metadata
+
+Focus:
+
+- Avoid silent loss of workspace scan artifacts when `.aegis` index, cache, summary, or architecture-map paths are damaged.
+- Keep scans usable while making memory artifact health visible to clients.
+
+Actions:
+
+- Added per-artifact `memory_artifacts` persistence metadata to persisted workspace scans.
+- Added `memory_warnings` when scan artifacts cannot be written or verified.
+- Verified JSON and generated Markdown scan artifacts after writes.
+- Updated workspace scan contracts, troubleshooting, changelog, and regression coverage for damaged scan artifact paths.
+
+Validation completed:
+
+- Core workspace scan focused tests: pass, 7 tests.
+- Aegis Core contract tests: pass, 111 tests.
+- Git diff whitespace check: pass.
