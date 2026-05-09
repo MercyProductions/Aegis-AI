@@ -183,6 +183,7 @@ Hybrid model routing:
 - LM Studio settings normalize to the local server base, and completions call its OpenAI-compatible `/v1/chat/completions` endpoint.
 - Cloud routes require client-visible warnings, explicit approval, sanitized context metadata, and provider keys stored in OS credential storage.
 - `preferred_cloud_provider` is restricted to OpenAI, Anthropic, Google, or OpenRouter.
+- Provider key storage is only accepted for cloud providers; local providers such as Ollama and LM Studio do not use stored API keys.
 - Secret-like, ignored, and outside-workspace files are excluded from cloud context.
 - Provider inventory and route responses include `credential_store_healthy` and `credential_store_errors` so clients can tell the difference between "no cloud key stored" and "the OS credential store could not be inspected."
 - Malformed provider responses, including invalid JSON, are returned as bounded provider failures rather than internal parser errors.

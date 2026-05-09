@@ -204,6 +204,25 @@ Validation completed:
 - Aegis Core contract test suite: pass, 118 tests.
 - Repository whitespace check: pass.
 
+## 2026-05-09 - Local Provider Key Storage Guard
+
+Focus:
+
+- Keep provider key storage aligned with the local-first provider model.
+- Avoid writing unnecessary OS credential entries for local providers such as LM Studio.
+
+Actions:
+
+- Restricted provider key writes to cloud providers only.
+- Preserved unsupported-provider errors for unknown IDs while returning a clearer local-provider key-storage error for `lm_studio`.
+- Added endpoint regression coverage for local provider key write rejection.
+
+Validation completed:
+
+- Aegis Core provider key endpoint regression slice: pass, 3 tests.
+- Aegis Core contract test suite: pass, 119 tests.
+- Repository whitespace check: pass.
+
 ## 2026-05-09 - Autonomous Stabilization Tranche
 
 Focus:

@@ -276,7 +276,7 @@ def collect_cloud_context(root: Path, context_files: list[str], max_chars: int) 
 
 
 def store_provider_key(provider_id: str, api_key: str, credentials: CredentialStore | None = None) -> dict[str, Any]:
-    _validate_provider_id(provider_id)
+    _validate_cloud_provider_id(provider_id)
     store = credentials or CredentialStore()
     store.write_provider_key(provider_id, api_key)
     return {"provider_id": provider_id.strip().lower(), "key_stored": True, "credential_store": "os"}
@@ -294,6 +294,14 @@ def _validate_provider_id(provider_id: str) -> None:
     if provider not in SUPPORTED_PROVIDER_IDS:
         supported = ", ".join(sorted(SUPPORTED_PROVIDER_IDS))
         raise ValueError(f"Unsupported provider '{provider}'. Supported providers: {supported}.")
+
+
+def _validate_cloud_provider_id(provider_id: str) -> None:
+    provider = provider_id.strip().lower()
+    _validate_provider_id(provider)
+    if provider in LOCAL_PROVIDER_IDS:
+        supported = ", ".join(sorted(CLOUD_PROVIDER_IDS))
+        raise ValueError(f"Provider '{provider}' does not use stored API keys. Key storage is supported for: {supported}.")
 
 
 def _cloud_provider(

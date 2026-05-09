@@ -2342,6 +2342,15 @@ def test_provider_key_endpoint_rejects_unknown_provider() -> None:
     assert "Unsupported provider" in response.json()["detail"]
 
 
+def test_provider_key_endpoint_rejects_local_provider_key_storage() -> None:
+    client = TestClient(create_app())
+
+    response = client.post("/v1/providers/lm_studio/key", json={"api_key": "dummy"})
+
+    assert response.status_code == 400
+    assert "does not use stored API keys" in response.json()["detail"]
+
+
 def test_provider_key_endpoint_redacts_backend_write_secret(monkeypatch) -> None:
     secret = "sk-endpoint-secret-token"
     monkeypatch.setattr(CredentialStore, "_load_keyring", lambda self: BrokenWriteKeyring())
