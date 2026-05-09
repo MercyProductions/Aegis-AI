@@ -4145,11 +4145,11 @@ function isSymbolCandidate(relativePath, size) {
   if (size > 512000 || isBlockedRelativePath(relativePath)) {
     return false;
   }
-  return /\.(js|jsx|ts|tsx|mjs|cjs|py|cs|rs|go|java|cpp|cc|cxx|c|h|hpp)$/i.test(relativePath);
+  return /\.(js|jsx|ts|tsx|mjs|cjs|py|cs|fs|fsi|fsx|vb|xaml|rs|go|java|cpp|cc|cxx|c|h|hpp)$/i.test(relativePath);
 }
 
 function isIndexableTextFile(relativePath) {
-  return /\.(js|jsx|ts|tsx|mjs|cjs|py|cs|rs|go|java|cpp|cc|cxx|c|h|hpp|json|jsonc|toml|yaml|yml|md)$/i.test(relativePath);
+  return /\.(js|jsx|ts|tsx|mjs|cjs|py|cs|fs|fsi|fsx|vb|xaml|rs|go|java|cpp|cc|cxx|c|h|hpp|json|jsonc|toml|yaml|yml|md)$/i.test(relativePath);
 }
 
 function classifyFileRoles(relativePath, text, snapshot) {
@@ -4214,7 +4214,9 @@ function extractDependencyImports(text, relativePath) {
     { regex: /^\s*from\s+([A-Za-z0-9_.$]+)\s+import\s+/gm, kind: 'python-from' },
     { regex: /^\s*import\s+([A-Za-z0-9_.$]+)/gm, kind: 'python-import' },
     { regex: /^\s*#include\s+[<"]([^>"]+)[>"]/gm, kind: 'include' },
-    { regex: /^\s*using\s+([A-Za-z0-9_.]+)\s*;/gm, kind: 'using' }
+    { regex: /^\s*using\s+([A-Za-z0-9_.]+)\s*;/gm, kind: 'using' },
+    { regex: /^\s*open\s+([A-Za-z0-9_.]+)\s*$/gm, kind: 'fsharp-open' },
+    { regex: /^\s*Imports\s+([A-Za-z0-9_.]+)\s*$/gim, kind: 'vb-imports' }
   ];
   for (const pattern of patterns) {
     let match;
@@ -4338,6 +4340,30 @@ function extractSymbols(text, relativePath, roles) {
     let match;
     while ((match = pattern.regex.exec(text)) !== null) {
       add(pattern.kind, pattern.kind === 'api-endpoint' ? `${match[1].toUpperCase()} ${match[2]}` : match[1], match.index);
+    }
+  }
+
+  const isFSharpFile = /\.(fs|fsi|fsx)$/i.test(relativePath);
+  const isVisualBasicFile = /\.vb$/i.test(relativePath);
+  const fsharpPatterns = [
+    { kind: 'module', regex: /^\s*module\s+([A-Za-z_][\w.]*)/gm },
+    { kind: 'type', regex: /^\s*type\s+([A-Za-z_][\w]*)\b/gm },
+    { kind: 'function', regex: /^\s*let\s+(?:rec\s+)?([A-Za-z_][\w']*)\b/gm }
+  ];
+  const visualBasicPatterns = [
+    { kind: 'class', regex: /^\s*(?:Public\s+|Private\s+|Friend\s+|Partial\s+)*(?:Class|Module)\s+([A-Za-z_][\w]*)/gim },
+    { kind: 'function', regex: /^\s*(?:Public\s+|Private\s+|Friend\s+|Protected\s+|Shared\s+|Async\s+|Overrides\s+)*(?:Sub|Function)\s+([A-Za-z_][\w]*)\b/gim }
+  ];
+  for (const pattern of isFSharpFile ? fsharpPatterns : []) {
+    let match;
+    while ((match = pattern.regex.exec(text)) !== null) {
+      add(pattern.kind, match[1], match.index);
+    }
+  }
+  for (const pattern of isVisualBasicFile ? visualBasicPatterns : []) {
+    let match;
+    while ((match = pattern.regex.exec(text)) !== null) {
+      add(pattern.kind, match[1], match.index);
     }
   }
 

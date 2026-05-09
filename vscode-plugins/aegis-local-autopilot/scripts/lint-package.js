@@ -168,6 +168,22 @@ assertProjectCommandInference(projectCommandInferrer);
 const buildFileClassifier = loadExtensionFunction(extensionText, 'isLikelyBuildFile', { path });
 assertBuildFileDetection(buildFileClassifier);
 assertProjectRiskPattern(extensionText);
+const sourceIndexing = loadExtensionFunctions(
+  extensionText,
+  [
+    'isBlockedRelativePath',
+    'isSymbolCandidate',
+    'isIndexableTextFile',
+    'lineNumberForIndex',
+    'sanitizeMemoryText',
+    'inferRouteNameFromPath',
+    'extractDependencyImports',
+    'extractSymbols'
+  ],
+  '({ isSymbolCandidate, isIndexableTextFile, extractDependencyImports, extractSymbols })',
+  { BLOCKED_PATH_SEGMENTS: new Set(), SECRET_FILE_PATTERNS: [] }
+);
+assertProjectSourceIndexing(sourceIndexing);
 
 const unsafeErrorMessagePatterns = [
   {
@@ -424,6 +440,60 @@ function assertBuildFileDetection(classifier) {
 function assertProjectRiskPattern(source) {
   if (!source.includes('csproj|fsproj|vbproj|vcxproj|vcxproj\\\\.filters|sln|slnx')) {
     fail('webview risk badge must cover .slnx, F#/VB, and Visual Studio project files.');
+  }
+}
+
+function assertProjectSourceIndexing(indexing) {
+  for (const file of ['src/App/Program.fs', 'src/App/Program.fsi', 'src/App/Script.fsx', 'src/Tool/Module.vb', 'src/App/MainWindow.xaml']) {
+    if (!indexing.isSymbolCandidate(file, 512)) {
+      fail(`isSymbolCandidate must include ${file}.`);
+    }
+    if (!indexing.isIndexableTextFile(file)) {
+      fail(`isIndexableTextFile must include ${file}.`);
+    }
+  }
+
+  const fsharpText = [
+    'open Aegis.Core',
+    'module Aegis.Feature',
+    'type Runner = class end',
+    'let run value = value'
+  ].join('\n');
+  const fsharpImports = indexing.extractDependencyImports(fsharpText, 'src/App/Feature.fs');
+  const fsharpSymbols = indexing.extractSymbols(fsharpText, 'src/App/Feature.fs', {});
+  if (!fsharpImports.some((item) => item.kind === 'fsharp-open' && item.specifier === 'Aegis.Core')) {
+    fail('extractDependencyImports must capture F# open dependencies.');
+  }
+  if (!fsharpSymbols.some((item) => item.kind === 'module' && item.name === 'Aegis.Feature')) {
+    fail('extractSymbols must capture F# modules.');
+  }
+  if (!fsharpSymbols.some((item) => item.kind === 'function' && item.name === 'run')) {
+    fail('extractSymbols must capture F# let-bound functions.');
+  }
+
+  const vbText = [
+    'Imports Aegis.Core',
+    'Public Module Tooling',
+    'Public Function Run() As Integer',
+    'Return 0',
+    'End Function',
+    'End Module'
+  ].join('\n');
+  const vbImports = indexing.extractDependencyImports(vbText, 'src/Tool/Tooling.vb');
+  const vbSymbols = indexing.extractSymbols(vbText, 'src/Tool/Tooling.vb', {});
+  if (!vbImports.some((item) => item.kind === 'vb-imports' && item.specifier === 'Aegis.Core')) {
+    fail('extractDependencyImports must capture Visual Basic Imports dependencies.');
+  }
+  if (!vbSymbols.some((item) => item.kind === 'class' && item.name === 'Tooling')) {
+    fail('extractSymbols must capture Visual Basic modules/classes.');
+  }
+  if (!vbSymbols.some((item) => item.kind === 'function' && item.name === 'Run')) {
+    fail('extractSymbols must capture Visual Basic functions.');
+  }
+
+  const jsSymbols = indexing.extractSymbols('let ordinaryValue = 1;', 'src/app.js', {});
+  if (jsSymbols.some((item) => item.name === 'ordinaryValue')) {
+    fail('extractSymbols must not treat JavaScript let variables as F# functions.');
   }
 }
 

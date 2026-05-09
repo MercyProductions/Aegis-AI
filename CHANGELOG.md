@@ -25,6 +25,7 @@
 - Improved Website workspace profiling and validation planning so existing `.slnx` Visual Studio solutions are treated like `.sln` workspaces.
 - Improved Website agent and fallback continuation so existing `.slnx` workspaces keep Visual Studio stack guardrails and receive runnable MSBuild validation helpers.
 - Improved VS Code local project snapshots so `.slnx`, F#/Visual Basic projects, and Visual Studio project filters are treated as important build/risk files.
+- Improved VS Code local fallback indexing so F#/Visual Basic source and XAML files participate in symbol scans and dependency graph extraction.
 - Improved Website dependency profiling so root `build.py` and `build.ps1` guard scripts are recorded as validation commands before lower-level CMake/MSBuild native fallbacks.
 - Improved Website agent continuation so existing projects with root `build.ps1` guard scripts propose the same safe PowerShell validation command used by validation discovery.
 - Improved Website project-builder existing-project validation so root `build.ps1` guard scripts are selected before CMake/MSBuild fallback commands.
