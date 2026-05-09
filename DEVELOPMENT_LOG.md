@@ -13,6 +13,7 @@ Actions:
 - Confirmed GitHub remote: `https://github.com/MercyProductions/Aegis-AI.git`.
 - Added regression tests around the Aegis Core contracts that every client is beginning to depend on.
 - Hardened shared Core safety checks for mixed-case ignored folders, token/password/auth-like files, and Windows temp-parent workspaces.
+- Hardened shared Core safety checks so paths resolving outside the workspace are not treated as project-local read/edit targets.
 - Hardened shared Core config parsing so malformed settings degrade to defaults.
 - Hardened shared Ollama URL parsing and model health diagnostics for malformed local endpoint settings, pasted API paths, and credential-like URL text.
 - Hardened Ollama model inventory parsing so malformed `/api/tags` payloads do not break shared health/model endpoints.
@@ -40,8 +41,9 @@ Actions:
 
 Validation completed:
 
-- Aegis Core contract test suite: pass, 32 tests.
+- Aegis Core contract test suite: pass, 34 tests.
 - Aegis Core compile check: pass.
+- Aegis Core outside-workspace path and symlink scan safety regression tests: pass.
 - Aegis Core workspace scan malformed package/stat-race regression tests: pass.
 - Aegis Core Ollama URL normalization and malformed-health regression tests: pass.
 - Aegis Core malformed Ollama model inventory regression tests: pass.

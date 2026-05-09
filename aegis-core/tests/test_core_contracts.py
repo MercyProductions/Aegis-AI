@@ -11,7 +11,7 @@ import aegis_core.validation as validation_module
 from aegis_core.config import AegisConfig, load_config, memory_dir, update_config, write_default_config
 from aegis_core.memory import ProjectMemory
 from aegis_core.ollama import OllamaClient
-from aegis_core.safety import is_ignored_path, is_safe_to_read, is_secret_like
+from aegis_core.safety import is_ignored_path, is_safe_to_edit, is_safe_to_read, is_secret_like
 from aegis_core.server import create_app
 from aegis_core.validation import append_validation_log, detect_validation_commands, run_validation
 from aegis_core.workspace import WorkspaceScanner
@@ -167,6 +167,33 @@ def test_safety_rules_are_case_insensitive_and_secret_aware(tmp_path: Path) -> N
     assert is_secret_like(tmp_path / "prod.password.txt")
     assert is_safe_to_read(tmp_path / "src" / "tokenizer.py", tmp_path)
     assert not is_safe_to_read(tmp_path / "Temp" / "cache.json", tmp_path)
+
+
+def test_safety_blocks_paths_that_resolve_outside_workspace(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    outside = tmp_path / "outside.py"
+    outside.write_text("print('outside')\n", encoding="utf-8")
+
+    assert not is_safe_to_read(outside, workspace)
+    assert not is_safe_to_edit(outside, workspace)
+
+
+def test_workspace_scan_skips_file_symlink_outside_workspace(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    outside = tmp_path / "outside.py"
+    outside.write_text("print('outside')\n", encoding="utf-8")
+    link = workspace / "linked.py"
+    try:
+        link.symlink_to(outside)
+    except (OSError, NotImplementedError):
+        return
+
+    result = WorkspaceScanner(workspace).scan(persist=False)
+
+    assert result["file_count"] == 0
+    assert not is_safe_to_read(link, workspace)
 
 
 def test_invalid_config_values_fall_back_safely(tmp_path: Path) -> None:

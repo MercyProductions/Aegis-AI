@@ -7,6 +7,7 @@
 - Added focused Aegis Core regression tests for `/v1` client registration, shared tasks, dashboard contracts, scan caching, and flexible CLI JSON output.
 - Improved the Aegis Core CLI so `--json` works before or after the subcommand.
 - Hardened Aegis Core path safety so ignored folders and secret-like filenames are handled case-insensitively and relative to the workspace before scanning.
+- Hardened Aegis Core read/edit safety so paths resolving outside the workspace, including file symlinks, are not treated as project-local scan inputs.
 - Hardened Aegis Core config loading so malformed shared settings fall back safely instead of breaking startup/health checks.
 - Hardened shared Ollama URL settings so common local URLs are normalized, API-path pastes are reduced to base URLs, credential-like endpoint text is rejected, and malformed URLs report model health failures instead of breaking diagnostics.
 - Hardened Ollama model inventory parsing so malformed `/api/tags` payloads become health diagnostics instead of client-visible exceptions.

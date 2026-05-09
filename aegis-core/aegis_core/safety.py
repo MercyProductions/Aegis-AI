@@ -71,8 +71,20 @@ def path_parts_for_safety(path: Path, workspace: str | Path | None = None) -> tu
         return path.parts
     try:
         return path.resolve().relative_to(Path(workspace).resolve()).parts
-    except ValueError:
+    except (OSError, RuntimeError, ValueError):
         return path.parts
+
+
+def is_workspace_local(path: Path, workspace: str | Path | None = None) -> bool:
+    if workspace is None:
+        return True
+    try:
+        resolved_path = path.resolve()
+        resolved_workspace = Path(workspace).resolve()
+        resolved_path.relative_to(resolved_workspace)
+    except (OSError, RuntimeError, ValueError):
+        return False
+    return True
 
 
 def is_ignored_path(path: Path, workspace: str | Path | None = None) -> bool:
@@ -91,7 +103,7 @@ def is_secret_like(path: Path) -> bool:
 
 
 def is_safe_to_read(path: Path, workspace: str | Path | None = None) -> bool:
-    return not is_ignored_path(path, workspace) and not is_secret_like(path)
+    return is_workspace_local(path, workspace) and not is_ignored_path(path, workspace) and not is_secret_like(path)
 
 
 def is_safe_to_edit(path: Path, workspace: str | Path | None = None) -> bool:
