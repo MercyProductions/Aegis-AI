@@ -114,6 +114,54 @@ def test_core_bridge_rejects_unexpected_contract_kind(tmp_path: Path) -> None:
     assert "kind mismatch" in result.error
 
 
+def test_core_bridge_redacts_secret_like_contract_fields(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    secret = "secret-token-value"
+
+    def api_version_handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "ok": True,
+                "api_version": f"v1?token={secret}",
+                "contract_version": "2026.05.09",
+                "kind": "models",
+                "workspace": str(workspace.resolve()),
+                "data": {},
+            },
+        )
+
+    bridge = AegisCoreBridge("http://127.0.0.1:8788", transport=httpx.MockTransport(api_version_handler))
+    result = asyncio.run(bridge.model_status(workspace))
+
+    assert result.reachable is True
+    assert result.ok is False
+    assert secret not in result.error
+    assert "token=[redacted]" in result.error
+
+    def kind_handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "ok": True,
+                "api_version": "v1",
+                "contract_version": "2026.05.09",
+                "kind": f"settings?api_key={secret}",
+                "workspace": str(workspace.resolve()),
+                "data": {},
+            },
+        )
+
+    bridge = AegisCoreBridge("http://127.0.0.1:8788", transport=httpx.MockTransport(kind_handler))
+    result = asyncio.run(bridge.model_status(workspace))
+
+    assert result.reachable is True
+    assert result.ok is False
+    assert secret not in result.error
+    assert "api_key=[redacted]" in result.error
+
+
 def test_core_bridge_marks_malformed_json_response_reachable(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()

@@ -934,3 +934,20 @@ Validation completed:
 
 - Aegis Core focused validation tests: pass, 11 tests.
 - Aegis Core contract suite: pass, 93 tests.
+
+## 2026-05-09 - Website Core Contract Field Redaction
+
+Focus:
+
+- Keep Website degraded-mode Core adapter errors useful without leaking secret-like values from malformed contract fields.
+- Close the remaining gap between redacted Core error details and raw `api_version`/`kind` mismatch text.
+
+Actions:
+
+- Redacted unexpected Core `api_version` values before returning contract mismatch errors.
+- Redacted unexpected Core `kind` values before returning contract mismatch errors.
+- Added Website Core bridge regressions for secret-like `api_version` and `kind` mismatch fields.
+
+Validation completed:
+
+- Website Core bridge tests: pass, 15 tests.

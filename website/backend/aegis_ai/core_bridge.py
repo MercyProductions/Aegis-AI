@@ -274,11 +274,13 @@ class AegisCoreBridge:
 def _core_envelope_contract_error(envelope: dict[str, Any], expected_kind: str | None) -> str:
     api_version = str(envelope.get("api_version") or "")
     if api_version != CORE_API_VERSION:
-        return f"Core response used unexpected api_version: {api_version or 'missing'}."
+        safe_api_version = _redact_core_error_text(api_version) or "missing"
+        return f"Core response used unexpected api_version: {safe_api_version}."
     if expected_kind:
         kind = str(envelope.get("kind") or "")
         if kind != expected_kind:
-            return f"Core response kind mismatch: expected {expected_kind}, got {kind or 'missing'}."
+            safe_kind = _redact_core_error_text(kind) or "missing"
+            return f"Core response kind mismatch: expected {expected_kind}, got {safe_kind}."
     return ""
 
 

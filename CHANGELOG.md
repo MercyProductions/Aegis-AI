@@ -81,6 +81,7 @@
 - Hardened the Website UI E2E wrapper so relative roots and trailing-slash backend/frontend URLs normalize consistently with doctor and smoke validation.
 - Hardened the Website-to-Core adapter so HTTP 200 responses with malformed JSON are reported as reachable degraded Core responses instead of being mistaken for offline Core.
 - Hardened the Website-to-Core adapter so Core error details and HTTP error URLs are redacted before reaching Website `/api` clients.
+- Hardened the Website-to-Core adapter so unexpected Core `api_version` or `kind` contract fields are redacted before reaching Website `/api` degraded-mode errors.
 - Hardened Website and Visual Studio diagnostic redactors so full `Authorization: Bearer/Basic/Digest ...` header values are redacted before generic assignment redaction can expose trailing credentials.
 - Hardened Website, Desktop, and Visual Studio diagnostic redactors so JSON-shaped secret fields in Core/provider error bodies are redacted before display.
 - Hardened Desktop backend/Core URL settings so local host:port inputs, trailing endpoint paths, and empty values normalize before runtime requests or config writes.
