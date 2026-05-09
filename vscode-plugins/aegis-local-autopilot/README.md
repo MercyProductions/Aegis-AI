@@ -235,6 +235,8 @@ Detected validation commands are limited to known safe checks:
 - `python -m pytest`
 - `cmake --build build`
 
+`dotnet build` is suggested only when a .NET project file such as `.csproj`, `.fsproj`, or `.vbproj` is present. Native-only Visual Studio solutions should use their native build validation path instead of being mislabeled as .NET workspaces.
+
 The extension does not run destructive commands automatically. Package lint checks this fallback allowlist so shell launchers, install commands, chained commands, and destructive Git aliases stay out of release packages.
 
 ## Workspace Memory

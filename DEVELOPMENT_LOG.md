@@ -2039,6 +2039,25 @@ Validation completed:
 - Website backend compile check: pass.
 - Repository whitespace check: pass.
 
+## 2026-05-09 - VS Code Native Solution Validation Detection
+
+Focus:
+
+- Keep VS Code fallback validation aligned with Core's .NET/native project distinction.
+- Avoid confusing native-only Visual Studio solution users with a `dotnet build` command that is likely the wrong validation path.
+
+Actions:
+
+- Changed VS Code fallback validation detection so `dotnet build` requires a `.csproj`, `.fsproj`, or `.vbproj` instead of any `.sln`.
+- Extended important-file matching to include F# and Visual Basic project files alongside C# project files.
+- Added package-lint regressions for native-only `.sln` workspaces and C#/F#/VB project workspaces.
+- Updated VS Code and root troubleshooting/changelog documentation.
+
+Validation completed:
+
+- VS Code extension lint: pass.
+- Repository whitespace check: pass.
+
 ## 2026-05-09 - Website PowerShell Guard Windows Path Compatibility
 
 Focus:

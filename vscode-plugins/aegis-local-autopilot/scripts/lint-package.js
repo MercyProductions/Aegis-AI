@@ -136,6 +136,20 @@ assertServiceUrl(serviceUrlBuilder, 'http://127.0.0.1:8788', '/v1/models', 'http
 
 const validationCommandGuard = loadExtensionFunction(extensionText, 'isSafeValidationCommand');
 assertValidationCommandGuard(validationCommandGuard);
+const validationCommandDetector = loadExtensionFunctions(
+  extensionText,
+  [
+    'stripUtf8Bom',
+    'parseJsonText',
+    'isSafeValidationCommand',
+    'pickPackageManagerForPath',
+    'makeValidationCommand',
+    'detectValidationCommands'
+  ],
+  'detectValidationCommands',
+  { path, getConfig: () => ({ validationCommandPreferences: [] }) }
+);
+assertValidationCommandDetection(validationCommandDetector);
 
 const unsafeErrorMessagePatterns = [
   {
@@ -292,6 +306,60 @@ function assertValidationCommandGuard(guard) {
     if (guard(command)) {
       fail(`extension validation command guard allowed unsafe command: ${command}`);
     }
+  }
+}
+
+function assertValidationCommandDetection(detector) {
+  const nativeVisualStudioSnapshot = {
+    target: { root: 'C:/demo/native' },
+    files: [
+      { relative: 'NativeOnly.sln' },
+      { relative: 'NativeOnly.vcxproj' }
+    ],
+    directories: [],
+    importantContents: [],
+    packageManagers: []
+  };
+  const dotnetSnapshot = {
+    target: { root: 'C:/demo/dotnet' },
+    files: [
+      { relative: 'Managed.sln' },
+      { relative: 'src/App/App.csproj' }
+    ],
+    directories: [],
+    importantContents: [],
+    packageManagers: []
+  };
+  const fsharpSnapshot = {
+    target: { root: 'C:/demo/fsharp' },
+    files: [
+      { relative: 'src/App/App.fsproj' }
+    ],
+    directories: [],
+    importantContents: [],
+    packageManagers: []
+  };
+  const visualBasicSnapshot = {
+    target: { root: 'C:/demo/vb' },
+    files: [
+      { relative: 'src/App/App.vbproj' }
+    ],
+    directories: [],
+    importantContents: [],
+    packageManagers: []
+  };
+
+  if (detector(nativeVisualStudioSnapshot).some((item) => item.command === 'dotnet build')) {
+    fail('detectValidationCommands must not suggest dotnet build for native-only Visual Studio solutions.');
+  }
+  if (!detector(dotnetSnapshot).some((item) => item.command === 'dotnet build')) {
+    fail('detectValidationCommands must suggest dotnet build when a .csproj is present.');
+  }
+  if (!detector(fsharpSnapshot).some((item) => item.command === 'dotnet build')) {
+    fail('detectValidationCommands must suggest dotnet build when a .fsproj is present.');
+  }
+  if (!detector(visualBasicSnapshot).some((item) => item.command === 'dotnet build')) {
+    fail('detectValidationCommands must suggest dotnet build when a .vbproj is present.');
   }
 }
 

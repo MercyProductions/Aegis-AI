@@ -34,6 +34,8 @@ Website command execution also blocks arbitrary path-qualified tool aliases even
 
 VS Code local fallback validation only runs exact known-safe commands such as `npm test`, `npm run build`, `python -m pytest`, `go test ./...`, and `cmake --build build`. Shell launchers, install commands, chained commands, and destructive Git aliases should be blocked before execution; run `npm run lint:package` in `vscode-plugins/aegis-local-autopilot/` if packaging or install-local validation reports drift.
 
+VS Code suggests `dotnet build` only when a `.csproj`, `.fsproj`, or `.vbproj` is present. Native-only Visual Studio solutions should use Visual Studio/MSBuild validation instead of the VS Code fallback runner treating every `.sln` as a .NET workspace.
+
 Desktop, Website, VS Code, and Visual Studio backend/Core URL settings are normalized before use. Inputs like `127.0.0.1:8788`, pasted `/v1/ecosystem/dashboard` URLs, and legacy Core endpoints such as `/health` or `/models` are reduced to a clean Core base URL, while empty values fall back to the local defaults. All local clients preserve reverse-proxy path prefixes such as `https://proxy.local/aegis` and append Core API paths under that prefix.
 
 If saving Core settings returns `Could not persist Aegis Core settings`, inspect the project `.aegis` path. The settings file must be a writable `.aegis/config.json` file, not a directory or a blocked path.

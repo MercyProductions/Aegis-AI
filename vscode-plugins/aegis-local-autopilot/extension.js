@@ -108,7 +108,7 @@ const IMPORTANT_FILE_PATTERNS = [
   /^makefile$/i,
   /^projectversion\.txt$/i,
   /^packages-lock\.json$/i,
-  /^.*\.(?:sln|csproj|vcxproj)$/i
+  /^.*\.(?:sln|csproj|fsproj|vbproj|vcxproj)$/i
 ];
 const MAX_AGENT_REPAIR_ATTEMPTS = 3;
 
@@ -5206,7 +5206,7 @@ function detectValidationCommands(snapshot) {
     }
   }
 
-  if (Array.from(files).some((name) => name.endsWith('.sln') || name.endsWith('.csproj'))) {
+  if (Array.from(files).some((name) => name.endsWith('.csproj') || name.endsWith('.fsproj') || name.endsWith('.vbproj'))) {
     commands.push(makeValidationCommand('dotnet build', snapshot.target.root, ''));
   }
   if (files.has('cargo.toml')) {
