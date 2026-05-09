@@ -2095,6 +2095,16 @@ def test_validation_runner_resolves_windows_package_manager_shims(monkeypatch) -
     )
 
     assert validation_module._resolve_validation_command(["npm", "test"]) == ["C:/tools/npm.cmd", "test"]
+    assert validation_module._resolve_validation_command(["npm.cmd", "test"]) == ["C:/tools/npm.cmd", "test"]
+
+
+def test_validation_runner_allows_windows_package_manager_shims() -> None:
+    assert validation_module.is_safe_validation_command(["npm.cmd", "test"])
+    assert validation_module.is_safe_validation_command(["pnpm.cmd", "build"])
+    assert validation_module.is_safe_validation_command(["yarn.cmd", "typecheck"])
+    assert validation_module.is_safe_validation_command(["dotnet.exe", "build"])
+    assert validation_module.is_safe_validation_command(["cmake.exe", "--build", "build"])
+    assert not validation_module.is_safe_validation_command(["npm.cmd", "install"])
 
 
 def test_validation_runner_handles_safe_command_failures(tmp_path: Path) -> None:

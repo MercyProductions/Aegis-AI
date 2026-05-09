@@ -43,6 +43,7 @@
 - Reduced Core validation startup overhead by detecting the default validation command once per run.
 - Restricted Core validation execution to a safe command allow-list and added structured blocked/missing/timeout failure results.
 - Hardened Core validation startup failures so OS-level command launch errors return structured results instead of escaping to shared clients.
+- Hardened Core validation command handling so Windows package-manager and tool shims like `npm.cmd`, `pnpm.cmd`, `yarn.cmd`, `dotnet.exe`, and `cmake.exe` are treated as safe equivalents for already allow-listed validation commands.
 - Redacted secret-like validation output before writing `.aegis/validation-log.md` and made validation log write failures non-fatal.
 - Redacted validation API output before returning it to clients and made Core diagnostic log writes non-fatal.
 - Made Core memory writes best-effort and atomic where possible so damaged `.aegis` files do not crash scans or generated-memory updates.

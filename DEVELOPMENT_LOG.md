@@ -916,3 +916,21 @@ Actions:
 Validation completed:
 
 - Aegis Core start script live-port probe: pass; existing Core on `8788` was identified without launching a duplicate server.
+
+## 2026-05-09 - Core Validation Windows Shim Compatibility
+
+Focus:
+
+- Keep Core validation compatible with Windows package-manager shims while preserving the safe command allow-list.
+- Avoid blocking legitimate `npm.cmd`, `pnpm.cmd`, `yarn.cmd`, `dotnet.exe`, or `cmake.exe` validation requests from clients.
+
+Actions:
+
+- Normalized known `.cmd`, `.bat`, and `.exe` validation executable names before allow-list checks.
+- Updated Windows package-manager shim resolution so `npm.cmd` can resolve through the same guarded path as `npm`.
+- Added Core regressions for safe Windows shim commands and blocked unsafe package-manager actions.
+
+Validation completed:
+
+- Aegis Core focused validation tests: pass, 11 tests.
+- Aegis Core contract suite: pass, 93 tests.

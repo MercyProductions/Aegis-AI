@@ -193,9 +193,9 @@ def _resolve_validation_command(command: list[str]) -> list[str]:
     if os.name != "nt" or not command:
         return command
     executable = str(command[0])
-    name = Path(executable).name.lower()
+    name = _normalized_executable_name(executable)
     if name in {"npm", "pnpm", "yarn"}:
-        resolved = shutil.which(executable) or shutil.which(f"{executable}.cmd")
+        resolved = shutil.which(executable) or shutil.which(f"{name}.cmd") or shutil.which(name)
         if resolved:
             return [resolved, *command[1:]]
     return command
@@ -204,7 +204,7 @@ def _resolve_validation_command(command: list[str]) -> list[str]:
 def is_safe_validation_command(command: list[str]) -> bool:
     if not command:
         return False
-    executable = Path(str(command[0])).name.lower()
+    executable = _normalized_executable_name(str(command[0]))
     args = [str(item) for item in command[1:]]
     if executable == "npm":
         return args in (["test"], ["run", "build"], ["run", "lint"], ["run", "typecheck"], ["run", "type-check"])
@@ -221,6 +221,15 @@ def is_safe_validation_command(command: list[str]) -> bool:
     if executable in {"python", "python.exe", "py", "py.exe"} or executable == Path(sys.executable).name.lower():
         return args == ["-m", "pytest"]
     return False
+
+
+def _normalized_executable_name(executable: str) -> str:
+    raw = str(executable).strip().strip('"').strip("'")
+    name = raw.replace("\\", "/").rsplit("/", 1)[-1].lower()
+    for suffix in (".cmd", ".bat", ".exe"):
+        if name.endswith(suffix):
+            return name[: -len(suffix)]
+    return name
 
 
 def _decode_output(value: Any) -> str:
