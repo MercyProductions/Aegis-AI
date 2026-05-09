@@ -4,12 +4,13 @@ from typing import Any
 import re
 
 from .commands import CommandResult
+from .diagnostic_redaction import redact_inline
 
 
 def status_text(value: Any, *, default: str = "", limit: int = 500) -> str:
     if value is None:
         return default
-    text = str(value).replace("\r", "\n")
+    text = redact_inline(str(value)).replace("\r", "\n")
     text = re.sub(r"\s+", " ", text).strip()
     if not text:
         return default
@@ -230,7 +231,7 @@ def repair_target_from_validation(payload: dict[str, Any], *, validation_command
 def fenced_log_text(text: str) -> str:
     if not text:
         return ""
-    return text.replace("```", "` ` `").strip()
+    return redact_inline(text).replace("```", "` ` `").strip()
 
 
 def validation_steps_log(steps: list[dict[str, Any]]) -> str:

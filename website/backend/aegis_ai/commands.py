@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .approval_sandbox import SandboxProfileManager
+from .diagnostic_redaction import redact_inline
 from .settings import Settings
 from .validation_commands import is_safe_powershell_build_guard_argv, is_safe_powershell_build_guard_command
 
@@ -631,7 +632,7 @@ class CommandRunner:
     def _trim_output(self, text: str | bytes, limit: int = 12000) -> str:
         if isinstance(text, bytes):
             text = text.decode("utf-8", errors="replace")
-        return self._trim(ANSI_ESCAPE_RE.sub("", text), limit=limit)
+        return self._trim(redact_inline(ANSI_ESCAPE_RE.sub("", text)), limit=limit)
 
     def _trim(self, text: str, limit: int = 12000) -> str:
         if len(text) <= limit:

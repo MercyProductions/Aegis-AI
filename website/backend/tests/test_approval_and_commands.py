@@ -345,6 +345,20 @@ class ApprovalAndCommandTests(unittest.TestCase):
         self.assertEqual(result.exit_code, 0, result.stderr)
         self.assertEqual(result.stdout.strip(), "OK")
 
+    def test_command_output_redacts_secret_values_without_hiding_parser_token_context(self) -> None:
+        runner = CommandRunner(self.settings)
+        secret = "oauth-access-token-1234567890"
+
+        result = runner.run(
+            f"python -c \"print('access_token={secret}'); print('unexpected token: <')\"",
+            self.workspace,
+        )
+
+        self.assertEqual(result.exit_code, 0, result.stderr)
+        self.assertNotIn(secret, result.stdout)
+        self.assertIn("access_token=[redacted]", result.stdout)
+        self.assertIn("unexpected token: <", result.stdout)
+
     def test_safe_and_chain_runs_as_sequential_allowed_commands(self) -> None:
         runner = CommandRunner(self.settings)
 

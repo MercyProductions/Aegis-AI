@@ -1,5 +1,25 @@
 # Development Log
 
+## 2026-05-09 - Website Validation Output Secret Redaction
+
+Focus:
+
+- Prevent validation command stdout/stderr and derived diagnostics from carrying provider/OAuth secrets into Website build logs, repair prompts, or API responses.
+- Preserve useful parser diagnostics such as `unexpected token: <` while still redacting likely token values.
+
+Actions:
+
+- Added a shared Website diagnostic redactor for query strings, JSON fields, authorization headers, URL credentials, bearer tokens, and assignment-style provider secrets.
+- Redacted `CommandRunner` stdout/stderr at ingestion before command results are stored or formatted.
+- Applied the same redactor to validation diagnostic displays, fenced logs, project scaffold excerpts, and manually constructed command-result diagnostics.
+- Added regressions proving `access_token` output is redacted without hiding non-secret parser context.
+
+Validation completed:
+
+- Website command, validation-diagnostic, and scaffold-reporting tests: 43 passed.
+- Website scaffold command/log/runtime and validation-outcome tests: 21 passed.
+- Website backend compile check: pass.
+
 ## 2026-05-09 - Website OAuth Secret Redaction Parity
 
 Focus:

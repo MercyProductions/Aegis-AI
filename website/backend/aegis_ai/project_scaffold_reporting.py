@@ -4,6 +4,7 @@ from typing import Any
 import re
 
 from .commands import CommandResult
+from .diagnostic_redaction import redact_inline
 from .schemas import CommandRun
 
 
@@ -41,7 +42,7 @@ def command_excerpt(run: CommandRun, *, limit: int = 1600) -> str:
         parts.append("[stderr]\n" + run.stderr.strip())
     if not parts and run.reason.strip():
         parts.append(run.reason.strip())
-    text = "\n".join(parts)
+    text = redact_inline("\n".join(parts))
     if len(text) <= limit:
         return text
     return text[:limit] + "\n... output truncated ..."
@@ -114,7 +115,7 @@ def failed_step_parts_from_steps(steps: list[dict[str, Any]]) -> tuple[str, str]
 def status_text(value: Any, *, default: str = "", limit: int = 220) -> str:
     if value is None:
         return default
-    text = str(value).replace("\r\n", "\n").replace("\r", "\n").strip()
+    text = redact_inline(str(value)).replace("\r\n", "\n").replace("\r", "\n").strip()
     text = re.sub(r"\s+", " ", text)
     if not text:
         return default
@@ -124,7 +125,7 @@ def status_text(value: Any, *, default: str = "", limit: int = 220) -> str:
 
 
 def log_text(value: str, *, limit: int = 20000) -> str:
-    text = (value or "").strip()
+    text = redact_inline(value or "").strip()
     if not text:
         return "(empty)"
     if len(text) <= limit:

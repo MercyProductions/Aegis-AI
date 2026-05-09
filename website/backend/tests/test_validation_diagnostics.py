@@ -86,6 +86,21 @@ class ValidationDiagnosticsTests(unittest.TestCase):
         self.assertEqual(diagnostics[0]["line"], 8)
         self.assertEqual(diagnostics[0]["message"], 'raise ValueError("bad")')
 
+    def test_redacts_secret_values_without_hiding_parser_token_diagnostics(self) -> None:
+        secret = "oauth-access-token-1234567890"
+        result = command_result(
+            stderr=f"src/app.ts(3,4): error TS1005: unexpected token: < while using access_token={secret}",
+        )
+
+        diagnostics = extract_validation_diagnostics(result)
+        display = diagnostic_display(diagnostics[0])
+
+        self.assertNotIn(secret, diagnostics[0]["message"])
+        self.assertNotIn(secret, diagnostics[0]["raw"])
+        self.assertNotIn(secret, display)
+        self.assertIn("access_token=[redacted]", diagnostics[0]["message"])
+        self.assertIn("unexpected token: <", display)
+
     def test_formats_failed_steps_and_repair_targets(self) -> None:
         steps = [
             {"index": 1, "command": "npm install", "ok": True},

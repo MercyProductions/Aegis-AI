@@ -34,6 +34,7 @@
 - Aligned Visual Studio solution scanning and smart context secret filename filters with the editor safe-edit contract so password/API-key/auth/SSH-key/keystore-like files are skipped while ordinary names such as `tokenizer.py` remain indexable.
 - Hardened VS Code and Visual Studio diagnostic redaction and memory sanitization for OAuth/provider fields such as `access_token`, `refresh_token`, `client_secret`, `x-api-key`, and `private_key`.
 - Aligned Website Core-bridge, project-status, and feedback redaction with the Core/editor OAuth provider secret coverage for `access_token`, `refresh_token`, `client_secret`, `x-api-key`, and `private_key` fields.
+- Hardened Website command output and validation diagnostic formatting so secret-shaped provider values are redacted before reaching build logs, repair prompts, or API payloads while parser errors such as `unexpected token: <` stay readable.
 - Improved Website scaffold install preflight so `.fsproj`, `.vbproj`, and `.slnx` projects receive the same missing-restore detection as `.csproj` projects.
 - Improved Website workspace profiling and validation planning so existing `.slnx` Visual Studio solutions are treated like `.sln` workspaces.
 - Improved Website agent and fallback continuation so existing `.slnx` workspaces keep Visual Studio stack guardrails and receive runnable MSBuild validation helpers.

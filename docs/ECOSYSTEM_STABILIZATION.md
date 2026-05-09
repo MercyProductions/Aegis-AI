@@ -23,7 +23,7 @@ This document tracks the practical quality pass for the Auralith ecosystem. The 
 | VS Code health check | Improved | Health check now warns when Aegis Core is offline and registers the VS Code client when Core is reachable. |
 | Visual Studio health check | Improved | Health check now reports Core reachability separately from shared client registration and preserves useful Core error details. |
 | Website integration | Partial | Website has its own mature local backend. For this phase it remains documented as a client and should migrate incrementally to `/v1` Core contracts. |
-| Website diagnostics | Improved | Core bridge errors, project-status excerpts, and feedback capture redaction now cover OAuth/provider aliases such as `access_token`, `refresh_token`, `client_secret`, `x-api-key`, and `private_key`. |
+| Website diagnostics | Improved | Core bridge errors, project-status excerpts, feedback capture, command output, and validation diagnostic formatting now redact OAuth/provider aliases such as `access_token`, `refresh_token`, `client_secret`, `x-api-key`, and `private_key` while preserving non-secret parser context. |
 | Workspace scan performance | Improved | Core scan results are cached when the workspace fingerprint is unchanged, skipping repeated expensive symbol/dependency/TODO passes. |
 | Workspace scan resilience | Improved | Core scans tolerate malformed package dependency metadata, BOM-prefixed `package.json` files, damaged framework marker paths, Unity project metadata, and files disappearing during scan sorting. |
 | Path safety | Improved | Core now evaluates ignored folders relative to the workspace, blocks secret-like filenames case-insensitively, and rejects paths resolving outside the workspace. |
@@ -108,6 +108,9 @@ Ran during this pass:
 - VS Code package lint, extension syntax check, Visual Studio package validation guards, and Visual Studio Release build after editor OAuth secret redaction parity: pass
 - Website backend Core bridge, project-status, and config feedback redaction tests after OAuth secret redaction parity: 27 passed
 - Website backend compile check after OAuth secret redaction parity: pass
+- Website backend command, validation-diagnostic, and scaffold-reporting tests after validation output secret redaction: 43 passed
+- Website backend scaffold command/log/runtime and validation-outcome tests after validation output secret redaction: 21 passed
+- Website backend compile check after validation output secret redaction: pass
 - Website focused frontend API/runtime/task tests: 40 tests passed
 - Website acceptance gate with explicit backend/frontend URLs: pass
 - Website backend tests: 739 tests and 155 subtests passed
@@ -148,6 +151,7 @@ Ran during this pass:
 - Aligned Visual Studio solution scanning and smart context secret filename filters with safe-edit coverage so secret-like files stay out of context without dropping ordinary names such as `tokenizer.py`.
 - Hardened VS Code and Visual Studio diagnostic redaction and memory sanitization for OAuth/provider fields such as `access_token`, `refresh_token`, `client_secret`, `x-api-key`, and `private_key`.
 - Hardened Website Core bridge, project-status, and feedback redaction for OAuth/provider fields such as `access_token`, `refresh_token`, `client_secret`, `x-api-key`, and `private_key`.
+- Hardened Website validation command output, diagnostic formatting, and project-scaffold excerpts so provider/OAuth secret values are redacted before they reach build logs, repair prompts, or API payloads.
 - Hardened Core validation detection so ignored dependency/build folders do not trigger false `.NET` build suggestions.
 - Hardened Core validation detection so damaged root build-marker directories do not trigger false Cargo, Python, CMake, pnpm, or Yarn suggestions.
 - Reduced Core validation startup overhead by avoiding duplicate validation-command detection.
