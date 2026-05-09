@@ -1115,3 +1115,22 @@ Validation completed:
 - Core orchestration focused tests: pass, 6 tests.
 - Aegis Core contract tests: pass, 97 tests.
 - Git diff whitespace check: pass.
+
+## 2026-05-09 - Core Credential Error Redaction
+
+Focus:
+
+- Keep optional cloud provider key handling private even when the OS credential backend returns a verbose failure.
+- Prevent echoed API keys, bearer tokens, or authorization details from reaching API clients through credential-store errors.
+
+Actions:
+
+- Added credential backend error sanitization in `CredentialStore`.
+- Redacted sensitive values echoed by provider key write failures.
+- Added regression coverage for read, write, and provider-key endpoint failures.
+
+Validation completed:
+
+- Core credential/provider-key focused tests: pass, 9 tests.
+- Aegis Core contract tests: pass, 100 tests.
+- Git diff whitespace check: pass.

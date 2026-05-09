@@ -1769,6 +1769,16 @@ class BrokenCredentialStore(DummyCredentialStore):
         raise RuntimeError("credential backend unavailable")
 
 
+class BrokenReadKeyring:
+    def get_password(self, service_name: str, provider_id: str) -> None:
+        raise RuntimeError("Provider rejected Authorization: Bearer read-secret-token")
+
+
+class BrokenWriteKeyring:
+    def set_password(self, service_name: str, provider_id: str, api_key: str) -> None:
+        raise RuntimeError(f"Backend echoed {api_key} with api_key={api_key}")
+
+
 class MissingDeleteKeyring:
     def get_password(self, service_name: str, provider_id: str) -> None:
         return None
@@ -1790,6 +1800,31 @@ def test_credential_store_delete_missing_key_returns_false(monkeypatch) -> None:
     monkeypatch.setattr(store, "_keyring", MissingDeleteKeyring())
 
     assert store.delete_provider_key("openai") is False
+
+
+def test_credential_store_read_redacts_backend_secret(monkeypatch) -> None:
+    store = CredentialStore(service_name="aegis-core-test")
+    monkeypatch.setattr(store, "_keyring", BrokenReadKeyring())
+
+    with pytest.raises(CredentialStoreError) as excinfo:
+        store.read_provider_key("openai")
+
+    message = str(excinfo.value)
+    assert "read-secret-token" not in message
+    assert "Authorization: [redacted]" in message
+
+
+def test_credential_store_write_redacts_backend_secret(monkeypatch) -> None:
+    secret = "sk-live-secret-token"
+    store = CredentialStore(service_name="aegis-core-test")
+    monkeypatch.setattr(store, "_keyring", BrokenWriteKeyring())
+
+    with pytest.raises(CredentialStoreError) as excinfo:
+        store.write_provider_key("openai", secret)
+
+    message = str(excinfo.value)
+    assert secret not in message
+    assert "api_key=[redacted]" in message
 
 
 def test_credential_store_delete_reports_backend_failure(monkeypatch) -> None:
@@ -1972,6 +2007,18 @@ def test_provider_key_endpoint_rejects_unknown_provider() -> None:
 
     assert response.status_code == 400
     assert "Unsupported provider" in response.json()["detail"]
+
+
+def test_provider_key_endpoint_redacts_backend_write_secret(monkeypatch) -> None:
+    secret = "sk-endpoint-secret-token"
+    monkeypatch.setattr(CredentialStore, "_load_keyring", lambda self: BrokenWriteKeyring())
+    client = TestClient(create_app())
+
+    response = client.post("/v1/providers/openai/key", json={"api_key": secret})
+
+    assert response.status_code == 503
+    assert secret not in response.json()["detail"]
+    assert "api_key=[redacted]" in response.json()["detail"]
 
 
 def test_ollama_health_handles_malformed_model_payload(monkeypatch) -> None:

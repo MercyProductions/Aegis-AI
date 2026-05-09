@@ -4,6 +4,8 @@ import ctypes
 import os
 from ctypes import wintypes
 
+from .diagnostics import redact_inline
+
 
 SERVICE_NAME = "Aegis Core Hybrid Model Router"
 
@@ -41,7 +43,7 @@ class CredentialStore:
             try:
                 value = self._keyring.get_password(self.service_name, provider)
             except Exception as exc:
-                raise CredentialStoreError(f"OS credential store read failed: {exc}") from exc
+                raise CredentialStoreError(f"OS credential store read failed: {_safe_backend_error(exc)}") from exc
             return value.strip() if isinstance(value, str) and value.strip() else None
         if os.name == "nt":
             return _windows_read_credential(credential_target(provider))
@@ -58,7 +60,7 @@ class CredentialStore:
             try:
                 self._keyring.set_password(self.service_name, provider, key)
             except Exception as exc:
-                raise CredentialStoreError(f"OS credential store write failed: {exc}") from exc
+                raise CredentialStoreError(f"OS credential store write failed: {_safe_backend_error(exc, key)}") from exc
             return
         if os.name == "nt":
             _windows_write_credential(credential_target(provider), provider, key)
@@ -73,14 +75,14 @@ class CredentialStore:
             try:
                 existing = self._keyring.get_password(self.service_name, provider)
             except Exception as exc:
-                raise CredentialStoreError(f"OS credential store read failed before delete: {exc}") from exc
+                raise CredentialStoreError(f"OS credential store read failed before delete: {_safe_backend_error(exc)}") from exc
             if not (isinstance(existing, str) and existing.strip()):
                 return False
             try:
                 self._keyring.delete_password(self.service_name, provider)
                 return True
             except Exception as exc:
-                raise CredentialStoreError(f"OS credential store delete failed: {exc}") from exc
+                raise CredentialStoreError(f"OS credential store delete failed: {_safe_backend_error(exc)}") from exc
         if os.name == "nt":
             return _windows_delete_credential(credential_target(provider))
         raise CredentialStoreError("No OS credential store is available. Install keyring or use Windows Credential Manager.")
@@ -95,6 +97,14 @@ class CredentialStore:
         except Exception:
             return None
         return keyring
+
+
+def _safe_backend_error(exc: Exception, *sensitive_values: str) -> str:
+    message = redact_inline(str(exc)).strip()
+    for value in sensitive_values:
+        if value:
+            message = message.replace(value, "[redacted]")
+    return message or exc.__class__.__name__
 
 
 if os.name == "nt":
