@@ -1,5 +1,22 @@
 # Development Log
 
+## 2026-05-09 - Website Core Bridge Result Redaction
+
+Focus:
+
+- Make the Core bridge the default redaction boundary for successful Core response data reused by Website config, health, model, and runtime endpoints.
+- Preserve contract validation behavior while ensuring `CoreBridgeResult.data`, `CoreBridgeResult.envelope`, and `CoreBridgeResult.kind` do not carry provider/OAuth secret values.
+
+Actions:
+
+- Redacted Core response `data` and `envelope` before constructing successful or contract-failed `CoreBridgeResult` objects.
+- Redacted Core response `kind` values before surfacing bridge result metadata.
+- Added a success-path regression for model inventory data containing provider URL query secrets, authorization headers, JSON secret fields, and contract-version secrets.
+
+Validation completed:
+
+- Website Core bridge tests: 21 passed.
+
 ## 2026-05-09 - Website Shared Core Runtime Envelope Redaction
 
 Focus:

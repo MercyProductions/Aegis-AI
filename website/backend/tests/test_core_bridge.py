@@ -295,6 +295,42 @@ def test_core_bridge_surfaces_ok_false_error_detail(tmp_path: Path) -> None:
     assert result.error == "model inventory unavailable"
 
 
+def test_core_bridge_redacts_success_data_and_envelope_payloads(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    secret = "core-success-provider-token-12345"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "ok": True,
+                "api_version": "v1",
+                "contract_version": f"2026.05.09?token={secret}",
+                "kind": "models",
+                "workspace": str(workspace.resolve()),
+                "data": {
+                    "reachable": True,
+                    "installed_models": ["qwen3-coder:30b", f"https://provider.test/v1?api_key={secret}"],
+                    "selected_model": f"Authorization: Bearer {secret}",
+                    "provider_detail": f'Provider rejected {{"client_secret":"{secret}"}}',
+                },
+            },
+        )
+
+    bridge = AegisCoreBridge("http://127.0.0.1:8788", transport=httpx.MockTransport(handler))
+    result = asyncio.run(bridge.model_status(workspace))
+    serialized = json.dumps({"data": result.data, "envelope": result.envelope, "kind": result.kind})
+
+    assert result.ok is True
+    assert result.data["reachable"] is True
+    assert secret not in serialized
+    assert "token=[redacted]" in serialized
+    assert "api_key=[redacted]" in serialized
+    assert "Authorization: [redacted]" in serialized
+    assert '"client_secret":"[redacted]"' in result.data["provider_detail"]
+
+
 def test_core_bridge_redacts_secret_like_core_error_detail(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()

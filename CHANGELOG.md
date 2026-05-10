@@ -38,6 +38,7 @@
 - Hardened Website task and distributed-execution summaries so validation signatures, task errors, final summaries, execution errors, and job result summaries redact provider/OAuth secret values before becoming durable workspace context.
 - Hardened Website Core dashboard adapters so Core-sourced validation command output, task summaries, and nested model status details are re-redacted before reaching Website runtime status payloads.
 - Hardened the Website `/api/core-runtime` bridge response so raw Core health, model, settings, memory, diagnostics, and dashboard envelopes are recursively redacted before reaching clients.
+- Hardened Website Core bridge result construction so all successful Core `data`, `envelope`, and `kind` fields are redacted before other Website endpoints reuse them.
 - Improved Website scaffold install preflight so `.fsproj`, `.vbproj`, and `.slnx` projects receive the same missing-restore detection as `.csproj` projects.
 - Improved Website workspace profiling and validation planning so existing `.slnx` Visual Studio solutions are treated like `.sln` workspaces.
 - Improved Website agent and fallback continuation so existing `.slnx` workspaces keep Visual Studio stack guardrails and receive runnable MSBuild validation helpers.

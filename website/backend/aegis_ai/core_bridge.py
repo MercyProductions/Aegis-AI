@@ -235,14 +235,16 @@ class AegisCoreBridge:
                     error="Core response was not a JSON object.",
                 )
             contract_error = _core_envelope_contract_error(envelope, expected_kind)
+            redacted_envelope = _redact_core_envelope(envelope)
+            redacted_data = _redact_core_result_data(envelope.get("data"))
             if contract_error:
                 return CoreBridgeResult(
                     reachable=True,
                     ok=False,
                     status_code=status_code,
-                    kind=str(envelope.get("kind") or ""),
-                    data=envelope.get("data"),
-                    envelope=envelope,
+                    kind=_redact_core_text(envelope.get("kind") or ""),
+                    data=redacted_data,
+                    envelope=redacted_envelope,
                     error=contract_error,
                 )
             ok = bool(envelope.get("ok"))
@@ -250,9 +252,9 @@ class AegisCoreBridge:
                 reachable=True,
                 ok=ok,
                 status_code=status_code,
-                kind=str(envelope.get("kind") or ""),
-                data=envelope.get("data"),
-                envelope=envelope,
+                kind=_redact_core_text(envelope.get("kind") or ""),
+                data=redacted_data,
+                envelope=redacted_envelope,
                 error="" if ok else core_envelope_error(envelope),
             )
         except (httpx.HTTPError, ValueError) as exc:
@@ -317,6 +319,11 @@ def _redact_core_value(value: Any) -> Any:
 def _redact_core_envelope(envelope: dict[str, Any] | None) -> dict[str, Any] | None:
     redacted = _redact_core_value(envelope) if isinstance(envelope, dict) else None
     return redacted if isinstance(redacted, dict) else None
+
+
+def _redact_core_result_data(data: Any) -> dict[str, Any] | list[Any] | None:
+    redacted = _redact_core_value(data)
+    return redacted if isinstance(redacted, (dict, list)) else None
 
 
 def core_envelope_data(envelope: dict[str, Any] | None) -> dict[str, Any]:
