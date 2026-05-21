@@ -2,18 +2,22 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   __resetApiBaseForTests,
   __setApiDiscoveryForTests,
+  agentSupervisionEventsUrl,
   apiResourceUrl,
   activateAdaptivePolicyProfile,
+  cancelAgentBridgeJob,
   approveAutonomousGate,
   cancelExecutionQueueItem,
   cancelAutonomousObjective,
   cancelCreativeJob,
+  cancelProviderSourceRefreshJob,
   createExecutionQueueItem,
   createAutonomousObjective,
   createCreativeJob,
   createMemoryNote,
   createReproducibilityRecord,
   createRemoteSyncManifest,
+  delegateAgentWorkflowTask,
   dispatchExecutionQueue,
   disableEcosystemPackage,
   disablePlugin,
@@ -21,10 +25,17 @@ import {
   dismissWorkspaceRecommendation,
   enableEcosystemPackage,
   enablePlugin,
+  exportMemoryNotes,
   exportCurrentProjectIntelligence,
+  exportRuntimeSettings,
   exportSharedIntelligenceProfile,
   fixWorkspaceRecommendation,
   getAdaptiveIntelligence,
+  getAgentBridgeJob,
+  getAgentSupervision,
+  getEvaluationReports,
+  getQualityBenchmarks,
+  getQualityGates,
   getCurrentAccount,
   getAutonomousEngineering,
   getAutonomousObjective,
@@ -37,6 +48,7 @@ import {
   getDistributedRuntimeAudit,
   getEnterprisePolicy,
   getKnowledgeGraph,
+  getMemoryGovernance,
   getOperatingEnvironment,
   getOrganizationPolicy,
   getPlatformDiscipline,
@@ -50,6 +62,10 @@ import {
   getWorkspaceIntelligenceEvents,
   getWorkspaceIntelligenceJobs,
   getWorkspaceRecommendations,
+  getOnboardingStatus,
+  getProviderSourceRefreshJob,
+  getRuntimeOwnership,
+  importRuntimeSettings,
   importSharedIntelligenceProfile,
   iterateAutonomousObjective,
   listEcosystemAudit,
@@ -63,14 +79,27 @@ import {
   listStableApis,
   listExecutionQueue,
   listAdaptiveTaskOutcomes,
+  listAgentBridgeJobs,
   listAutonomousApprovalGates,
   listAutonomousObjectives,
   listCreativeJobs,
+  listFiles,
   listRemoteSyncManifests,
   loginAccount,
   logoutAccount,
+  getProviderAccounts,
+  linkProviderCliSession,
+  linkProviderApiKey,
+  listProviderSourceRefreshJobs,
+  openProviderSourceRoot,
+  probeProviderCliBridges,
+  refreshProviderSourceDrop,
+  startProviderSourceRefreshJob,
+  startProviderCliLogin,
+  unlinkProviderAccount,
   listRuntimeWorkers,
   pauseAutonomousObjective,
+  preflightAgentBridge,
   previewGlobalCommand,
   previewOperatingEnvironmentAction,
   registerRuntimeWorker,
@@ -81,25 +110,35 @@ import {
   refreshEcosystem,
   refreshProductization,
   rejectAutonomousGate,
+  evaluateQualityGates,
   runEcosystemWorkflow,
   replayAdaptiveTasks,
   retryExecutionQueueItem,
+  retryAgentBridgeJob,
+  retryProviderSourceRefreshJob,
   requestPasswordReset,
   rollbackAdaptivePolicy,
   routeDistributedModel,
   runAdaptiveBenchmarks,
+  runQualityBenchmark,
   exportCreativeJob,
   simulateAutonomousObjective,
   startAutonomousObjective,
+  runOnboardingFirstWorkflow,
   runWorkspaceIntelligenceJobs,
   scanWorkspaceIntelligence,
   searchContinuityTimeline,
   searchEcosystem,
   searchUnifiedContext,
   submitGlobalCommand,
+  stepAgentWorkflow,
+  startAgentBridgeJob,
+  streamAgentBridge,
   streamAgentMessage,
   trustEcosystemPackage,
   trustPlugin,
+  updateOnboarding,
+  updateMemoryControls,
   updateMemoryNote,
   updateOrganizationPolicy,
   updateEnterprisePolicy,
@@ -108,6 +147,9 @@ import {
 } from './api';
 import { creativeAssetUrl } from './utils/creativeAssets';
 import type {
+  AgentBridgeJobInfo,
+  AgentBridgeExecuteResponse,
+  AgentBridgePreflightResponse,
   AgentRequest,
   AgentResponse,
   EcosystemPackageManifest,
@@ -121,6 +163,41 @@ afterEach(() => {
   vi.restoreAllMocks();
   __resetApiBaseForTests();
   globalThis.fetch = originalFetch;
+});
+
+describe('runtime ownership api', () => {
+  it('loads the typed Core/Website ownership matrix with an optional workspace query', async () => {
+    const payload = {
+      schema_version: '2026.05.21',
+      workspace_root: 'C:/project root',
+      policy: {
+        core_api: '/v1',
+        website_api: '/api',
+        rule: 'New shared runtime behavior starts in Aegis Core.',
+        compatibility: 'Website keeps compatibility wrappers thin.'
+      },
+      records: [
+        {
+          domain: 'validation',
+          owner: 'aegis-core',
+          summary: 'Core owns validation primitives.',
+          core_routes: ['/v1/validation/run'],
+          website_routes: ['/api/validate'],
+          delegated_workflows: ['validation.run'],
+          fallback: 'Website validation remains a degraded fallback.',
+          migration_rule: 'New reusable validation primitives go into Core first.'
+        }
+      ]
+    };
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(payload));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(getRuntimeOwnership('C:/project root')).resolves.toMatchObject({
+      schema_version: '2026.05.21',
+      records: [{ domain: 'validation', owner: 'aegis-core' }]
+    });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/runtime/ownership?workspace_root=C%3A%2Fproject+root');
+  });
 });
 
 describe('streamAgentMessage', () => {
@@ -200,6 +277,159 @@ describe('streamAgentMessage', () => {
     abortController.abort();
 
     await expect(result).rejects.toMatchObject({ name: 'AbortError' });
+  });
+});
+
+describe('streamAgentBridge', () => {
+  it('streams provider CLI deltas and resolves the final bridge response', async () => {
+    const bridgeResponse = createAgentBridgeResponse({
+      reply: 'bridge final',
+      metadata: {
+        workspace_changes: {
+          created: ['src/new.ts'],
+          updated: [],
+          deleted: [],
+          created_count: 1,
+          updated_count: 0,
+          deleted_count: 0,
+          changed_total: 1
+        }
+      }
+    });
+    const onDelta = vi.fn();
+
+    mockStreamResponse([
+      sseFrame('meta', { type: 'meta', provider_id: 'google_gemini', provider_label: 'Gemini' }),
+      sseFrame('delta', { type: 'delta', delta: 'live output', stream: 'stdout' }),
+      `event: final\ndata: ${JSON.stringify({ type: 'final', bridge_response: bridgeResponse })}`
+    ]);
+
+    await expect(
+      streamAgentBridge(
+        {
+          provider_id: 'google_gemini',
+          message: 'test bridge',
+          workspace_root: 'workspace',
+          allow_edits: true
+        },
+        { onDelta }
+      )
+    ).resolves.toMatchObject({
+      provider_id: 'google_gemini',
+      reply: 'bridge final'
+    });
+    expect(onDelta).toHaveBeenCalledWith(expect.objectContaining({ delta: 'live output', stream: 'stdout' }));
+  });
+
+  it('passes an abort signal through to the bridge streaming fetch request', async () => {
+    const abortController = new AbortController();
+    const bridgeResponse = createAgentBridgeResponse({ reply: 'abort signal wired' });
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) =>
+      new Response(createStreamBody([
+        `event: final\ndata: ${JSON.stringify({ type: 'final', bridge_response: bridgeResponse })}`
+      ]), {
+        status: 200,
+        headers: { 'Content-Type': 'text/event-stream' }
+      })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      streamAgentBridge(
+        {
+          provider_id: 'openai',
+          message: 'test bridge'
+        },
+        { signal: abortController.signal }
+      )
+    ).resolves.toMatchObject({ reply: 'abort signal wired' });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/agent-bridges/stream');
+    expect(fetchMock.mock.calls[0]?.[1]?.signal).toBe(abortController.signal);
+  });
+
+  it('starts, polls, cancels, and retries provider bridge queue jobs', async () => {
+    const job = createAgentBridgeJob();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ job }))
+      .mockResolvedValueOnce(jsonResponse({ jobs: [job] }))
+      .mockResolvedValueOnce(jsonResponse({ job: { ...job, status: 'completed' } }))
+      .mockResolvedValueOnce(jsonResponse({ job: { ...job, status: 'canceled' } }))
+      .mockResolvedValueOnce(jsonResponse({ job: { ...job, id: 'agent-bridge-2', metadata: { retry_of: job.id } } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      startAgentBridgeJob({
+        provider_id: 'openai',
+        message: 'queue bridge',
+        workspace_root: 'workspace',
+        allow_edits: false,
+        preflight_signature: 'reviewed-preflight'
+      })
+    ).resolves.toMatchObject({ job: { id: 'agent-bridge-1', status: 'queued' } });
+    await expect(listAgentBridgeJobs(10)).resolves.toMatchObject({ jobs: [expect.objectContaining({ id: 'agent-bridge-1' })] });
+    await expect(getAgentBridgeJob('agent-bridge-1')).resolves.toMatchObject({ job: { status: 'completed' } });
+    await expect(cancelAgentBridgeJob('agent-bridge-1')).resolves.toMatchObject({ job: { status: 'canceled' } });
+    await expect(retryAgentBridgeJob('agent-bridge-1')).resolves.toMatchObject({
+      job: { id: 'agent-bridge-2', metadata: { retry_of: 'agent-bridge-1' } }
+    });
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/agent-bridges/jobs');
+    expect(fetchMock.mock.calls[0]?.[1]?.method).toBe('POST');
+    expect(fetchMock.mock.calls[0]?.[1]?.body).toBe(
+      JSON.stringify({
+        provider_id: 'openai',
+        message: 'queue bridge',
+        workspace_root: 'workspace',
+        allow_edits: false,
+        preflight_signature: 'reviewed-preflight'
+      })
+    );
+    expect(fetchMock.mock.calls[1]?.[0]).toBe('/api/agent-bridges/jobs?limit=10');
+    expect(fetchMock.mock.calls[2]?.[0]).toBe('/api/agent-bridges/jobs/agent-bridge-1');
+    expect(fetchMock.mock.calls[3]?.[0]).toBe('/api/agent-bridges/jobs/agent-bridge-1/cancel');
+    expect(fetchMock.mock.calls[3]?.[1]?.method).toBe('POST');
+    expect(fetchMock.mock.calls[4]?.[0]).toBe('/api/agent-bridges/jobs/agent-bridge-1/retry');
+    expect(fetchMock.mock.calls[4]?.[1]?.method).toBe('POST');
+  });
+
+  it('preflights provider bridge launches before queueing a job', async () => {
+    const preflight = createAgentBridgePreflight();
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(preflight));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      preflightAgentBridge({
+        provider_id: 'openai',
+        message: 'preview bridge',
+        workspace_root: 'workspace',
+        mode: 'review',
+        model: 'gpt-5.5',
+        allow_edits: false,
+        context_paths: ['src/App.tsx', 'backend/aegis_ai/main.py'],
+        timeout_seconds: 240
+      })
+    ).resolves.toMatchObject({
+      ok: true,
+      status: 'ready',
+      route_type: 'cli',
+      command: 'codex exec [prompt omitted]'
+    });
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/agent-bridges/preflight');
+    expect(fetchMock.mock.calls[0]?.[1]?.method).toBe('POST');
+    expect(fetchMock.mock.calls[0]?.[1]?.body).toBe(
+      JSON.stringify({
+        provider_id: 'openai',
+        message: 'preview bridge',
+        workspace_root: 'workspace',
+        mode: 'review',
+        model: 'gpt-5.5',
+        allow_edits: false,
+        context_paths: ['src/App.tsx', 'backend/aegis_ai/main.py'],
+        timeout_seconds: 240
+      })
+    );
   });
 });
 
@@ -321,6 +551,295 @@ describe('auth api', () => {
   });
 });
 
+describe('workspace file api', () => {
+  it('lists workspace files with an explicit file limit', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      jsonResponse({
+        workspace_root: 'C:/workspace',
+        files: [
+          { path: 'src/App.tsx', size: 1200, kind: 'text' },
+          { path: 'backend/aegis_ai/main.py', size: 2400, kind: 'text' }
+        ]
+      })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(listFiles('C:/workspace', 500)).resolves.toMatchObject({
+      workspace_root: 'C:/workspace',
+      files: expect.arrayContaining([expect.objectContaining({ path: 'src/App.tsx' })])
+    });
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/files?workspace_root=C%3A%2Fworkspace&max_files=500');
+  });
+});
+
+describe('provider account api', () => {
+  it('links and unlinks provider accounts through secret-safe endpoints', async () => {
+    const snapshot = createProviderAccountsSnapshot();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(snapshot))
+      .mockResolvedValueOnce(jsonResponse({ ok: true, account: snapshot.accounts[0], snapshot }))
+      .mockResolvedValueOnce(jsonResponse(snapshot));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(getProviderAccounts()).resolves.toMatchObject({ providers: expect.any(Array) });
+    await expect(linkProviderApiKey('openai', { api_key: 'sk-test', account_label: 'Work' })).resolves.toMatchObject({
+      account: expect.objectContaining({ provider_id: 'openai' })
+    });
+    await expect(unlinkProviderAccount('openai')).resolves.toMatchObject({ credential_store_available: true });
+
+    expect(fetchMock.mock.calls[1]?.[0]).toContain('/api/provider-accounts/openai/api-key');
+    expect(fetchMock.mock.calls[1]?.[1]?.body).toBe(JSON.stringify({ api_key: 'sk-test', account_label: 'Work' }));
+    expect(fetchMock.mock.calls[2]?.[1]?.method).toBe('DELETE');
+  });
+
+  it('probes provider CLI bridges with an optional provider id', async () => {
+    const snapshot = createProviderAccountsSnapshot();
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(snapshot));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(probeProviderCliBridges('openai')).resolves.toMatchObject({ cli_bridges: expect.any(Array) });
+
+    expect(fetchMock.mock.calls[0]?.[0]).toContain('/api/provider-accounts/cli-bridges/probe');
+    expect(fetchMock.mock.calls[0]?.[1]?.method).toBe('POST');
+    expect(fetchMock.mock.calls[0]?.[1]?.body).toBe(JSON.stringify({ provider_id: 'openai' }));
+  });
+
+  it('starts provider CLI login through the provider-safe endpoint', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      jsonResponse({
+        ok: true,
+        provider_id: 'google_gemini',
+        provider_label: 'Google Gemini',
+        status: 'launched',
+        command: 'gemini auth login',
+        cwd: 'C:/Aegis/AI/gemini',
+        pid: 123,
+        message: 'Official CLI login opened.',
+        warnings: [],
+        snapshot: createProviderAccountsSnapshot()
+      })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(startProviderCliLogin('google_gemini')).resolves.toMatchObject({
+      status: 'launched',
+      pid: 123
+    });
+
+    expect(fetchMock.mock.calls[0]?.[0]).toContain('/api/provider-accounts/google_gemini/cli-login');
+    expect(fetchMock.mock.calls[0]?.[1]?.method).toBe('POST');
+  });
+
+  it('links provider CLI sessions without sending provider secrets', async () => {
+    const snapshot = createProviderAccountsSnapshot();
+    const cliAccount = {
+      ...snapshot.accounts[0],
+      account_id: 'openai:cli_bridge',
+      auth_mode: 'cli_bridge',
+      account_label: 'OpenAI CLI session',
+      credential_ref: '',
+      credential_hint: 'official CLI session'
+    };
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({ ok: true, account: cliAccount, snapshot }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(linkProviderCliSession('openai')).resolves.toMatchObject({
+      account: expect.objectContaining({ auth_mode: 'cli_bridge', credential_ref: '' })
+    });
+
+    expect(fetchMock.mock.calls[0]?.[0]).toContain('/api/provider-accounts/openai/cli-session');
+    expect(fetchMock.mock.calls[0]?.[1]?.method).toBe('POST');
+    expect(fetchMock.mock.calls[0]?.[1]?.body).toBeUndefined();
+  });
+
+  it('opens the configured provider source root without accepting arbitrary paths', async () => {
+    const snapshot = createProviderAccountsSnapshot();
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      jsonResponse({
+        ok: true,
+        path: 'C:/Aegis/AI',
+        pid: 456,
+        message: 'Provider source root opened.',
+        warnings: [],
+        snapshot
+      })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(openProviderSourceRoot({ path: 'C:/Aegis/AI' })).resolves.toMatchObject({
+      ok: true,
+      pid: 456
+    });
+
+    expect(fetchMock.mock.calls[0]?.[0]).toContain('/api/provider-accounts/source-root/open');
+    expect(fetchMock.mock.calls[0]?.[1]?.method).toBe('POST');
+    expect(fetchMock.mock.calls[0]?.[1]?.body).toBe(JSON.stringify({ path: 'C:/Aegis/AI' }));
+  });
+
+  it('refreshes provider source drops through manifest-declared actions', async () => {
+    const snapshot = createProviderAccountsSnapshot();
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      jsonResponse({
+        ok: true,
+        provider_id: 'openai',
+        provider_label: 'OpenAI',
+        action_id: 'build-codex-debug',
+        action_label: 'Build Codex',
+        status: 'completed',
+        command: 'cargo build --bin codex',
+        cwd: 'C:/Aegis/AI/codex-rs',
+        exit_code: 0,
+        stdout: '',
+        stderr: '',
+        duration_ms: 1200,
+        message: 'Build Codex completed and OpenAI was reprobed.',
+        warnings: [],
+        snapshot
+      })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      refreshProviderSourceDrop({
+        provider_id: 'openai',
+        action_id: 'build-codex-debug',
+        source_root: 'C:/Aegis/AI',
+        source_candidate: 'codex-rs/target/debug/codex.exe'
+      })
+    ).resolves.toMatchObject({ status: 'completed', action_id: 'build-codex-debug' });
+
+    expect(fetchMock.mock.calls[0]?.[0]).toContain('/api/provider-accounts/source-drops/refresh');
+    expect(fetchMock.mock.calls[0]?.[1]?.method).toBe('POST');
+    expect(fetchMock.mock.calls[0]?.[1]?.body).toBe(
+      JSON.stringify({
+        provider_id: 'openai',
+        action_id: 'build-codex-debug',
+        source_root: 'C:/Aegis/AI',
+        source_candidate: 'codex-rs/target/debug/codex.exe'
+      })
+    );
+  });
+
+  it('starts and polls provider source refresh jobs', async () => {
+    const snapshot = createProviderAccountsSnapshot();
+    const job = snapshot.source_refresh_jobs[0];
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ job, snapshot }))
+      .mockResolvedValueOnce(jsonResponse({ jobs: [job], snapshot }))
+      .mockResolvedValueOnce(jsonResponse({ job: { ...job, status: 'completed' }, snapshot }))
+      .mockResolvedValueOnce(jsonResponse({ job: { ...job, status: 'canceled' }, snapshot }))
+      .mockResolvedValueOnce(jsonResponse({ job: { ...job, id: 'source-refresh-2', metadata: { retry_of: job.id } }, snapshot }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      startProviderSourceRefreshJob({
+        provider_id: 'openai',
+        action_id: 'build-codex-debug',
+        source_root: 'C:/Aegis/AI',
+        source_candidate: 'codex-rs/target/debug/codex.exe'
+      })
+    ).resolves.toMatchObject({ job: { id: 'source-refresh-1', status: 'queued' } });
+    await expect(listProviderSourceRefreshJobs(10)).resolves.toMatchObject({ jobs: [expect.objectContaining({ id: 'source-refresh-1' })] });
+    await expect(getProviderSourceRefreshJob('source-refresh-1')).resolves.toMatchObject({ job: { status: 'completed' } });
+    await expect(cancelProviderSourceRefreshJob('source-refresh-1')).resolves.toMatchObject({ job: { status: 'canceled' } });
+    await expect(retryProviderSourceRefreshJob('source-refresh-1')).resolves.toMatchObject({
+      job: { id: 'source-refresh-2', metadata: { retry_of: 'source-refresh-1' } }
+    });
+
+    expect(fetchMock.mock.calls[0]?.[0]).toContain('/api/provider-accounts/source-drops/refresh-jobs');
+    expect(fetchMock.mock.calls[0]?.[1]?.method).toBe('POST');
+    expect(fetchMock.mock.calls[1]?.[0]).toBe('/api/provider-accounts/source-drops/refresh-jobs?limit=10');
+    expect(fetchMock.mock.calls[2]?.[0]).toContain('/api/provider-accounts/source-drops/refresh-jobs/source-refresh-1');
+    expect(fetchMock.mock.calls[3]?.[0]).toContain('/api/provider-accounts/source-drops/refresh-jobs/source-refresh-1/cancel');
+    expect(fetchMock.mock.calls[3]?.[1]?.method).toBe('POST');
+    expect(fetchMock.mock.calls[4]?.[0]).toContain('/api/provider-accounts/source-drops/refresh-jobs/source-refresh-1/retry');
+    expect(fetchMock.mock.calls[4]?.[1]?.method).toBe('POST');
+  });
+});
+
+describe('onboarding api', () => {
+  it('uses Core-backed first-run setup and settings gateway endpoints', async () => {
+    const status = {
+      schema_version: 1,
+      workspace: 'C:/project root',
+      generated_at: '2026-05-11T00:00:00Z',
+      completed: false,
+      current_step: 'workspace',
+      steps: [],
+      diagnostics: { checks: [] },
+      privacy: {},
+      recommended_defaults: {},
+      first_workflow: { steps: [] },
+      recovery: [],
+      settings: {}
+    };
+    const workflow = {
+      workspace: 'C:/project root',
+      action: 'scan_project',
+      dry_run: true,
+      result: { file_count: 3 },
+      next_actions: ['Run generate roadmap']
+    };
+    const exported = {
+      schema_version: 1,
+      exported_at: '2026-05-11T00:00:00Z',
+      workspace: 'C:/project root',
+      settings: { default_model: 'qwen3-coder:30b' },
+      privacy: {},
+      provider_config_metadata: [],
+      ui_preferences: {},
+      runtime_urls: {},
+      workspace_preferences: {},
+      notes: ['no secrets']
+    };
+    const imported = {
+      workspace: 'C:/project root',
+      dry_run: true,
+      imported_keys: ['default_model'],
+      ignored_keys: ['api_key'],
+      ui_preference_keys: ['theme'],
+      settings_preview: {},
+      warnings: []
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(status))
+      .mockResolvedValueOnce(jsonResponse({ ...status, current_step: 'finish' }))
+      .mockResolvedValueOnce(jsonResponse(workflow))
+      .mockResolvedValueOnce(jsonResponse(exported))
+      .mockResolvedValueOnce(jsonResponse(imported));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(getOnboardingStatus('C:/project root')).resolves.toMatchObject({ current_step: 'workspace' });
+    await expect(updateOnboarding({ workspace_root: 'C:/project root', completed_steps: ['welcome'] })).resolves.toMatchObject({
+      current_step: 'finish'
+    });
+    await expect(runOnboardingFirstWorkflow({ workspace_root: 'C:/project root', action: 'scan_project' })).resolves.toMatchObject({
+      action: 'scan_project'
+    });
+    await expect(exportRuntimeSettings('C:/project root')).resolves.toMatchObject({ settings: { default_model: 'qwen3-coder:30b' } });
+    await expect(
+      importRuntimeSettings({
+        workspace_root: 'C:/project root',
+        dry_run: true,
+        settings: { default_model: 'qwen3-coder:30b', api_key: 'placeholder-sensitive-value' }
+      })
+    ).resolves.toMatchObject({ ignored_keys: ['api_key'] });
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/onboarding/status?workspace_root=C%3A%2Fproject+root');
+    expect(fetchMock.mock.calls[1]?.[0]).toBe('/api/onboarding');
+    expect(fetchMock.mock.calls[2]?.[0]).toBe('/api/onboarding/first-workflow');
+    expect(fetchMock.mock.calls[3]?.[0]).toBe('/api/settings/export?workspace_root=C%3A%2Fproject+root');
+    expect(fetchMock.mock.calls[4]?.[0]).toBe('/api/settings/import');
+    expect(JSON.parse(String(fetchMock.mock.calls[4]?.[1]?.body))).toMatchObject({
+      settings: { api_key: 'placeholder-sensitive-value' }
+    });
+  });
+});
+
 describe('memory api', () => {
   it('uses shared API base discovery for list, create, update, and delete calls', async () => {
     __setApiDiscoveryForTests(true);
@@ -343,24 +862,94 @@ describe('memory api', () => {
       tags: [],
       related_files: []
     };
+    const governance = {
+      runtime: 'aegis-core',
+      mode: 'local_only',
+      local_only: true,
+      cloud_memory_sharing: false,
+      cloud_context_requires_consent: true,
+      sensitive_memory_exclusions: true,
+      per_project_isolation: true,
+      inspectable: true,
+      editable: true,
+      exportable: true,
+      deletable: true,
+      allowed_scopes: ['project'],
+      disabled_categories: ['repair_history'],
+      orchestration_excluded_categories: [],
+      retention_by_category: { validation_history: 180 },
+      sensitive_export_default: 'redacted',
+      storage_boundary: 'aegis-core-project-memory',
+      audit_available: true,
+      audit_event_count: 2,
+      categories: [],
+      controls: {},
+      privacy: {},
+      warnings: []
+    };
 
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse({ ok: true, ready: true, app: 'Aegis Coding AI' }))
       .mockResolvedValueOnce(jsonResponse({ ok: true, ready: true, app: 'Aegis Coding AI' }))
       .mockResolvedValueOnce(jsonResponse({ ok: true, ready: true, app: 'Auralith OS' }))
-      .mockResolvedValueOnce(jsonResponse({ workspace_root: 'C:/project root', warnings: [], notes: [note] }))
+      .mockResolvedValueOnce(jsonResponse({ workspace_root: 'C:/project root', warnings: [], notes: [note], governance }))
       .mockResolvedValueOnce(jsonResponse(note))
       .mockResolvedValueOnce(jsonResponse({ ...note, pinned: true }))
-      .mockResolvedValueOnce(jsonResponse({ deleted: 'note-1' }));
+      .mockResolvedValueOnce(jsonResponse({ deleted: 'note-1' }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          workspace_root: 'C:/project root',
+          governance,
+          privacy: governance.privacy,
+          controls: governance.controls,
+          categories: governance.categories,
+          observability: {},
+          delegated: true,
+          runtime: 'aegis-core'
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          workspace_root: 'C:/project root',
+          export: { records: [{ id: 'note-1', content: '[redacted sensitive memory]' }] },
+          record_count: 1,
+          governance,
+          delegated: true,
+          runtime: 'aegis-core'
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          workspace_root: 'C:/project root',
+          governance: { ...governance, disabled_categories: ['repair_history', 'ui_preferences'] },
+          privacy: governance.privacy,
+          controls: governance.controls,
+          categories: governance.categories,
+          delegated: true,
+          runtime: 'aegis-core'
+        })
+      );
     vi.stubGlobal('fetch', fetchMock);
 
-    await expect(listMemoryNotes('C:/project root')).resolves.toMatchObject({ notes: [note] });
+    await expect(listMemoryNotes('C:/project root')).resolves.toMatchObject({
+      notes: [note],
+      governance: { mode: 'local_only', cloud_context_requires_consent: true }
+    });
     await expect(createMemoryNote('C:/project root', createPayload)).resolves.toMatchObject({ id: 'note-1' });
     await expect(updateMemoryNote('C:/project root', 'note-1', { pinned: true })).resolves.toMatchObject({
       pinned: true
     });
     await expect(deleteMemoryNote('C:/project root', 'note-1')).resolves.toEqual({ deleted: 'note-1' });
+    await expect(getMemoryGovernance('C:/project root')).resolves.toMatchObject({
+      governance: { audit_available: true, sensitive_export_default: 'redacted' }
+    });
+    await expect(
+      exportMemoryNotes('C:/project root', { categories: ['insight'], redact_sensitive: true })
+    ).resolves.toMatchObject({ record_count: 1, governance: { storage_boundary: 'aegis-core-project-memory' } });
+    await expect(
+      updateMemoryControls('C:/project root', { category: 'fix', enabled: false })
+    ).resolves.toMatchObject({ governance: { disabled_categories: ['repair_history', 'ui_preferences'] } });
 
     expect(fetchMock.mock.calls.map((call) => String(call[0]))).toEqual([
       '/api/health',
@@ -369,7 +958,10 @@ describe('memory api', () => {
       'http://127.0.0.1:8793/api/memory?workspace_root=C%3A%2Fproject+root',
       'http://127.0.0.1:8793/api/memory?workspace_root=C%3A%2Fproject+root',
       'http://127.0.0.1:8793/api/memory/note-1?workspace_root=C%3A%2Fproject+root',
-      'http://127.0.0.1:8793/api/memory/note-1?workspace_root=C%3A%2Fproject+root'
+      'http://127.0.0.1:8793/api/memory/note-1?workspace_root=C%3A%2Fproject+root',
+      'http://127.0.0.1:8793/api/memory/governance?workspace_root=C%3A%2Fproject+root',
+      'http://127.0.0.1:8793/api/memory/export?workspace_root=C%3A%2Fproject+root',
+      'http://127.0.0.1:8793/api/memory/controls?workspace_root=C%3A%2Fproject+root'
     ]);
     expect(fetchMock.mock.calls[4]?.[1]).toMatchObject({
       method: 'POST',
@@ -380,6 +972,14 @@ describe('memory api', () => {
       body: JSON.stringify({ pinned: true })
     });
     expect(fetchMock.mock.calls[6]?.[1]).toMatchObject({ method: 'DELETE' });
+    expect(fetchMock.mock.calls[8]?.[1]).toMatchObject({
+      method: 'POST',
+      body: JSON.stringify({ categories: ['insight'], redact_sensitive: true })
+    });
+    expect(fetchMock.mock.calls[9]?.[1]).toMatchObject({
+      method: 'POST',
+      body: JSON.stringify({ category: 'fix', enabled: false })
+    });
   });
 });
 
@@ -406,6 +1006,131 @@ describe('API resource URLs', () => {
     expect(creativeAssetUrl('renders/preview image.png')).toBe(
       'http://127.0.0.1:8793/api/creative-studio/assets/file?path=renders%2Fpreview%20image.png'
     );
+  });
+});
+
+describe('agent supervision api', () => {
+  it('loads supervision snapshots, controls workflow steps, and delegates tasks through Website compatibility endpoints', async () => {
+    const snapshot = {
+      workspace_root: 'C:/project root',
+      core_connected: true,
+      delegated_workflows_enabled: true,
+      fallback_mode_active: false,
+      last_core_error: '',
+      runtime_status: {},
+      runtime: {},
+      workflows: [{ id: 'wf-1', workflow_type: 'generate_feature', status: 'running', tasks: [] }],
+      active_workflows: [{ id: 'wf-1', workflow_type: 'generate_feature', status: 'running', tasks: [] }],
+      active_workflow: { id: 'wf-1', workflow_type: 'generate_feature', status: 'running', tasks: [] },
+      coordination: { agents: [{ id: 'planner_agent', role: 'planner', status: 'active' }] },
+      timeline: [],
+      task_counts: { queued: 1 },
+      safety: {},
+      events_url: '/api/agent-supervision/workflows/wf-1/events?workspace_root=C%3A%2Fproject+root'
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(snapshot))
+      .mockResolvedValueOnce(jsonResponse({ ok: true, delegated: true, workflow: snapshot.active_workflow }))
+      .mockResolvedValueOnce(jsonResponse({ ok: true, delegated: true, workflow: snapshot.active_workflow }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(getAgentSupervision('C:/project root', 'wf-1')).resolves.toMatchObject({
+      active_workflow: { id: 'wf-1' }
+    });
+    await expect(
+      stepAgentWorkflow('wf-1', {
+        workspace_root: 'C:/project root',
+        action: 'advance',
+        task_id: 'task-1',
+        approval: true
+      })
+    ).resolves.toMatchObject({ ok: true, delegated: true });
+    await expect(
+      delegateAgentWorkflowTask('wf-1', {
+        workspace_root: 'C:/project root',
+        task_id: 'task-1',
+        agent_id: 'coder_agent',
+        approval: true
+      })
+    ).resolves.toMatchObject({ ok: true, delegated: true });
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/agent-supervision?limit=30&workspace_root=C%3A%2Fproject+root&workflow_id=wf-1');
+    expect(fetchMock.mock.calls[1]?.[0]).toBe('/api/agent-supervision/workflows/wf-1/step');
+    expect(fetchMock.mock.calls[1]?.[1]?.body).toBe(
+      JSON.stringify({ workspace_root: 'C:/project root', action: 'advance', task_id: 'task-1', approval: true })
+    );
+    expect(fetchMock.mock.calls[2]?.[0]).toBe('/api/agent-supervision/workflows/wf-1/agents/delegate');
+  });
+
+  it('builds event stream URLs against the resolved API base', async () => {
+    __setApiDiscoveryForTests(true);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ ok: true, ready: true, app: 'Aegis Coding AI' }))
+      .mockResolvedValueOnce(jsonResponse({ ok: true, ready: true, app: 'Aegis Coding AI' }))
+      .mockResolvedValueOnce(jsonResponse({ ok: true, ready: true, app: 'Auralith OS' }))
+      .mockResolvedValueOnce(jsonResponse({ workspace_root: 'C:/project root', warnings: [], notes: [] }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(listMemoryNotes('C:/project root')).resolves.toMatchObject({ notes: [] });
+
+    expect(agentSupervisionEventsUrl('wf 1', 'C:/project root')).toBe(
+      'http://127.0.0.1:8793/api/agent-supervision/workflows/wf%201/events?follow=true&since=0&workspace_root=C%3A%2Fproject+root'
+    );
+  });
+});
+
+describe('quality gate api', () => {
+  it('loads quality gates, evaluates pre-apply gates, and records benchmark/report activity through Website compatibility endpoints', async () => {
+    const quality = {
+      latest: {
+        id: 'quality-1',
+        status: 'passed',
+        apply_allowed: true,
+        gates: [{ id: 'syntax_check', label: 'Syntax check', status: 'passed' }],
+        scorecard: { confidence_score: 91, risk_score: 12, validation_score: 88 },
+        blockers: [],
+        warnings: [],
+        changed_files: ['app.py']
+      },
+      recent_runs: [],
+      reports: [],
+      benchmark_history: [],
+      benchmark_suites: [{ id: 'coding_task_quality', label: 'Coding Task Quality' }],
+      statistics: { run_count: 1 }
+    };
+    const benchmarks = {
+      suites: [{ id: 'coding_task_quality', label: 'Coding Task Quality' }],
+      history: [],
+      latest: null,
+      statistics: { run_count: 0 }
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('/quality-gates/evaluate')) return jsonResponse(quality.latest);
+      if (url.includes('/benchmarks/run')) return jsonResponse({ id: 'benchmark-1', status: 'passed', score: 0.91 });
+      if (url.includes('/benchmarks')) return jsonResponse(benchmarks);
+      if (url.includes('/evaluation-reports')) return jsonResponse({ reports: [{ id: 'evaluation-1' }], latest: { id: 'evaluation-1' } });
+      return jsonResponse(quality);
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    await getQualityGates('C:/project root');
+    await evaluateQualityGates({ workspace_root: 'C:/project root', changes: [{ path: 'app.py', action: 'update' }] });
+    await getQualityBenchmarks('C:/project root');
+    await runQualityBenchmark({ workspace_root: 'C:/project root', suite_ids: ['coding_task_quality'] });
+    await getEvaluationReports('C:/project root', 'workflow-1');
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/quality-gates?limit=50&workspace_root=C%3A%2Fproject+root');
+    expect(fetchMock.mock.calls[1]?.[0]).toBe('/api/quality-gates/evaluate');
+    expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({
+      method: 'POST',
+      body: JSON.stringify({ workspace_root: 'C:/project root', changes: [{ path: 'app.py', action: 'update' }] })
+    });
+    expect(fetchMock.mock.calls[2]?.[0]).toBe('/api/benchmarks?limit=50&workspace_root=C%3A%2Fproject+root');
+    expect(fetchMock.mock.calls[3]?.[0]).toBe('/api/benchmarks/run');
+    expect(String(fetchMock.mock.calls[4]?.[0])).toContain('/api/evaluation-reports?limit=50&workspace_root=C%3A%2Fproject+root&workflow_id=workflow-1');
   });
 });
 
@@ -1285,7 +2010,7 @@ function createAutonomousSafetyLimits(overrides: Record<string, unknown> = {}) {
     stop_on_validation_failure: true,
     allow_dependency_changes: false,
     allow_destructive_actions: false,
-    metadata: {},
+    metadata: { mode: 'review', context_paths: ['src/App.tsx', 'backend/aegis_ai/main.py'], context_path_count: 2 },
     ...overrides
   };
 }
@@ -1500,6 +2225,161 @@ function createAutonomousSnapshot(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function createProviderAccountsSnapshot(overrides: Record<string, unknown> = {}) {
+  const account = {
+    account_id: 'openai:api_key',
+    provider_id: 'openai',
+    provider_label: 'OpenAI',
+    auth_mode: 'api_key',
+    status: 'linked',
+    account_label: 'Work',
+    subject_hash: 'hash',
+    credential_ref: 'aegis:provider-account:openai:api_key:primary',
+    credential_hint: 'ending test',
+    session_ref: 'openai:api_key:session',
+    scopes: [],
+    quota_status: 'unknown',
+    expires_at: '',
+    created_at: '2026-05-11T00:00:00Z',
+    updated_at: '2026-05-11T00:00:00Z',
+    last_validated_at: '2026-05-11T00:00:00Z',
+    last_error: '',
+    metadata: {}
+  };
+  const cliBridge = {
+    provider_id: 'openai',
+    cli_name: 'Codex CLI',
+    binary_path: 'codex',
+    version: 'codex 1.0.0',
+    status: 'linked',
+    auth_status: 'linked',
+    probe_command: 'codex login status',
+    supported_delegation_modes: ['exec'],
+    last_probe_at: '2026-05-11T00:00:00Z',
+    last_error: '',
+    metadata: {}
+  };
+  return {
+    generated_at: '2026-05-11T00:00:00Z',
+    credential_store_available: true,
+    providers: [
+      {
+        manifest: {
+          id: 'openai',
+          label: 'OpenAI',
+          kind: 'cloud',
+          description: '',
+          auth_modes: ['api_key', 'cli_bridge'],
+          default_auth_mode: 'api_key',
+          credential_env_vars: ['OPENAI_API_KEY'],
+          capabilities: ['chat', 'code'],
+          model_families: ['gpt'],
+          quota_status: 'unknown',
+          docs_url: '',
+          security_notes: [],
+          cli_bridge: null,
+          metadata: {}
+        },
+        account,
+        cli_bridge: cliBridge,
+        connection_status: 'linked',
+        primary_auth_mode: 'api_key',
+        fallback_eligible: true,
+        setup_actions: [],
+        execution_ready: true,
+        readiness: 'account_ready',
+        readiness_label: 'Ready',
+        readiness_detail: 'API-key routing is available through the Aegis credential vault.',
+        routing_weight: 7.25,
+        quota_status: 'Unknown until telemetry is available.',
+        model_limit_summary: 'Unknown until telemetry is available.'
+      }
+    ],
+    accounts: [account],
+    sessions: [],
+    cli_bridges: [cliBridge],
+    source_roots: [
+      {
+        path: 'C:/Aegis/AI',
+        exists: true,
+        provider_ids: ['openai'],
+        provider_labels: ['OpenAI'],
+        child_count: 3,
+        modified_at: '2026-05-11T00:00:00Z',
+        last_probe_at: '2026-05-11T00:00:00Z',
+        updated_after_probe: false,
+        freshness: 'current',
+        freshness_label: 'Current',
+        freshness_detail: 'This source root has not changed since the last CLI probe.'
+      }
+    ],
+    source_drops: [
+      {
+        provider_id: 'openai',
+        provider_label: 'OpenAI',
+        cli_name: 'Codex CLI',
+        source_root: 'C:/Aegis/AI',
+        detected_from: 'source_drop',
+        source_candidate: 'codex-rs/target/debug/codex.exe',
+        path: 'C:/Aegis/AI/codex-rs/target/debug/codex.exe',
+        cwd: '',
+        display: 'C:/Aegis/AI/codex-rs/target/debug/codex.exe',
+        command: 'C:/Aegis/AI/codex-rs/target/debug/codex.exe',
+        version: 'codex 1.0.0',
+        status: 'linked',
+        auth_status: 'linked',
+        last_probe_at: '2026-05-11T00:00:00Z',
+        modified_at: '2026-05-11T00:00:00Z',
+        updated_after_probe: false,
+        freshness: 'current',
+        freshness_label: 'Current',
+        freshness_detail: 'This OpenAI source drop has not changed since the last CLI probe.',
+        refresh_actions: [
+          {
+            id: 'build-codex-debug',
+            label: 'Build Codex',
+            cwd: 'C:/Aegis/AI/codex-rs',
+            command: 'cargo build --bin codex',
+            available: true,
+            detail: 'Ready to refresh this source drop.',
+            timeout_seconds: 600
+          }
+        ],
+        last_error: '',
+        metadata: {}
+      }
+    ],
+    source_refresh_jobs: [
+      {
+        id: 'source-refresh-1',
+        provider_id: 'openai',
+        provider_label: 'OpenAI',
+        action_id: 'build-codex-debug',
+        action_label: 'Build Codex',
+        source_root: 'C:/Aegis/AI',
+        source_candidate: 'codex-rs/target/debug/codex.exe',
+        status: 'queued',
+        command: 'cargo build --bin codex',
+        cwd: 'C:/Aegis/AI/codex-rs',
+        pid: null,
+        exit_code: null,
+        stdout: '',
+        stderr: '',
+        duration_ms: 0,
+        message: 'Build Codex queued.',
+        warnings: [],
+        created_at: '2026-05-11T00:00:00Z',
+        started_at: '',
+        finished_at: '',
+        updated_at: '2026-05-11T00:00:00Z',
+        metadata: {}
+      }
+    ],
+    security_notes: [],
+    ...overrides
+  };
+}
+
 function mockStreamResponse(chunks: string[]) {
   vi.stubGlobal(
     'fetch',
@@ -1586,6 +2466,84 @@ function createAgentResponse(overrides: Partial<AgentResponse> = {}): AgentRespo
     recent_tasks: [],
     repair_attempts: [],
     completion_quality: null,
+    ...overrides
+  };
+}
+
+function createAgentBridgeResponse(overrides: Partial<AgentBridgeExecuteResponse> = {}): AgentBridgeExecuteResponse {
+  return {
+    ok: true,
+    provider_id: 'google_gemini',
+    provider_label: 'Gemini',
+    status: 'completed',
+    command: 'gemini [prompt omitted]',
+    cwd: 'workspace',
+    exit_code: 0,
+    stdout: 'bridge final',
+    stderr: '',
+    reply: 'bridge final',
+    started_at: '2026-05-20T00:00:00Z',
+    completed_at: '2026-05-20T00:00:01Z',
+    duration_ms: 1000,
+    warnings: [],
+    checkpoint: null,
+    metadata: {},
+    ...overrides
+  };
+}
+
+function createAgentBridgeJob(overrides: Partial<AgentBridgeJobInfo> = {}): AgentBridgeJobInfo {
+  return {
+    id: 'agent-bridge-1',
+    provider_id: 'openai',
+    provider_label: 'OpenAI',
+    mode: 'auto',
+    model: 'gpt-5.5',
+    workspace_root: 'workspace',
+    allow_edits: false,
+    status: 'queued',
+    command: 'codex exec [prompt omitted]',
+    cwd: 'workspace',
+    pid: null,
+    exit_code: null,
+    stdout: '',
+    stderr: '',
+    reply: '',
+    message: 'OpenAI bridge queued.',
+    duration_ms: 0,
+    warnings: [],
+    checkpoint: null,
+    created_at: '2026-05-20T00:00:00Z',
+    started_at: '',
+    finished_at: '',
+    updated_at: '2026-05-20T00:00:00Z',
+    request: {
+      provider_id: 'openai',
+      message: 'queue bridge',
+      workspace_root: 'workspace',
+      allow_edits: false
+    },
+    metadata: {},
+    ...overrides
+  };
+}
+
+function createAgentBridgePreflight(overrides: Partial<AgentBridgePreflightResponse> = {}): AgentBridgePreflightResponse {
+  return {
+    ok: true,
+    provider_id: 'openai',
+    provider_label: 'OpenAI',
+    status: 'ready',
+    route_type: 'cli',
+    command: 'codex exec [prompt omitted]',
+    cwd: 'workspace',
+    timeout_seconds: 240,
+    model: 'gpt-5.5',
+    allow_edits: false,
+    message: 'OpenAI bridge is ready to queue.',
+    warnings: [],
+    preflight_signature: 'reviewed-preflight',
+    metadata: {},
     ...overrides
   };
 }

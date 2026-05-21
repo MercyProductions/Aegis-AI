@@ -1,0 +1,46 @@
+{
+  "schema_version": "2026.05.21",
+  "name": "Phase 21 Release Apply Rollback Contract",
+  "phase": 21,
+  "evidence_root": ".aegis/release-apply-rollback",
+  "current_required_status": "ready",
+  "components": [
+    "aegis-core",
+    "website",
+    "desktop",
+    "vscode-extension",
+    "visual-studio-extension"
+  ],
+  "required_checks": [
+    "final_manifest_present",
+    "release_updater_copied",
+    "temporary_install_root",
+    "update_plan_dry_runs",
+    "apply_all_components",
+    "rollback_all_components",
+    "rollback_removes_stray_files",
+    "checksum_failure_sets_failed_safe_mode",
+    "security_audit_written",
+    "install_root_guarded"
+  ],
+  "required_contract_files": [
+    "VERSION.json",
+    "release/version-manifest.json",
+    "release/aegis-update.ps1",
+    "docs/RELEASE_APPLY_ROLLBACK_EVIDENCE.md",
+    "docs/RELEASE_PACKAGING_AND_UPDATES.md",
+    "docs/EVIDENCE_LEDGER.md",
+    "docs/EXTERNAL_ALPHA_RELEASE_REPORT.md",
+    "docs/VALIDATION_MATRIX.md",
+    "evals/phase21-release-apply-rollback-contract.json",
+    "evals/phase20-final-release-manifest-contract.json",
+    "scripts/test-release-apply-rollback.ps1",
+    "scripts/test-final-release-manifest.ps1",
+    "scripts/aegis-update.ps1",
+    "scripts/validate-ecosystem.ps1"
+  ],
+  "evidence_outputs": [
+    "release-apply-rollback.json",
+    "release-apply-rollback-summary.md"
+  ]
+}

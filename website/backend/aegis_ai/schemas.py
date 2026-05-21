@@ -880,6 +880,27 @@ class MemoryDistillationSnapshot(BaseModel):
     continuity_preserved: bool = True
 
 
+class ContinuationHandoff(BaseModel):
+    workspace_root: str
+    generated_at: str
+    active_goal: str = ""
+    next_action: str = ""
+    source_kind: str = ""
+    source_title: str = ""
+    source_record_id: str = ""
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    risk_level: Literal["low", "medium", "high", "critical"] | str = "low"
+    blockers: list[str] = Field(default_factory=list)
+    related_tasks: list[str] = Field(default_factory=list)
+    related_files: list[str] = Field(default_factory=list)
+    validation_commands: list[str] = Field(default_factory=list)
+    memory_refs: list[str] = Field(default_factory=list)
+    context_record_ids: list[str] = Field(default_factory=list)
+    resume_prompt: str = ""
+    rationale: str = ""
+    warnings: list[str] = Field(default_factory=list)
+
+
 class AegisContinuitySnapshot(BaseModel):
     workspace_root: str
     generated_at: str
@@ -897,6 +918,7 @@ class AegisContinuitySnapshot(BaseModel):
     digital_twin: DigitalTwinWorkspaceModel
     research_lab: list[ResearchLabEvaluation] = Field(default_factory=list)
     memory_distillation: MemoryDistillationSnapshot
+    continuation: ContinuationHandoff
     recommendations: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
 
@@ -1677,6 +1699,11 @@ class ModelAttemptInfo(BaseModel):
     output_tokens: int | None = None
     estimated_cost_usd: float | None = None
     latency_ms: int | None = None
+    provider_account_id: str = ""
+    routing_run_id: str = ""
+    limit_class: str = ""
+    retry_after: int | None = None
+    resumed_from_attempt_id: str = ""
     started_at: str = ""
     finished_at: str = ""
     metadata: dict[str, Any] = Field(default_factory=dict)
@@ -1768,6 +1795,11 @@ class AgentRequest(BaseModel):
     history: list[ChatMessage] = Field(default_factory=list)
     workspace_root: str | None = None
     mode: ModeName | None = None
+    selected_provider_id: str = Field(default="", max_length=120)
+    selected_provider_label: str = Field(default="", max_length=160)
+    selected_provider_api: str = Field(default="", max_length=80)
+    selected_provider_endpoint: str = Field(default="", max_length=500)
+    selected_provider_model: str = Field(default="", max_length=160)
     apply_changes: bool = False
     run_validation: bool = False
     context_paths: list[str] = Field(default_factory=list, max_length=50)
@@ -1778,11 +1810,100 @@ class AgentRequest(BaseModel):
     validation_notes_override: str = ""
 
 
+class AgentBridgeExecuteRequest(BaseModel):
+    provider_id: str = Field(min_length=1, max_length=80)
+    message: str = Field(min_length=1, max_length=120_000)
+    workspace_root: str | None = None
+    mode: ModeName | None = None
+    model: str = Field(default="", max_length=160)
+    allow_edits: bool = False
+    context_paths: list[str] = Field(default_factory=list, max_length=50)
+    timeout_seconds: int = Field(default=240, ge=5, le=900)
+    preflight_signature: str = Field(default="", max_length=128)
+
+
+class AgentBridgeExecuteResponse(BaseModel):
+    ok: bool
+    provider_id: str
+    provider_label: str
+    status: Literal["completed", "failed", "timed_out", "not_configured", "unsupported", "canceled"]
+    command: str
+    cwd: str
+    exit_code: int | None = None
+    stdout: str = ""
+    stderr: str = ""
+    reply: str = ""
+    started_at: str
+    completed_at: str
+    duration_ms: int
+    warnings: list[str] = Field(default_factory=list)
+    checkpoint: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class AgentBridgePreflightResponse(BaseModel):
+    ok: bool
+    provider_id: str
+    provider_label: str
+    status: Literal["ready", "not_configured", "unsupported"] | str
+    route_type: Literal["cli", "local", "none"] | str = "none"
+    command: str = ""
+    cwd: str = ""
+    timeout_seconds: int = 0
+    model: str = ""
+    allow_edits: bool = False
+    message: str = ""
+    warnings: list[str] = Field(default_factory=list)
+    preflight_signature: str = ""
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class AgentBridgeJobInfo(BaseModel):
+    id: str
+    provider_id: str
+    provider_label: str = ""
+    mode: ModeName | str | None = None
+    model: str = ""
+    workspace_root: str = ""
+    allow_edits: bool = False
+    status: Literal["queued", "checkpoint", "running", "completed", "failed", "timed_out", "not_configured", "unsupported", "canceled"] | str = "queued"
+    command: str = ""
+    cwd: str = ""
+    pid: int | None = None
+    exit_code: int | None = None
+    stdout: str = ""
+    stderr: str = ""
+    reply: str = ""
+    message: str = ""
+    duration_ms: int = 0
+    warnings: list[str] = Field(default_factory=list)
+    checkpoint: str | None = None
+    created_at: str = ""
+    started_at: str = ""
+    finished_at: str = ""
+    updated_at: str = ""
+    request: dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class AgentBridgeJobResponse(BaseModel):
+    job: AgentBridgeJobInfo
+
+
+class AgentBridgeJobsResponse(BaseModel):
+    jobs: list[AgentBridgeJobInfo] = Field(default_factory=list)
+
+
 class RoutePreviewRequest(BaseModel):
     message: str = Field(min_length=1)
     history: list[ChatMessage] = Field(default_factory=list)
     workspace_root: str | None = None
     mode: ModeName | None = None
+    selected_provider_id: str = Field(default="", max_length=120)
+    selected_provider_label: str = Field(default="", max_length=160)
+    selected_provider_api: str = Field(default="", max_length=80)
+    selected_provider_endpoint: str = Field(default="", max_length=500)
+    selected_provider_model: str = Field(default="", max_length=160)
     context_paths: list[str] = Field(default_factory=list, max_length=50)
     max_files: int = Field(default=120, ge=1, le=5000)
 
@@ -1992,6 +2113,12 @@ class CheckpointSummary(BaseModel):
 class CheckpointListResponse(BaseModel):
     workspace_root: str
     checkpoints: list[CheckpointSummary] = Field(default_factory=list)
+
+
+class CheckpointCreateRequest(BaseModel):
+    workspace_root: str | None = None
+    paths: list[str] = Field(default_factory=list)
+    summary: str = ""
 
 
 class ValidateRequest(BaseModel):
@@ -2847,6 +2974,8 @@ class PluginManifest(BaseModel):
     sandbox_profile: str = "isolated"
     signature: str = ""
     signing_key_fingerprint: str = ""
+    checksum: str = ""
+    update_channel: str = "local"
     lifecycle_hooks: list[PluginLifecycleHook] = Field(default_factory=list)
     entrypoint: str = ""
     ui_panel_route: str = ""
@@ -2881,6 +3010,22 @@ class PluginValidationRequest(BaseModel):
 
 class PluginActionRequest(BaseModel):
     reason: str = ""
+
+
+class PluginLifecycleActionRequest(BaseModel):
+    reason: str = ""
+    manifest: PluginManifest | None = None
+    enable: bool | None = None
+    trust: bool | None = None
+
+
+class PluginLifecycleActionResponse(BaseModel):
+    action: Literal["update", "rollback", "uninstall"]
+    status: Literal["updated", "rolled_back", "uninstalled", "blocked"]
+    plugin: PluginManifest
+    previous_manifest: PluginManifest | None = None
+    audit_event_id: str = ""
+    notes: list[str] = Field(default_factory=list)
 
 
 class PluginValidationResult(BaseModel):
@@ -3082,6 +3227,22 @@ class EcosystemPackageValidationRequest(BaseModel):
 class EcosystemPackageActionRequest(BaseModel):
     reason: str = ""
     trust_level: EcosystemTrustLevel | None = None
+
+
+class EcosystemPackageLifecycleRequest(BaseModel):
+    reason: str = ""
+    manifest: EcosystemPackageManifest | None = None
+    enable: bool | None = None
+    trust_level: EcosystemTrustLevel | None = None
+
+
+class EcosystemPackageLifecycleResponse(BaseModel):
+    action: Literal["update", "rollback", "uninstall"]
+    status: Literal["updated", "rolled_back", "uninstalled", "blocked"]
+    package: EcosystemPackageManifest
+    previous_manifest: EcosystemPackageManifest | None = None
+    audit_event_id: str = ""
+    notes: list[str] = Field(default_factory=list)
 
 
 class WorkflowApprovalRequirement(BaseModel):
@@ -3740,6 +3901,13 @@ class ModelRegistryProvider(BaseModel):
     input_cost_per_million: float | None = None
     output_cost_per_million: float | None = None
     health: str = "unknown"
+    auth_modes: list[str] = Field(default_factory=list)
+    connection_status: str = "unknown"
+    account_id: str = ""
+    credential_ref: str = ""
+    session_ref: str = ""
+    quota_status: str = "unknown"
+    last_validated_at: str = ""
     notes: str = ""
 
 
@@ -3762,6 +3930,13 @@ class ModelRegistryProviderUpsertRequest(BaseModel):
     input_cost_per_million: float | None = None
     output_cost_per_million: float | None = None
     health: str = "unknown"
+    auth_modes: list[str] = Field(default_factory=list)
+    connection_status: str = "unknown"
+    account_id: str = ""
+    credential_ref: str = ""
+    session_ref: str = ""
+    quota_status: str = "unknown"
+    last_validated_at: str = ""
     notes: str = ""
 
 

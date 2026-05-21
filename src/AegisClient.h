@@ -685,7 +685,7 @@ struct RoutePolicyDiffInfo {
 };
 
 struct AppConfig {
-    std::string assistant_name = "Aegis AI";
+    std::string assistant_name = "Auralith Prime";
     std::string assistant_mission;
     std::string default_mode = "build";
     std::vector<ModeOption> modes;
@@ -1365,6 +1365,57 @@ struct WorkspaceAutopilotStatusInfo {
     std::string instruction_source;
 };
 
+struct RuntimeOperationLogEntry {
+    std::string time_label;
+    std::string operation;
+    std::string runtime;
+    std::string status;
+    std::string detail;
+    std::string job_id;
+    std::string workflow_id;
+    std::string checkpoint_id;
+};
+
+struct DesktopRuntimeStatus {
+    bool core_connected = false;
+    bool website_connected = false;
+    bool ollama_connected = false;
+    bool fallback_mode = false;
+    std::string core_base_url;
+    std::string website_base_url;
+    std::string active_workflow_id;
+    std::string last_operation;
+    std::string last_runtime;
+    std::string registered_client_id;
+    bool onboarding_completed = false;
+    std::string onboarding_current_step;
+    int onboarding_warning_count = 0;
+    int onboarding_failure_count = 0;
+    bool release_compatibility_checked = false;
+    bool release_compatible = false;
+    std::string release_compatibility_status;
+    std::string release_schema_version;
+    std::string release_required_core_version;
+    std::string release_minimum_client_version;
+    std::vector<std::string> release_compatibility_blockers;
+    std::vector<std::string> release_compatibility_warnings;
+    std::vector<std::string> release_compatibility_recommendations;
+    int distributed_node_count = 0;
+    int distributed_online_node_count = 0;
+    int distributed_active_workload_count = 0;
+    int distributed_queued_workload_count = 0;
+    std::string distributed_last_event;
+    int runtime_terminal_count = 0;
+    int runtime_terminal_job_count = 0;
+    int runtime_active_terminal_job_count = 0;
+    int runtime_session_count = 0;
+    int runtime_active_process_count = 0;
+    std::string runtime_latest_event;
+    std::string runtime_voice_status;
+    std::string last_error;
+    std::vector<RuntimeOperationLogEntry> recent_operations;
+};
+
 struct RuntimeSnapshot {
     bool ok = false;
     HealthStatus health;
@@ -1372,6 +1423,7 @@ struct RuntimeSnapshot {
     std::vector<WorkspaceFile> files;
     std::vector<TaskSummary> recent_tasks;
     ModelInventory model_inventory;
+    DesktopRuntimeStatus runtime_status;
     ModelRegistrySnapshot model_registry;
     ModelRegistryAuditInfo model_registry_audit;
     bool has_model_registry_audit = false;
@@ -1635,6 +1687,110 @@ struct AegisCoreDashboardInfo {
     std::string diagnostic_excerpt;
 };
 
+struct AgentSupervisionTaskInfo {
+    std::string id;
+    std::string title;
+    std::string status;
+    std::string agent_id;
+    std::string agent_role;
+    std::string execution_mode;
+    std::string risk_level;
+    std::string summary;
+    std::string last_action;
+    std::string model_profile;
+    bool approval_required = false;
+    bool rollback_available = false;
+    std::vector<std::string> files;
+    std::vector<std::string> validation_requirements;
+    std::vector<std::string> impacted_dependencies;
+};
+
+struct AgentSupervisionAgentInfo {
+    std::string id;
+    std::string role;
+    std::string status;
+    std::string assigned_task;
+    std::string model_profile;
+    std::string risk_level;
+    std::string last_action;
+    int handoff_count = 0;
+    int log_count = 0;
+};
+
+struct AgentSupervisionInfo {
+    bool available = false;
+    bool core_connected = false;
+    bool fallback_mode = false;
+    std::string workspace_root;
+    std::string workflow_id;
+    std::string workflow_type;
+    std::string workflow_status;
+    std::string active_task_id;
+    std::string current_task;
+    std::string latest_validation;
+    std::string last_error;
+    int queued_count = 0;
+    int completed_count = 0;
+    int failed_count = 0;
+    int paused_count = 0;
+    int approval_request_count = 0;
+    bool checkpoint_available = false;
+    bool rollback_available = false;
+    int confidence_score = 0;
+    int validation_confidence = 0;
+    int repair_confidence = 0;
+    int regression_risk = 0;
+    int rollback_readiness = 0;
+    std::string execution_risk_level;
+    std::string autopilot_specialization;
+    std::string autopilot_execution_strategy;
+    std::string autopilot_validation_strategy;
+    std::string autopilot_repair_strategy;
+    int collaboration_pending_approvals = 0;
+    int collaboration_active_workflows = 0;
+    std::string collaboration_role;
+    std::string collaboration_latest_event;
+    int governance_policy_violations = 0;
+    int governance_enabled_policies = 0;
+    std::string governance_status;
+    std::vector<AgentSupervisionAgentInfo> agents;
+    std::vector<AgentSupervisionTaskInfo> tasks;
+    std::vector<ToolEvent> timeline;
+    std::vector<std::string> safety_warnings;
+};
+
+struct QualityGateInfo {
+    std::string id;
+    std::string label;
+    std::string status;
+    std::string severity;
+    std::string summary;
+    bool blocks_apply = false;
+};
+
+struct QualityGateSnapshotInfo {
+    bool available = false;
+    bool core_connected = false;
+    bool apply_allowed = false;
+    std::string workspace_root;
+    std::string latest_id;
+    std::string status;
+    std::string summary;
+    int confidence_score = 0;
+    int validation_score = 0;
+    int risk_score = 0;
+    int completion_score = 0;
+    int blocker_count = 0;
+    int warning_count = 0;
+    std::string latest_validation_command;
+    std::string latest_benchmark_status;
+    double latest_benchmark_score = 0.0;
+    std::vector<QualityGateInfo> gates;
+    std::vector<std::string> blockers;
+    std::vector<std::string> warnings;
+    std::vector<std::string> required_actions;
+};
+
 class AegisClient {
 public:
     explicit AegisClient(DesktopSettings settings);
@@ -1778,6 +1934,26 @@ public:
         const std::string& version,
         const std::vector<std::string>& capabilities);
     AegisCoreDashboardInfo GetCoreDashboard(const std::string& workspace_root);
+    AgentSupervisionInfo GetAgentSupervision(const std::string& workspace_root);
+    QualityGateSnapshotInfo GetQualityGates(const std::string& workspace_root);
+    bool StepCoreWorkflow(
+        const std::string& workspace_root,
+        const std::string& workflow_id,
+        const std::string& action,
+        const std::string& task_id = "",
+        bool approval = false,
+        const std::string& summary = "");
+    DesktopRuntimeStatus GetRuntimeStatus(const std::string& workspace_root);
+    DesktopRuntimeStatus GetCachedRuntimeStatus() const;
+    std::string StartRepairWorkflow(
+        const std::string& workspace_root,
+        const std::string& validation_summary,
+        const std::string& validation_command,
+        const std::string& task_id = "");
+    std::string StartRoadmapWorkflow(
+        const std::string& workspace_root,
+        const std::string& objective,
+        const std::vector<std::string>& context_files = {});
     ValidationProfileInfo GetValidationProfile(const std::string& workspace_root);
     ValidationProfileInfo SaveValidationProfile(
         const std::string& workspace_root,

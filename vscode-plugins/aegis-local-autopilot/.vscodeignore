@@ -1,12 +1,14 @@
 *.vsix
 release/
 scripts/
+test/
 install.ps1
 .aegis/
 .gitignore
 DETECTED_MODELS.md
 DOGFOODING_NOTES.md
 node_modules/
+package-lock.json
 .vscode-test/
 out/
 dist/

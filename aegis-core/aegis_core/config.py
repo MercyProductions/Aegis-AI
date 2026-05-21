@@ -8,12 +8,31 @@ from typing import Any
 from urllib.parse import urlparse
 
 
-SUPPORTED_CLOUD_PROVIDERS = {"openai", "anthropic", "google", "openrouter"}
+SUPPORTED_CLOUD_PROVIDERS = {
+    "openai",
+    "anthropic",
+    "google",
+    "openrouter",
+    "azure_openai",
+    "bedrock",
+    "vertex_ai",
+}
 PROVIDER_ALIASES = {
     "open_ai": "openai",
     "openai": "openai",
+    "claude": "anthropic",
+    "gemini": "google",
+    "google_gemini": "google",
+    "google_ai": "google",
     "open_router": "openrouter",
     "openrouter": "openrouter",
+    "azure": "azure_openai",
+    "azure_openai": "azure_openai",
+    "amazon_bedrock": "bedrock",
+    "aws_bedrock": "bedrock",
+    "bedrock": "bedrock",
+    "vertex": "vertex_ai",
+    "vertex_ai": "vertex_ai",
 }
 CONFIG_UPDATE_KEYS = {
     "ollama_url",

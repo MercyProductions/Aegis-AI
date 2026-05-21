@@ -1,0 +1,16 @@
+{
+  "id": "vertex_ai",
+  "label": "Vertex AI",
+  "kind": "enterprise",
+  "description": "Google Vertex AI account surface for project-scoped Gemini and partner model routing.",
+  "auth_modes": ["env_profile", "oauth_browser"],
+  "default_auth_mode": "env_profile",
+  "credential_env_vars": ["GOOGLE_APPLICATION_CREDENTIALS", "GOOGLE_CLOUD_PROJECT", "CLOUD_ML_REGION"],
+  "capabilities": ["chat", "code", "reasoning", "tools", "vision", "streaming", "structured_json", "enterprise", "long_context"],
+  "model_families": ["vertex", "gemini-vertex"],
+  "quota_status": "Limits depend on Google Cloud project, region, quota, and model access.",
+  "docs_url": "https://cloud.google.com/vertex-ai/generative-ai/docs",
+  "security_notes": [
+    "Aegis should use official Google ADC or OAuth flows and never import credentials from unrelated tools."
+  ]
+}

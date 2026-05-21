@@ -9,6 +9,7 @@ from typing import Any
 from .diagnostics import scrub
 from .knowledge import knowledge_graph
 from .memory import ProjectMemory, utc_now
+from .personal_memory import compact_memory_summary, memory_orchestration_context
 from .quality import quality_dashboard
 from .safety import is_safe_to_read
 from .tasks import ACTIVE_STATUSES, list_tasks
@@ -56,6 +57,7 @@ def adaptive_personal_intelligence(
     habits = _engineering_habits(primary)
     workflow = _workflow_optimization(primary, project_patterns, habits, merged_preferences)
     context = _context_personalization(primary, learned_signals, habits, merged_preferences)
+    memory_system = _memory_system_summary(root, context)
     recommendations = _personalized_recommendations(primary, learned_signals, project_patterns, habits, workflow, context)
 
     profile_path = memory.root / PERSONAL_PROFILE_FILE
@@ -100,6 +102,7 @@ def adaptive_personal_intelligence(
         "workflow_optimization": workflow,
         "context_personalization": context,
         "agent_guidance": _agent_guidance(learned_signals, habits, context),
+        "memory_system": memory_system,
         "privacy": _privacy_controls(profile_path),
     }
 
@@ -453,6 +456,36 @@ def _agent_guidance(learned: dict[str, Any], habits: dict[str, Any], context: di
     if habits.get("overengineering_signals"):
         guidance.append("Favor simpler structures unless an abstraction clearly removes repeated complexity.")
     return guidance[:6]
+
+
+def _memory_system_summary(root: Path, context: dict[str, Any]) -> dict[str, Any]:
+    summary = compact_memory_summary(root)
+    try:
+        orchestration = memory_orchestration_context(
+            root,
+            workflow_type="personal_intelligence",
+            objective=f"{context.get('planning_depth', '')} {context.get('validation_detail', '')}",
+            max_items=8,
+            record_usage=False,
+        )
+    except Exception as exc:  # pragma: no cover - defensive profile boundary.
+        orchestration = {"records": [], "guidance": [], "error": scrub(str(exc))}
+    return {
+        "summary": summary,
+        "orchestration_context": {
+            "record_count": len(orchestration.get("records", [])),
+            "guidance": orchestration.get("guidance", []),
+            "privacy": orchestration.get("privacy", {}),
+            "error": orchestration.get("error"),
+        },
+        "management_endpoints": {
+            "dashboard": "/v1/personal-memory",
+            "create": "/v1/personal-memory",
+            "controls": "/v1/personal-memory/controls",
+            "export": "/v1/personal-memory/export",
+            "import": "/v1/personal-memory/import",
+        },
+    }
 
 
 def _style_snapshot(root: Path, scan: dict[str, Any]) -> dict[str, Any]:

@@ -1,0 +1,137 @@
+{
+  "schema_version": "2026.05.21",
+  "name": "Phase 15 External Alpha Release Report Contract",
+  "evidence_root": ".aegis/external-alpha-evidence",
+  "current_required_decision": "conditional",
+  "decision_states": ["blocked", "conditional", "ready"],
+  "hard_blockers": [
+    {
+      "id": "release_artifact_matrix",
+      "description": "Core, Website, Desktop, VS Code, and Visual Studio artifacts must be listed with version, checksum, size, and signing or unsigned-build disclosure."
+    },
+    {
+      "id": "ecosystem_validation_evidence",
+      "description": "A release evidence folder must contain validation-matrix.json and validation-summary.md from scripts/validate-ecosystem.ps1."
+    },
+    {
+      "id": "alpha_scenario_suite_evidence",
+      "description": "The Phase 14 scenario suite must be run end-to-end and attached to the alpha report."
+    },
+    {
+      "id": "cross_client_parity_evidence",
+      "description": "Website, Desktop, VS Code, and Visual Studio must demonstrate the same safe workflow with recovery visibility."
+    },
+    {
+      "id": "rollback_update_dry_run",
+      "description": "Release packaging and update planner dry runs must produce rollback evidence."
+    },
+    {
+      "id": "known_limitations_release_notes",
+      "description": "Known limitations must be explicit in the alpha report and release notes."
+    },
+    {
+      "id": "signing_checksum_disclosure",
+      "description": "Checksums are required and unsigned local builds must be clearly disclosed."
+    }
+  ],
+  "report_sections": [
+    {"id": "go_no_go_summary", "title": "Go/No-Go Summary"},
+    {"id": "evidence_index", "title": "Evidence Index"},
+    {"id": "release_artifact_matrix", "title": "Release Artifact Matrix"},
+    {"id": "validation_matrix", "title": "Validation Matrix"},
+    {"id": "alpha_scenario_suite", "title": "Alpha Scenario Suite"},
+    {"id": "known_issues_limitations", "title": "Known Issues And Limitations"},
+    {"id": "recovery_rollback", "title": "Recovery And Rollback"},
+    {"id": "cross_client_parity", "title": "Cross-Client Parity"},
+    {"id": "decision_log", "title": "Decision Log"}
+  ],
+  "artifact_components": [
+    "aegis-core",
+    "website",
+    "desktop",
+    "vscode-extension",
+    "visual-studio-extension"
+  ],
+  "scenario_suite": [
+    "create_app",
+    "modify_app",
+    "repair_validation",
+    "review_code",
+    "connect_provider",
+    "use_local_model",
+    "run_vscode_extension",
+    "run_visual_studio_extension",
+    "update_component",
+    "rollback_component"
+  ],
+  "validation_gates": [
+    "core-tests",
+    "website-backend-tests",
+    "website-frontend-tests",
+    "website-frontend-build",
+    "desktop-contract",
+    "release-contract",
+    "release-artifact-preflight",
+    "extension-package-candidates",
+    "release-package-dry-run-contract",
+    "final-release-manifest-contract",
+    "release-apply-rollback-contract",
+    "packaged-alpha-scenarios-contract",
+    "cross-client-parity-contract",
+    "release-notes-limitations-contract",
+    "quality-contract",
+    "plugin-contract",
+    "alpha-contract",
+    "external-alpha-contract",
+    "desktop-release-build",
+    "vscode-unit",
+    "vscode-lint",
+    "editor-parity",
+    "visual-studio-validate",
+    "release-package-dry-run",
+    "update-plan-dry-run"
+  ],
+  "required_contract_files": [
+    "docs/EXTERNAL_ALPHA_RELEASE_REPORT.md",
+    "docs/CONTROLLED_EXTERNAL_ALPHA.md",
+    "docs/VALIDATION_MATRIX.md",
+    "docs/RELEASE_ARTIFACT_PREFLIGHT.md",
+    "docs/RELEASE_PACKAGE_DRY_RUN.md",
+    "docs/RELEASE_ARTIFACT_DECISION.md",
+    "docs/RELEASE_APPLY_ROLLBACK_EVIDENCE.md",
+    "docs/PACKAGED_ALPHA_SCENARIO_EVIDENCE.md",
+    "docs/CROSS_CLIENT_PARITY_EVIDENCE.md",
+    "docs/RELEASE_NOTES_LIMITATIONS_EVIDENCE.md",
+    "docs/EXTERNAL_ALPHA_RELEASE_NOTES.md",
+    "docs/WEBSITE_RELEASE_NOTES.md",
+    "docs/DESKTOP_RELEASE_NOTES.md",
+    "docs/EXTENSION_PACKAGE_CANDIDATES.md",
+    "docs/RELEASE_PACKAGING_AND_UPDATES.md",
+    "KNOWN_UNSTABLE_SURFACES.md",
+    "VERSION.json",
+    "evals/phase14-alpha-readiness-contract.json",
+    "evals/phase15-external-alpha-release-contract.json",
+    "evals/phase17-release-artifact-preflight-contract.json",
+    "evals/phase18-extension-package-candidates-contract.json",
+    "evals/phase19-release-package-dry-run-contract.json",
+    "evals/phase20-final-release-manifest-contract.json",
+    "evals/phase21-release-apply-rollback-contract.json",
+    "evals/phase22-packaged-alpha-scenarios-contract.json",
+    "evals/phase23-cross-client-parity-contract.json",
+    "evals/phase24-release-notes-limitations-contract.json",
+    "scripts/test-alpha-contract.ps1",
+    "scripts/test-external-alpha-contract.ps1",
+    "scripts/test-release-artifact-preflight.ps1",
+    "scripts/test-extension-package-candidates.ps1",
+    "scripts/test-release-package-dry-run.ps1",
+    "scripts/test-final-release-manifest.ps1",
+    "scripts/test-release-apply-rollback.ps1",
+    "scripts/test-packaged-alpha-scenarios.ps1",
+    "scripts/test-cross-client-parity.ps1",
+    "scripts/test-release-notes-limitations.ps1",
+    "scripts/test-release-contract.ps1",
+    "scripts/validate-ecosystem.ps1",
+    "scripts/build-release.ps1",
+    "scripts/aegis-update.ps1"
+  ]
+}

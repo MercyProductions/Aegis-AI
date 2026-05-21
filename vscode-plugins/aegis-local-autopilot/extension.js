@@ -2,8 +2,34 @@ const vscode = require('vscode');
 const http = require('http');
 const https = require('https');
 const path = require('path');
+const fsSync = require('fs');
 const fs = require('fs/promises');
 const cp = require('child_process');
+require.extensions['.ts'] = require.extensions['.ts'] || require.extensions['.js'];
+const { buildDestinationReasoning } = require('./src/workspace/destinationReasoning.ts');
+const _errorsModule = require('./src/utils/errors.ts');
+const _pathSafeModule = require('./src/utils/pathSafe.ts');
+const _fsSafeModule = require('./src/utils/fsSafe.ts');
+const _proposalSafetyModule = require('./src/proposal/proposalSafety.ts');
+const _validationDetectorModule = require('./src/validation/validationDetector.ts');
+const _workspaceResolverModule = require('./src/workspace/workspaceResolver.ts');
+const _projectScannerModule = require('./src/workspace/projectScanner.ts');
+const _proposalParserModule = require('./src/proposal/proposalParser.ts');
+const _settingsModule = require('./src/settings/settings.ts');
+const _agentModeModule = require('./src/agent/agentMode.ts');
+const _contextDiscoveryModule = require('./src/workspace/contextDiscovery.ts');
+const {
+  AEGIS_CORE_CONTRACT_VERSION,
+  validateCoreEnvelope,
+  coreEnvelopeData,
+  requireCoreOk,
+  formatCoreContract
+} = require('./src/core/coreEnvelope.ts');
+const { createAegisCoreClient, defaultCapabilities, normalizeCoreChanges } = require('./src/core/aegisCoreClient.ts');
+const { createWorkflowClient } = require('./src/workflowClient.ts');
+const { createExtensionRuntimeState } = require('./src/extensionState.ts');
+const { extractWorkflowSummary, extractEditingJob } = require('./src/core/taskSync.ts');
+const { createRuntimeLogger } = require('./src/logging/runtimeLog.ts');
 
 let output;
 let autopilotTimer;
@@ -23,10 +49,13 @@ let modelDiagnosticsState = makeEmptyModelDiagnosticsState();
 let latestErrorInfo = makeEmptyErrorInfo();
 let lastFailedCommand = '';
 let activeCoreTaskId = '';
+let activeCoreWorkflowId = '';
+let coreClient;
+let workflowClient;
+let runtimeLogger;
+const runtimeState = createExtensionRuntimeState();
 const snapshotCache = new Map();
 
-const AEGIS_CORE_API_VERSION = 'v1';
-const AEGIS_CORE_CONTRACT_VERSION = '2026.05.09';
 const MAX_FILE_CHARS = 16000;
 const MAX_CONTEXT_CHARS = 62000;
 const MAX_PROJECT_SCAN_FILES = 900;
@@ -34,8 +63,20 @@ const MAX_PROJECT_SCAN_DEPTH = 7;
 const MAX_GRAPH_FILES = 700;
 const MAX_SYMBOL_FILES = 550;
 const MAX_SYMBOLS = 2500;
-const OLLAMA_CONTEXT_TOKENS = 32768;
 const SNAPSHOT_CACHE_TTL_MS = 20000;
+const OLLAMA_MODELS_CACHE_MS = 12000;
+let ollamaModelsListCache = { key: '', models: null, until: 0 };
+
+function invalidateOllamaModelsCache() {
+  ollamaModelsListCache = { key: '', models: null, until: 0 };
+}
+
+function getEffectiveOllamaNumCtx(config) {
+  const cfg = config || getConfig();
+  const maxChars = Number(cfg.maxContextChars) || MAX_CONTEXT_CHARS;
+  const estimated = Math.ceil(maxChars / 3) + 8192;
+  return Math.min(131072, Math.max(4096, estimated));
+}
 const BLOCKED_PATH_SEGMENTS = new Set([
   '.git',
   '.hg',
@@ -133,6 +174,8 @@ const MAX_AGENT_REPAIR_ATTEMPTS = 3;
 function activate(context) {
   extensionContext = context;
   output = vscode.window.createOutputChannel('Aegis Local Autopilot');
+  runtimeLogger = createRuntimeLogger(output);
+  refreshCoreRuntimeClients();
   panelProvider = new LocalAutopilotViewProvider(context.extensionUri);
   statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
   statusBarItem.command = 'aegisLocalAutopilot.openPanel';
@@ -167,6 +210,7 @@ function activate(context) {
   context.subscriptions.push(vscode.commands.registerCommand('aegisLocalAutopilot.startAutopilot', (resource) => startAutopilot(resource)));
   context.subscriptions.push(vscode.commands.registerCommand('aegisLocalAutopilot.stopAutopilot', () => stopAutopilot()));
   context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(() => {
+    invalidateOllamaModelsCache();
     initializeCurrentWorkspaceMemory().then(() => registerAegisCoreClient().catch(() => {})).catch(reportError);
     refreshStatusBar().catch(() => {});
   }));
@@ -178,6 +222,13 @@ function activate(context) {
       }
     }
   }));
+  context.subscriptions.push(vscode.workspace.onDidChangeConfiguration((event) => {
+    if (event.affectsConfiguration('aegisLocalAutopilot')) {
+      invalidateOllamaModelsCache();
+      refreshCoreRuntimeClients();
+      panelProvider && panelProvider.refresh().catch(() => {});
+    }
+  }));
 
   output.appendLine('Aegis Local Autopilot activated.');
   logExtensionEvent('startup', 'Aegis Local Autopilot activated.').catch(() => {});
@@ -187,6 +238,7 @@ function activate(context) {
     recoverAgentStateIfNeeded().catch(reportError);
     runFirstRunSetup({ automatic: true }).catch(reportError);
   }).catch(reportError);
+  return exportedApi;
 }
 
 function deactivate() {
@@ -197,6 +249,8 @@ class LocalAutopilotViewProvider {
   constructor(extensionUri) {
     this.extensionUri = extensionUri;
     this.view = undefined;
+    this.refreshRunning = false;
+    this.refreshQueued = false;
   }
 
   resolveWebviewView(webviewView) {
@@ -255,7 +309,7 @@ class LocalAutopilotViewProvider {
       } else if (message.command === 'continueCurrentTask') {
         await continueCurrentTask();
       } else if (message.command === 'workOnCurrentFolder') {
-        await runAutopilotOnce(message.text || '');
+        await workOnCurrentFolderFromPanel(message.text || '');
       } else if (message.command === 'fixBuildErrors') {
         await fixBuildErrors();
       } else if (message.command === 'generateTodoRoadmap') {
@@ -300,6 +354,12 @@ class LocalAutopilotViewProvider {
   }
 
   async refresh() {
+    if (this.refreshRunning) {
+      this.refreshQueued = true;
+      return;
+    }
+    this.refreshRunning = true;
+    try {
     const state = {
       config: getConfigSnapshot(),
       running: Boolean(autopilotTimer),
@@ -319,13 +379,14 @@ class LocalAutopilotViewProvider {
         contextWarning: buildContextSizeWarning(getConfig())
       }),
       errorInfo: latestErrorInfo,
+      runtime: runtimeState.snapshot(),
       models: []
     };
 
     try {
       const target = await resolveWorkspaceTarget(undefined, { silent: true });
       state.models = await getOllamaModels({ target, reportFallback: false });
-      const source = state.models.some((model) => model.source === 'aegis-core') ? 'Aegis Core' : 'Ollama';
+      const source = state.models.some((model) => isCoreModelSource(model.source)) ? 'Aegis Core' : 'Ollama';
       state.status = `Connected to ${source} model inventory with ${state.models.length} model(s).`;
       if (!latestErrorInfo.message && healthCheckState.overall !== 'fail' && agentState.status === 'Idle') {
         updateStatusBar('Ready', `Aegis connected to ${source} with ${state.models.length} model(s).`);
@@ -338,6 +399,8 @@ class LocalAutopilotViewProvider {
     try {
       const target = await resolveWorkspaceTarget(undefined, { silent: true });
       if (target) {
+        await refreshCoreRuntimeDashboard(target).catch(() => {});
+        state.runtime = runtimeState.snapshot();
         const snapshot = await getProjectSnapshot(target, { fast: true });
         state.project = projectSnapshotSummary(snapshot);
         state.projectOverview = await buildProjectOverviewState(target, snapshot, state.models);
@@ -355,6 +418,13 @@ class LocalAutopilotViewProvider {
     }
 
     this.post({ command: 'state', state });
+    } finally {
+      this.refreshRunning = false;
+      if (this.refreshQueued) {
+        this.refreshQueued = false;
+        await this.refresh();
+      }
+    }
   }
 }
 
@@ -364,9 +434,9 @@ async function openPanel() {
 
 async function scanModels(showPicker) {
   const target = await resolveWorkspaceTarget(undefined, { silent: true });
-  const models = await getOllamaModels({ target, reportFallback: true });
+  const models = await getOllamaModels({ target, reportFallback: true, bypassModelCache: true });
   const names = models.map((model) => model.name || model.model).filter(Boolean);
-  const source = models.some((model) => model.source === 'aegis-core') ? 'Aegis Core' : 'Ollama';
+  const source = models.some((model) => isCoreModelSource(model.source)) ? 'Aegis Core' : 'Ollama';
   output.appendLine(`Detected ${names.length} local model(s) via ${source}:`);
   names.forEach((name) => output.appendLine(`- ${name}`));
   output.show(true);
@@ -400,9 +470,9 @@ async function runFirstRunSetup(options = {}) {
   let modelNames = [];
   let ollamaStatus = 'Ollama not checked yet.';
   try {
-    const models = await getOllamaModels({ target, reportFallback: true });
+    const models = await getOllamaModels({ target, reportFallback: true, bypassModelCache: true });
     modelNames = models.map((model) => model.name || model.model).filter(Boolean);
-    const source = models.some((model) => model.source === 'aegis-core') ? 'Aegis Core' : 'Ollama';
+    const source = models.some((model) => isCoreModelSource(model.source)) ? 'Aegis Core' : 'Ollama';
     ollamaStatus = `${source} model inventory reachable. Found ${modelNames.length} model(s).`;
   } catch (error) {
     ollamaStatus = `Model inventory check failed: ${safeErrorMessage(error)}`;
@@ -551,6 +621,18 @@ async function runHealthCheck(options = {}) {
             name: 'Aegis Core validation contract',
             run: () => getAegisCoreValidationSummary(target),
             detail: (envelope) => `${(coreEnvelopeData(envelope).commands || []).length} validation command(s) detected by Core.`
+          },
+          {
+            name: 'Aegis Core release compatibility',
+            run: () => getCoreRuntimeClient().checkCompatibility(target, {
+              schemaVersion: AEGIS_CORE_CONTRACT_VERSION,
+              capabilities: defaultCapabilities()
+            }),
+            detail: (envelope) => {
+              const data = coreEnvelopeData(envelope);
+              const fallback = Array.isArray(data.recommendations) ? data.recommendations[0] || '' : '';
+              return `Compatibility ${data.status || 'unknown'} for ${data.client_type || 'vscode-extension'} ${data.client_version || ''}. ${fallback}`.trim();
+            }
           }
         ];
         for (const item of coreChecks) {
@@ -573,8 +655,8 @@ async function runHealthCheck(options = {}) {
 
     try {
       const modelStart = Date.now();
-      models = await getOllamaModels({ target, reportFallback: true });
-      const source = models.some((model) => model.source === 'aegis-core') ? 'Aegis Core' : 'Ollama';
+      models = await getOllamaModels({ target, reportFallback: true, bypassModelCache: true });
+      const source = models.some((model) => isCoreModelSource(model.source)) ? 'Aegis Core' : 'Ollama';
       addCheck('Model inventory is reachable', 'pass', `${source} reported ${models.length} installed model(s) in ${Date.now() - modelStart}ms.`);
     } catch (error) {
       addCheck('Model inventory is reachable', 'fail', safeErrorMessage(error), 'Start Aegis Core and Ollama, or confirm Ollama is listening at the configured URL.');
@@ -680,7 +762,7 @@ async function runModelDiagnostics(options = {}) {
 
   try {
     const target = await resolveWorkspaceTarget(undefined, { silent: true });
-    const models = await getOllamaModels({ target, reportFallback: true });
+    const models = await getOllamaModels({ target, reportFallback: true, bypassModelCache: true });
     diagnostics.installedModels = models.map((model) => model.name || model.model).filter(Boolean);
     diagnostics.primary = await testSingleModel(config.chatModel);
     if (options.includeFallbacks) {
@@ -760,11 +842,12 @@ function runShellProbe() {
 
 function buildContextSizeWarning(config) {
   const maxChars = Number(config.maxContextChars || MAX_CONTEXT_CHARS);
+  const numCtx = getEffectiveOllamaNumCtx(config);
   const estimatedTokens = Math.ceil(maxChars / 4);
-  if (estimatedTokens > OLLAMA_CONTEXT_TOKENS * 0.85) {
-    return `Configured max context is about ${estimatedTokens} tokens, close to or above the Ollama request context of ${OLLAMA_CONTEXT_TOKENS}. Lower maxContextChars if prompts fail or slow down.`;
+  if (estimatedTokens > numCtx * 0.85) {
+    return `Configured max context is about ${estimatedTokens} estimated tokens, close to the Ollama num_ctx of ${numCtx}. Lower maxContextChars if prompts fail or slow down.`;
   }
-  return `Configured max context is about ${estimatedTokens} tokens, within the current Ollama request context of ${OLLAMA_CONTEXT_TOKENS}.`;
+  return `Configured max context is about ${estimatedTokens} estimated tokens; Ollama requests use num_ctx ${numCtx} (derived from maxContextChars).`;
 }
 
 async function retryLastAction() {
@@ -983,6 +1066,21 @@ async function continueFromRoadmap(resource) {
     vscode.window.showWarningMessage('No roadmap found yet. Run "Aegis: Generate/Update Project Roadmap" first.');
     return;
   }
+  try {
+    const workflow = await getWorkflowRuntimeClient().continueRoadmap(target, 'Continue from the current VS Code project roadmap.', {
+      command: 'continueFromRoadmap',
+      model: getConfig().fastModel,
+      safetyMode: getConfig().safetyMode
+    });
+    activeCoreWorkflowId = workflow.id || activeCoreWorkflowId;
+    runtimeState.setActiveWorkflow(workflow.summary);
+    recordRuntimeOperation('continue-roadmap', 'core', 'started', 'Roadmap continuation registered with Aegis Core.', {
+      workflowId: activeCoreWorkflowId
+    });
+    startCoreWorkflowEventRefresh(target, activeCoreWorkflowId);
+  } catch (error) {
+    recordCoreDisconnected(error, 'continue-roadmap');
+  }
 
   const prompt = [
     'Read this project roadmap and pick the highest-value safe next task.',
@@ -1061,6 +1159,10 @@ async function runValidationForCurrentWorkspace(resource) {
   const snapshot = await getProjectSnapshot(target, { fast: true });
   const validation = await runDetectedValidation(target, snapshot);
   await recordValidationResult(target, validation);
+  recordRuntimeOperation('rollback', 'local', 'completed', 'Rolled back with VS Code local backup manifest.', {
+    checkpointId: manifest.backupId,
+    workflowId: activeCoreWorkflowId || ''
+  });
   updateAgentState({
     status: validation.success ? 'Validation passed' : 'Validation failed',
     validationOutput: summarizeValidation(validation)
@@ -1091,6 +1193,24 @@ async function workOnCurrentFolder(resource) {
   await runAgentMode(task, target);
 }
 
+async function workOnCurrentFolderFromPanel(promptText) {
+  const target = await resolveWorkspaceTarget();
+  if (!target) {
+    vscode.window.showWarningMessage('Open a project folder before assigning a task.');
+    return;
+  }
+  const trimmed = String(promptText || '').trim();
+  const task = trimmed || await vscode.window.showInputBox({
+    title: `Aegis task in ${target.label}`,
+    prompt: 'Tell the local model what to do from this folder.',
+    placeHolder: 'Example: add tests for the backend model registry endpoints'
+  });
+  if (!task) {
+    return;
+  }
+  await runAgentMode(task, target);
+}
+
 async function panelChat(text, model) {
   const trimmed = text.trim();
   if (!trimmed) {
@@ -1101,12 +1221,39 @@ async function panelChat(text, model) {
     vscode.window.showWarningMessage('Open a project folder before chatting with local context.');
     return;
   }
+  try {
+    const workflow = await getWorkflowRuntimeClient().startChat(target, trimmed, {
+      command: 'panelChat',
+      model: model || getConfig().chatModel,
+      safetyMode: getConfig().safetyMode
+    });
+    activeCoreWorkflowId = workflow.id || activeCoreWorkflowId;
+    runtimeState.setActiveWorkflow(workflow.summary);
+    recordRuntimeOperation('chat', 'core', 'tracked', 'Chat request registered as a Core workflow.', {
+      workflowId: activeCoreWorkflowId
+    });
+    startCoreWorkflowEventRefresh(target, activeCoreWorkflowId);
+  } catch (error) {
+    recordCoreDisconnected(error, 'chat');
+  }
+  if (looksLikeWorkspaceChangeRequest(trimmed)) {
+    const handoff = 'This looks like a workspace change, so Aegis is drafting an applyable proposal with file edits instead of leaving paste-and-save instructions in chat.';
+    chatHistory.push({ role: 'user', text: trimmed, at: new Date().toISOString() });
+    chatHistory.push({ role: 'assistant', text: handoff, at: new Date().toISOString() });
+    chatHistory = chatHistory.slice(-30);
+    panelProvider && panelProvider.post({ command: 'chatResult', text: handoff });
+    panelProvider && panelProvider.post({ command: 'chatHistory', chatHistory });
+    await runAgentMode(trimmed, target);
+    return;
+  }
   const context = await collectWorkspaceContext('Panel chat context', target);
   const chatMemory = await buildChatMemoryContext(target);
   const prompt = [
     'You are Aegis Local Autopilot inside VS Code.',
     'Answer using the local project context. Be concise, specific, and practical.',
     `Current target folder: ${target.root}`,
+    target.focusRelative ? `Selected folder focus: ${target.focusRelative}` : '',
+    target.focusFileRelative ? `Selected file focus: ${target.focusFileRelative}` : '',
     '',
     chatMemory,
     context,
@@ -1120,8 +1267,8 @@ async function panelChat(text, model) {
   const response = await askOllamaWithFallback(model || getConfig().chatModel, prompt, { temperature: 0.25 });
   chatHistory.push({ role: 'assistant', text: response, at: new Date().toISOString() });
   chatHistory = chatHistory.slice(-30);
-  panelProvider.post({ command: 'chatResult', text: response });
-  panelProvider.post({ command: 'chatHistory', chatHistory });
+  panelProvider && panelProvider.post({ command: 'chatResult', text: response });
+  panelProvider && panelProvider.post({ command: 'chatHistory', chatHistory });
   output.appendLine(response);
   output.show(true);
 }
@@ -1178,6 +1325,40 @@ async function attachSelectedCode() {
   attachedContext = attachedContext.slice(-6);
 }
 
+function isCancellationError(error) {
+  if (error instanceof vscode.CancellationError) {
+    return true;
+  }
+  const msg = error && error.message ? String(error.message) : '';
+  return /cancelled/i.test(msg);
+}
+
+async function handleAgentCancellation(target, request) {
+  updateAgentState({
+    status: 'Cancelled',
+    currentTask: request || '',
+    activePlan: 'Agent Mode cancelled.',
+    validationOutput: ''
+  });
+  await writeAgentRecovery(target, {
+    status: 'cancelled',
+    request: request || lastAgentRequest || '',
+    summary: 'User cancelled Agent Mode.'
+  }).catch(() => {});
+  if (activeCoreTaskId) {
+    await updateAegisCoreTaskStatus(target, activeCoreTaskId, 'cancelled', 'User cancelled in VS Code.').catch(() => {});
+    activeCoreTaskId = '';
+  }
+  if (activeCoreWorkflowId) {
+    await getWorkflowRuntimeClient().cancel(target, activeCoreWorkflowId, 'User cancelled in VS Code.').catch(() => {});
+    recordRuntimeOperation('workflow', 'core', 'cancelled', 'Active workflow cancelled from VS Code.', {
+      workflowId: activeCoreWorkflowId
+    });
+    activeCoreWorkflowId = '';
+  }
+  panelProvider && panelProvider.refresh();
+}
+
 async function runAgentMode(objective, targetOrResource) {
   const config = getConfig();
   const target = isWorkspaceTarget(targetOrResource)
@@ -1201,9 +1382,26 @@ async function runAgentMode(objective, targetOrResource) {
     currentTask: request
   });
   await logExtensionEvent('agent', 'Agent Mode started.', { request, target: target.root }, target);
+  try {
+    const workflow = await getWorkflowRuntimeClient().startFeature(target, request, {
+      command: 'runAgentMode',
+      model: config.chatModel,
+      safetyMode: config.safetyMode
+    });
+    activeCoreWorkflowId = workflow.id || '';
+    runtimeState.setActiveWorkflow(workflow.summary);
+    recordRuntimeOperation('agent-workflow', 'core', 'started', 'Agent Mode workflow registered with Aegis Core.', {
+      workflowId: activeCoreWorkflowId
+    });
+    startCoreWorkflowEventRefresh(target, activeCoreWorkflowId);
+  } catch (error) {
+    output && output.appendLine(`Aegis Core workflow creation skipped: ${safeErrorMessage(error)}`);
+    recordCoreDisconnected(error, 'agent-workflow');
+  }
   activeCoreTaskId = await createAegisCoreTask(target, request, 'vscode-agent', request, {
     model: config.chatModel,
-    safetyMode: config.safetyMode
+    safetyMode: config.safetyMode,
+    workflowId: activeCoreWorkflowId || ''
   });
   if (activeCoreTaskId) {
     await updateAegisCoreTaskStatus(target, activeCoreTaskId, 'running', 'VS Code agent is inspecting workspace context.');
@@ -1216,87 +1414,116 @@ async function runAgentMode(objective, targetOrResource) {
     pendingDiffs: [],
     repairAttempts: 0
   });
-  pushProgress('Inspecting workspace', 'Scanning structure, project memory, diagnostics, and validation hints.');
+  try {
+    await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: 'Aegis Agent Mode',
+        cancellable: true
+      },
+      async (progress, token) => {
+        const report = (message, detail) =>
+          progress.report({
+            message: detail ? `${message}: ${detail}` : message
+          });
+        report('Inspecting workspace', 'Scanning structure, project memory, diagnostics, and validation hints.');
+        await ensureWorkspaceMemory(target);
+        if (token.isCancellationRequested) {
+          throw new vscode.CancellationError();
+        }
+        const snapshot = await getProjectSnapshot(target);
+        report('Updating project memory', `${snapshot.fileCount} files sampled for current workspace context.`);
+        await updateWorkspaceMemoryFromSnapshot(target, snapshot);
+        if (token.isCancellationRequested) {
+          throw new vscode.CancellationError();
+        }
+        const memoryContext = await readWorkspaceMemoryContext(target);
+        const dependencyGraph = await readJsonMemoryFile(target, 'dependency-graph.json', null);
+        const symbolIndex = await readJsonMemoryFile(target, 'symbol-index.json', null);
+        const impactAnalysis = await buildImpactAnalysis(target, snapshot, request, dependencyGraph, symbolIndex);
+        lastImpactAnalysis = impactAnalysis;
+        report('Building impact analysis', `${impactAnalysis.likelyAffectedFiles.length} likely affected file(s), risk ${impactAnalysis.riskLevel}.`);
+        updateAgentState({
+          status: 'Impact analysis ready',
+          activePlan: impactAnalysisToPlanText(impactAnalysis)
+        });
+        const context = await buildFocusedProjectContext(snapshot, request, {
+          memoryContext,
+          dependencyGraph,
+          symbolIndex,
+          impactAnalysis
+        });
+        if (token.isCancellationRequested) {
+          throw new vscode.CancellationError();
+        }
+        updateAgentState({ status: 'Creating plan' });
+        report('Calling local model', `Using ${config.chatModel} to create a small approval-based plan.`);
+        const proposal = await createAgentProposal(target, request, context, 0, undefined, token);
+        enrichProposalWithRepoIntelligence(proposal, impactAnalysis);
+        attachDestinationReasoning(proposal, snapshot, target);
+        lastProposal = proposal;
+        await saveProposal(proposal);
+        await writeAgentRecovery(target, {
+          status: 'waiting-approval',
+          request,
+          summary: proposal.summary,
+          files: proposal.fileEdits.map((edit) => edit.path)
+        });
+        if (activeCoreTaskId) {
+          await updateAegisCoreTaskStatus(target, activeCoreTaskId, 'waiting_for_approval', proposal.summary || 'Proposal ready for approval.');
+        }
+        await appendAgentHistory(target, {
+          type: 'proposal',
+          request,
+          summary: proposal.summary,
+          files: proposal.fileEdits.map((edit) => edit.path),
+          risk: proposal.risk
+        });
 
-  await ensureWorkspaceMemory(target);
-  const snapshot = await getProjectSnapshot(target);
-  pushProgress('Updating project memory', `${snapshot.fileCount} files sampled for current workspace context.`);
-  await updateWorkspaceMemoryFromSnapshot(target, snapshot);
-  const memoryContext = await readWorkspaceMemoryContext(target);
-  const dependencyGraph = await readJsonMemoryFile(target, 'dependency-graph.json', null);
-  const symbolIndex = await readJsonMemoryFile(target, 'symbol-index.json', null);
-  const impactAnalysis = await buildImpactAnalysis(target, snapshot, request, dependencyGraph, symbolIndex);
-  lastImpactAnalysis = impactAnalysis;
-  pushProgress('Building impact analysis', `${impactAnalysis.likelyAffectedFiles.length} likely affected file(s), risk ${impactAnalysis.riskLevel}.`);
-  updateAgentState({
-    status: 'Impact analysis ready',
-    activePlan: impactAnalysisToPlanText(impactAnalysis)
-  });
-  const context = await buildFocusedProjectContext(snapshot, request, {
-    memoryContext,
-    dependencyGraph,
-    symbolIndex,
-    impactAnalysis
-  });
+        updateAgentState({
+          status: 'Waiting for approval',
+          activePlan: proposalToPlanText(proposal),
+          pendingDiffs: proposal.fileEdits.map((edit) => edit.path)
+        });
+        report('Waiting for approval', `${proposal.fileEdits.length} proposed file change(s) are ready for review.`);
 
-  updateAgentState({ status: 'Creating plan' });
-  pushProgress('Calling local model', `Using ${config.chatModel} to create a small approval-based plan.`);
-  const proposal = await createAgentProposal(target, request, context, 0);
-  enrichProposalWithRepoIntelligence(proposal, impactAnalysis);
-  lastProposal = proposal;
-  await saveProposal(proposal);
-  await writeAgentRecovery(target, {
-    status: 'waiting-approval',
-    request,
-    summary: proposal.summary,
-    files: proposal.fileEdits.map((edit) => edit.path)
-  });
-  if (activeCoreTaskId) {
-    await updateAegisCoreTaskStatus(target, activeCoreTaskId, 'waiting_for_approval', proposal.summary || 'Proposal ready for approval.');
-  }
-  await appendAgentHistory(target, {
-    type: 'proposal',
-    request,
-    summary: proposal.summary,
-    files: proposal.fileEdits.map((edit) => edit.path),
-    risk: proposal.risk
-  });
+        const previewResult = await showProposalPreview(proposal, { allowApply: true, staged: true });
+        if (previewResult !== 'applied') {
+          updateAgentState({
+            status: previewResult === 'rejected' ? 'Rejected' : 'Waiting',
+            validationOutput: 'No files were changed. Review the proposal or run Agent Mode again with a narrower request.'
+          });
+          await appendAgentHistory(target, {
+            type: 'proposal-not-applied',
+            request,
+            result: previewResult,
+            summary: proposal.summary
+          });
+          await writeAgentRecovery(target, {
+            status: 'paused',
+            request,
+            result: previewResult,
+            summary: proposal.summary
+          });
+          return;
+        }
 
-  updateAgentState({
-    status: 'Waiting for approval',
-    activePlan: proposalToPlanText(proposal),
-    pendingDiffs: proposal.fileEdits.map((edit) => edit.path)
-  });
-  pushProgress('Waiting for approval', `${proposal.fileEdits.length} proposed file change(s) are ready for review.`);
-
-  const previewResult = await showProposalPreview(proposal, { allowApply: true, staged: true });
-  if (previewResult !== 'applied') {
-    updateAgentState({
-      status: previewResult === 'rejected' ? 'Rejected' : 'Waiting',
-      validationOutput: 'No files were changed. Review the proposal or run Agent Mode again with a narrower request.'
-    });
-    await appendAgentHistory(target, {
-      type: 'proposal-not-applied',
-      request,
-      result: previewResult,
-      summary: proposal.summary
-    });
-    await writeAgentRecovery(target, {
-      status: 'paused',
-      request,
-      result: previewResult,
-      summary: proposal.summary
-    });
-    return;
-  }
-
-  await runValidationAndRepairLoop(target, request, proposal, snapshot);
-  if (!/repair paused|waiting|paused/i.test(agentState.status || '')) {
-    await clearAgentRecovery(target);
+        await runValidationAndRepairLoop(target, request, proposal, snapshot, token);
+        if (!/repair paused|waiting|paused/i.test(agentState.status || '')) {
+          await clearAgentRecovery(target);
+        }
+      }
+    );
+  } catch (error) {
+    if (error instanceof vscode.CancellationError || isCancellationError(error)) {
+      await handleAgentCancellation(target, request);
+      return;
+    }
+    throw error;
   }
 }
 
-async function createAgentProposal(target, request, context, repairAttempt, validationFailure) {
+async function createAgentProposal(target, request, context, repairAttempt, validationFailure, cancelToken) {
   const repairText = validationFailure
     ? [
         '# Validation Failure To Repair',
@@ -1314,12 +1541,16 @@ async function createAgentProposal(target, request, context, repairAttempt, vali
   const raw = await askOllamaWithFallback(getConfig().chatModel, prompt, {
     temperature: repairAttempt > 0 ? 0.08 : 0.15,
     json: true,
-    timeoutMs: 900000
+    timeoutMs: 900000,
+    cancellationToken: cancelToken
   });
   return parseProposal(raw, target, request);
 }
 
-async function runValidationAndRepairLoop(target, request, initialProposal, initialSnapshot) {
+async function runValidationAndRepairLoop(target, request, initialProposal, initialSnapshot, cancelToken) {
+  if (cancelToken && cancelToken.isCancellationRequested) {
+    throw new vscode.CancellationError();
+  }
   let currentProposal = initialProposal;
   let snapshot = initialSnapshot;
   await writeAgentRecovery(target, { status: 'validating', request, summary: currentProposal.summary });
@@ -1348,8 +1579,31 @@ async function runValidationAndRepairLoop(target, request, initialProposal, init
     `Summary: ${currentProposal.summary || 'No proposal summary'}`,
     `Output: ${summarizeValidation(validation)}`
   ], target);
+  try {
+    const repairWorkflow = await getWorkflowRuntimeClient().startRepair(target, `Repair validation failure for: ${request}`, {
+      command: 'repair_project',
+      model: getConfig().chatModel,
+      safetyMode: getConfig().safetyMode,
+      metadata: {
+        parent_workflow_id: activeCoreWorkflowId || '',
+        validation_summary: summarizeValidation(validation)
+      }
+    });
+    activeCoreWorkflowId = repairWorkflow.id || activeCoreWorkflowId;
+    runtimeState.setActiveWorkflow(repairWorkflow.summary);
+    recordRuntimeOperation('repair', 'core', 'started', 'Repair workflow registered with Aegis Core.', {
+      workflowId: activeCoreWorkflowId
+    });
+    startCoreWorkflowEventRefresh(target, activeCoreWorkflowId);
+  } catch (error) {
+    output && output.appendLine(`Aegis Core repair workflow creation skipped: ${safeErrorMessage(error)}`);
+    recordCoreDisconnected(error, 'repair');
+  }
 
   for (let attempt = 1; attempt <= MAX_AGENT_REPAIR_ATTEMPTS; attempt += 1) {
+    if (cancelToken && cancelToken.isCancellationRequested) {
+      throw new vscode.CancellationError();
+    }
     await writeAgentRecovery(target, {
       status: 'repairing',
       request,
@@ -1384,8 +1638,9 @@ async function runValidationAndRepairLoop(target, request, initialProposal, init
       }),
       `# Previous Proposal\n${proposalToPlanText(currentProposal)}`
     ].filter(Boolean).join('\n\n');
-    const repairProposal = await createAgentProposal(target, request, context, attempt, failure);
+    const repairProposal = await createAgentProposal(target, request, context, attempt, failure, cancelToken);
     enrichProposalWithRepoIntelligence(repairProposal, impactAnalysis);
+    attachDestinationReasoning(repairProposal, snapshot, target);
     currentProposal = repairProposal;
     lastProposal = repairProposal;
     await saveProposal(repairProposal);
@@ -1489,25 +1744,59 @@ async function runAutopilotOnce(objective, targetOrResource) {
   output.show(true);
   panelProvider && panelProvider.post({ command: 'busy', text: `Running local autopilot in ${target.label}...` });
 
-  const context = await collectWorkspaceContext(task, target);
-  const prompt = buildAutopilotPrompt(task, context);
-  const raw = await askOllamaWithFallback(config.chatModel, prompt, { temperature: 0.15, json: true, timeoutMs: 900000 });
-  const proposal = parseProposal(raw, target, task);
-  lastProposal = proposal;
-  await saveProposal(proposal);
+  try {
+    await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: 'Aegis Local Autopilot',
+        cancellable: true
+      },
+      async (progress, token) => {
+        progress.report({ message: 'Gathering workspace context...' });
+        const context = await collectWorkspaceContext(task, target);
+        if (token.isCancellationRequested) {
+          throw new vscode.CancellationError();
+        }
+        progress.report({ message: 'Calling local model...' });
+        const prompt = buildAutopilotPrompt(task, context);
+        const raw = await askOllamaWithFallback(config.chatModel, prompt, {
+          temperature: 0.15,
+          json: true,
+          timeoutMs: 900000,
+          cancellationToken: token
+        });
+        const proposal = parseProposal(raw, target, task);
+        attachDestinationReasoning(proposal, await getProjectSnapshot(target, { fast: true }), target);
+        lastProposal = proposal;
+        await saveProposal(proposal);
 
-  output.appendLine(`Proposal: ${proposal.summary || 'No summary returned.'}`);
-  output.appendLine(`File edits: ${proposal.fileEdits.length}`);
-  output.appendLine(`Suggested commands: ${proposal.commands.length}`);
-  panelProvider && panelProvider.post({
-    command: 'proposal',
-    summary: proposal.summary || 'Proposal ready',
-    proposal
-  });
+        output.appendLine(`Proposal: ${proposal.summary || 'No summary returned.'}`);
+        output.appendLine(`File edits: ${proposal.fileEdits.length}`);
+        output.appendLine(`Suggested commands: ${proposal.commands.length}`);
+        panelProvider && panelProvider.post({
+          command: 'proposal',
+          summary: proposal.summary || 'Proposal ready',
+          proposal
+        });
 
-  await showProposalPreview(proposal);
-
-  panelProvider && panelProvider.refresh();
+        const previewOptions = {};
+        if (config.autopilotWriteMode === 'apply' && config.safetyMode !== 'review-only') {
+          previewOptions.autoApplyIfUnblocked = true;
+        }
+        progress.report({ message: 'Opening proposal preview...' });
+        await showProposalPreview(proposal, previewOptions);
+      }
+    );
+  } catch (error) {
+    if (error instanceof vscode.CancellationError || isCancellationError(error)) {
+      output.appendLine('Local autopilot run cancelled.');
+    } else {
+      reportError(error);
+    }
+  } finally {
+    panelProvider && panelProvider.post({ command: 'busy', text: '' });
+    panelProvider && panelProvider.refresh();
+  }
 }
 
 async function startAutopilot(resource) {
@@ -1576,6 +1865,7 @@ async function showProposalPreview(proposal, options = {}) {
   }
 
   const validations = proposal.fileEdits.map((edit) => validateProposalEdit(proposal, edit));
+  markDestinationSafetyFromValidations(proposal, validations);
   const blocked = validations.filter((item) => !item.ok);
   if (blocked.length) {
     output.appendLine('Blocked unsafe proposal edits:');
@@ -1584,11 +1874,23 @@ async function showProposalPreview(proposal, options = {}) {
     return 'blocked';
   }
 
+  await syncProposalWithCore(proposal, validations).catch((error) => {
+    output && output.appendLine(`Aegis Core proposal sync unavailable; VS Code will keep local proposal state: ${safeErrorMessage(error)}`);
+    recordCoreDisconnected(error, 'proposal-sync');
+  });
+
   if (options.staged && hasEditableStages(proposal)) {
     return await showStagedProposalPreview(proposal, validations, options);
   }
 
   await openProposalDiffs(proposal, validations);
+  if (options.autoApplyIfUnblocked && getConfig().safetyMode !== 'review-only') {
+    const applied = await applyProposal(proposal, { skipPrompt: true, userApproved: false });
+    if (applied) {
+      vscode.window.showInformationMessage('Aegis applied the proposal (Autopilot write mode: apply).');
+    }
+    return applied ? 'applied' : 'not-applied';
+  }
   const answer = await vscode.window.showInformationMessage(
     options.repairAttempt
       ? `Aegis proposed repair ${options.repairAttempt} with ${proposal.fileEdits.length} file change(s). Review the diff before applying.`
@@ -1598,7 +1900,7 @@ async function showProposalPreview(proposal, options = {}) {
     'Reject'
   );
   if (answer === 'Apply Accepted Changes') {
-    const applied = await applyProposal(proposal, { skipPrompt: true });
+    const applied = await applyProposal(proposal, { skipPrompt: true, userApproved: true });
     return applied ? 'applied' : 'not-applied';
   } else if (answer === 'Open Diffs Again') {
     await openProposalDiffs(proposal, validations);
@@ -1669,6 +1971,7 @@ async function showStagedProposalPreview(proposal, validations, options = {}) {
 
     const applied = await applyProposal(stageProposal, {
       skipPrompt: true,
+      userApproved: true,
       stageName: stage.name || stage.title || `Stage ${index + 1}`,
       stageIndex: index + 1
     });
@@ -1696,7 +1999,7 @@ async function showStagedProposalPreview(proposal, validations, options = {}) {
       'Pause'
     );
     if (answer === 'Apply Remaining') {
-      const applied = await applyProposal(remainingProposal, { skipPrompt: true, stageName: 'Remaining edits' });
+      const applied = await applyProposal(remainingProposal, { skipPrompt: true, userApproved: true, stageName: 'Remaining edits' });
       appliedAny = appliedAny || applied;
     }
   }
@@ -1707,7 +2010,8 @@ async function showStagedProposalPreview(proposal, validations, options = {}) {
 async function openProposalDiffs(proposal, validations) {
   const stateRoot = proposal.workspaceRoot || proposal.workspace || proposal.targetRoot;
   const previewRoot = path.join(stateRoot, '.aegis', 'vscode-autopilot', 'previews', timestampForPath());
-  const safeValidations = validations.filter((item) => item.ok).slice(0, 5);
+  const maxDiffTabs = Math.min(25, Math.max(1, Number(getConfig().maxProposalDiffTabs) || 12));
+  const safeValidations = validations.filter((item) => item.ok).slice(0, maxDiffTabs);
 
   for (const item of safeValidations) {
     const originalPreview = path.join(previewRoot, 'original', item.relative);
@@ -1745,6 +2049,225 @@ async function openProposalDiffs(proposal, validations) {
   }
 }
 
+async function syncProposalWithCore(proposal, validations = []) {
+  const root = coreWorkspaceRootForProposal(proposal);
+  if (!root || !proposal || !Array.isArray(proposal.fileEdits) || !proposal.fileEdits.length) {
+    runtimeState.setPendingProposal(proposal || null);
+    return null;
+  }
+  if (proposal.coreProposalId) {
+    runtimeState.setPendingProposal(proposal);
+    return proposal.coreProposalId;
+  }
+  const validEdits = validations.length
+    ? validations.filter((item) => item && item.ok).map((item) => item.edit)
+    : proposal.fileEdits;
+  if (!validEdits.length) {
+    runtimeState.setPendingProposal(proposal);
+    return null;
+  }
+  const envelope = await getCoreRuntimeClient().proposeChanges(root, validEdits.map((edit, index) => ({
+    id: edit.id || `vscode-${index + 1}`,
+    action: edit.action || inferCoreChangeAction(edit, root, coreRelativePathForEdit(proposal, edit)),
+    path: coreRelativePathForEdit(proposal, edit),
+    content: edit.content,
+    summary: edit.reason || proposal.summary || '',
+    selected: true
+  })), {
+    summary: proposal.summary || lastAgentRequest || 'VS Code proposal',
+    sourceTaskId: activeCoreTaskId || null,
+    risk: proposal.risk || 'unknown',
+    repairAttempt: proposal.repairAttempt || null
+  });
+  const data = coreEnvelopeData(envelope);
+  const proposalRecord = data.proposal || {};
+  proposal.coreProposalId = proposalRecord.id || data.proposal_id || '';
+  proposal.coreJobId = data.job_id || '';
+  proposal.coreTaskId = data.task_id || '';
+  proposal.coreProjectId = data.project_id || '';
+  proposal.corePreview = Array.isArray(data.preview) ? data.preview : [];
+  if (lastProposal === proposal) {
+    await saveProposal(proposal).catch(() => {});
+  }
+  runtimeState.setPendingProposal(proposal);
+  recordRuntimeOperation('proposal', 'core', 'stored', 'Proposal metadata stored in Aegis Core.', {
+    jobId: proposal.coreJobId,
+    workflowId: activeCoreWorkflowId || '',
+    proposalId: proposal.coreProposalId
+  });
+  return proposal.coreProposalId;
+}
+
+function coreWorkspaceRootForProposal(proposal) {
+  return proposal && (proposal.workspaceRoot || proposal.workspace || proposal.targetRoot) || '';
+}
+
+function coreRelativePathForEdit(proposal, edit) {
+  const editPath = String(edit && edit.path || '').replace(/\\/g, '/');
+  const workspaceRoot = proposal && proposal.workspaceRoot ? path.resolve(proposal.workspaceRoot) : '';
+  const targetRoot = proposal && (proposal.workspace || proposal.targetRoot) ? path.resolve(proposal.workspace || proposal.targetRoot) : workspaceRoot;
+  if (workspaceRoot && targetRoot && targetRoot !== workspaceRoot && isPathInside(workspaceRoot, targetRoot)) {
+    return path.relative(workspaceRoot, path.join(targetRoot, editPath)).replace(/\\/g, '/');
+  }
+  return editPath;
+}
+
+function inferCoreChangeAction(edit, workspaceRoot, relativePath) {
+  const explicit = String(edit && edit.action || '').toLowerCase();
+  if (explicit === 'create' || explicit === 'update' || explicit === 'append' || explicit === 'delete') {
+    return explicit;
+  }
+  const relative = relativePath || (edit && edit.path ? edit.path : '');
+  const fullPath = resolveInside(workspaceRoot, relative);
+  if (fullPath && !fsSync.existsSync(fullPath)) {
+    return 'create';
+  }
+  return 'update';
+}
+
+function coreChangesForProposalEdits(proposal, edits, stateRoot) {
+  return (Array.isArray(edits) ? edits : []).map((edit, index) => ({
+    id: edit.id || `vscode-${index + 1}`,
+    action: edit.action || inferCoreChangeAction(edit, stateRoot, coreRelativePathForEdit(proposal, edit)),
+    path: coreRelativePathForEdit(proposal, edit),
+    content: edit.content,
+    summary: edit.reason || proposal.summary || '',
+    selected: true
+  }));
+}
+
+function qualityGateBlockedMessage(evaluation) {
+  const blockers = evaluation && Array.isArray(evaluation.blockers) ? evaluation.blockers : [];
+  const failedGates = evaluation && Array.isArray(evaluation.gates)
+    ? evaluation.gates.filter((gate) => gate && gate.status === 'failed').map((gate) => gate.name || gate.id).filter(Boolean)
+    : [];
+  const details = blockers.length ? blockers : failedGates;
+  return details.length ? details.slice(0, 5).join('; ') : (evaluation && evaluation.summary) || 'Core quality gate did not allow apply.';
+}
+
+async function evaluateProposalQualityWithCore(proposal, validEdits, options = {}) {
+  const stateRoot = proposal.workspaceRoot || proposal.workspace || proposal.targetRoot;
+  const changes = coreChangesForProposalEdits(proposal, validEdits, stateRoot);
+  const evaluationEnvelope = await getCoreRuntimeClient().evaluateQualityGates(stateRoot, {
+    workflowId: activeCoreWorkflowId || null,
+    proposalId: proposal.coreProposalId || null,
+    changes,
+    approval: Boolean(options.userApproved),
+    dryRun: true,
+    persist: true,
+    maxFilesChanged: 25,
+    validationRequired: Boolean(options.validationRequired),
+    metadata: {
+      source: 'vscode-extension',
+      stageName: options.stageName || '',
+      stageIndex: options.stageIndex || null,
+      summary: proposal.summary || ''
+    }
+  });
+  const evaluation = coreEnvelopeData(evaluationEnvelope);
+  runtimeState.setQualityGates({ data: { current_evaluation: evaluation } });
+  const allowed = evaluationEnvelope.ok !== false && evaluation.apply_allowed !== false;
+  recordRuntimeOperation('quality-gate', 'core', allowed ? 'passed' : 'blocked', evaluation.summary || qualityGateBlockedMessage(evaluation), {
+    workflowId: activeCoreWorkflowId || '',
+    proposalId: proposal.coreProposalId || '',
+    jobId: evaluation.job_id || ''
+  });
+  if (!allowed) {
+    throw new Error(`Quality gate blocked apply: ${qualityGateBlockedMessage(evaluation)}`);
+  }
+  return evaluation;
+}
+
+async function tryApplyProposalWithCore(proposal, validations, options = {}) {
+  const root = proposal.workspace || proposal.targetRoot;
+  const stateRoot = proposal.workspaceRoot || root;
+  const validEdits = validations.map((item) => item.edit);
+  if (!validEdits.length) {
+    return false;
+  }
+  await syncProposalWithCore(proposal, validations);
+  const coreChanges = coreChangesForProposalEdits(proposal, validEdits, stateRoot);
+  await evaluateProposalQualityWithCore(proposal, validEdits, options);
+  const applyEnvelope = await getCoreRuntimeClient().applyChanges(stateRoot, {
+    proposalId: proposal.coreProposalId || null,
+    changes: proposal.coreProposalId ? [] : coreChanges,
+    paths: proposal.coreProposalId ? validEdits.map((edit) => coreRelativePathForEdit(proposal, edit)) : [],
+    applyAll: !proposal.coreProposalId,
+    dryRun: Boolean(options.dryRun),
+    summary: options.stageName || proposal.summary || 'VS Code approved proposal',
+    taskId: activeCoreTaskId || null,
+    repairAttempt: proposal.repairAttempt || (options.repairAttempt ? { attempt: options.repairAttempt } : null),
+    approval: Boolean(options.userApproved),
+    qualityGateRequired: true,
+    maxFilesChanged: 25
+  });
+  const applyData = coreEnvelopeData(applyEnvelope);
+  const job = extractEditingJob(applyData);
+  if (applyEnvelope.ok === false || applyData.ok === false) {
+    const gate = applyData.quality_gate || {};
+    runtimeState.setQualityGates({ data: { current_evaluation: gate } });
+    throw new Error(`Aegis Core apply returned ok=false: ${(applyData.warnings || []).join('; ') || qualityGateBlockedMessage(gate) || 'no detail'}`);
+  }
+  const applied = Array.isArray(applyData.applied) ? applyData.applied : [];
+  const checkpointId = applyData.checkpoint_id || job.checkpointId || '';
+  const manifest = {
+    version: 2,
+    backupId: checkpointId || `core-${timestampForPath()}`,
+    coreCheckpointId: checkpointId,
+    coreProposalId: proposal.coreProposalId || '',
+    coreJobId: job.jobId || applyData.job_id || '',
+    coreTaskId: job.taskId || applyData.task_id || activeCoreTaskId || '',
+    createdAt: new Date().toISOString(),
+    workspaceRoot: stateRoot,
+    targetRoot: root,
+    summary: sanitizeMemoryText(proposal.summary || 'Aegis Core change'),
+    stageName: options.stageName || '',
+    stageIndex: options.stageIndex || null,
+    files: validEdits.map((edit) => ({
+      path: coreRelativePathForEdit(proposal, edit),
+      workspaceRelativePath: coreRelativePathForEdit(proposal, edit),
+      existed: true,
+      backupPath: '',
+      reason: sanitizeMemoryText(String(edit.reason || '')),
+      restoredBy: 'aegis-core'
+    }))
+  };
+  await recordChangeBackup({ workspaceRoot: stateRoot, root }, manifest);
+  clearProjectSnapshotCache(root);
+  updateAgentState({ pendingDiffs: [] });
+  if (activeCoreTaskId) {
+    await updateAegisCoreTaskStatus({ workspaceRoot: stateRoot, root }, activeCoreTaskId, 'completed', `Core applied ${validEdits.length} approved file change(s).`);
+    activeCoreTaskId = '';
+  }
+  if (activeCoreWorkflowId) {
+    await getWorkflowRuntimeClient().recordLog({ workspaceRoot: stateRoot, root }, activeCoreWorkflowId, 'VS Code approved changes were applied by Core.', {
+      checkpoint_id: checkpointId,
+      applied
+    }).catch(() => {});
+  }
+  recordRuntimeOperation('apply', 'core', 'completed', `Core applied ${validEdits.length} approved file change(s).`, {
+    jobId: job.jobId || applyData.job_id || '',
+    checkpointId,
+    workflowId: activeCoreWorkflowId || ''
+  });
+  runtimeState.setCheckpoints(checkpointId ? [{ id: checkpointId }] : []);
+  await logExtensionEvent('apply', 'Aegis Core applied approved proposal.', {
+    checkpointId,
+    jobId: job.jobId || applyData.job_id || '',
+    files: validEdits.map((edit) => edit.path)
+  }, { workspaceRoot: stateRoot, root });
+  vscode.window.showInformationMessage(checkpointId
+    ? `Applied proposal through Aegis Core. Checkpoint: ${checkpointId}`
+    : 'Applied proposal through Aegis Core.');
+  panelProvider && panelProvider.refresh();
+  return true;
+}
+
+function shouldFallbackFromCoreApply(error) {
+  const message = String(error && error.message ? error.message : error || '').toLowerCase();
+  return /econnrefused|timed out|timeout|fetch failed|connect|socket|core.*unavailable|http 404|http 405|not found/.test(message);
+}
+
 async function applyProposal(proposal, options = {}) {
   if (getConfig().safetyMode === 'review-only') {
     vscode.window.showWarningMessage('Safety mode is review-only. Proposal was not applied.');
@@ -1780,6 +2303,22 @@ async function applyProposal(proposal, options = {}) {
     if (answer !== 'Apply') {
       return false;
     }
+    options.userApproved = true;
+  }
+
+  try {
+    const appliedByCore = await tryApplyProposalWithCore(proposal, validations, options);
+    if (appliedByCore) {
+      return true;
+    }
+  } catch (error) {
+    if (!shouldFallbackFromCoreApply(error)) {
+      output && output.appendLine(`Aegis Core refused to apply proposal; local fallback is disabled for this error: ${safeErrorMessage(error)}`);
+      vscode.window.showErrorMessage(`Aegis Core refused to apply the proposal: ${safeErrorMessage(error)}`);
+      return false;
+    }
+    output && output.appendLine(`Aegis Core apply unavailable; using VS Code local apply fallback: ${safeErrorMessage(error)}`);
+    recordCoreDisconnected(error, 'apply');
   }
 
   const stateRoot = proposal.workspaceRoot || root;
@@ -1872,6 +2411,10 @@ async function applyProposal(proposal, options = {}) {
   clearProjectSnapshotCache(root);
 
   vscode.window.showInformationMessage(`Applied local proposal. Backup: ${backupRoot}`);
+  recordRuntimeOperation('apply', 'local', 'completed', 'Applied with VS Code local fallback.', {
+    checkpointId: backupId,
+    workflowId: activeCoreWorkflowId || ''
+  });
   updateAgentState({ pendingDiffs: [] });
   if (activeCoreTaskId) {
     await updateAegisCoreTaskStatus({ workspaceRoot: stateRoot, root }, activeCoreTaskId, 'completed', `Applied ${manifest.files.length} approved file change(s).`);
@@ -1921,6 +2464,7 @@ async function buildProjectSnapshot(target, options = {}) {
     } catch (error) {
       coreScanWarning = safeErrorMessage(error);
       output && output.appendLine(`Aegis Core workspace scan unavailable; using VS Code local scan fallback: ${coreScanWarning}`);
+      recordCoreDisconnected(error, 'workspace-scan');
     }
   }
   const entries = await scanProjectEntries(root, {
@@ -1950,17 +2494,23 @@ async function buildProjectSnapshot(target, options = {}) {
       modified: entry.modifiedAt,
       size: entry.size || 0
     }));
-  const importantContents = [];
-
-  for (const file of importantFiles.slice(0, options.fast ? 8 : 20)) {
-    const text = await readWorkspaceFile(root, file.relative);
-    if (text) {
-      importantContents.push({
-        path: file.relative,
-        text: truncateMiddle(text, file.relative.toLowerCase().endsWith('package.json') ? 12000 : 6000)
-      });
-    }
-  }
+  const importantSlice = importantFiles.slice(0, options.fast ? 8 : 20);
+  const importantContents = (
+    await Promise.all(
+      importantSlice.map(async (file) => {
+        const text = await readWorkspaceFile(root, file.relative);
+        if (!text) {
+          return null;
+        }
+        return {
+          path: file.relative,
+          text: truncateMiddle(text, file.relative.toLowerCase().endsWith('package.json') ? 12000 : 6000)
+        };
+      })
+    )
+  )
+    .filter(Boolean)
+    .sort((a, b) => a.path.localeCompare(b.path));
 
   const topLevel = await readTopLevel(root);
   const fileTypes = countFileTypes(files);
@@ -2142,177 +2692,35 @@ async function readTopLevel(root) {
 }
 
 function countFileTypes(files) {
-  const counts = new Map();
-  for (const file of files) {
-    const ext = path.extname(file.relative).toLowerCase() || '[no extension]';
-    counts.set(ext, (counts.get(ext) || 0) + 1);
-  }
-  return Array.from(counts.entries())
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 16)
-    .map(([ext, count]) => `${ext}: ${count}`);
+  return _projectScannerModule.countFileTypes(files);
 }
 
 function isLikelyTestFile(relativePath) {
-  const normalized = relativePath.replace(/\\/g, '/').toLowerCase();
-  return /(^|\/)(test|tests|spec|specs|__tests__)\//.test(normalized) ||
-    /\.(test|spec)\.(js|jsx|ts|tsx|py|cs|rs|go|java)$/.test(normalized) ||
-    /(_test\.go|test_.*\.py|.*_test\.py)$/.test(normalized);
+  return _projectScannerModule.isLikelyTestFile(relativePath);
 }
 
 function isLikelyConfigFile(relativePath) {
-  const normalized = relativePath.replace(/\\/g, '/').toLowerCase();
-  const basename = path.basename(normalized);
-  return isImportantWorkspaceFile(normalized) ||
-    /\.(config|conf|ini|toml|yaml|yml|jsonc)$/.test(normalized) ||
-    /^(\.eslintrc|\.prettierrc|\.babelrc|dockerfile|makefile)/.test(basename);
+  return _projectScannerModule.isLikelyConfigFile(relativePath);
 }
 
 function isUnityImportantFile(relativePath) {
-  const normalized = relativePath.replace(/\\/g, '/').toLowerCase();
-  return normalized === 'packages/manifest.json' ||
-    normalized === 'packages/packages-lock.json' ||
-    /^projectsettings\/(?:projectversion\.txt|projectsettings\.asset|editorbuildsettings\.asset|editorsettings\.asset|inputmanager\.asset|tagsmanager\.asset)$/.test(normalized) ||
-    /\.(?:asmdef|asmref)$/i.test(normalized);
+  return _projectScannerModule.isUnityImportantFile(relativePath);
 }
 
 function isImportantWorkspaceFile(relativePath) {
-  const normalized = relativePath.replace(/\\/g, '/').toLowerCase();
-  const basename = path.basename(normalized);
-  return isUnityImportantFile(normalized) || IMPORTANT_FILE_PATTERNS.some((pattern) => pattern.test(basename));
+  return _projectScannerModule.isImportantWorkspaceFile(relativePath);
 }
 
 function detectEntryPoints(files) {
-  const candidates = [
-    'src/main.ts',
-    'src/main.tsx',
-    'src/index.ts',
-    'src/index.tsx',
-    'src/App.tsx',
-    'src/app.tsx',
-    'src/main.cpp',
-    'src/main.c',
-    'main.py',
-    'app.py',
-    'server.py',
-    'Program.cs',
-    'main.go',
-    'src/main.rs',
-    'ProjectSettings/ProjectVersion.txt',
-    'Assets/Scenes/Main.unity'
-  ];
-  const fileSet = new Set(files.map((file) => file.relative.replace(/\\/g, '/')));
-  const entries = candidates.filter((candidate) => fileSet.has(candidate));
-  for (const file of files) {
-    const normalized = file.relative.replace(/\\/g, '/');
-    if (/^(pages|app)\/.*\.(tsx|ts|jsx|js)$/.test(normalized) && entries.length < 12) {
-      entries.push(normalized);
-    }
-  }
-  return Array.from(new Set(entries)).slice(0, 20);
+  return _projectScannerModule.detectEntryPoints(files);
 }
 
 function inferProjectLanguages(files, importantContents) {
-  const languages = new Set();
-  const frameworks = new Set();
-  const packageManagers = new Set();
-  const names = new Set(files.map((file) => file.relative.replace(/\\/g, '/').toLowerCase()));
-  const extensions = new Set(files.map((file) => path.extname(file.relative).toLowerCase()));
-  const hasUnityProject = names.has('projectsettings/projectversion.txt') || names.has('packages/manifest.json') || Array.from(names).some((name) => name.startsWith('assets/') && name.endsWith('.unity'));
-  const hasPythonLockfile = names.has('uv.lock') || names.has('poetry.lock') || names.has('pdm.lock');
-  const hasDotnetProject = Array.from(names).some((name) => name.endsWith('.csproj') || name.endsWith('.sln') || name.endsWith('.slnx'));
-  const hasDotnetNugetMetadata = names.has('packages.lock.json') || names.has('packages.config') || names.has('directory.packages.props');
-
-  if (extensions.has('.ts') || extensions.has('.tsx')) languages.add('TypeScript');
-  if (extensions.has('.js') || extensions.has('.jsx') || names.has('package.json')) languages.add('JavaScript');
-  if (extensions.has('.py') || names.has('pyproject.toml') || names.has('requirements.txt') || hasPythonLockfile) languages.add('Python');
-  if (extensions.has('.cpp') || extensions.has('.cc') || extensions.has('.cxx') || extensions.has('.c') || extensions.has('.h') || extensions.has('.hpp')) languages.add('C/C++');
-  if (extensions.has('.cs') || hasDotnetProject || hasDotnetNugetMetadata) languages.add('C#/.NET');
-  if (extensions.has('.fs') || extensions.has('.fsi') || extensions.has('.fsx') || Array.from(names).some((name) => name.endsWith('.fsproj'))) languages.add('F#/.NET');
-  if (extensions.has('.vb') || Array.from(names).some((name) => name.endsWith('.vbproj'))) languages.add('VB.NET');
-  if (extensions.has('.rs') || names.has('cargo.toml') || names.has('cargo.lock')) languages.add('Rust');
-  if (extensions.has('.go') || names.has('go.mod') || names.has('go.sum')) languages.add('Go');
-  if (extensions.has('.java') || names.has('pom.xml') || Array.from(names).some((name) => name.includes('build.gradle'))) languages.add('Java/JVM');
-  if (hasUnityProject) {
-    languages.add('C#/.NET');
-    frameworks.add('Unity');
-  }
-
-  if (names.has('pnpm-lock.yaml')) packageManagers.add('pnpm');
-  if (names.has('yarn.lock')) packageManagers.add('yarn');
-  if (names.has('package-lock.json')) packageManagers.add('npm');
-  if (names.has('bun.lock') || names.has('bun.lockb')) packageManagers.add('bun');
-  if (names.has('uv.lock')) packageManagers.add('uv');
-  if (names.has('poetry.lock')) packageManagers.add('poetry');
-  if (names.has('pdm.lock')) packageManagers.add('pdm');
-
-  for (const item of importantContents) {
-    if (path.basename(item.path).toLowerCase() !== 'package.json') {
-      continue;
-    }
-    try {
-      const pkg = parseJsonText(item.text);
-      const declaredPackageManager = normalizePackageManagerName(pkg.packageManager);
-      if (declaredPackageManager) packageManagers.add(declaredPackageManager);
-      const deps = Object.assign({}, pkg.dependencies || {}, pkg.devDependencies || {});
-      if (deps.react) frameworks.add('React');
-      if (deps.next) frameworks.add('Next.js');
-      if (deps.vue) frameworks.add('Vue');
-      if (deps.svelte) frameworks.add('Svelte');
-      if (deps.vite) frameworks.add('Vite');
-      if (deps.express) frameworks.add('Express');
-      if (deps.electron) frameworks.add('Electron');
-      if (deps.typescript) languages.add('TypeScript');
-    } catch (error) {
-      // Ignore malformed package snippets; this is only a scan hint.
-    }
-  }
-
-  if (names.has('package.json') && packageManagers.size === 0) packageManagers.add('npm');
-
-  if (names.has('vite.config.ts') || names.has('vite.config.js')) frameworks.add('Vite');
-  if (names.has('next.config.js') || names.has('next.config.mjs') || names.has('next.config.ts')) frameworks.add('Next.js');
-  if (names.has('cmakelists.txt')) frameworks.add('CMake');
-  if (names.has('pyproject.toml')) frameworks.add('Python packaging');
-
-  return {
-    languages: Array.from(languages),
-    frameworks: Array.from(frameworks),
-    packageManagers: Array.from(packageManagers)
-  };
+  return _projectScannerModule.inferProjectLanguages(files, importantContents);
 }
 
 function inferProjectCommands(importantContents, files) {
-  const commands = [];
-  const names = new Set(files.map((file) => file.relative.replace(/\\/g, '/').toLowerCase()));
-
-  for (const item of importantContents) {
-    if (path.basename(item.path).toLowerCase() === 'package.json') {
-      try {
-        const pkg = parseJsonText(item.text);
-        const scripts = pkg.scripts || {};
-        const packageManager = normalizePackageManagerName(pkg.packageManager) || pickPackageManagerFromNames(names, item.path) || 'npm';
-        for (const name of ['build', 'test', 'lint', 'typecheck', 'type-check', 'check', 'dev']) {
-          if (scripts[name]) {
-            commands.push(packageScriptCommand(packageManager, name));
-          }
-        }
-      } catch (error) {
-        // Ignore malformed package snippets.
-      }
-    }
-  }
-
-  if (names.has('cmakelists.txt')) commands.push('cmake --build build');
-  const hasSlnSolution = Array.from(names).some((name) => name.endsWith('.sln'));
-  const hasSlnxSolution = Array.from(names).some((name) => name.endsWith('.slnx'));
-  if (hasSlnSolution || hasSlnxSolution) commands.push(hasSlnSolution ? 'msbuild <solution>.sln' : 'msbuild <solution>.slnx');
-  if (names.has('pyproject.toml')) commands.push('python -m pytest');
-  if (names.has('requirements.txt')) commands.push('python -m pytest');
-  if (names.has('cargo.toml')) commands.push('cargo test');
-  if (names.has('go.mod')) commands.push('go test ./...');
-
-  return Array.from(new Set(commands)).slice(0, 12);
+  return _projectScannerModule.inferProjectCommands(importantContents, files);
 }
 
 function projectSnapshotSummary(snapshot) {
@@ -2330,10 +2738,21 @@ function projectSnapshotSummary(snapshot) {
 
 function projectSnapshotToContext(snapshot, objective) {
   const chunks = [];
-  chunks.push(`# Target Folder\n${snapshot.target.root}`);
+  chunks.push(`# Workspace Write Root\n${snapshot.target.root}`);
   chunks.push(`# Workspace Root\n${snapshot.target.workspaceRoot || snapshot.target.root}`);
+  if (snapshot.target.focusRelative || snapshot.target.focusFileRelative) {
+    chunks.push([
+      '# Selected Explorer Context',
+      `Type: ${snapshot.target.focusKind || 'folder'}`,
+      `Path: ${snapshot.target.focusPath || snapshot.target.root}`,
+      snapshot.target.focusRelative ? `Folder relative to workspace: ${snapshot.target.focusRelative}` : '',
+      snapshot.target.focusFileRelative ? `File relative to workspace: ${snapshot.target.focusFileRelative}` : '',
+      'Use the selected folder or file as a context hint, not as a forced output directory.',
+      'Place new files where they best fit the existing project structure: package root for project config, src/app folders for source, components folders for components, pages/routes folders for routes, and nearby tests for tests.'
+    ].filter(Boolean).join('\n'));
+  }
   chunks.push(`# Objective\n${objective}`);
-  chunks.push('Generated file edit paths must be relative to the target folder, not absolute paths.');
+  chunks.push('Generated file edit paths must be relative to the workspace write root, not absolute paths. Do not blindly place every new file in the selected folder.');
   chunks.push(`# Project Summary\n${projectSnapshotSummary(snapshot)}`);
   if (snapshot.coreScan && coreEnvelopeData(snapshot.coreScan).cache_hit !== undefined) {
     chunks.push(`# Aegis Core Workspace Scan\nContract: ${formatCoreContract(snapshot.coreScan)}\nCache hit: ${Boolean(coreEnvelopeData(snapshot.coreScan).cache_hit)}`);
@@ -2453,160 +2872,35 @@ async function expandSelectedFilesWithImports(snapshot, selectedFiles, maxFiles)
 }
 
 function extractImportSpecifiers(text) {
-  const specs = new Set();
-  const patterns = [
-    /import\s+(?:[^'"]+\s+from\s+)?['"]([^'"]+)['"]/g,
-    /require\(\s*['"]([^'"]+)['"]\s*\)/g,
-    /from\s+['"]([^'"]+)['"]/g
-  ];
-  for (const pattern of patterns) {
-    let match;
-    while ((match = pattern.exec(text)) !== null) {
-      specs.add(match[1]);
-    }
-  }
-  return Array.from(specs).slice(0, 30);
+  return _contextDiscoveryModule.extractImportSpecifiers(text);
 }
 
 function importCandidatePaths(base) {
-  const extensions = ['', '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.py', '.css', '.scss', '.json'];
-  const candidates = [];
-  for (const ext of extensions) {
-    candidates.push(`${base}${ext}`.replace(/\\/g, '/'));
-  }
-  for (const ext of extensions.filter(Boolean)) {
-    candidates.push(`${base}/index${ext}`.replace(/\\/g, '/'));
-  }
-  return candidates;
+  return _contextDiscoveryModule.importCandidatePaths(base);
 }
 
 function selectRelevantFiles(snapshot, request, options = {}) {
-  const score = new Map();
-  const knownFiles = new Set((snapshot.files || []).map((file) => file.relative.replace(/\\/g, '/')));
-  const add = (file, points) => {
-    const normalized = String(file || '').replace(/\\/g, '/').replace(/^\/+/, '');
-    if (!normalized || normalized === '.' || normalized.endsWith('/') || !knownFiles.has(normalized) || isBlockedRelativePath(normalized)) {
-      return;
-    }
-    score.set(normalized, (score.get(normalized) || 0) + points);
-  };
-  const requestText = `${request || ''}\n${options.validationText || ''}`.toLowerCase();
-  const terms = requestText
-    .replace(/[^a-z0-9_./-]+/g, ' ')
-    .split(/\s+/)
-    .filter((term) => term.length >= 3)
-    .slice(0, 80);
+  const activeEditor = vscode.window.activeTextEditor;
+  const activeEditorPath = activeEditor && activeEditor.document.uri.scheme === 'file' ? activeEditor.document.uri.fsPath : undefined;
 
-  for (const file of snapshot.importantFiles || []) add(file, 10);
-  for (const file of snapshot.entryPoints || []) add(file, 14);
-  for (const file of snapshot.configFiles || []) add(file, 8);
-  for (const item of (snapshot.recentFiles || []).slice(0, 12)) add(item.path, 5);
-  for (const diagnostic of snapshot.diagnostics || []) {
-    const match = diagnostic.match(/^- ([^:]+):/);
-    if (match) add(match[1], 16);
-  }
-  for (const hintedFile of extractFileHintsFromText(options.validationText || requestText, snapshot)) {
-    add(hintedFile, 18);
-  }
-
-  const editor = vscode.window.activeTextEditor;
-  if (editor && editor.document.uri.scheme === 'file' && isPathInside(snapshot.target.root, editor.document.uri.fsPath)) {
-    add(path.relative(snapshot.target.root, editor.document.uri.fsPath).replace(/\\/g, '/'), 20);
-  }
-
-  for (const file of snapshot.files) {
-    const normalized = file.relative.replace(/\\/g, '/');
-    const lower = normalized.toLowerCase();
-    for (const term of terms) {
-      if (lower.includes(term)) {
-        add(normalized, 7);
-      }
-    }
-  }
-
-  for (const file of inferDependencyLinks(snapshot, Array.from(score.keys()).slice(0, 8))) {
-    add(file, 6);
-  }
-  if (options.dependencyGraph && Array.isArray(options.dependencyGraph.edges)) {
-    const seeds = Array.from(score.keys()).slice(0, 12);
-    const seedSet = new Set(seeds);
-    for (const edge of options.dependencyGraph.edges) {
-      if (seedSet.has(edge.from)) add(edge.to, 6);
-      if (seedSet.has(edge.to)) add(edge.from, 4);
-    }
-  }
-  if (options.symbolIndex && Array.isArray(options.symbolIndex.symbols)) {
-    for (const symbol of options.symbolIndex.symbols.slice(0, MAX_SYMBOLS)) {
-      const haystack = `${symbol.name || ''} ${symbol.kind || ''}`.toLowerCase();
-      if (terms.some((term) => haystack.includes(term))) {
-        add(symbol.file, 9);
-      }
-    }
-  }
-
-  return Array.from(score.entries())
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-    .slice(0, options.maxFiles || 14)
-    .map(([file]) => file);
+  return _contextDiscoveryModule.selectRelevantFiles(snapshot, request, Object.assign({}, options, {
+    activeEditorPath,
+    isBlockedPath: (p) => _pathSafeModule.isBlockedRelativePath(p),
+    isPathInside: (root, candidate) => _pathSafeModule.isPathInside(root, candidate),
+    isLikelyTestFile: (p) => _projectScannerModule.isLikelyTestFile(p)
+  }));
 }
 
 function extractFileHintsFromText(text, snapshot) {
-  if (!text) {
-    return [];
-  }
-  const fileSet = new Set((snapshot.files || []).map((file) => file.relative.replace(/\\/g, '/')));
-  const hints = new Set();
-  const patterns = [
-    /([A-Za-z0-9_./\\-]+\.(?:js|jsx|ts|tsx|py|cs|rs|go|java|cpp|c|h|hpp|json|toml|yaml|yml|md))(?::\d+)?/g,
-    /File "([^"]+\.(?:py|js|ts|tsx|cs))", line \d+/g
-  ];
-  for (const pattern of patterns) {
-    let match;
-    while ((match = pattern.exec(text)) !== null) {
-      const raw = (match[1] || '').replace(/\\/g, '/').replace(/^[A-Za-z]:\//, '');
-      const exact = Array.from(fileSet).find((file) => file === raw || raw.endsWith(`/${file}`));
-      if (exact) {
-        hints.add(exact);
-      }
-      if (hints.size >= 20) {
-        return Array.from(hints);
-      }
-    }
-  }
-  return Array.from(hints);
+  return _contextDiscoveryModule.extractFileHintsFromText(text, snapshot);
 }
 
 function expandSelectedFilesWithGraph(graph, selectedFiles, maxFiles) {
-  if (!graph || !Array.isArray(graph.edges) || selectedFiles.length >= maxFiles) {
-    return selectedFiles.slice(0, maxFiles);
-  }
-  const selected = new Set(selectedFiles);
-  const seeds = selectedFiles.slice(0, 8);
-  for (const edge of graph.edges) {
-    if (selected.size >= maxFiles) break;
-    if (seeds.includes(edge.from) && edge.to) selected.add(edge.to);
-    if (selected.size >= maxFiles) break;
-    if (seeds.includes(edge.to) && edge.from) selected.add(edge.from);
-  }
-  return Array.from(selected).slice(0, maxFiles);
+  return _contextDiscoveryModule.expandSelectedFilesWithGraph(graph, selectedFiles, maxFiles);
 }
 
 function inferDependencyLinks(snapshot, seedFiles) {
-  const linked = new Set();
-  const fileSet = new Set(snapshot.files.map((file) => file.relative.replace(/\\/g, '/')));
-  for (const seed of seedFiles) {
-    const dir = path.dirname(seed).replace(/\\/g, '/');
-    const base = path.basename(seed, path.extname(seed)).toLowerCase();
-    for (const file of fileSet) {
-      const normalized = file.replace(/\\/g, '/');
-      const sameDir = dir === '.' || normalized.startsWith(`${dir}/`);
-      const fileBase = path.basename(normalized, path.extname(normalized)).toLowerCase();
-      if (sameDir && (fileBase === `${base}.test` || fileBase === `${base}.spec` || fileBase === base)) {
-        linked.add(normalized);
-      }
-    }
-  }
-  return Array.from(linked);
+  return _contextDiscoveryModule.inferDependencyLinks(snapshot, seedFiles);
 }
 
 async function collectTodoContext(maxFiles, excludeGlob, root) {
@@ -2672,8 +2966,10 @@ function buildAutopilotPrompt(objective, context) {
     'Prefer maintainable edits that match the current project direction. Never rewrite the whole project.',
     'Prefer the smallest useful change. Avoid broad refactors, new frameworks, clever abstractions, or touching files unrelated to the request.',
     'If the existing architecture is unclear, return a plan or questions with no file edits instead of guessing.',
-    'Suggest changes first. Do not assume edits will be applied automatically.',
+    'Return concrete fileEdits for requested implementation work. Aegis previews and applies those edits after approval, so do not tell the user to create, paste, or save files manually.',
+    'A selected folder or file is a focus hint for context, not a mandatory output directory. Place each generated file where it best fits the existing project structure.',
     'Do not invent files unless they are clearly useful. Do not include binary files, secrets, env files, build output, vendor folders, or dependencies.',
+    'When the user asks to create, scaffold, or set up a new project or feature, include every necessary small text file as complete fileEdits instead of tutorial instructions. Keep the result minimal and runnable.',
     'Return strict JSON only. No Markdown fence.',
     '',
     'Schema:',
@@ -2705,14 +3001,15 @@ function buildAutopilotPrompt(objective, context) {
     '  ]',
     '}',
     '',
-    'Paths in fileEdits must be relative to the target folder shown in the context.',
+    'Paths in fileEdits must be relative to the workspace write root shown in the context.',
     'Keep fileEdits small and focused. A safe development plan with no edits is better than broad speculative rewrites.',
     'For broad requests, propose at most 1-3 files in the first step unless the user explicitly asks for a larger staged change.',
-    'Only edit files included in the selected context or directly connected by imports/tests. If you must create a new file, explain why in reason.',
+    'Only edit files included in the selected context or directly connected by imports/tests. For empty or new-project requests, create the minimal new files needed and explain why in reason.',
+    'For selected-folder work, use existing conventions before the selected path: package.json belongs at the package root, app entry points belong in src/app roots, components belong in components folders, and tests belong near the code under test.',
     'Each file edit reason must say why that file is being changed and why the change is minimal.',
     'For multi-file work, divide proposed edits into staged approvals. Every stage must be independently reviewable.',
     'When editing code, identify related tests and include test updates or test recommendations.',
-    'Only include fileEdits when the complete replacement content is reasonably small and you are confident.',
+    'For explicit implementation, create, scaffold, or fix requests, prefer complete fileEdits over notes whenever the change is safe and reasonably small.',
     'If no safe edit is obvious, return notes and commands with an empty fileEdits array.',
     '',
     `Objective:\n${objective}`,
@@ -2722,53 +3019,331 @@ function buildAutopilotPrompt(objective, context) {
 }
 
 function parseProposal(raw, target, objective) {
-  let parsed;
+  return _proposalParserModule.parseProposal(raw, target, objective);
+}
+
+function attachDestinationReasoning(proposal, snapshot, target) {
+  if (!proposal || !Array.isArray(proposal.fileEdits)) {
+    return proposal;
+  }
   try {
-    parsed = parseJsonText(extractJson(raw));
+    proposal.destinationReasoning = buildDestinationReasoning(proposal, snapshot || {}, target || {});
   } catch (error) {
-    parsed = {
-      summary: 'Model returned non-JSON output; saved as notes.',
-      risk: 'medium',
-      notes: [raw],
-      fileEdits: [],
-      commands: [],
-      tests: []
-    };
+    output && output.appendLine(`Destination reasoning unavailable: ${safeErrorMessage(error)}`);
+    proposal.destinationReasoning = [];
+  }
+  return proposal;
+}
+
+function markDestinationSafetyFromValidations(proposal, validations) {
+  if (!proposal || !Array.isArray(proposal.destinationReasoning) || !Array.isArray(validations)) {
+    return proposal;
+  }
+  const byPath = new Map(validations.map((item) => [
+    item && item.edit && typeof item.edit.path === 'string' ? item.edit.path.replace(/\\/g, '/').replace(/^\/+/, '') : '',
+    item
+  ]));
+  proposal.destinationReasoning = proposal.destinationReasoning.map((entry) => {
+    const validation = byPath.get(entry.path);
+    if (!validation) {
+      return entry;
+    }
+    const safety = Object.assign({}, entry.safety || {});
+    safety.rejected = !validation.ok;
+    safety.status = validation.ok
+      ? (safety.status || 'accepted')
+      : `rejected: ${validation.reason || 'blocked by safety rules'}`;
+    return Object.assign({}, entry, { safety });
+  });
+  return proposal;
+}
+
+function looksLikeWorkspaceChangeRequest(text) {
+  const normalized = String(text || '').trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+  if (/^(how|what|why|where|when|which|explain|describe|tell me|show me)\b/.test(normalized)) {
+    return false;
+  }
+  if (/\b(do not|don't|without changing|no changes|just explain|only explain|question only)\b/.test(normalized)) {
+    return false;
+  }
+  const changeVerb = /\b(create|build|make|implement|add|generate|scaffold|set up|setup|write|fix|change|update|refactor|convert|remove|rename|wire|hook up)\b/;
+  const workspaceNoun = /\b(project|app|application|file|files|component|page|screen|feature|test|tests|code|script|function|class|endpoint|api|route|website|game|extension|plugin|workspace|build|error|bug|issue|failure)\b/;
+  return changeVerb.test(normalized) && (workspaceNoun.test(normalized) || /^(create|build|make|scaffold|generate)\b/.test(normalized));
+}
+
+function proposalObjectFromInstructionalCodeBlocks(raw, objective) {
+  const blocks = extractFencedCodeBlocks(raw);
+  if (!blocks.length || !shouldInferFileEditsFromCodeBlocks(raw, objective, blocks)) {
+    return null;
   }
 
-  const fileEdits = Array.isArray(parsed.fileEdits) ? parsed.fileEdits : [];
-  const commands = Array.isArray(parsed.commands) ? parsed.commands : [];
-  const proposal = {
-    objective,
-    createdAt: new Date().toISOString(),
-    workspace: target.root,
-    targetRoot: target.root,
-    targetLabel: target.label,
-    workspaceRoot: target.workspaceRoot || target.root,
-    summary: String(parsed.summary || '').trim(),
-    risk: String(parsed.risk || 'medium').trim(),
-    confidenceScore: normalizeConfidenceScore(parsed.confidenceScore),
-    approachRationale: sanitizeMemoryText(String(parsed.approachRationale || parsed.rationale || '').trim()),
-    notes: Array.isArray(parsed.notes) ? parsed.notes.map(String) : [],
-    fileEdits: fileEdits
-      .filter((edit) => edit && typeof edit.path === 'string' && typeof edit.content === 'string')
-      .map((edit) => ({
-        path: edit.path.replace(/\\/g, '/').replace(/^\/+/, ''),
-        reason: String(edit.reason || ''),
-        content: normalizeLineEndings(edit.content)
-      })),
-    commands: commands
-      .filter((command) => command && typeof command.command === 'string')
-      .map((command) => ({
-        command: command.command,
-        reason: String(command.reason || '')
-      })),
-    tests: Array.isArray(parsed.tests) ? parsed.tests.map(String) : [],
-    impactAnalysis: normalizeModelImpactAnalysis(parsed.impactAnalysis),
-    stages: normalizeModelStages(parsed.stages)
+  const usedPaths = new Set();
+  const fileEdits = [];
+  for (const block of blocks) {
+    const inferredPath = inferCodeBlockPath(raw, block, objective, usedPaths, blocks.length);
+    if (!inferredPath) {
+      continue;
+    }
+    usedPaths.add(inferredPath.toLowerCase());
+    fileEdits.push({
+      path: inferredPath,
+      reason: 'Converted generated code into an Aegis file edit so the extension can create the file after approval.',
+      content: normalizeLineEndings(block.content.replace(/\s+$/, '')) + '\n'
+    });
+  }
+
+  if (!fileEdits.length) {
+    return null;
+  }
+
+  return {
+    summary: `Create ${fileEdits.length} generated file${fileEdits.length === 1 ? '' : 's'} for the requested workspace change.`,
+    risk: fileEdits.length > 4 ? 'medium' : 'low',
+    confidenceScore: 0.62,
+    approachRationale: 'The local model returned instructional code blocks. Aegis converted safe file-looking blocks into proposal edits instead of asking the user to paste files manually.',
+    notes: [
+      'Fallback parser used because the model response did not provide strict proposal JSON with fileEdits.',
+      'Review the diff before applying; inferred file paths come from nearby filename hints or language-based defaults.'
+    ],
+    fileEdits,
+    commands: extractCommandRecommendationsFromCodeBlocks(blocks),
+    tests: ['Review generated files, apply the proposal, then run the detected validation command or project start command.'],
+    impactAnalysis: {
+      likelyAffectedFiles: fileEdits.map((edit) => edit.path),
+      riskLevel: fileEdits.length > 4 ? 'medium' : 'low',
+      relatedValidation: [],
+      possibleBreakingPoints: ['Inferred filenames may need adjustment if the model did not label each code block.'],
+      rollbackPlan: 'Use the Aegis checkpoint backup created before applying the proposal.'
+    },
+    stages: [{
+      name: 'Stage 1: generated project files',
+      goal: 'Create the requested files from the generated implementation.',
+      files: fileEdits.map((edit) => edit.path),
+      risk: fileEdits.length > 4 ? 'medium' : 'low',
+      approvalRequired: true
+    }]
   };
-  proposal.stages = normalizeProposalStages(proposal, proposal.impactAnalysis);
-  return proposal;
+}
+
+function shouldInferFileEditsFromCodeBlocks(raw, objective, blocks) {
+  if (!blocks.some((block) => !isShellLanguage(block.language))) {
+    return false;
+  }
+  if (looksLikeWorkspaceChangeRequest(objective)) {
+    return true;
+  }
+  return /(?:create|save|copy|paste|put|place).*?(?:file|folder|project|app)|(?:filename|path|save as)/i.test(String(raw || ''));
+}
+
+function extractFencedCodeBlocks(raw) {
+  const blocks = [];
+  const pattern = /```([^\n`]*)\n([\s\S]*?)```/g;
+  let match;
+  while ((match = pattern.exec(String(raw || ''))) !== null) {
+    const info = String(match[1] || '').trim();
+    const content = String(match[2] || '');
+    if (!content.trim()) {
+      continue;
+    }
+    blocks.push({
+      info,
+      language: normalizeFenceLanguage(info),
+      content,
+      start: match.index,
+      end: pattern.lastIndex
+    });
+  }
+  return blocks;
+}
+
+function normalizeFenceLanguage(info) {
+  const first = String(info || '').trim().split(/\s+/)[0].toLowerCase();
+  const aliases = {
+    javascript: 'js',
+    typescript: 'ts',
+    html5: 'html',
+    shell: 'sh',
+    bash: 'sh',
+    powershell: 'ps1',
+    text: ''
+  };
+  return aliases[first] === undefined ? first : aliases[first];
+}
+
+function inferCodeBlockPath(raw, block, objective, usedPaths, blockCount) {
+  const fromFence = extractFilePathHint(block.info);
+  if (fromFence && !usedPaths.has(fromFence.toLowerCase())) {
+    return fromFence;
+  }
+
+  const before = String(raw || '').slice(Math.max(0, block.start - 700), block.start);
+  const fromContext = extractFilePathHint(before);
+  if (fromContext && !usedPaths.has(fromContext.toLowerCase())) {
+    return fromContext;
+  }
+
+  if (isShellLanguage(block.language)) {
+    return '';
+  }
+  const fallback = filePathFromLanguageAndContent(block.language, block.content, objective, usedPaths, blockCount);
+  return fallback || '';
+}
+
+function extractFilePathHint(text) {
+  const lines = String(text || '').split(/\r?\n/).slice(-10).reverse();
+  for (const line of lines) {
+    const candidates = collectFilePathCandidates(line);
+    for (const candidate of candidates) {
+      const normalized = normalizePotentialGeneratedPath(candidate);
+      if (normalized) {
+        return normalized;
+      }
+    }
+  }
+  return '';
+}
+
+function collectFilePathCandidates(line) {
+  const candidates = [];
+  const extensionPattern = '(?:html|css|scss|sass|less|js|jsx|ts|tsx|mjs|cjs|json|jsonc|md|txt|py|cs|java|go|rs|toml|yaml|yml|xml|xaml|sln|slnx|csproj|fsproj|vbproj|props|targets|ps1|sh|bat|cmd|sql|svg)';
+  const patterns = [
+    new RegExp('[`"\']([^`"\']+\\.' + extensionPattern + ')[`"\']', 'gi'),
+    new RegExp('(?:file|path|filename|save as|create(?: file)?|add|update|write|in)\\s*:?\\s*([A-Za-z0-9_.@/\\\\-]+\\.' + extensionPattern + ')', 'gi'),
+    new RegExp('(?:^|\\s)([A-Za-z0-9_.@/\\\\-]+\\.' + extensionPattern + ')(?=\\s|$|:)', 'gi')
+  ];
+  for (const pattern of patterns) {
+    let match;
+    while ((match = pattern.exec(line)) !== null) {
+      candidates.push(match[1]);
+    }
+  }
+  return candidates;
+}
+
+function normalizePotentialGeneratedPath(value) {
+  let cleaned = String(value || '').trim();
+  cleaned = cleaned.replace(/^[`'"\s]+|[`'"\s,.;:]+$/g, '').replace(/[)\]]+$/g, '');
+  cleaned = cleaned.replace(/\\/g, '/');
+  if (!cleaned || /^[A-Za-z]:\//.test(cleaned) || cleaned.startsWith('~') || cleaned.includes('://')) {
+    return '';
+  }
+  cleaned = cleaned.replace(/^\.?\//, '').replace(/^\/+/, '');
+  if (!pathLooksLikeFile(cleaned)) {
+    return '';
+  }
+  const segments = cleaned.split('/').filter(Boolean);
+  if (!segments.length || segments.some((segment) => segment === '.' || segment === '..' || /\s/.test(segment))) {
+    return '';
+  }
+  if (isBlockedRelativePath(cleaned)) {
+    return '';
+  }
+  return cleaned;
+}
+
+function pathLooksLikeFile(relativePath) {
+  const normalized = String(relativePath || '').replace(/\\/g, '/');
+  if (!normalized || normalized.length > 180 || normalized.endsWith('/')) {
+    return false;
+  }
+  const basename = path.posix.basename(normalized);
+  return /^[A-Za-z0-9_.@+-]+\.(?:html|css|scss|sass|less|js|jsx|ts|tsx|mjs|cjs|json|jsonc|md|txt|py|cs|java|go|rs|toml|yaml|yml|xml|xaml|sln|slnx|csproj|fsproj|vbproj|props|targets|ps1|sh|bat|cmd|sql|svg)$/i.test(basename);
+}
+
+function isShellLanguage(language) {
+  return /^(sh|zsh|fish|ps1|cmd|bat|console|terminal|powershell|shell|bash|diff)$/i.test(String(language || '').trim());
+}
+
+function filePathFromLanguageAndContent(language, content, objective, usedPaths, blockCount) {
+  const lang = normalizeFenceLanguage(language);
+  const text = String(content || '').trim();
+  const objectiveText = String(objective || '').toLowerCase();
+  const candidates = [];
+  const hasJsx = /<[A-Z][A-Za-z0-9]*(?:\s|>)|<>\s*[\s\S]*<\/>/m.test(text);
+  const startsWithJsonObject = text.charCodeAt(0) === 123;
+
+  if (lang === 'html' || /<!doctype html/i.test(text) || /<html[\s>]/i.test(text)) {
+    candidates.push('index.html');
+  } else if (lang === 'css' || lang === 'scss' || lang === 'sass' || lang === 'less') {
+    candidates.push('styles.css', 'src/styles.css');
+  } else if (lang === 'json') {
+    if (/"scripts"\s*:|"(dependencies|devDependencies)"\s*:/i.test(text) || (startsWithJsonObject && /"name"\s*:/i.test(text))) {
+      candidates.push('package.json');
+    } else if (/"compilerOptions"\s*:/i.test(text)) {
+      candidates.push('tsconfig.json');
+    } else {
+      candidates.push('data.json');
+    }
+  } else if (lang === 'md' || lang === 'markdown') {
+    candidates.push('README.md');
+  } else if (lang === 'py' || lang === 'python') {
+    candidates.push('main.py', 'app.py');
+  } else if (lang === 'cs' || lang === 'csharp') {
+    candidates.push('Program.cs');
+  } else if (lang === 'tsx') {
+    candidates.push(/createRoot|ReactDOM/i.test(text) ? 'src/main.tsx' : 'src/App.tsx');
+  } else if (lang === 'jsx' || hasJsx) {
+    candidates.push(/createRoot|ReactDOM/i.test(text) ? 'src/main.jsx' : 'src/App.jsx');
+  } else if (lang === 'ts') {
+    candidates.push('src/index.ts', 'index.ts');
+  } else if (lang === 'js' || lang === 'mjs' || lang === 'cjs' || (!lang && /function|const|let|document\.|import\s|export\s/.test(text))) {
+    if (/express\s*\(/i.test(text)) {
+      candidates.push('server.js');
+    } else if (/document\.|addEventListener|querySelector/i.test(text)) {
+      candidates.push('script.js', 'src/main.js');
+    } else if (/react|jsx|createRoot|ReactDOM/i.test(text) || objectiveText.includes('react')) {
+      candidates.push('src/App.jsx', 'src/main.jsx');
+    } else {
+      candidates.push('index.js');
+    }
+  }
+
+  if (!candidates.length && blockCount === 1 && looksLikeWorkspaceChangeRequest(objective)) {
+    candidates.push('index.txt');
+  }
+  return firstUnusedPath(candidates, usedPaths);
+}
+
+function firstUnusedPath(candidates, usedPaths) {
+  for (const candidate of candidates) {
+    const normalized = normalizePotentialGeneratedPath(candidate);
+    if (normalized && !usedPaths.has(normalized.toLowerCase())) {
+      return normalized;
+    }
+  }
+  return '';
+}
+
+function extractCommandRecommendationsFromCodeBlocks(blocks) {
+  const commands = [];
+  for (const block of blocks) {
+    if (!isShellLanguage(block.language)) {
+      continue;
+    }
+    for (const rawLine of block.content.split(/\r?\n/)) {
+      const command = rawLine.replace(/^\s*\$\s*/, '').trim();
+      if (isReasonableSuggestedCommand(command)) {
+        commands.push({
+          command,
+          reason: 'Suggested by the generated implementation response.'
+        });
+      }
+      if (commands.length >= 5) {
+        return commands;
+      }
+    }
+  }
+  return commands;
+}
+
+function isReasonableSuggestedCommand(command) {
+  if (!command || command.length > 180 || /^\s*(#|\/\/)/.test(command)) {
+    return false;
+  }
+  return !/\b(rm\s+-rf|del\s+\/[fsq]|format\s+|shutdown|reboot)\b/i.test(command);
 }
 
 async function openProposalDocument(proposal) {
@@ -2786,12 +3361,22 @@ async function openMarkdownResult(title, content) {
 }
 
 async function getOllamaModels(options = {}) {
+  const cfg = getConfig();
+  const target = options.target !== undefined ? options.target : await resolveWorkspaceTarget(undefined, { silent: true });
+  const cacheKey = `${cfg.ollamaUrl}|${cfg.coreUrl}|${target && target.root ? target.root : ''}|${options.skipCore ? 'direct' : 'core'}`;
+  if (!options.bypassModelCache && ollamaModelsListCache.models && ollamaModelsListCache.key === cacheKey && Date.now() < ollamaModelsListCache.until) {
+    return ollamaModelsListCache.models;
+  }
+
   if (!options.skipCore) {
-    const target = options.target || await resolveWorkspaceTarget(undefined, { silent: true });
     try {
       const coreModels = await getAegisCoreModels(target);
       if (coreModels.reachable || coreModels.models.length) {
-        return coreModels.models;
+        const models = coreModels.models;
+        if (!options.bypassModelCache) {
+          ollamaModelsListCache = { key: cacheKey, models: models.slice(), until: Date.now() + OLLAMA_MODELS_CACHE_MS };
+        }
+        return models;
       }
       throw new Error(coreModels.error || 'Aegis Core model contract reported that Ollama is unreachable.');
     } catch (error) {
@@ -2801,8 +3386,136 @@ async function getOllamaModels(options = {}) {
     }
   }
 
-  const json = await requestJson(serviceUrl(getConfig().ollamaUrl, '/api/tags'), undefined, 120000);
-  return Array.isArray(json.models) ? json.models.map((model) => Object.assign({ source: 'ollama' }, model)) : [];
+  const json = await requestJson(serviceUrl(cfg.ollamaUrl, '/api/tags'), undefined, 120000);
+  const models = Array.isArray(json.models) ? json.models.map((model) => Object.assign({ source: 'ollama' }, model)) : [];
+  if (!options.bypassModelCache) {
+    ollamaModelsListCache = { key: cacheKey, models: models.slice(), until: Date.now() + OLLAMA_MODELS_CACHE_MS };
+  }
+  return models;
+}
+
+function isCoreModelSource(source) {
+  return String(source || '').startsWith('aegis-core');
+}
+
+function refreshCoreRuntimeClients() {
+  const config = getConfig();
+  const version = extensionContext && extensionContext.extension && extensionContext.extension.packageJSON
+    ? extensionContext.extension.packageJSON.version || 'unknown'
+    : 'unknown';
+  coreClient = createAegisCoreClient({
+    baseUrl: config.coreUrl,
+    output,
+    version,
+    clientId: 'aegis-vscode',
+    clientType: 'vscode-extension',
+    name: 'Aegis Local Agent for VS Code'
+  });
+  workflowClient = createWorkflowClient(coreClient, { sourceClient: 'vscode-extension' });
+  runtimeState.configure(config.coreUrl);
+  return coreClient;
+}
+
+function getCoreRuntimeClient() {
+  if (!coreClient || coreClient.baseUrl !== getConfig().coreUrl) {
+    return refreshCoreRuntimeClients();
+  }
+  return coreClient;
+}
+
+function getWorkflowRuntimeClient() {
+  if (!workflowClient || !coreClient || coreClient.baseUrl !== getConfig().coreUrl) {
+    refreshCoreRuntimeClients();
+  }
+  return workflowClient;
+}
+
+function recordRuntimeOperation(operation, runtime, status, detail, metadata = {}) {
+  const snapshot = runtimeState.recordOperation(Object.assign({
+    operation,
+    runtime,
+    status,
+    detail: redactDiagnosticText(detail || '')
+  }, metadata));
+  if (runtimeLogger) {
+    if (runtime === 'local') {
+      runtimeLogger.fallback(operation, detail || 'Core unavailable', metadata);
+    } else {
+      runtimeLogger.core(operation, `${status}: ${detail || ''}`, metadata);
+    }
+  }
+  panelProvider && panelProvider.post({ command: 'runtime', runtime: snapshot });
+  return snapshot;
+}
+
+function recordCoreConnected(envelope, detail) {
+  const text = detail || formatCoreContract(envelope);
+  const snapshot = runtimeState.markCoreConnected(text);
+  panelProvider && panelProvider.post({ command: 'runtime', runtime: snapshot });
+  return snapshot;
+}
+
+function recordCoreDisconnected(error, operation = 'core') {
+  const message = safeErrorMessage(error);
+  const snapshot = runtimeState.markCoreDisconnected(message);
+  recordRuntimeOperation(operation, 'local', 'fallback', message);
+  panelProvider && panelProvider.post({ command: 'runtime', runtime: snapshot });
+  return snapshot;
+}
+
+async function refreshCoreRuntimeDashboard(target) {
+  if (!target) {
+    return runtimeState.snapshot();
+  }
+  try {
+    const client = getCoreRuntimeClient();
+    const dashboard = await client.clientSyncDashboard(target, { limit: 30 });
+    runtimeState.mergeClientSyncDashboard(dashboard);
+    const checkpoints = await client.listCheckpoints(target, { limit: 10 }).catch(() => null);
+    if (checkpoints) {
+      runtimeState.setCheckpoints(coreEnvelopeData(checkpoints).checkpoints || []);
+    }
+    const quality = await client.qualityGates(target, { limit: 20 }).catch(() => null);
+    if (quality) {
+      runtimeState.setQualityGates(quality);
+    }
+    recordCoreConnected(dashboard, 'Client sync dashboard connected.');
+  } catch (error) {
+    runtimeState.markCoreDisconnected(safeErrorMessage(error));
+  }
+  return runtimeState.snapshot();
+}
+
+function startCoreWorkflowEventRefresh(target, workflowId) {
+  if (!target || !workflowId) {
+    return;
+  }
+  getWorkflowRuntimeClient().events(target, {
+    workflowId,
+    follow: true,
+    limit: 25,
+    maxSeconds: 5,
+    timeoutMs: 15000,
+    onEvent: (event) => {
+      runtimeState.appendWorkflowEvents([event]);
+      const summary = event && event.data ? event.data : event;
+      if (summary && typeof summary === 'object') {
+        runtimeState.setActiveWorkflow({
+          id: summary.workflow_id || workflowId,
+          workflow_type: summary.workflow_type || runtimeState.snapshot().activeWorkflowType,
+          status: summary.status || runtimeState.snapshot().activeWorkflowStatus
+        });
+      }
+      panelProvider && panelProvider.post({ command: 'runtime', runtime: runtimeState.snapshot() });
+    }
+  }).then((events) => {
+    if (events && events.length) {
+      runtimeState.appendWorkflowEvents(events);
+      panelProvider && panelProvider.post({ command: 'runtime', runtime: runtimeState.snapshot() });
+    }
+  }).catch((error) => {
+    output && output.appendLine(`Aegis Core workflow event stream unavailable: ${safeErrorMessage(error)}`);
+  });
 }
 
 function coreUrl(pathname, target) {
@@ -2824,90 +3537,65 @@ async function postAegisCoreEnvelope(pathname, body, expectedKind, timeoutMs = 1
 }
 
 function validateAegisCoreEnvelope(envelope, expectedKind) {
-  if (!envelope || typeof envelope !== 'object') {
-    throw new Error('Aegis Core response was not a JSON object.');
-  }
-  const apiVersion = typeof envelope.api_version === 'string' ? envelope.api_version : '';
-  if (apiVersion !== AEGIS_CORE_API_VERSION) {
-    throw new Error(`Aegis Core response used unexpected api_version: ${apiVersion ? redactDiagnosticText(apiVersion) : 'missing'}.`);
-  }
-  const kind = typeof envelope.kind === 'string' ? envelope.kind : '';
-  if (expectedKind && kind !== expectedKind) {
-    throw new Error(`Aegis Core response kind mismatch: expected ${expectedKind}, got ${kind ? redactDiagnosticText(kind) : 'missing'}.`);
-  }
-  return envelope;
+  return validateCoreEnvelope(envelope, expectedKind, { redactDiagnosticText });
 }
 
 function requireAegisCoreOk(envelope, action) {
-  if (envelope && envelope.ok === false) {
-    throw new Error(`Aegis Core could not ${action}: ${coreEnvelopeError(envelope)}`);
-  }
-  return envelope;
-}
-
-function coreEnvelopeError(envelope) {
-  const data = coreEnvelopeData(envelope);
-  const detail = data.error || data.message || (Array.isArray(envelope.deprecations) && envelope.deprecations.join('; ')) || '';
-  return detail ? redactDiagnosticText(detail) || 'Core returned ok=false.' : 'Core returned ok=false.';
-}
-
-function coreEnvelopeData(envelope) {
-  return envelope && envelope.data && typeof envelope.data === 'object' ? envelope.data : {};
-}
-
-function formatCoreContract(envelope) {
-  const version = envelope && envelope.contract_version ? envelope.contract_version : 'unknown contract';
-  const stability = envelope && envelope.stability ? envelope.stability : 'unknown stability';
-  const compatibility = version !== AEGIS_CORE_CONTRACT_VERSION ? `; tested ${AEGIS_CORE_CONTRACT_VERSION}` : '';
-  return `contract ${version} (${stability}${compatibility})`;
+  return requireCoreOk(envelope, action, { redactDiagnosticText });
 }
 
 async function getAegisCoreHealth(target) {
-  return getAegisCoreEnvelope('/v1/health', target, 'health');
+  const envelope = await getCoreRuntimeClient().health(target);
+  recordCoreConnected(envelope);
+  return envelope;
 }
 
 async function getAegisCoreModels(target) {
-  const envelope = await getAegisCoreEnvelope('/v1/models', target, 'models');
-  const data = coreEnvelopeData(envelope);
-  const models = Array.isArray(data.installed_models)
-    ? data.installed_models.map((name) => ({ name, model: name, source: 'aegis-core' }))
-    : [];
-  return {
-    envelope,
-    models,
-    reachable: Boolean(data.reachable),
-    selectedModel: data.selected_model || '',
-    missingModels: Array.isArray(data.missing_models) ? data.missing_models : [],
-    error: data.error || ''
-  };
+  const result = await getCoreRuntimeClient().models(target);
+  recordCoreConnected(result.envelope);
+  return result;
 }
 
 async function getAegisCoreSettings(target) {
-  return getAegisCoreEnvelope('/v1/settings', target, 'settings');
+  return getCoreRuntimeClient().settings(target);
 }
 
 async function getAegisCoreWorkspaceScan(target) {
-  return postAegisCoreEnvelope('/v1/workspaces/scan', { workspace: target.root }, 'workspace.scan', 180000);
+  const envelope = await getCoreRuntimeClient().workspaceScan(target);
+  recordRuntimeOperation('workspace-scan', 'core', 'completed', 'Workspace scan delegated to Aegis Core.');
+  return envelope;
 }
 
 async function getAegisCoreMemory(target) {
-  return getAegisCoreEnvelope('/v1/memory', target, 'memory.summary');
+  return getCoreRuntimeClient().memory(target);
 }
 
 async function getAegisCoreDiagnostics(target) {
-  return getAegisCoreEnvelope('/v1/diagnostics', target, 'diagnostics.summary');
+  return getCoreRuntimeClient().diagnostics(target);
 }
 
 async function getAegisCoreValidationSummary(target) {
-  return postAegisCoreEnvelope('/v1/validation', { workspace: target.root, run: false }, 'validation');
+  return getCoreRuntimeClient().validationSummary(target);
 }
 
 async function tryGenerateAegisCoreRoadmap(target) {
   try {
     updateStatusBar('Indexing', 'Aegis Core is generating the shared roadmap.');
-    const envelope = await postAegisCoreEnvelope('/v1/workspaces/roadmap', { workspace: target.root }, 'workspace.roadmap', 180000);
+    const roadmapWorkflow = await getWorkflowRuntimeClient().continueRoadmap(target, 'Generate or update the shared project roadmap.', {
+      command: 'generateProjectRoadmap',
+      model: getConfig().chatModel,
+      safetyMode: getConfig().safetyMode
+    }).catch(() => null);
+    if (roadmapWorkflow && roadmapWorkflow.id) {
+      activeCoreWorkflowId = roadmapWorkflow.id;
+      runtimeState.setActiveWorkflow(roadmapWorkflow.summary);
+    }
+    const envelope = await getCoreRuntimeClient().roadmap(target);
     const data = coreEnvelopeData(envelope);
     output && output.appendLine(`Aegis Core updated roadmap via ${formatCoreContract(envelope)}.`);
+    recordRuntimeOperation('roadmap', 'core', 'completed', 'Project roadmap delegated to Aegis Core.', {
+      workflowId: activeCoreWorkflowId
+    });
     return {
       envelope,
       roadmapPath: data.roadmap_path || '',
@@ -2915,6 +3603,7 @@ async function tryGenerateAegisCoreRoadmap(target) {
     };
   } catch (error) {
     output && output.appendLine(`Aegis Core roadmap unavailable; using VS Code local roadmap fallback: ${safeErrorMessage(error)}`);
+    recordCoreDisconnected(error, 'roadmap');
     vscode.window.showWarningMessage('Aegis Core roadmap generation is unavailable, so VS Code will use its local model fallback.');
     return null;
   }
@@ -2941,13 +3630,13 @@ async function runAegisCoreValidation(target) {
     validationOutput: `$ ${commandParts.join(' ')}\nAegis Core is running shared validation.`
   });
 
-  const runEnvelope = await postAegisCoreEnvelope(
-    '/v1/validation',
-    { workspace: target.root, run: true, command: commandParts },
-    'validation',
-    360000
-  );
-  const result = coreEnvelopeData(runEnvelope);
+  const runEnvelope = await getCoreRuntimeClient().runValidation(target, {
+    command: commandParts,
+    timeoutSeconds: 300,
+    taskId: activeCoreTaskId || null
+  });
+  const runData = coreEnvelopeData(runEnvelope);
+  const result = runData.validation || {};
   const outputText = [result.stdout, result.stderr].filter(Boolean).join('\n') || (result.ok ? 'Validation passed.' : 'Validation failed.');
   const commandText = Array.isArray(result.command) ? result.command.join(' ') : commandParts.join(' ');
   const commandResult = {
@@ -2961,6 +3650,16 @@ async function runAegisCoreValidation(target) {
   if (!commandResult.success) {
     lastFailedCommand = commandText;
   }
+  runtimeState.setLatestValidation({
+    ok: commandResult.success,
+    success: commandResult.success,
+    command: commandText,
+    source: 'aegis-core'
+  });
+  recordRuntimeOperation('validation', 'core', commandResult.success ? 'completed' : 'failed', commandResult.success ? 'Validation passed in Core.' : 'Validation failed in Core.', {
+    jobId: runData.job_id || '',
+    workflowId: activeCoreWorkflowId || ''
+  });
   return {
     success: commandResult.success,
     skipped: false,
@@ -2976,31 +3675,21 @@ async function registerAegisCoreClient(target) {
     return false;
   }
   try {
-    const envelope = await requestJson(coreUrl('/v1/clients/register'), {
-      workspace: resolvedTarget.root,
-      client_id: 'aegis-vscode',
-      client_type: 'vscode-extension',
-      name: 'Aegis Local Agent for VS Code',
-      version: extensionContext && extensionContext.extension && extensionContext.extension.packageJSON
-        ? extensionContext.extension.packageJSON.version || 'unknown'
-        : 'unknown',
-      capabilities: [
-        'core-contracts',
-        'core-models',
-        'core-workspace-scan',
-        'core-roadmap',
-        'core-memory',
-        'core-diagnostics',
-        'core-validation',
-        'diff-preview',
-        'safe-apply',
-        'local-fallbacks'
-      ]
-    }, 120000);
-    requireAegisCoreOk(validateAegisCoreEnvelope(envelope, 'client.registered'), 'register the VS Code client');
+    const registration = await getCoreRuntimeClient().registerClient(resolvedTarget, {
+      activeWorkflowId: activeCoreWorkflowId || activeCoreTaskId || null,
+      capabilities: defaultCapabilities(),
+      metadata: {
+        active_task_id: activeCoreTaskId || '',
+        safety_mode: getConfig().safetyMode,
+        fallback_mode: runtimeState.snapshot().fallbackMode
+      }
+    });
+    requireAegisCoreOk(registration.envelope, 'register the VS Code client');
+    recordCoreConnected(registration.envelope, `VS Code client ${registration.mode === 'sync' ? 'synced' : 'registered'} with Core.`);
     return true;
   } catch (error) {
     output && output.appendLine(`Aegis Core registration skipped: ${safeErrorMessage(error)}`);
+    recordCoreDisconnected(error, 'client-registration');
     return false;
   }
 }
@@ -3048,6 +3737,10 @@ async function askOllamaWithFallback(model, prompt, options = {}) {
   let lastError;
 
   for (let index = 0; index < uniqueCandidates.length; index += 1) {
+    if (options.cancellationToken && options.cancellationToken.isCancellationRequested) {
+      updateAgentState({ status: 'Local model call failed' });
+      throw new Error('Aegis request was cancelled.');
+    }
     const candidate = uniqueCandidates[index];
     const started = Date.now();
     const attemptLabel = uniqueCandidates.length > 1 ? `model ${index + 1}/${uniqueCandidates.length}` : 'primary model';
@@ -3093,7 +3786,7 @@ async function askOllama(model, prompt, options = {}) {
     ],
     options: {
       temperature: options.temperature === undefined ? 0.2 : options.temperature,
-      num_ctx: 32768
+      num_ctx: getEffectiveOllamaNumCtx(getConfig())
     }
   };
 
@@ -3106,7 +3799,12 @@ async function askOllama(model, prompt, options = {}) {
     json: Boolean(options.json),
     promptChars: typeof prompt === 'string' ? prompt.length : 0
   }).catch(() => {});
-  const json = await requestJson(serviceUrl(getConfig().ollamaUrl, '/api/chat'), body, options.timeoutMs || 600000);
+  const json = await requestJson(
+    serviceUrl(getConfig().ollamaUrl, '/api/chat'),
+    body,
+    options.timeoutMs || 600000,
+    options.cancellationToken
+  );
   const elapsed = ((Date.now() - started) / 1000).toFixed(1);
   const content = json && json.message && typeof json.message.content === 'string' ? json.message.content : JSON.stringify(json);
   output.appendLine(`Ollama ${selectedModel} completed in ${elapsed}s.`);
@@ -3117,48 +3815,85 @@ async function askOllama(model, prompt, options = {}) {
   return content.trim();
 }
 
-function requestJson(url, body, timeoutMs) {
+function requestJson(url, body, timeoutMs, cancellationToken) {
   return new Promise((resolve, reject) => {
+    let settled = false;
+    let cancelDisposable;
+    const finish = (kind, value) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      if (cancelDisposable) {
+        cancelDisposable.dispose();
+        cancelDisposable = undefined;
+      }
+      if (kind === 'resolve') {
+        resolve(value);
+      } else {
+        reject(value);
+      }
+    };
+
+    if (cancellationToken && cancellationToken.isCancellationRequested) {
+      finish('reject', new Error('Aegis request was cancelled.'));
+      return;
+    }
+    if (cancellationToken) {
+      cancelDisposable = cancellationToken.onCancellationRequested(() => {
+        if (httpReq && !httpReq.destroyed) {
+          httpReq.destroy(new Error('Aegis request was cancelled.'));
+        }
+      });
+    }
+
     const isHttps = url.protocol === 'https:';
     const data = body ? Buffer.from(JSON.stringify(body), 'utf8') : undefined;
-    const request = (isHttps ? https : http).request({
+    const extVer = extensionContext && extensionContext.extension && extensionContext.extension.packageJSON
+      ? extensionContext.extension.packageJSON.version || '0'
+      : '0';
+    const baseHeaders = {
+      Accept: 'application/json',
+      'User-Agent': `Aegis-Local-Agent-VSCode/${extVer}`
+    };
+    const httpReq = (isHttps ? https : http).request({
       protocol: url.protocol,
       hostname: url.hostname,
       port: url.port,
       path: `${url.pathname}${url.search}`,
       method: body ? 'POST' : 'GET',
       headers: body
-        ? {
+        ? Object.assign({}, baseHeaders, {
             'Content-Type': 'application/json',
             'Content-Length': data.length
-          }
-        : {}
+          })
+        : baseHeaders
     }, (response) => {
       const chunks = [];
       response.on('data', (chunk) => chunks.push(chunk));
       response.on('end', () => {
         const text = Buffer.concat(chunks).toString('utf8');
         if (response.statusCode < 200 || response.statusCode >= 300) {
-          reject(new Error(formatHttpError(response.statusCode, text)));
+          finish('reject', new Error(formatHttpError(response.statusCode, text)));
           return;
         }
         try {
-          resolve(parseJsonText(text));
+          finish('resolve', parseJsonText(text));
         } catch (error) {
-          reject(new Error(`Invalid JSON from ${formatRequestTarget(url)}: ${error.message}`));
+          finish('reject', new Error(`Invalid JSON from ${formatRequestTarget(url)}: ${error.message}`));
         }
       });
     });
 
-    request.on('error', reject);
-    request.setTimeout(timeoutMs, () => {
-      request.destroy(new Error(`Timed out calling ${formatRequestTarget(url)}`));
+    httpReq.on('error', (err) => finish('reject', err));
+    httpReq.setTimeout(timeoutMs, () => {
+      httpReq.destroy(new Error(`Timed out calling ${formatRequestTarget(url)}`));
     });
 
     if (data) {
-      request.write(data);
+      httpReq.write(data);
     }
-    request.end();
+    httpReq.end();
   });
 }
 
@@ -3213,31 +3948,11 @@ function sanitizeHttpErrorText(text) {
 }
 
 function safeErrorMessage(error, maxChars = 700) {
-  const raw = error && error.message ? error.message : String(error || '');
-  return redactDiagnosticText(raw || 'Unknown error.', maxChars) || 'Error detail was redacted.';
+  return _errorsModule.safeErrorMessage(error, maxChars);
 }
 
 function redactDiagnosticText(text, maxChars = 700) {
-  let cleaned = String(text || '')
-    .replace(/[\r\n\t]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  if (!cleaned) {
-    return '';
-  }
-
-  cleaned = cleaned
-    .replace(/\b(https?:\/\/)[^/\s:@]+:[^@\s/]+@/gi, '$1[redacted]@')
-    .replace(/([?&](?:x-api-key|api[_-]?key|api[_-]?token|access[_-]?token|refresh[_-]?token|id[_-]?token|key|token|client[_-]?secret|secret|password|passwd|credential|authorization|private[_-]?key)=)[^&#\s]+/gi, '$1[redacted]')
-    .replace(/(["'](?:x-api-key|api[_-]?key|api[_-]?token|access[_-]?token|refresh[_-]?token|id[_-]?token|token|client[_-]?secret|secret|password|passwd|credential|authorization|private[_-]?key)["']\s*:\s*["'])[^"']+/gi, '$1[redacted]')
-    .replace(/\b(Authorization\s*[:=]\s*)(?:Bearer|Basic|Digest)?\s*[A-Za-z0-9._~+/\-=]+/gi, '$1[redacted]')
-    .replace(/\b(Bearer\s+)[A-Za-z0-9._~+/\-=]+/gi, '$1[redacted]')
-    .replace(/\b((?:x-api-key|[A-Z0-9_-]*api[_-]?key|[A-Z0-9_-]*api[_-]?token|access[_-]?token|refresh[_-]?token|id[_-]?token|[A-Z0-9_-]*token|client[_-]?secret|[A-Z0-9_-]*secret|password|passwd|credential|authorization|private[_-]?key)\s*[:=]\s*)[^\s&]+/gi, '$1[redacted]');
-
-  if (maxChars > 0 && cleaned.length > maxChars) {
-    return `${cleaned.slice(0, Math.max(0, maxChars - 3))}...`;
-  }
-  return cleaned;
+  return _errorsModule.redactDiagnosticText(text, maxChars);
 }
 
 function activeEditorContext(editor) {
@@ -3247,19 +3962,7 @@ function activeEditorContext(editor) {
 }
 
 async function readWorkspaceFile(root, rel) {
-  const target = resolveInside(root, rel);
-  if (!target) {
-    return '';
-  }
-  try {
-    const stat = await fs.stat(target);
-    if (!stat.isFile() || stat.size > 512000) {
-      return '';
-    }
-    return await fs.readFile(target, 'utf8');
-  } catch (error) {
-    return '';
-  }
+  return _fsSafeModule.readWorkspaceFile(root, rel);
 }
 
 function formatFileChunk(rel, text) {
@@ -3267,125 +3970,47 @@ function formatFileChunk(rel, text) {
 }
 
 function truncateMiddle(text, maxChars) {
-  if (!text || text.length <= maxChars) {
-    return text || '';
-  }
-  const half = Math.floor(maxChars / 2);
-  return `${text.slice(0, half)}\n\n[...truncated...]\n\n${text.slice(text.length - half)}`;
+  return _errorsModule.truncateMiddle(text, maxChars);
 }
 
 function extractJson(raw) {
-  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  if (fenced) {
-    return fenced[1].trim();
-  }
-  const first = raw.indexOf('{');
-  const last = raw.lastIndexOf('}');
-  if (first !== -1 && last !== -1 && last > first) {
-    return raw.slice(first, last + 1);
-  }
-  return raw;
+  return _proposalParserModule.extractJson(raw);
 }
 
 function parseJsonText(text) {
-  return JSON.parse(stripUtf8Bom(String(text || '')));
+  return _fsSafeModule.parseJsonText(text);
 }
 
 function stripUtf8Bom(text) {
-  return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+  return _fsSafeModule.stripUtf8Bom(text);
 }
 
 function normalizeLineEndings(text) {
-  return text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  return _pathSafeModule.normalizeLineEndings(text);
 }
 
 function resolveInside(root, relativePath) {
-  if (!relativePath || path.isAbsolute(relativePath)) {
-    return undefined;
-  }
-  const target = path.resolve(root, relativePath);
-  const normalizedRoot = path.resolve(root);
-  if (isPathInside(normalizedRoot, target)) {
-    return target;
-  }
-  return undefined;
+  return _fsSafeModule.resolveInside(root, relativePath);
 }
 
 function validateProposalEdit(proposal, edit) {
-  const root = proposal.workspace || proposal.targetRoot;
-  if (!root) {
-    return { ok: false, edit, reason: 'Proposal has no target workspace root.' };
-  }
-  if (!edit || typeof edit.path !== 'string') {
-    return { ok: false, edit: edit || { path: '<missing>' }, reason: 'Proposal edit is missing a relative path.' };
-  }
-  if (path.isAbsolute(edit.path)) {
-    return { ok: false, edit, reason: 'Absolute paths are not allowed.' };
-  }
-  const normalizedPath = edit.path.replace(/\\/g, '/').replace(/^\/+/, '');
-  if (isBlockedRelativePath(normalizedPath)) {
-    return { ok: false, edit, reason: 'Path is blocked by safety rules.' };
-  }
-  const basename = path.basename(normalizedPath);
-  if (LOCKFILE_PATTERNS.some((pattern) => pattern.test(basename)) && !/lockfile|dependency resolution|required|explicit/i.test(edit.reason || '')) {
-    return { ok: false, edit, reason: 'Lockfile edits require an explicit model reason.' };
-  }
-  if (typeof edit.content !== 'string') {
-    return { ok: false, edit, reason: 'Proposal edit is missing replacement content.' };
-  }
-  if (edit.content.length > 500000) {
-    return { ok: false, edit, reason: 'Replacement content is too large for safe apply.' };
-  }
-  const target = resolveInside(root, normalizedPath);
-  if (!target) {
-    return { ok: false, edit, reason: 'Path would write outside the current project folder.' };
-  }
-  return { ok: true, edit: Object.assign({}, edit, { path: normalizedPath }), target, relative: normalizedPath };
+  return _proposalSafetyModule.validateProposalEdit(proposal, edit);
 }
 
 function formatBlockedProposalEditSummary(blocked) {
-  const items = Array.isArray(blocked) ? blocked.filter(Boolean) : [];
-  if (!items.length) {
-    return 'unknown edit blocked by safety rules';
-  }
-  const first = items[0];
-  const rawPath = first.edit && typeof first.edit.path === 'string' ? first.edit.path : '<missing path>';
-  const slashPath = rawPath.replace(/\\/g, '/');
-  const absoluteLike = slashPath.startsWith('/') || /^[A-Za-z]:\//.test(slashPath);
-  const normalizedPath = absoluteLike
-    ? (slashPath.split('/').filter(Boolean).pop() || '<absolute path>')
-    : (slashPath.replace(/^\/+/, '') || '<missing path>');
-  const reason = typeof first.reason === 'string' && first.reason.trim()
-    ? first.reason.trim().replace(/[.\s]+$/, '')
-    : 'Blocked by safety rules';
-  const remainder = items.length > 1 ? `; plus ${items.length - 1} more` : '';
-  return `${normalizedPath}: ${reason}${remainder}`;
+  return _proposalSafetyModule.formatBlockedProposalEditSummary(blocked);
 }
 
 function isBlockedRelativePath(relativePath) {
-  const normalized = relativePath.replace(/\\/g, '/').replace(/^\/+/, '');
-  const segments = normalized.split('/').filter(Boolean);
-  if (!segments.length) {
-    return true;
-  }
-  for (const segment of segments) {
-    if (segment === '.' || segment === '..') {
-      return true;
-    }
-    if (BLOCKED_PATH_SEGMENTS.has(segment.toLowerCase())) {
-      return true;
-    }
-  }
-  const basename = segments[segments.length - 1] || '';
-  return SECRET_FILE_PATTERNS.some((pattern) => pattern.test(basename));
+  return _pathSafeModule.isBlockedRelativePath(relativePath);
 }
 
 function timestampForPath() {
-  return new Date().toISOString().replace(/[:.]/g, '-');
+  return _pathSafeModule.timestampForPath();
 }
 
 function isSafeBackupId(value) {
-  return typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9_-]{0,119}$/.test(value);
+  return _proposalSafetyModule.isSafeBackupId(value);
 }
 
 async function saveProposal(proposal) {
@@ -3400,19 +4025,7 @@ async function saveProposal(proposal) {
 }
 
 function sanitizeProposalForStorage(proposal) {
-  return Object.assign({}, proposal, {
-    approachRationale: sanitizeMemoryText(String(proposal.approachRationale || '')),
-    confidenceScore: normalizeConfidenceScore(proposal.confidenceScore),
-    notes: Array.isArray(proposal.notes) ? proposal.notes.map((note) => sanitizeMemoryText(String(note))).slice(0, 12) : [],
-    fileEdits: Array.isArray(proposal.fileEdits)
-      ? proposal.fileEdits.map((edit) => ({
-          path: edit.path,
-          reason: sanitizeMemoryText(String(edit.reason || '')),
-          contentLength: typeof edit.content === 'string' ? edit.content.length : 0,
-          content: '[not stored in local history]'
-        }))
-      : []
-  });
+  return _proposalSafetyModule.sanitizeProposalForStorage(proposal);
 }
 
 async function readRecentProposalSummaries(target) {
@@ -3547,7 +4160,7 @@ async function readChangedFilesHistory(target) {
   return [];
 }
 
-async function rollbackLastAgentChange(resource) {
+async function rollbackLastAgentChange(resource, options = {}) {
   const target = isWorkspaceTarget(resource) ? resource : await resolveWorkspaceTarget(resource);
   if (!target) {
     vscode.window.showWarningMessage('Open a VS Code folder before rolling back an Aegis change.');
@@ -3571,13 +4184,60 @@ async function rollbackLastAgentChange(resource) {
     return;
   }
 
-  const answer = await vscode.window.showWarningMessage(
-    `Rollback last Aegis change from ${manifest.createdAt || manifest.backupId}? This restores ${manifest.files.length} file(s) from .aegis/backups.`,
-    { modal: true },
-    'Rollback'
-  );
-  if (answer !== 'Rollback') {
-    return;
+  if (!options.skipPrompt) {
+    const rollbackSource = manifest.coreCheckpointId
+      ? `Core checkpoint ${manifest.coreCheckpointId}`
+      : '.aegis/backups';
+    const answer = await vscode.window.showWarningMessage(
+      `Rollback last Aegis change from ${manifest.createdAt || manifest.backupId}? This restores ${manifest.files.length} file(s) from ${rollbackSource}.`,
+      { modal: true },
+      'Rollback'
+    );
+    if (answer !== 'Rollback') {
+      return;
+    }
+  }
+
+  if (manifest.coreCheckpointId) {
+    try {
+      const restoreEnvelope = await getCoreRuntimeClient().restoreCheckpoint(target, manifest.coreCheckpointId, {
+        taskId: activeCoreTaskId || null
+      });
+      const data = coreEnvelopeData(restoreEnvelope);
+      const restored = Array.isArray(data.restored) ? data.restored : [];
+      const validation = {
+        success: true,
+        skipped: true,
+        commands: [],
+        output: `Rolled back last Aegis Core change.\n${restored.map((file) => `- ${file}`).join('\n')}`
+      };
+      await appendAgentHistory(target, {
+        type: 'rollback',
+        backupId: manifest.backupId,
+        coreCheckpointId: manifest.coreCheckpointId,
+        files: restored
+      });
+      clearProjectSnapshotCache(target.root);
+      await recordValidationResult(target, validation);
+      runtimeState.setCheckpoints([{ id: data.pre_restore_checkpoint_id || manifest.coreCheckpointId }]);
+      recordRuntimeOperation('rollback', 'core', 'completed', `Restored Core checkpoint ${manifest.coreCheckpointId}.`, {
+        jobId: data.job_id || '',
+        checkpointId: manifest.coreCheckpointId,
+        workflowId: activeCoreWorkflowId || ''
+      });
+      updateAgentState({
+        status: 'Rolled back last Core change',
+        pendingDiffs: [],
+        validationOutput: validation.output
+      });
+      panelProvider && panelProvider.refresh();
+      vscode.window.showInformationMessage(`Rolled back ${restored.length} file operation(s) through Aegis Core.`);
+      return;
+    } catch (error) {
+      reportError(error, { failedCommand: 'Aegis: Rollback Last Agent Change', retryCommand: 'rollbackLastChange' });
+      vscode.window.showErrorMessage(`Aegis Core rollback could not be completed: ${safeErrorMessage(error)}`);
+      return;
+    }
   }
 
   const workspaceRoot = target.workspaceRoot || target.root;
@@ -3730,49 +4390,19 @@ function escapeRegExp(text) {
 }
 
 function makeEmptyAgentState() {
-  return {
-    status: 'Idle',
-    model: '',
-    workspace: '',
-    currentTask: '',
-    activePlan: '',
-    pendingDiffs: [],
-    validationOutput: '',
-    repairAttempts: 0,
-    progressItems: [],
-    contextFiles: []
-  };
+  return _agentModeModule.makeEmptyAgentState();
 }
 
 function makeEmptyHealthCheckState() {
-  return {
-    overall: 'unknown',
-    checkedAt: '',
-    elapsedMs: 0,
-    checks: []
-  };
+  return _agentModeModule.makeEmptyHealthCheckState();
 }
 
 function makeEmptyModelDiagnosticsState() {
-  return {
-    checkedAt: '',
-    installedModels: [],
-    primary: undefined,
-    fallbacks: [],
-    contextWarning: ''
-  };
+  return _agentModeModule.makeEmptyModelDiagnosticsState();
 }
 
 function makeEmptyErrorInfo() {
-  return {
-    at: '',
-    message: '',
-    failedCommand: '',
-    stack: '',
-    likelyCause: '',
-    suggestedFix: '',
-    retryCommand: ''
-  };
+  return _agentModeModule.makeEmptyErrorInfo();
 }
 
 function resetAgentState(target, model) {
@@ -3799,72 +4429,17 @@ function updateAgentState(patch) {
 }
 
 function pushProgress(label, detail = '') {
-  const item = {
-    at: new Date().toLocaleTimeString(),
-    label: sanitizeMemoryText(String(label || 'Working')),
-    detail: sanitizeMemoryText(String(detail || ''))
-  };
-  const progressItems = [item, ...(agentState.progressItems || [])].slice(0, 8);
+  const progressItems = _agentModeModule.buildProgressUpdate(agentState, label, detail);
   updateAgentState({ progressItems });
 }
 
 function setContextFiles(files, reason) {
-  updateAgentState({
-    contextFiles: (files || []).slice(0, 18).map((file) => ({
-      path: file,
-      reason: sanitizeMemoryText(reason || 'Relevant to the current request.')
-    }))
-  });
+  const contextFiles = _agentModeModule.buildContextFilesUpdate(files, reason);
+  updateAgentState({ contextFiles });
 }
 
 function proposalToPlanText(proposal) {
-  const lines = [];
-  lines.push(proposal.summary || 'No summary returned.');
-  if (proposal.risk) {
-    lines.push(`Risk: ${proposal.risk}`);
-  }
-  if (proposal.confidenceScore !== undefined) {
-    lines.push(`Confidence: ${Math.round(normalizeConfidenceScore(proposal.confidenceScore) * 100)}%`);
-  }
-  if (proposal.approachRationale) {
-    lines.push(`Approach: ${proposal.approachRationale}`);
-  }
-  if (proposal.notes && proposal.notes.length) {
-    lines.push('');
-    lines.push('Notes:');
-    proposal.notes.slice(0, 8).forEach((note) => lines.push(`- ${note}`));
-  }
-  if (proposal.impactAnalysis) {
-    lines.push('');
-    lines.push('Impact analysis:');
-    lines.push(...impactAnalysisToLines(proposal.impactAnalysis));
-  }
-  if (proposal.stages && proposal.stages.length) {
-    lines.push('');
-    lines.push('Staged plan:');
-    proposal.stages.forEach((stage, index) => {
-      lines.push(`- ${index + 1}. ${stage.name || stage.title || 'Stage'}${stage.risk ? ` (${stage.risk})` : ''}: ${stage.goal || 'Review and approve this stage.'}`);
-      if (stage.files && stage.files.length) {
-        lines.push(`  Files: ${stage.files.slice(0, 8).join(', ')}`);
-      }
-    });
-  }
-  if (proposal.fileEdits && proposal.fileEdits.length) {
-    lines.push('');
-    lines.push('Proposed file changes:');
-    proposal.fileEdits.forEach((edit) => lines.push(`- ${edit.path}${edit.reason ? `: ${edit.reason}` : ''}`));
-  }
-  if (proposal.commands && proposal.commands.length) {
-    lines.push('');
-    lines.push('Suggested commands:');
-    proposal.commands.forEach((item) => lines.push(`- ${item.command}${item.reason ? `: ${item.reason}` : ''}`));
-  }
-  if (proposal.tests && proposal.tests.length) {
-    lines.push('');
-    lines.push('Validation notes:');
-    proposal.tests.forEach((item) => lines.push(`- ${item}`));
-  }
-  return lines.join('\n');
+  return _proposalParserModule.proposalToPlanText(proposal);
 }
 
 async function ensureWorkspaceMemory(target) {
@@ -4253,27 +4828,7 @@ function classifyFileRoles(relativePath, text, snapshot) {
 }
 
 function isLikelyBuildFile(relativePath) {
-  if (isUnityImportantFile(relativePath)) {
-    return true;
-  }
-  const basename = path.basename(relativePath).toLowerCase();
-  return basename === 'package.json' ||
-    basename === 'cmakelists.txt' ||
-    basename === 'makefile' ||
-    basename === 'cargo.toml' ||
-    basename === 'go.mod' ||
-    basename === 'pyproject.toml' ||
-    basename.endsWith('.csproj') ||
-    basename.endsWith('.fsproj') ||
-    basename.endsWith('.vbproj') ||
-    basename.endsWith('.vcxproj') ||
-    basename.endsWith('.vcxproj.filters') ||
-    basename.endsWith('.sln') ||
-    basename.endsWith('.slnx') ||
-    basename.startsWith('vite.config') ||
-    basename.startsWith('webpack.config') ||
-    basename.startsWith('next.config') ||
-    basename.startsWith('build.gradle');
+  return _projectScannerModule.isLikelyBuildFile(relativePath);
 }
 
 function hasRouteSignals(text) {
@@ -4708,77 +5263,19 @@ function buildDefaultStages(files, relatedTests, riskLevel) {
 }
 
 function normalizeModelImpactAnalysis(value) {
-  if (!value || typeof value !== 'object') {
-    return undefined;
-  }
-  return {
-    likelyAffectedFiles: Array.isArray(value.likelyAffectedFiles) ? value.likelyAffectedFiles.map(String).slice(0, 40) : [],
-    riskLevel: String(value.riskLevel || value.risk || '').trim(),
-    relatedValidation: Array.isArray(value.relatedValidation) ? value.relatedValidation.map(String).slice(0, 10) : [],
-    possibleBreakingPoints: Array.isArray(value.possibleBreakingPoints) ? value.possibleBreakingPoints.map(String).slice(0, 12) : [],
-    rollbackPlan: String(value.rollbackPlan || '').trim()
-  };
+  return _proposalParserModule.normalizeModelImpactAnalysis(value);
 }
 
 function normalizeConfidenceScore(value) {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) {
-    return 0.55;
-  }
-  if (numeric > 1 && numeric <= 100) {
-    return Math.max(0, Math.min(1, numeric / 100));
-  }
-  return Math.max(0, Math.min(1, numeric));
+  return _proposalSafetyModule.normalizeConfidenceScore(value);
 }
 
 function normalizeModelStages(value) {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  return value
-    .filter((stage) => stage && typeof stage === 'object')
-    .map((stage, index) => ({
-      name: String(stage.name || stage.title || `Stage ${index + 1}`).trim(),
-      goal: String(stage.goal || stage.summary || '').trim(),
-      files: Array.isArray(stage.files) ? stage.files.map((file) => String(file).replace(/\\/g, '/').replace(/^\/+/, '')).filter(Boolean).slice(0, 30) : [],
-      risk: String(stage.risk || '').trim(),
-      approvalRequired: stage.approvalRequired !== false
-    }));
+  return _proposalParserModule.normalizeModelStages(value);
 }
 
 function normalizeProposalStages(proposal, impactAnalysis) {
-  const edits = Array.isArray(proposal.fileEdits) ? proposal.fileEdits.map((edit) => edit.path.replace(/\\/g, '/')) : [];
-  const knownFiles = new Set(edits);
-  const existing = normalizeModelStages(proposal.stages).map((stage) => Object.assign({}, stage, {
-    files: stage.files.filter((file) => knownFiles.size ? knownFiles.has(file) : true)
-  }));
-  const stagedFiles = new Set(existing.flatMap((stage) => stage.files || []));
-  const missing = edits.filter((file) => !stagedFiles.has(file));
-  let stages = existing.length ? existing : [];
-  if (!stages.length && impactAnalysis && Array.isArray(impactAnalysis.stagedPlan)) {
-    stages = impactAnalysis.stagedPlan.map((stage) => Object.assign({}, stage, {
-      files: (stage.files || []).filter((file) => knownFiles.has(file))
-    }));
-  }
-  if (missing.length) {
-    const defaults = buildDefaultStages(missing, impactAnalysis ? impactAnalysis.relatedTests || [] : [], proposal.risk || 'medium');
-    for (const fallback of defaults) {
-      const fallbackFiles = fallback.files.filter((file) => missing.includes(file));
-      if (fallbackFiles.length) {
-        stages.push(Object.assign({}, fallback, { files: fallbackFiles }));
-      }
-    }
-  }
-  if (!stages.length && edits.length) {
-    stages = [{
-      name: 'Stage 2: implementation',
-      goal: 'Apply the proposed implementation changes.',
-      files: edits,
-      risk: proposal.risk || 'medium',
-      approvalRequired: true
-    }];
-  }
-  return stages.filter((stage) => stage.files && stage.files.length);
+  return _proposalParserModule.normalizeProposalStages(proposal, impactAnalysis);
 }
 
 function enrichProposalWithRepoIntelligence(proposal, impactAnalysis) {
@@ -5097,9 +5594,13 @@ function proposalStateSnapshot() {
       reason: edit.reason || '',
       chars: typeof edit.content === 'string' ? edit.content.length : 0
     })),
+    destinationReasoning: Array.isArray(lastProposal.destinationReasoning) ? lastProposal.destinationReasoning.slice(0, 30) : [],
     notes: Array.isArray(lastProposal.notes) ? lastProposal.notes.slice(0, 8) : [],
     impactAnalysis: lastProposal.impactAnalysis || lastImpactAnalysis || null,
     stages: Array.isArray(lastProposal.stages) ? lastProposal.stages : [],
+    coreProposalId: lastProposal.coreProposalId || '',
+    coreJobId: lastProposal.coreJobId || '',
+    corePreview: Array.isArray(lastProposal.corePreview) ? lastProposal.corePreview : [],
     approvalStatus: lastProposal.fileEdits && lastProposal.fileEdits.length ? 'pending' : 'plan-only'
   };
 }
@@ -5219,6 +5720,22 @@ async function approveProposalFromPanel(indexes) {
     });
     const applied = await applyProposal(subset);
     if (applied) {
+      const remainingEdits = (lastProposal.fileEdits || []).filter((_, index) => !selected.has(index));
+      if (remainingEdits.length) {
+        lastProposal = Object.assign({}, lastProposal, { fileEdits: remainingEdits });
+        try {
+          const snapTarget = {
+            root: lastProposal.targetRoot || lastProposal.workspace,
+            workspaceRoot: lastProposal.workspaceRoot || lastProposal.workspace,
+            label: lastProposal.targetLabel || ''
+          };
+          attachDestinationReasoning(lastProposal, await getProjectSnapshot(snapTarget, { fast: true }), snapTarget);
+        } catch (error) {
+          output && output.appendLine(`Destination reasoning refresh skipped: ${safeErrorMessage(error)}`);
+        }
+      } else {
+        lastProposal = undefined;
+      }
       vscode.window.showInformationMessage(`Applied ${subset.fileEdits.length} selected change(s).`);
     }
   } else {
@@ -5244,7 +5761,19 @@ async function rejectProposalFromPanel() {
     );
     activeCoreTaskId = '';
   }
+  if (activeCoreWorkflowId) {
+    await getWorkflowRuntimeClient().cancel(
+      { workspaceRoot: lastProposal.workspaceRoot || lastProposal.workspace || lastProposal.targetRoot, root: lastProposal.workspace || lastProposal.targetRoot },
+      activeCoreWorkflowId,
+      'Proposal rejected in VS Code.'
+    ).catch(() => {});
+    recordRuntimeOperation('workflow', 'core', 'cancelled', 'Proposal rejection cancelled the active Core workflow.', {
+      workflowId: activeCoreWorkflowId
+    });
+    activeCoreWorkflowId = '';
+  }
   lastProposal = undefined;
+  runtimeState.setPendingProposal(null);
   updateAgentState({ pendingDiffs: [], activePlan: 'Proposal rejected.', status: 'Rejected' });
   panelProvider && panelProvider.refresh();
 }
@@ -5274,18 +5803,32 @@ async function openMemoryFromPanel(name) {
 
 async function saveSettingsFromPanel(settings) {
   const config = vscode.workspace.getConfiguration('aegisLocalAutopilot');
+  const writeMode = settings.autopilotWriteMode === 'apply' ? 'apply' : settings.autopilotWriteMode === 'preview' ? 'preview' : undefined;
   const updates = [
     ['ollamaUrl', normalizeHttpBaseUrl(settings.ollamaUrl, 'http://127.0.0.1:11434')],
     ['coreUrl', normalizeHttpBaseUrl(settings.coreUrl, 'http://127.0.0.1:8788')],
-    ['chatModel', settings.chatModel],
+    ['chatModel', typeof settings.chatModel === 'string' ? settings.chatModel.trim() : undefined],
+    ['fastModel', typeof settings.fastModel === 'string' ? settings.fastModel.trim() : undefined],
     ['fallbackModels', typeof settings.fallbackModels === 'string' ? settings.fallbackModels.split(',').map((item) => item.trim()).filter(Boolean) : settings.fallbackModels],
-    ['maxContextChars', Number(settings.maxContextChars) || undefined],
-    ['autoScanOnOpen', Boolean(settings.autoScanOnOpen)],
+    ['maxContextChars', boundedConfigInt(settings.maxContextChars, 16000, 200000, undefined)],
+    ['maxContextFiles', boundedConfigInt(settings.maxContextFiles, 3, 40, undefined)],
+    ['maxProposalDiffTabs', boundedConfigInt(settings.maxProposalDiffTabs, 1, 25, undefined)],
+    ['autopilotIntervalMinutes', boundedConfigInt(settings.autopilotIntervalMinutes, 2, 1440, undefined)],
+    ['autopilotWriteMode', writeMode],
+    ['excludeGlob', typeof settings.excludeGlob === 'string' && settings.excludeGlob.trim() ? settings.excludeGlob.trim() : undefined],
+    ['autoScanOnOpen', typeof settings.autoScanOnOpen === 'boolean' ? settings.autoScanOnOpen : undefined],
     ['validationCommandPreferences', Array.isArray(settings.validationCommandPreferences) ? settings.validationCommandPreferences : String(settings.validationCommandPreferences || '').split(',').map((item) => item.trim()).filter(Boolean)],
-    ['safetyMode', settings.safetyMode]
+    ['safetyMode', settings.safetyMode === 'standard' || settings.safetyMode === 'strict' || settings.safetyMode === 'review-only' ? settings.safetyMode : undefined]
   ];
   for (const [key, value] of updates) {
-    if (value !== undefined && value !== '') {
+    if (value === undefined) {
+      continue;
+    }
+    if (typeof value === 'boolean' || Array.isArray(value)) {
+      await config.update(key, value, vscode.ConfigurationTarget.Workspace);
+      continue;
+    }
+    if (value !== '') {
       await config.update(key, value, vscode.ConfigurationTarget.Workspace);
     }
   }
@@ -5293,107 +5836,23 @@ async function saveSettingsFromPanel(settings) {
 }
 
 function detectValidationCommands(snapshot) {
-  const files = new Set(snapshot.files.map((file) => file.relative.replace(/\\/g, '/').toLowerCase()));
-  const commands = [];
-  const packageJsonItems = snapshot.importantContents.filter((item) => path.basename(item.path).toLowerCase() === 'package.json');
-
-  for (const item of packageJsonItems) {
-    let pkg;
-    try {
-      pkg = parseJsonText(item.text);
-    } catch (error) {
-      continue;
-    }
-    const scripts = pkg.scripts || {};
-    const dir = path.dirname(item.path);
-    const cwd = dir === '.' ? snapshot.target.root : path.join(snapshot.target.root, dir);
-    const relativeCwd = dir === '.' ? '' : dir;
-    const packageManager = pickPackageManagerForPath(snapshot, item.path);
-    if (scripts.test) {
-      commands.push(makeValidationCommand(packageScriptCommand(packageManager, 'test'), cwd, relativeCwd));
-    }
-    if (scripts.lint) {
-      commands.push(makeValidationCommand(packageScriptCommand(packageManager, 'lint'), cwd, relativeCwd));
-    }
-    const typeScriptCheck = scripts.typecheck || scripts['type-check'];
-    if (typeScriptCheck) {
-      commands.push(makeValidationCommand(packageScriptCommand(packageManager, scripts.typecheck ? 'typecheck' : 'type-check'), cwd, relativeCwd));
-    }
-    if (scripts.build) {
-      commands.push(makeValidationCommand(packageScriptCommand(packageManager, 'build'), cwd, relativeCwd));
-    }
-  }
-
-  if (Array.from(files).some((name) => name.endsWith('.csproj') || name.endsWith('.fsproj') || name.endsWith('.vbproj'))) {
-    commands.push(makeValidationCommand('dotnet build', snapshot.target.root, ''));
-  }
-  if (files.has('cargo.toml')) {
-    commands.push(makeValidationCommand('cargo check', snapshot.target.root, ''));
-  }
-  if (files.has('pyproject.toml') || files.has('pytest.ini') || files.has('requirements.txt') || Array.from(files).some((name) => name.startsWith('tests/') && name.endsWith('.py'))) {
-    commands.push(makeValidationCommand('python -m pytest', snapshot.target.root, ''));
-  }
-  if (files.has('go.mod')) {
-    commands.push(makeValidationCommand('go test ./...', snapshot.target.root, ''));
-  }
-  if (files.has('cmakelists.txt') && snapshot.directories.some((dir) => dir.relative.replace(/\\/g, '/').toLowerCase() === 'build')) {
-    commands.push(makeValidationCommand('cmake --build build', snapshot.target.root, ''));
-  }
-
-  const seen = new Set();
-  const preferences = getConfig().validationCommandPreferences;
-  return commands.filter((item) => {
-    const key = `${item.cwd}|${item.command}`;
-    if (seen.has(key) || !isSafeValidationCommand(item.command)) {
-      return false;
-    }
-    if (preferences.length && !preferences.some((pref) => item.command.startsWith(pref) || item.command === pref)) {
-      return false;
-    }
-    seen.add(key);
-    return true;
-  }).slice(0, 6);
+  return _validationDetectorModule.detectValidationCommands(snapshot);
 }
 
 function pickPackageManagerForPath(snapshot, packagePath) {
-  const dir = path.dirname(packagePath).replace(/\\/g, '/');
-  const prefix = dir === '.' ? '' : `${dir}/`;
-  const names = new Set(snapshot.files.map((file) => file.relative.replace(/\\/g, '/').toLowerCase()));
-  const fromNames = pickPackageManagerFromNames(names, packagePath);
-  if (fromNames) return fromNames;
-  if (snapshot.packageManagers.includes('bun')) return 'bun';
-  if (snapshot.packageManagers.includes('pnpm')) return 'pnpm';
-  if (snapshot.packageManagers.includes('yarn')) return 'yarn';
-  return 'npm';
+  return _validationDetectorModule.pickPackageManagerForPath(snapshot, packagePath);
 }
 
 function pickPackageManagerFromNames(names, packagePath) {
-  const dir = path.dirname(packagePath).replace(/\\/g, '/');
-  const prefix = dir === '.' ? '' : `${dir}/`;
-  if (names.has(`${prefix}bun.lock`) || names.has(`${prefix}bun.lockb`)) return 'bun';
-  if (names.has(`${prefix}pnpm-lock.yaml`)) return 'pnpm';
-  if (names.has(`${prefix}yarn.lock`)) return 'yarn';
-  if (names.has(`${prefix}package-lock.json`)) return 'npm';
-  return '';
+  return _validationDetectorModule.pickPackageManagerFromNames(names, packagePath);
 }
 
 function normalizePackageManagerName(value) {
-  const text = String(value || '').trim().toLowerCase();
-  if (text.startsWith('bun@')) return 'bun';
-  if (text.startsWith('pnpm@')) return 'pnpm';
-  if (text.startsWith('yarn@')) return 'yarn';
-  if (text.startsWith('npm@')) return 'npm';
-  return '';
+  return _validationDetectorModule.normalizePackageManagerName(value);
 }
 
 function packageScriptCommand(packageManager, script) {
-  if (packageManager === 'npm') {
-    return script === 'test' ? 'npm test' : `npm run ${script}`;
-  }
-  if (packageManager === 'bun') {
-    return `bun run ${script}`;
-  }
-  return `${packageManager} ${script}`;
+  return _validationDetectorModule.packageScriptCommand(packageManager, script);
 }
 
 function makeValidationCommand(command, cwd, relativeCwd) {
@@ -5401,7 +5860,7 @@ function makeValidationCommand(command, cwd, relativeCwd) {
 }
 
 function isSafeValidationCommand(command) {
-  return /^(npm test|npm run build|npm run lint|npm run typecheck|npm run type-check|pnpm test|pnpm build|pnpm lint|pnpm typecheck|pnpm type-check|yarn test|yarn build|yarn lint|yarn typecheck|yarn type-check|bun run test|bun run build|bun run lint|bun run typecheck|bun run type-check|dotnet build|cargo check|go test \.\/\.\.\.|python -m pytest|cmake --build build)$/.test(command);
+  return _validationDetectorModule.isSafeValidationCommand(command);
 }
 
 async function runDetectedValidation(target, snapshot) {
@@ -5414,6 +5873,7 @@ async function runDetectedValidation(target, snapshot) {
     }
   } catch (error) {
     output && output.appendLine(`Aegis Core validation unavailable; using VS Code local validation fallback: ${safeErrorMessage(error)}`);
+    recordCoreDisconnected(error, 'validation');
   }
 
   const commands = detectValidationCommands(resolvedSnapshot);
@@ -5444,12 +5904,17 @@ async function runDetectedValidation(target, snapshot) {
     }
   }
 
-  return {
+  const localValidation = {
     success: results.every((item) => item.success),
     skipped: false,
     commands: results,
     output: validationResultsToOutput(results)
   };
+  runtimeState.setLatestValidation(localValidation);
+  recordRuntimeOperation('validation', 'local', localValidation.success ? 'completed' : 'failed', localValidation.success ? 'Local validation passed.' : 'Local validation failed.', {
+    workflowId: activeCoreWorkflowId || ''
+  });
+  return localValidation;
 }
 
 function runValidationCommand(item) {
@@ -5505,68 +5970,15 @@ function validationResultsToOutput(results) {
 }
 
 function summarizeValidation(validation) {
-  if (validation.skipped) {
-    return validation.output;
-  }
-  const commands = Array.isArray(validation.commands) ? validation.commands : [];
-  const failed = commands.find((item) => !item.success);
-  if (!failed) {
-    return `Validation passed.\n\n${validation.output}`;
-  }
-  const classification = classifyValidationFailure(validation);
-  const classificationText = classification.summary
-    ? `\n\nClassification: ${classification.summary}\nNext step: ${classification.guidance}`
-    : '';
-  return `Validation failed at \`${failed.command}\`.\n\n${truncateMiddle(failed.output, 12000)}${classificationText}`;
+  return _validationDetectorModule.summarizeValidation(validation);
 }
 
 function classifyValidationFailure(validation) {
-  const commands = validation && Array.isArray(validation.commands) ? validation.commands : [];
-  const failed = commands.find((item) => item && !item.success);
-  if (!failed) {
-    return { kind: 'none', summary: '', guidance: '' };
-  }
-  const text = `${failed.command || ''}\n${failed.output || ''}\n${validation.output || ''}`;
-  const lower = text.toLowerCase();
-  const missingDependencyPatterns = [
-    /cannot find module/i,
-    /module_not_found/i,
-    /err_module_not_found/i,
-    /modulenotfounderror/i,
-    /no module named/i,
-    /can't resolve/i,
-    /could not resolve/i
-  ];
-  if (missingDependencyPatterns.some((pattern) => pattern.test(text))) {
-    return {
-      kind: 'missing-dependency',
-      summary: 'Likely missing dependency or uninstalled project packages.',
-      guidance: 'Check the install/restore step before editing source; only change manifests or lockfiles when the dependency declaration is clearly wrong.'
-    };
-  }
-  if (
-    lower.includes('not recognized as an internal or external command') ||
-    lower.includes('is not recognized as the name of') ||
-    lower.includes('command not found') ||
-    lower.includes('spawn enoent') ||
-    lower.includes('enoent') ||
-    /(?:^|\s)not found:?/i.test(text)
-  ) {
-    return {
-      kind: 'missing-tool',
-      summary: 'Likely missing tool or project-local CLI rather than application code failure.',
-      guidance: 'Check PATH, package installation, and project setup before changing source files.'
-    };
-  }
-  return {
-    kind: 'code-or-config',
-    summary: 'Likely code, test, or configuration failure.',
-    guidance: 'Inspect the failing files and make the smallest source or config correction.'
-  };
+  return _validationDetectorModule.classifyValidationFailure(validation);
 }
 
 function isWorkspaceTarget(value) {
-  return Boolean(value && typeof value.root === 'string' && typeof value.label === 'string');
+  return _workspaceResolverModule.isWorkspaceTarget(value);
 }
 
 async function resolveWorkspaceTarget(resource, options = {}) {
@@ -5620,17 +6032,29 @@ function extractResourceUri(resource) {
 }
 
 async function targetFromUri(uri) {
-  let root = uri.fsPath;
+  const resourcePath = uri.fsPath;
+  let focusPath = resourcePath;
+  let focusKind = 'folder';
+  let focusFilePath = '';
   try {
-    const stat = await fs.stat(root);
+    const stat = await fs.stat(resourcePath);
     if (!stat.isDirectory()) {
-      root = path.dirname(root);
+      focusKind = 'file';
+      focusFilePath = resourcePath;
+      focusPath = path.dirname(resourcePath);
     }
   } catch (error) {
-    root = path.dirname(root);
+    focusKind = 'file';
+    focusFilePath = resourcePath;
+    focusPath = path.dirname(resourcePath);
   }
-  const folder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(root)) || findWorkspaceFolderForPath(root);
-  return makeWorkspaceTarget(root, folder);
+  const folder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(focusPath)) || findWorkspaceFolderForPath(focusPath);
+  const root = folder ? folder.uri.fsPath : focusPath;
+  return makeWorkspaceTarget(root, folder, {
+    focusPath,
+    focusKind,
+    focusFilePath
+  });
 }
 
 function findWorkspaceFolderForPath(filePath) {
@@ -5638,109 +6062,32 @@ function findWorkspaceFolderForPath(filePath) {
   return folders.find((folder) => isPathInside(folder.uri.fsPath, filePath));
 }
 
-function makeWorkspaceTarget(root, workspaceFolder) {
-  const resolvedRoot = path.resolve(root);
-  const workspaceRoot = workspaceFolder ? path.resolve(workspaceFolder.uri.fsPath) : resolvedRoot;
-  const relative = workspaceRoot !== resolvedRoot && isPathInside(workspaceRoot, resolvedRoot)
-    ? path.relative(workspaceRoot, resolvedRoot)
-    : '';
-  return {
-    root: resolvedRoot,
-    workspaceRoot,
-    label: relative || (workspaceFolder ? workspaceFolder.name : path.basename(resolvedRoot)),
-    workspaceFolderName: workspaceFolder ? workspaceFolder.name : path.basename(resolvedRoot)
-  };
+function makeWorkspaceTarget(root, workspaceFolder, options) {
+  return _workspaceResolverModule.makeWorkspaceTarget(root, workspaceFolder, options);
 }
 
 function isPathInside(root, candidate) {
-  const normalizedRoot = path.resolve(root).toLowerCase();
-  const normalizedCandidate = path.resolve(candidate).toLowerCase();
-  return normalizedCandidate === normalizedRoot || normalizedCandidate.startsWith(`${normalizedRoot}${path.sep}`);
+  return _pathSafeModule.isPathInside(root, candidate);
+}
+
+function boundedConfigInt(value, min, max, fallback) {
+  return _settingsModule.boundedConfigInt(value, min, max, fallback);
 }
 
 function getConfig() {
-  const config = vscode.workspace.getConfiguration('aegisLocalAutopilot');
-  return {
-    ollamaUrl: normalizeHttpBaseUrl(config.get('ollamaUrl', 'http://127.0.0.1:11434'), 'http://127.0.0.1:11434'),
-    coreUrl: normalizeHttpBaseUrl(config.get('coreUrl', 'http://127.0.0.1:8788'), 'http://127.0.0.1:8788'),
-    chatModel: config.get('chatModel', 'qwen3-coder:30b'),
-    fastModel: config.get('fastModel', 'qwen2.5-coder:7b'),
-    fallbackModels: config.get('fallbackModels', ['qwen2.5-coder:7b', 'granite-code:8b']),
-    embeddingModel: config.get('embeddingModel', 'mxbai-embed-large:latest'),
-    autopilotIntervalMinutes: config.get('autopilotIntervalMinutes', 15),
-    autopilotWriteMode: config.get('autopilotWriteMode', 'preview'),
-    maxContextFiles: config.get('maxContextFiles', 12),
-    maxContextChars: config.get('maxContextChars', MAX_CONTEXT_CHARS),
-    autoScanOnOpen: config.get('autoScanOnOpen', true),
-    validationCommandPreferences: config.get('validationCommandPreferences', []),
-    safetyMode: config.get('safetyMode', 'standard'),
-    excludeGlob: config.get('excludeGlob', '{**/node_modules/**,**/.git/**,**/.venv/**,**/x64/**,**/build/**,**/dist/**,**/.tmp/**,**/smoke-artifacts/**,**/stress-artifacts/**}')
-  };
+  return _settingsModule.getNormalizedConfig(vscode.workspace.getConfiguration('aegisLocalAutopilot'));
 }
 
 function normalizeHttpBaseUrl(value, fallback) {
-  const defaultBase = String(fallback || '').trim();
-  const raw = String(value || '').trim();
-  if (!raw || /\s/.test(raw)) {
-    return defaultBase;
-  }
-
-  let candidate = raw;
-  const lowered = candidate.toLowerCase();
-  if (!lowered.startsWith('http://') && !lowered.startsWith('https://')) {
-    if (candidate.includes('://')) {
-      return defaultBase;
-    }
-    candidate = `http://${candidate}`;
-  }
-
-  try {
-    const url = new URL(candidate);
-    if (!url.hostname || url.username || url.password) {
-      return defaultBase;
-    }
-    return `${url.protocol}//${url.host}${stripKnownServiceEndpointPath(url.pathname)}`;
-  } catch (error) {
-    return defaultBase;
-  }
+  return _settingsModule.normalizeHttpBaseUrl(value, fallback);
 }
 
 function stripKnownServiceEndpointPath(pathname) {
-  const cleaned = String(pathname || '').replace(/\/+$/, '');
-  if (!cleaned || cleaned === '/') {
-    return '';
-  }
-
-  const segments = cleaned.split('/').filter(Boolean);
-  const lowered = segments.map((segment) => segment.toLowerCase());
-  const v1Index = lowered.indexOf('v1');
-  if (v1Index !== -1) {
-    return v1Index ? `/${segments.slice(0, v1Index).join('/')}` : '';
-  }
-
-  const apiIndex = lowered.indexOf('api');
-  const ollamaEndpoint = apiIndex === -1 ? '' : lowered[apiIndex + 1] || '';
-  const ollamaEndpointPaths = ['chat', 'embeddings', 'generate', 'ps', 'show', 'tags', 'version'];
-  if (apiIndex !== -1 && ollamaEndpointPaths.includes(ollamaEndpoint)) {
-    return apiIndex ? `/${segments.slice(0, apiIndex).join('/')}` : '';
-  }
-
-  const lastSegment = lowered[lowered.length - 1];
-  if (lastSegment === 'health' || lastSegment === 'models') {
-    return segments.length > 1 ? `/${segments.slice(0, -1).join('/')}` : '';
-  }
-
-  return cleaned;
+  return _settingsModule.stripKnownServiceEndpointPath(pathname);
 }
 
 function serviceUrl(baseUrl, pathname) {
-  const url = new URL(baseUrl);
-  const basePath = url.pathname.replace(/\/+$/, '');
-  const suffix = String(pathname || '').replace(/^\/+/, '');
-  url.pathname = `${basePath}/${suffix}`.replace(/\/+/g, '/');
-  url.search = '';
-  url.hash = '';
-  return url;
+  return _settingsModule.serviceUrl(baseUrl, pathname);
 }
 
 function getConfigSnapshot() {
@@ -5754,7 +6101,10 @@ function getConfigSnapshot() {
     embeddingModel: config.embeddingModel,
     autopilotIntervalMinutes: config.autopilotIntervalMinutes,
     autopilotWriteMode: config.autopilotWriteMode,
+    maxContextFiles: config.maxContextFiles,
     maxContextChars: config.maxContextChars,
+    maxProposalDiffTabs: config.maxProposalDiffTabs,
+    excludeGlob: config.excludeGlob,
     autoScanOnOpen: config.autoScanOnOpen,
     validationCommandPreferences: config.validationCommandPreferences,
     safetyMode: config.safetyMode
@@ -6093,6 +6443,7 @@ function renderPanelHtml() {
     .warn { color: #ffd38a; }
     .memoryGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
     .settingsGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px; }
+    .settingsWide { grid-column: 1 / -1; }
     label { display: flex; flex-direction: column; gap: 4px; color: #8da1ac; }
     @media (max-width: 520px) {
       .grid { grid-template-columns: 1fr; }
@@ -6138,6 +6489,22 @@ function renderPanelHtml() {
           <div class="pre" id="modelDiagnostics">No model diagnostics yet.</div>
         </div>
       </section>
+
+      <section class="card">
+        <div class="cardHeader"><h2 class="cardTitle">Runtime Status</h2><span id="runtimeMode" class="muted">Core not checked</span></div>
+        <div class="cardBody">
+          <div class="statGrid" id="runtimeSummary"></div>
+          <div class="fileList" id="runtimeOps"></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="cardHeader"><h2 class="cardTitle">Quality Gates</h2><span id="qualityMode" class="muted">No gate run</span></div>
+        <div class="cardBody">
+          <div class="statGrid" id="qualitySummary"></div>
+          <div class="fileList" id="qualityDetails"></div>
+        </div>
+      </section>
     </section>
 
     <section class="grid">
@@ -6166,6 +6533,8 @@ function renderPanelHtml() {
           <textarea id="prompt" placeholder="Ask the local model or give Agent Mode a task."></textarea>
           <div class="row">
             <button id="chat">Send</button>
+            <button class="secondary" id="runAgentPrompt" title="Plan, diffs, approval, apply, validation">Run Agent Mode</button>
+            <button class="secondary" id="runAutopilotDraft" title="One autopilot proposal from the prompt below">Draft Once</button>
             <button class="secondary" id="attachFile">Attach File</button>
             <button class="secondary" id="attachSelection">Attach Selection</button>
           </div>
@@ -6187,6 +6556,8 @@ function renderPanelHtml() {
           <button id="continueRoadmap">Continue From Roadmap</button>
           <button id="reviewFile">Review Current File</button>
           <button id="feature">Create Feature</button>
+          <button class="secondary" id="startAutopilotBtn" title="Run autopilot on a timer">Start Autopilot Loop</button>
+          <button class="secondary" id="stopAutopilotBtn" title="Stop the background autopilot timer">Stop Autopilot Loop</button>
         </div>
       </section>
     </section>
@@ -6231,6 +6602,13 @@ function renderPanelHtml() {
     </section>
 
     <section class="card">
+      <div class="cardHeader"><h2 class="cardTitle">Why Aegis chose these files</h2><span class="muted">workspace-root safe writes</span></div>
+      <div class="cardBody">
+        <div class="fileList" id="destinationReasoning">No pending file destinations.</div>
+      </div>
+    </section>
+
+    <section class="card">
       <div class="cardHeader"><h2 class="cardTitle">Validation Console</h2><span id="repairCount" class="muted">Repairs: 0</span></div>
       <div class="cardBody">
         <div class="pre" id="validationOutput">No validation output yet.</div>
@@ -6267,10 +6645,16 @@ function renderPanelHtml() {
             <label>Ollama URL<input id="settingOllama" /></label>
             <label>Aegis Core URL<input id="settingCore" /></label>
             <label>Default Model<input id="settingModel" /></label>
+            <label>Fast Model<input id="settingFastModel" /></label>
             <label>Fallback Models<input id="settingFallbacks" /></label>
             <label>Max Context Size<input id="settingContext" type="number" /></label>
+            <label>Max Context Files<input id="settingMaxFiles" type="number" min="3" max="40" /></label>
+            <label>Autopilot Interval (min)<input id="settingAutopilotMin" type="number" min="2" /></label>
+            <label>Autopilot Write Mode<select id="settingWriteMode"><option>preview</option><option>apply</option></select></label>
+            <label>Max Diff Tabs<input id="settingDiffTabs" type="number" min="1" max="25" /></label>
             <label>Validation Preferences<input id="settingValidation" /></label>
             <label>Safety Mode<select id="settingSafety"><option>standard</option><option>strict</option><option>review-only</option></select></label>
+            <label class="settingsWide">Exclude Glob<input id="settingExcludeGlob" /></label>
           </div>
           <div class="row">
             <label><input id="settingAutoScan" type="checkbox" /> Auto-scan on open</label>
@@ -6289,6 +6673,8 @@ function renderPanelHtml() {
     document.getElementById('chat').addEventListener('click', () => {
       vscode.postMessage({ command: 'chat', text: prompt.value, model: model.value });
     });
+    document.getElementById('runAgentPrompt').addEventListener('click', () => vscode.postMessage({ command: 'runAgentMode', text: prompt.value }));
+    document.getElementById('runAutopilotDraft').addEventListener('click', () => vscode.postMessage({ command: 'runAutopilot', text: prompt.value }));
     document.getElementById('runHealth').addEventListener('click', () => vscode.postMessage({ command: 'runHealthCheck' }));
     document.getElementById('setupChecklist').addEventListener('click', () => vscode.postMessage({ command: 'runFirstRunSetup' }));
     document.getElementById('testModel').addEventListener('click', () => vscode.postMessage({ command: 'testModelPrompt' }));
@@ -6319,6 +6705,8 @@ function renderPanelHtml() {
     document.getElementById('feature').addEventListener('click', () => {
       vscode.postMessage({ command: 'createFeature' });
     });
+    document.getElementById('startAutopilotBtn').addEventListener('click', () => vscode.postMessage({ command: 'startAutopilot' }));
+    document.getElementById('stopAutopilotBtn').addEventListener('click', () => vscode.postMessage({ command: 'stopAutopilot' }));
     document.getElementById('reviewFile').addEventListener('click', () => vscode.postMessage({ command: 'reviewCurrentFile' }));
     document.getElementById('improveSelection').addEventListener('click', () => vscode.postMessage({ command: 'improveSelectedCode' }));
     document.getElementById('attachFile').addEventListener('click', () => vscode.postMessage({ command: 'attachCurrentFile' }));
@@ -6345,8 +6733,14 @@ function renderPanelHtml() {
           ollamaUrl: byId('settingOllama').value,
           coreUrl: byId('settingCore').value,
           chatModel: byId('settingModel').value,
+          fastModel: byId('settingFastModel').value,
           fallbackModels: byId('settingFallbacks').value,
           maxContextChars: byId('settingContext').value,
+          maxContextFiles: byId('settingMaxFiles').value,
+          autopilotIntervalMinutes: byId('settingAutopilotMin').value,
+          autopilotWriteMode: byId('settingWriteMode').value,
+          maxProposalDiffTabs: byId('settingDiffTabs').value,
+          excludeGlob: byId('settingExcludeGlob').value,
           validationCommandPreferences: byId('settingValidation').value,
           safetyMode: byId('settingSafety').value,
           autoScanOnOpen: byId('settingAutoScan').checked
@@ -6367,6 +6761,9 @@ function renderPanelHtml() {
         byId('approvalStatus').textContent = message.summary || 'Proposal ready';
       } else if (message.command === 'agentState') {
         renderAgent(message.agent);
+      } else if (message.command === 'runtime') {
+        renderRuntime(message.runtime || {});
+        renderQuality(message.runtime || {});
       } else if (message.command === 'chatHistory') {
         renderChat(message.chatHistory || []);
       } else if (message.command === 'error') {
@@ -6380,6 +6777,8 @@ function renderPanelHtml() {
       renderOverview(state.projectOverview || {});
       renderHealth(state.health || {});
       renderModelDiagnostics(state.modelDiagnostics || {});
+      renderRuntime(state.runtime || {});
+      renderQuality(state.runtime || {});
       renderError(state.errorInfo || {});
       renderChat(state.chatHistory || []);
       renderAttachments(state.attachments || []);
@@ -6454,6 +6853,64 @@ function renderPanelHtml() {
       byId('modelDiagnostics').textContent = lines.length ? lines.join('\\n\\n') : 'No model diagnostics yet.';
     }
 
+    function renderRuntime(runtime) {
+      const mode = runtime.coreConnected
+        ? (runtime.fallbackMode ? 'Core connected with fallback' : 'Core primary')
+        : (runtime.fallbackMode ? 'Local fallback' : 'Core not checked');
+      byId('runtimeMode').textContent = mode;
+      const latest = runtime.latestValidation || {};
+      const items = [
+        ['Core', runtime.coreConnected ? 'Connected' : 'Disconnected'],
+        ['Fallback', runtime.fallbackMode ? (runtime.fallbackReason || 'Active') : 'Inactive'],
+        ['Active Workflow', runtime.activeWorkflowId ? runtime.activeWorkflowId + '\\n' + (runtime.activeWorkflowStatus || '') : 'None'],
+        ['Provider', runtime.coreConnected ? 'Aegis Core /v1' : 'VS Code local'],
+        ['Validation', runtime.latestValidationStatus || (latest.command ? latest.command : 'No result yet')],
+        ['Checkpoint', runtime.checkpointAvailable ? (runtime.lastCheckpointId || 'Available') : 'None recorded']
+      ];
+      byId('runtimeSummary').innerHTML = items.map((item) => '<div class="stat"><div class="statLabel">' + escapeHtml(item[0]) + '</div><div class="statValue">' + escapeHtml(item[1]) + '</div></div>').join('');
+      const operations = runtime.recentOperations || [];
+      byId('runtimeOps').innerHTML = operations.length ? operations.slice(0, 8).map((item) => [
+        '<div class="fileRow">',
+        '<span class="chip">' + escapeHtml(item.runtime || '') + '</span>',
+        '<span><strong>' + escapeHtml(item.operation || 'operation') + ' - ' + escapeHtml(item.status || '') + '</strong>',
+        '<br/><span class="muted">' + escapeHtml(item.detail || '') + '</span>',
+        (item.workflowId ? '<br/><span class="muted">Workflow: ' + escapeHtml(item.workflowId) + '</span>' : ''),
+        (item.jobId ? '<br/><span class="muted">Job: ' + escapeHtml(item.jobId) + '</span>' : ''),
+        (item.checkpointId ? '<br/><span class="muted">Checkpoint: ' + escapeHtml(item.checkpointId) + '</span>' : ''),
+        '</span>',
+        '</div>'
+      ].join('')).join('') : '<div class="muted">No runtime operations recorded yet.</div>';
+    }
+
+    function renderQuality(runtime) {
+      const gate = runtime.qualityGate || {};
+      const status = runtime.qualityGateStatus || (gate.apply_allowed === false ? 'blocked' : (gate.id ? 'clear' : 'not checked'));
+      byId('qualityMode').textContent = status === 'blocked' ? 'Blocked' : (status === 'clear' ? 'Clear' : 'No gate run');
+      const pct = (value) => typeof value === 'number' ? Math.round(value * 100) + '%' : 'Unknown';
+      const blockers = runtime.qualityBlockers || [];
+      const warnings = runtime.qualityWarnings || [];
+      const items = [
+        ['Apply Status', gate.apply_allowed === false ? 'Blocked' : (gate.id ? 'Allowed' : 'Not checked')],
+        ['Confidence', pct(runtime.qualityConfidenceScore)],
+        ['Validation', pct(runtime.qualityValidationScore)],
+        ['Risk', pct(runtime.qualityRiskScore)],
+        ['Gate Count', runtime.qualityGateCount || 0],
+        ['Updated', runtime.qualityUpdatedAt || 'Never']
+      ];
+      byId('qualitySummary').innerHTML = items.map((item) => '<div class="stat"><div class="statLabel">' + escapeHtml(item[0]) + '</div><div class="statValue">' + escapeHtml(item[1]) + '</div></div>').join('');
+      const gates = Array.isArray(gate.gates) ? gate.gates : [];
+      const rows = [];
+      blockers.slice(0, 4).forEach((item) => rows.push({ status: 'blocked', name: 'Blocker', detail: item }));
+      warnings.slice(0, 3).forEach((item) => rows.push({ status: 'warn', name: 'Warning', detail: item }));
+      gates.slice(0, 6).forEach((item) => rows.push({ status: item.status || 'unknown', name: item.name || item.id || 'Gate', detail: item.summary || item.detail || '' }));
+      byId('qualityDetails').innerHTML = rows.length ? rows.map((item) => [
+        '<div class="fileRow">',
+        '<span class="chip">' + escapeHtml(item.status) + '</span>',
+        '<span><strong>' + escapeHtml(item.name) + '</strong><br/><span class="muted">' + escapeHtml(item.detail || '') + '</span></span>',
+        '</div>'
+      ].join('')).join('') : '<div class="muted">Run or apply a proposal to evaluate Core quality gates.</div>';
+    }
+
     function renderError(error) {
       if (!error || !error.message) {
         byId('errorPanel').textContent = 'No extension errors recorded.';
@@ -6520,7 +6977,9 @@ function renderPanelHtml() {
     function renderProposal(proposal) {
       byId('riskLevel').textContent = proposal.risk || 'Unknown';
       byId('confidenceScore').textContent = proposal.confidenceScore ? Math.round(proposal.confidenceScore * 100) + '%' : 'Unknown';
-      byId('undoVisibility').textContent = 'Rollback: Aegis backs up approved edits before apply';
+      byId('undoVisibility').textContent = proposal.coreProposalId
+        ? 'Rollback: Core checkpoint before apply'
+        : 'Rollback: Aegis backs up approved edits before apply';
       byId('approvalStatus').textContent = proposal.approvalStatus || 'none';
       const files = proposal.files || [];
       byId('proposalFiles').innerHTML = files.length ? files.map((file) => [
@@ -6529,6 +6988,18 @@ function renderPanelHtml() {
         '<span><strong>' + escapeHtml(file.path) + '</strong>' + (isRiskyFile(file.path) ? ' <span class="risk">risky</span>' : '') + '<br/><span class="muted">' + escapeHtml(file.reason || 'Proposed change') + '</span><br/><span class="muted">' + escapeHtml(file.chars || 0) + ' replacement chars</span></span>',
         '</label>'
       ].join('')).join('') : '<div class="muted">No pending file diffs.</div>';
+      const destinations = proposal.destinationReasoning || [];
+      byId('destinationReasoning').innerHTML = destinations.length ? destinations.map((item) => [
+        '<div class="fileRow">',
+        '<span class="chip">' + escapeHtml(item.existing ? 'existing' : 'new') + '</span>',
+        '<span><strong>' + escapeHtml(item.path || '') + '</strong>',
+        '<br/><span class="muted">Source: ' + escapeHtml(item.source || 'model') + ' · Risk: ' + escapeHtml(item.risk || 'unknown') + '</span>',
+        '<br/><span class="muted">Safety: ' + escapeHtml((item.safety && item.safety.status) || 'accepted') + (item.safety && item.safety.rejected ? ' · rejected' : '') + '</span>',
+        item.selectedContext ? '<br/><span class="muted">Selected context: ' + escapeHtml(item.selectedContext) + '</span>' : '',
+        '<br/><span class="muted">' + escapeHtml(item.choiceReason || 'Aegis selected this path from proposal and workspace context.') + '</span>',
+        '</span>',
+        '</div>'
+      ].join('')).join('') : '<div class="muted">No pending file destinations.</div>';
     }
 
     function isRiskyFile(filePath) {
@@ -6585,8 +7056,14 @@ function renderPanelHtml() {
       byId('settingOllama').value = config.ollamaUrl || '';
       byId('settingCore').value = config.coreUrl || '';
       byId('settingModel').value = config.chatModel || '';
+      byId('settingFastModel').value = config.fastModel || '';
       byId('settingFallbacks').value = (config.fallbackModels || []).join(', ');
       byId('settingContext').value = config.maxContextChars || 62000;
+      byId('settingMaxFiles').value = config.maxContextFiles != null ? config.maxContextFiles : 12;
+      byId('settingAutopilotMin').value = config.autopilotIntervalMinutes != null ? config.autopilotIntervalMinutes : 15;
+      byId('settingWriteMode').value = config.autopilotWriteMode || 'preview';
+      byId('settingDiffTabs').value = config.maxProposalDiffTabs != null ? config.maxProposalDiffTabs : 12;
+      byId('settingExcludeGlob').value = config.excludeGlob || '';
       byId('settingValidation').value = (config.validationCommandPreferences || []).join(', ');
       byId('settingSafety').value = config.safetyMode || 'standard';
       byId('settingAutoScan').checked = config.autoScanOnOpen !== false;
@@ -6612,7 +7089,7 @@ const exportedApi = {
   deactivate
 };
 
-if (process.env.AEGIS_EXTENSION_DEVTOOLS === '1') {
+if (process.env.AEGIS_EXTENSION_DEVTOOLS === '1' || fsSync.existsSync(path.join(__dirname, '.aegis-devtools'))) {
   exportedApi.__dev = {
     buildProjectSnapshot,
     getProjectSnapshot,
@@ -6622,7 +7099,19 @@ if (process.env.AEGIS_EXTENSION_DEVTOOLS === '1') {
     buildImpactAnalysis,
     buildFocusedProjectContext,
     projectSnapshotSummary,
-    normalizeHttpBaseUrl
+    normalizeHttpBaseUrl,
+    parseProposal,
+    proposalObjectFromInstructionalCodeBlocks,
+    validateProposalEdit,
+    isBlockedRelativePath,
+    makeWorkspaceTarget,
+    applyProposal,
+    rollbackLastAgentChange,
+    detectValidationCommands,
+    renderPanelHtml,
+    buildDestinationReasoning,
+    getEffectiveOllamaNumCtx,
+    invalidateOllamaModelsCache
   };
 }
 

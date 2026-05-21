@@ -38,6 +38,12 @@ namespace Aegis.LocalAgent.VisualStudio.Services
             return LastValidationMessages;
         }
 
+        public void ClearPendingProposal()
+        {
+            PendingProposal = null;
+            LastValidationMessages = Array.Empty<string>();
+        }
+
         public string BuildPreviewText(SolutionContext context, AgentProposal proposal)
         {
             if (proposal?.FileEdits == null || proposal.FileEdits.Count == 0)

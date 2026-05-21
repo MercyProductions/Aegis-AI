@@ -1,5 +1,101 @@
 # Development Log
 
+## 2026-05-18 - Weekly Dogfooding Friction Taxonomy
+
+Focus:
+
+- Review latest dogfooding/workflow notes without expanding scope.
+- Preserve the weekly stabilization cadence: capture repeated friction, fix only small high-impact clarity issues, and keep generated `.aegis` state untouched.
+
+Actions:
+
+- Reviewed `DOGFOODING_NOTES.md`, `WORKFLOW_NOTES.md`, `docs/REAL_WORLD_DOGFOODING_AND_WORKFLOW_REFINEMENT.md`, and generated `.aegis/dogfooding-*` state.
+- Recorded that current dogfooding confidence is based on only two events and still reports `needs_attention`, with validation reliability as the measured weak point.
+- Added dogfooding friction categories for startup, roadmap usefulness, diff readability, diagnostics clarity, error-message clarity, onboarding friction, and maintainability drag.
+- Updated workflow/dogfooding documentation so future reviews can classify these issues directly instead of collapsing them into generic categories.
+- Added focused regression coverage for weekly review friction tag normalization and aggregation.
+
+Validation completed:
+
+- `python -m pytest tests/test_dogfooding.py`: pass, 7 tests.
+
+## 2026-05-11 - Website Core Runtime Delegation
+
+Focus:
+
+- Move Website apply/checkpoint/restore/validation runtime ownership toward Aegis Core without breaking existing `/api` consumers.
+- Preserve Website fallback behavior when Core is offline or missing delegated runtime endpoints.
+
+Actions:
+
+- Added a Website Core runtime client adapter with Core base URL config, timeouts, health/delegation status, structured fallback tracking, and response-shape adapters.
+- Routed `/api/apply`, `/api/checkpoints`, `/api/restore-checkpoint`, and `/api/validate` through Core when available.
+- Added `POST /api/checkpoints` for Core-backed manual checkpoint creation.
+- Added `/api/runtime/delegation` and a `delegation` field on `/api/core-runtime`.
+- Queued a Core `repair_project` workflow after delegated validation failures.
+- Documented Website as the compatibility gateway while Core becomes the shared runtime authority for editing, checkpoint, validation, and repair workflow contracts.
+
+Validation completed:
+
+- Aegis Core full suite: pass, 170 tests.
+- Website focused runtime delegation suite: pass, 7 tests.
+- Website focused Core bridge/storage/delegation slice: pass, 98 tests.
+- Website backend compile check: pass.
+- Website frontend unit suite: pass, 174 tests across 21 files.
+- Website backend full suite: 842 passed, 7 failed in pre-existing project scaffolder coverage around scaffolded `.aegis`/`.vscode` artifacts and occupied target reuse; the failures are outside the Core delegation paths.
+
+## 2026-05-11 - VS Code Project Creation Apply Flow
+
+Focus:
+
+- Fix the VS Code plugin path where a generated test project could be returned as paste-and-save instructions instead of real workspace edits.
+- Make selected Explorer folders and files act as context focus without forcing generated files into the selected directory.
+- Preserve the existing proposal, diff, approval, backup, and rollback safety model.
+
+Actions:
+
+- Routed implementation-style sidebar chat requests into Agent Mode so project/feature creation drafts applyable file edits.
+- Hardened the Agent Mode prompt to require complete `fileEdits` for safe create/scaffold/fix requests and to avoid manual paste instructions.
+- Added a fallback parser that converts safe filename-labeled code blocks into normal Aegis proposal edits when a local model ignores the strict JSON schema.
+- Changed selected-resource resolution so the workspace remains the write root while selected folders/files are retained as focus metadata for context selection and prompt placement guidance.
+- Copied the new `autopilotlogo.png` asset into the extension package media folder and made it the package icon.
+- Added the requested `src/` module topology as the first behavior-preserving extraction map.
+- Extracted destination reasoning into `src/workspace/destinationReasoning.ts` and wired the webview to show "Why Aegis chose these files" for each proposed edit.
+- Added helper tests plus an Extension Host smoke-test scaffold covering panel open, health check, focused folder targeting, proposal apply, rollback, and review-only blocking.
+- Replaced the Activity Bar SVG with a theme-aware `currentColor` icon.
+- Bumped the VS Code extension package to `0.1.5` and documented the create-project workflow.
+
+Validation completed:
+
+- `npm run compile`: pass.
+- `npm run lint:package`: pass, including regressions for implementation-intent routing, selected-folder focus/write-root separation, and code-block-to-file-edit fallback.
+- `npm run lint`: pass.
+- `npm run test:unit`: pass.
+- `npm run test:smoke`: pass for Extension Host panel activation, health check, focused-folder proposal reasoning, preview/apply, rollback, and review-only write blocking. VS Code emitted non-fatal test-host mutex/worker warnings because another Code instance was active.
+- `npm run package`: pass, producing `release/aegis-local-autopilot-0.1.5.vsix`.
+- `npm run install-local`: pass, installing `aegis-local-autopilot-0.1.5.vsix` into VS Code.
+
+## 2026-05-11 - Provider Account Foundation
+
+Focus:
+
+- Start the account/session integration layer for multi-provider model routing without importing third-party tokens.
+- Keep the first slice additive and local-first: manifests, credential references, CLI probes, and UI visibility.
+
+Actions:
+
+- Added provider account models, manifest loading, OS credential vault integration, SQLite schema helpers, and safe CLI bridge probing.
+- Added Website API endpoints for provider account snapshots, API-key linking, unlinking, and CLI bridge probes.
+- Added a Provider Accounts settings panel with credential vault status, provider connection state, model-limit summaries, API-key linking, unlinking, and CLI probing.
+- Extended model registry and attempt telemetry shapes with account/session/routing/limit metadata fields for follow-up routing work.
+
+Validation completed:
+
+- Provider account backend tests passed.
+- Adjacent model registry/storage/model execution tests passed.
+- Frontend API tests and Website build passed.
+- Full Website validation reached 174 frontend tests, production build, and 835 backend passes before 7 existing project-scaffolder fixture failures unrelated to provider accounts.
+
 ## 2026-05-09 - Website Core Bridge Result Redaction
 
 Focus:

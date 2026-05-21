@@ -1,0 +1,41 @@
+{
+  "id": "anthropic",
+  "label": "Anthropic",
+  "kind": "cloud",
+  "description": "Anthropic API, Claude-style CLI delegation, Bedrock, and Vertex-compatible provider account surface.",
+  "auth_modes": ["api_key", "cli_bridge", "env_profile"],
+  "default_auth_mode": "api_key",
+  "credential_env_vars": ["ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"],
+  "capabilities": ["chat", "code", "reasoning", "tools", "vision", "streaming", "structured_json", "agent_delegation"],
+  "model_families": ["claude", "bedrock", "vertex"],
+  "quota_status": "Provider limits depend on the linked Anthropic account, Bedrock profile, or Vertex project.",
+  "docs_url": "https://docs.anthropic.com",
+  "security_notes": [
+    "Claude Code implementation source is not used because its core repository is all-rights-reserved.",
+    "Aegis delegates only through installed official CLIs or supported APIs."
+  ],
+  "cli_bridge": {
+    "cli_name": "Claude CLI",
+    "candidate_binaries": ["claude", "claude.cmd", "claude.exe"],
+    "version_args": ["--version"],
+    "status_args": [],
+    "login_args": ["login"],
+    "delegation_modes": ["chat", "resume"],
+    "notes": "Status support varies; Aegis records installed/version state without reading credentials."
+  },
+  "metadata": {
+    "workspace_role": "claude_source_drop",
+    "source_bridge": {
+      "prefer_source": false,
+      "root_candidates": ["../AI", "../../AI"],
+      "binary_candidates": [
+        "claude/claude.exe",
+        "claude/bin/claude.exe",
+        "claude/dist/claude.exe"
+      ],
+      "binary_glob_candidates": [
+        "%LOCALAPPDATA%/Microsoft/WinGet/Packages/Anthropic.ClaudeCode*/claude.exe"
+      ]
+    }
+  }
+}

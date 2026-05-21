@@ -18,6 +18,7 @@ from .operations import engineering_operations_dashboard
 from .orchestration import OrchestrationPersistenceError, advance_orchestration_step, create_orchestration_plan, orchestration_dashboard
 from .personal_intelligence import PersonalIntelligencePersistenceError, adaptive_personal_intelligence, reset_personal_intelligence
 from .quality import QualityPersistenceError, quality_dashboard, record_quality_snapshot
+from .release import check_compatibility, migration_status, release_manifest, run_migrations, update_plan
 from .roadmap import RoadmapPersistenceError, generate_roadmap
 from .simulation import compare_scenarios, simulate_change
 from .tasks import TaskStorePersistenceError, create_task, list_tasks
@@ -57,6 +58,7 @@ def main(argv: list[str] | None = None) -> int:
         "personal",
         "route",
         "orchestrate",
+        "release",
     ):
         sub = subcommands.add_parser(name)
         sub.add_argument("--workspace", default=".", help="Workspace/project root.")
@@ -84,6 +86,20 @@ def main(argv: list[str] | None = None) -> int:
             sub.add_argument("--task-id", help="Optional orchestration task id to advance.")
             sub.add_argument("--approval", action="store_true", help="Confirm approval for an approval-gated orchestration step.")
             sub.add_argument("--summary", help="Optional step summary.")
+        if name == "release":
+            sub.add_argument("--manifest", action="store_true", help="Print the ecosystem version manifest.")
+            sub.add_argument("--compatibility", metavar="CLIENT_TYPE", help="Check client/Core/schema compatibility for one client type.")
+            sub.add_argument("--client-version", default="", help="Client version to check.")
+            sub.add_argument("--schema-version", default="", help="Client schema/contract version to check.")
+            sub.add_argument("--core-version", default="", help="Core version reported by the caller.")
+            sub.add_argument("--capability", dest="capabilities", action="append", default=[], help="Client capability. Can be supplied more than once.")
+            sub.add_argument("--migrations", action="store_true", help="Show release migration status for the workspace.")
+            sub.add_argument("--migrate", action="store_true", help="Run release migrations for the workspace.")
+            sub.add_argument("--dry-run", action="store_true", help="Preview migrations without writing files.")
+            sub.add_argument("--update-plan", metavar="COMPONENT_ID", help="Create an inspectable update launcher plan for a component.")
+            sub.add_argument("--target-version", default="", help="Target component version for an update plan.")
+            sub.add_argument("--package-uri", default="", help="Package path or URL for an update plan.")
+            sub.add_argument("--sha256", default="", help="Expected package SHA256 for an update plan.")
         if name == "jobs":
             sub.add_argument("--run", dest="job_id", help="Run one maintenance job by id.")
             sub.add_argument("--trigger", help="Run all maintenance jobs for a trigger such as project_opened or build_failed.")
@@ -202,6 +218,30 @@ def main(argv: list[str] | None = None) -> int:
                 )
             else:
                 result = orchestration_dashboard(workspace)
+        elif args.command == "release":
+            if args.compatibility:
+                result = check_compatibility(
+                    args.compatibility,
+                    args.client_version,
+                    schema_version=args.schema_version,
+                    core_version=args.core_version,
+                    capabilities=args.capabilities,
+                    workspace=workspace,
+                )
+            elif args.migrate:
+                result = run_migrations(workspace, dry_run=args.dry_run)
+            elif args.migrations:
+                result = migration_status(workspace)
+            elif args.update_plan:
+                result = update_plan(
+                    args.update_plan,
+                    current_version=args.client_version,
+                    target_version=args.target_version,
+                    package_uri=args.package_uri,
+                    sha256=args.sha256,
+                )
+            else:
+                result = release_manifest(workspace)
         else:
             parser.error(f"Unknown command {args.command}")
             return 2

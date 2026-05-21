@@ -6,9 +6,11 @@ from typing import Any
 def branding_tokens() -> dict[str, Any]:
     return {
         "product": {
-            "ecosystem": "Auralith",
+            "ecosystem": "Auralith OS",
             "runtime": "Aegis Core",
-            "agent": "Aegis Local Agent",
+            "assistant": "Auralith Prime",
+            "agent": "Auralith Agent",
+            "legacy_aliases": ["Auralith", "Aegis", "Aegis AI", "Aegis Local Agent"],
         },
         "colors": {
             "background": "#0b1014",
@@ -27,15 +29,22 @@ def branding_tokens() -> dict[str, Any]:
             "density": "compact but readable",
         },
         "terminology": {
+            "product": "Auralith OS",
+            "assistant": "Auralith Prime",
+            "core_runtime": "Aegis Core",
             "project_memory": "Project Memory",
             "solution_memory": "Solution Memory",
             "safe_apply": "Safe Apply",
             "roadmap": "Roadmap",
             "validation": "Validation",
             "rollback": "Rollback",
+            "quality_gate": "Quality Gate",
+            "distributed_node": "Trusted Runtime Node",
+            "experimental_area": "Experimental Labs",
         },
         "layout": {
-            "philosophy": "dark, practical command center with clear state, explicit approval, and low visual clutter",
-            "primary_panels": ["Overview", "Chat", "Plan", "Changes", "Validation", "Memory", "Diagnostics"],
+            "philosophy": "dark, practical Auralith OS command center with clear state, explicit approval, and low visual clutter",
+            "primary_panels": ["Workspace", "Plan", "Changes", "Validate", "Memory", "Runtime"],
+            "advanced_panels": ["Agents", "Quality", "Deployment", "Plugins", "Labs", "Diagnostics"],
         },
     }

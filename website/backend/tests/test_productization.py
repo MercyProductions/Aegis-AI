@@ -166,6 +166,10 @@ class ProductizationTests(unittest.TestCase):
                 "/api/productization/plugins/validate",
                 json={"manifest": self._plugin_manifest().model_dump(mode="json")},
             )
+            checksum_validation = client.post(
+                "/api/productization/plugins/validate",
+                json={"manifest": self._plugin_manifest(checksum="wrong-checksum").model_dump(mode="json")},
+            )
             register = client.post(
                 "/api/productization/plugins/register",
                 json={"manifest": self._plugin_manifest().model_dump(mode="json"), "enable": False, "trust": False},
@@ -173,6 +177,12 @@ class ProductizationTests(unittest.TestCase):
             plugin_id = register.json()["id"]
             enabled = client.post(f"/api/productization/plugins/{plugin_id}/enable", json={"reason": "test"})
             trusted = client.post(f"/api/productization/plugins/{plugin_id}/trust", json={"reason": "reviewed"})
+            updated = client.post(
+                f"/api/productization/plugins/{plugin_id}/update",
+                json={"manifest": self._plugin_manifest(version="0.2.0").model_dump(mode="json"), "reason": "upgrade test"},
+            )
+            rolled_back = client.post(f"/api/productization/plugins/{plugin_id}/rollback", json={"reason": "rollback test"})
+            uninstalled = client.post(f"/api/productization/plugins/{plugin_id}/uninstall", json={"reason": "safe remove"})
             disabled = client.post(f"/api/productization/plugins/{plugin_id}/disable", json={"reason": "pause"})
             policy = client.put(
                 "/api/productization/enterprise-policy",
@@ -196,12 +206,28 @@ class ProductizationTests(unittest.TestCase):
         self.assertTrue(any(item["id"] == "plugin.sdk.v1" for item in stable_apis.json()))
         self.assertEqual(validate.status_code, 200, validate.text)
         self.assertTrue(validate.json()["valid"])
+        self.assertEqual(checksum_validation.status_code, 200, checksum_validation.text)
+        self.assertFalse(checksum_validation.json()["valid"])
+        self.assertTrue(any("checksum" in item.lower() for item in checksum_validation.json()["errors"]))
         self.assertEqual(enabled.status_code, 200, enabled.text)
         self.assertTrue(enabled.json()["enabled"])
         self.assertEqual(trusted.status_code, 200, trusted.text)
         self.assertTrue(trusted.json()["trusted"])
+        self.assertEqual(updated.status_code, 200, updated.text)
+        self.assertEqual(updated.json()["status"], "updated")
+        self.assertEqual(updated.json()["plugin"]["version"], "0.2.0")
+        self.assertEqual(rolled_back.status_code, 200, rolled_back.text)
+        self.assertEqual(rolled_back.json()["status"], "rolled_back")
+        self.assertEqual(rolled_back.json()["plugin"]["version"], "0.1.0")
+        self.assertEqual(uninstalled.status_code, 200, uninstalled.text)
+        self.assertEqual(uninstalled.json()["status"], "uninstalled")
+        self.assertFalse(uninstalled.json()["plugin"]["enabled"])
+        self.assertEqual(uninstalled.json()["plugin"]["metadata"]["lifecycle_status"], "uninstalled")
         self.assertEqual(disabled.status_code, 200, disabled.text)
         self.assertFalse(disabled.json()["enabled"])
+        self.assertTrue(updated.json()["audit_event_id"])
+        self.assertTrue(rolled_back.json()["audit_event_id"])
+        self.assertTrue(uninstalled.json()["audit_event_id"])
         self.assertEqual(policy.status_code, 200, policy.text)
         self.assertTrue(policy.json()["plugin_signing_required"])
         self.assertEqual(recovery.status_code, 200, recovery.text)

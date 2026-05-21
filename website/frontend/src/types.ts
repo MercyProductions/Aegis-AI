@@ -765,6 +765,27 @@ export interface MemoryDistillationSnapshot {
   continuity_preserved: boolean;
 }
 
+export interface ContinuationHandoff {
+  workspace_root: string;
+  generated_at: string;
+  active_goal: string;
+  next_action: string;
+  source_kind: string;
+  source_title: string;
+  source_record_id: string;
+  confidence: number;
+  risk_level: 'low' | 'medium' | 'high' | 'critical' | string;
+  blockers: string[];
+  related_tasks: string[];
+  related_files: string[];
+  validation_commands: string[];
+  memory_refs: string[];
+  context_record_ids: string[];
+  resume_prompt: string;
+  rationale: string;
+  warnings: string[];
+}
+
 export interface AegisContinuitySnapshot {
   workspace_root: string;
   generated_at: string;
@@ -782,6 +803,7 @@ export interface AegisContinuitySnapshot {
   digital_twin: DigitalTwinWorkspaceModel;
   research_lab: ResearchLabEvaluation[];
   memory_distillation: MemoryDistillationSnapshot;
+  continuation: ContinuationHandoff;
   recommendations: string[];
   warnings: string[];
 }
@@ -1332,6 +1354,213 @@ export interface DistributedRuntimeSnapshot {
   security_summary: string[];
 }
 
+export interface RuntimeTerminalJob {
+  job_id: string;
+  terminal_id: string;
+  workflow_id?: string;
+  task_id?: string;
+  title: string;
+  command: string[];
+  command_text: string;
+  cwd: string;
+  workspace: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  started_at?: string | null;
+  finished_at?: string | null;
+  timeout_seconds: number;
+  exit_code?: number | null;
+  timed_out: boolean;
+  approval_required: boolean;
+  approved: boolean;
+  dry_run: boolean;
+  source_client: string;
+  stdout_tail: string;
+  stderr_tail: string;
+  output_event_count: number;
+  safety: Record<string, unknown>;
+  metadata: Record<string, unknown>;
+}
+
+export interface RuntimeInteractionEvent {
+  event_id: string;
+  event_type: string;
+  workspace: string;
+  job_id?: string;
+  terminal_id?: string;
+  workflow_id?: string;
+  stream?: string;
+  chunk?: string;
+  message: string;
+  payload: Record<string, unknown>;
+  severity: 'info' | 'ok' | 'warning' | 'error' | string;
+  created_at: string;
+}
+
+export interface RuntimeTerminal {
+  terminal_id: string;
+  title: string;
+  status: string;
+  job_count: number;
+  active_job_ids: string[];
+  latest_job_id: string;
+  latest_output: string;
+  updated_at: string;
+}
+
+export interface RuntimeSession {
+  session_id: string;
+  workflow_id: string;
+  title: string;
+  owner_client_id: string;
+  participants: Record<string, unknown>[];
+  spectators: Record<string, unknown>[];
+  approval_delegates: string[];
+  status: string;
+  created_at: string;
+  updated_at: string;
+  last_sync_at: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface RuntimeInteractionObservability {
+  job_count: number;
+  active_jobs: number;
+  completed_jobs: number;
+  failed_jobs: number;
+  terminal_count: number;
+  event_count: number;
+  session_count: number;
+  active_processes: number;
+  average_duration_ms: number;
+}
+
+export interface RuntimeInteractionSnapshot {
+  ok: boolean;
+  delegated: boolean;
+  core_connected: boolean;
+  workspace_root: string;
+  terminals: RuntimeTerminal[];
+  jobs: RuntimeTerminalJob[];
+  active_jobs: RuntimeTerminalJob[];
+  recent_events: RuntimeInteractionEvent[];
+  processes: Record<string, unknown>[];
+  sessions: RuntimeSession[];
+  voice: Record<string, unknown>;
+  observability: RuntimeInteractionObservability;
+  safety_controls: Record<string, unknown>;
+  fallback_mode_active: boolean;
+  error: string;
+  stream_url: string;
+}
+
+export interface RuntimeTerminalJobRequest {
+  workspace_root?: string;
+  command: string | string[];
+  cwd?: string;
+  workflow_id?: string;
+  task_id?: string;
+  terminal_id?: string;
+  title?: string;
+  timeout_seconds?: number;
+  approval?: boolean;
+  dry_run?: boolean;
+  wait?: boolean;
+  source_client?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface RuntimeJobActionRequest {
+  workspace_root?: string;
+  reason?: string;
+  approval?: boolean;
+  wait?: boolean;
+  timeout_seconds?: number;
+}
+
+export interface RuntimeJobMutationResponse {
+  delegated: boolean;
+  workspace: string;
+  action: string;
+  job: RuntimeTerminalJob;
+  dashboard: RuntimeInteractionSnapshot;
+}
+
+export interface RuntimeStreamsResponse {
+  delegated?: boolean;
+  workspace: string;
+  events: RuntimeInteractionEvent[];
+  next_since: number;
+  error?: string;
+}
+
+export interface RuntimeSessionRequest {
+  workspace_root?: string;
+  workflow_id?: string;
+  title?: string;
+  owner_client_id?: string;
+  participants?: Record<string, unknown>[];
+  spectators?: Record<string, unknown>[];
+  approval_delegates?: string[];
+  metadata?: Record<string, unknown>;
+}
+
+export interface RuntimeSessionSyncRequest {
+  workspace_root?: string;
+  participants?: Record<string, unknown>[];
+  spectators?: Record<string, unknown>[];
+  approval_delegates?: string[];
+  status?: string;
+  message?: string;
+}
+
+export interface RuntimeSessionMutationResponse {
+  delegated: boolean;
+  workspace: string;
+  session: RuntimeSession;
+  dashboard: Record<string, unknown>;
+}
+
+export interface RuntimeVoiceResponse {
+  workspace: string;
+  status: string;
+  warnings: string[];
+  push_to_talk?: Record<string, unknown>;
+  speech_to_text?: Record<string, unknown>;
+  text_to_speech?: Record<string, unknown>;
+  voice_commands?: string[];
+  privacy?: Record<string, unknown>;
+}
+
+export interface RuntimeVoiceCommandRequest {
+  workspace_root?: string;
+  transcript: string;
+  workflow_id?: string;
+  client_id?: string;
+  dry_run?: boolean;
+}
+
+export interface RuntimeVoiceCommandResponse {
+  delegated: boolean;
+  workspace: string;
+  command: Record<string, unknown>;
+  voice: RuntimeVoiceResponse;
+}
+
+export interface RuntimeReplayResponse {
+  delegated?: boolean;
+  workspace: string;
+  workflow_id: string;
+  job_id: string;
+  timeline: Record<string, unknown>[];
+  terminal_output: RuntimeInteractionEvent[];
+  repair_chain: Record<string, unknown>[];
+  approval_history: Record<string, unknown>[];
+  sessions: RuntimeSession[];
+  error?: string;
+}
+
 export interface FixMemoryEntry {
   id: string;
   created_at: string;
@@ -1370,10 +1599,41 @@ export interface MemoryNoteResponse {
   confidence: number;
 }
 
+export interface MemoryGovernanceInfo {
+  runtime: string;
+  mode: 'local_only' | 'project_only' | 'cloud_allowed' | string;
+  local_only: boolean;
+  cloud_memory_sharing: boolean;
+  cloud_context_requires_consent: boolean;
+  sensitive_memory_exclusions: boolean;
+  per_project_isolation: boolean;
+  inspectable: boolean;
+  editable: boolean;
+  exportable: boolean;
+  deletable: boolean;
+  allowed_scopes: string[];
+  disabled_categories: string[];
+  orchestration_excluded_categories: string[];
+  retention_by_category: Record<string, number | string | null>;
+  sensitive_export_default: string;
+  storage_boundary: string;
+  audit_available: boolean;
+  audit_event_count: number;
+  categories: Array<Record<string, unknown>>;
+  controls: Record<string, unknown>;
+  privacy: Record<string, unknown>;
+  warnings: string[];
+}
+
 export interface MemoryNotesResponse {
   workspace_root: string;
   warnings: string[];
   notes: MemoryNoteResponse[];
+  governance?: MemoryGovernanceInfo;
+  privacy?: Record<string, unknown>;
+  controls?: Record<string, unknown>;
+  delegated?: boolean;
+  runtime?: string;
 }
 
 export interface CreateMemoryNoteRequest {
@@ -1390,6 +1650,57 @@ export type UpdateMemoryNoteRequest = Partial<CreateMemoryNoteRequest>;
 
 export interface DeleteMemoryNoteResponse {
   deleted: string;
+  delegated?: boolean;
+  runtime?: string;
+}
+
+export interface MemoryGovernanceResponse {
+  workspace_root: string;
+  governance: MemoryGovernanceInfo;
+  privacy: Record<string, unknown>;
+  controls: Record<string, unknown>;
+  categories: Array<Record<string, unknown>>;
+  observability: Record<string, unknown>;
+  delegated: boolean;
+  runtime: string;
+  warnings?: string[];
+}
+
+export interface MemoryExportRequest {
+  categories?: string[];
+  include_archived?: boolean;
+  redact_sensitive?: boolean;
+}
+
+export interface MemoryExportResponse {
+  workspace_root: string;
+  export: Record<string, unknown> & { records?: Array<Record<string, unknown>> };
+  record_count: number;
+  governance: MemoryGovernanceInfo;
+  delegated: boolean;
+  runtime: string;
+  warnings?: string[];
+}
+
+export interface MemoryControlsUpdateRequest {
+  category?: string;
+  enabled?: boolean;
+  retention_days?: number | null;
+  include_in_orchestration?: boolean;
+  encrypted?: boolean;
+  local_only?: boolean;
+  disabled_categories?: string[];
+  allowed_scopes?: string[];
+}
+
+export interface MemoryControlsResponse {
+  workspace_root: string;
+  governance: MemoryGovernanceInfo;
+  privacy: Record<string, unknown>;
+  controls: Record<string, unknown>;
+  categories: Array<Record<string, unknown>>;
+  delegated: boolean;
+  runtime: string;
 }
 
 export interface RepairAttempt {
@@ -1415,11 +1726,119 @@ export interface AgentRequest {
   history: ChatMessage[];
   workspace_root?: string;
   mode?: Mode;
+  selected_provider_id?: string;
+  selected_provider_label?: string;
+  selected_provider_api?: string;
+  selected_provider_endpoint?: string;
+  selected_provider_model?: string;
   apply_changes: boolean;
   run_validation: boolean;
   max_repair_attempts?: number;
   max_files?: number;
   context_paths?: string[];
+}
+
+export interface AgentBridgeExecuteRequest {
+  provider_id: string;
+  message: string;
+  workspace_root?: string;
+  mode?: Mode;
+  model?: string;
+  allow_edits?: boolean;
+  context_paths?: string[];
+  timeout_seconds?: number;
+  preflight_signature?: string;
+}
+
+export interface AgentBridgeExecuteResponse {
+  ok: boolean;
+  provider_id: string;
+  provider_label: string;
+  status: 'completed' | 'failed' | 'timed_out' | 'not_configured' | 'unsupported' | 'canceled' | string;
+  command: string;
+  cwd: string;
+  exit_code: number | null;
+  stdout: string;
+  stderr: string;
+  reply: string;
+  started_at: string;
+  completed_at: string;
+  duration_ms: number;
+  warnings: string[];
+  checkpoint?: string | null;
+  metadata: Record<string, unknown>;
+}
+
+export interface AgentBridgePreflightResponse {
+  ok: boolean;
+  provider_id: string;
+  provider_label: string;
+  status: 'ready' | 'not_configured' | 'unsupported' | string;
+  route_type: 'cli' | 'local' | 'none' | string;
+  command: string;
+  cwd: string;
+  timeout_seconds: number;
+  model: string;
+  allow_edits: boolean;
+  message: string;
+  warnings: string[];
+  preflight_signature: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface AgentBridgeJobInfo {
+  id: string;
+  provider_id: string;
+  provider_label: string;
+  mode?: Mode | string | null;
+  model: string;
+  workspace_root: string;
+  allow_edits: boolean;
+  status:
+    | 'queued'
+    | 'checkpoint'
+    | 'running'
+    | 'completed'
+    | 'failed'
+    | 'timed_out'
+    | 'not_configured'
+    | 'unsupported'
+    | 'canceled'
+    | string;
+  command: string;
+  cwd: string;
+  pid: number | null;
+  exit_code: number | null;
+  stdout: string;
+  stderr: string;
+  reply: string;
+  message: string;
+  duration_ms: number;
+  warnings: string[];
+  checkpoint?: string | null;
+  created_at: string;
+  started_at: string;
+  finished_at: string;
+  updated_at: string;
+  request: Record<string, unknown>;
+  metadata: Record<string, unknown>;
+}
+
+export interface AgentBridgeJobResponse {
+  job: AgentBridgeJobInfo;
+}
+
+export interface AgentBridgeJobsResponse {
+  jobs: AgentBridgeJobInfo[];
+}
+
+export interface AgentBridgeStreamPayload extends ChatStreamPayload {
+  job_id?: string;
+  provider_id?: string;
+  command?: string;
+  checkpoint?: string | null;
+  stream?: 'stdout' | 'stderr' | string;
+  bridge_response?: AgentBridgeExecuteResponse;
 }
 
 export interface AgentResponse {
@@ -1483,10 +1902,16 @@ export interface ChatStreamPayload {
   preview_attempt?: number;
   provider_label?: string;
   provider_api?: string;
+  endpoint?: string;
   model?: string;
   detail?: string;
   task_id?: string;
   response?: AgentResponse;
+  bridge_response?: AgentBridgeExecuteResponse;
+  provider_id?: string;
+  command?: string;
+  checkpoint?: string | null;
+  stream?: 'stdout' | 'stderr' | string;
 }
 
 export interface ApplyRequest {
@@ -1601,6 +2026,143 @@ export interface ConfigUpdateRequest {
   feedback_hash_content?: boolean;
 }
 
+export interface OnboardingStep {
+  id: string;
+  label: string;
+  required?: boolean;
+  summary?: string;
+  status: string;
+  detail?: string;
+  action?: Record<string, unknown>;
+}
+
+export interface OnboardingDiagnosticCheck {
+  id: string;
+  label: string;
+  status: 'pass' | 'warn' | 'fail' | string;
+  detail: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface OnboardingFirstWorkflowStep {
+  id: string;
+  label: string;
+  summary?: string;
+  status: string;
+}
+
+export interface OnboardingRecoveryCard {
+  id: string;
+  title: string;
+  summary: string;
+  active?: boolean;
+  actions?: string[];
+}
+
+export interface OnboardingStatusResponse {
+  ok?: boolean;
+  delegated?: boolean;
+  core_connected?: boolean;
+  fallback_mode_active?: boolean;
+  last_core_error?: string;
+  schema_version: number;
+  workspace: string;
+  generated_at: string;
+  completed: boolean;
+  current_step: string;
+  steps: OnboardingStep[];
+  diagnostics: {
+    summary?: {
+      status?: string;
+      pass_count?: number;
+      warning_count?: number;
+      failure_count?: number;
+    };
+    checks?: OnboardingDiagnosticCheck[];
+    [key: string]: unknown;
+  };
+  privacy: Record<string, unknown>;
+  recommended_defaults: Record<string, unknown>;
+  first_workflow: {
+    completed_steps?: string[];
+    steps?: OnboardingFirstWorkflowStep[];
+    latest_result?: Record<string, unknown>;
+  };
+  recovery: OnboardingRecoveryCard[];
+  settings: Record<string, unknown>;
+  state_path?: string;
+}
+
+export interface OnboardingUpdateRequest {
+  workspace_root?: string;
+  workspace?: string;
+  completed_steps?: string[];
+  current_step?: string;
+  preferences?: Record<string, unknown>;
+  first_workflow_completed_steps?: string[];
+  reset?: boolean;
+}
+
+export interface OnboardingFirstWorkflowRequest {
+  workspace_root?: string;
+  workspace?: string;
+  action: string;
+  dry_run?: boolean;
+}
+
+export interface OnboardingFirstWorkflowResponse {
+  ok?: boolean;
+  delegated?: boolean;
+  core_connected?: boolean;
+  fallback_mode_active?: boolean;
+  workspace: string;
+  action: string;
+  dry_run: boolean;
+  completed?: string;
+  result: Record<string, unknown>;
+  next_actions: string[];
+  error?: string;
+}
+
+export interface RuntimeSettingsExportResponse {
+  ok?: boolean;
+  delegated?: boolean;
+  core_connected?: boolean;
+  fallback_mode_active?: boolean;
+  schema_version: number;
+  exported_at: string;
+  workspace: string;
+  settings: Record<string, unknown>;
+  privacy: Record<string, unknown>;
+  provider_config_metadata: Record<string, unknown>[];
+  ui_preferences: Record<string, unknown>;
+  runtime_urls: Record<string, unknown>;
+  workspace_preferences: Record<string, unknown>;
+  notes: string[];
+}
+
+export interface RuntimeSettingsImportRequest {
+  workspace_root?: string;
+  workspace?: string;
+  settings: Record<string, unknown>;
+  dry_run?: boolean;
+}
+
+export interface RuntimeSettingsImportResponse {
+  ok?: boolean;
+  delegated?: boolean;
+  core_connected?: boolean;
+  fallback_mode_active?: boolean;
+  workspace: string;
+  dry_run: boolean;
+  imported_keys: string[];
+  ignored_keys: string[];
+  ui_preference_keys: string[];
+  settings_preview: Record<string, unknown>;
+  warnings: string[];
+  error?: string;
+}
+
 export interface HealthResponse {
   ok: boolean;
   ready: boolean;
@@ -1631,6 +2193,31 @@ export interface HealthResponse {
   core_runtime_status?: string;
   core_contract_version?: string;
   core_runtime_message?: string;
+}
+
+export type RuntimeOwnershipOwner = 'aegis-core' | 'website' | 'compatibility' | string;
+
+export interface RuntimeOwnershipRecord {
+  domain: string;
+  owner: RuntimeOwnershipOwner;
+  summary: string;
+  core_routes: string[];
+  website_routes: string[];
+  delegated_workflows: string[];
+  fallback: string;
+  migration_rule: string;
+}
+
+export interface RuntimeOwnershipResponse {
+  schema_version: string;
+  workspace_root: string;
+  policy: {
+    core_api: string;
+    website_api: string;
+    rule: string;
+    compatibility: string;
+  };
+  records: RuntimeOwnershipRecord[];
 }
 
 export interface ModelCapabilities {
@@ -1702,6 +2289,13 @@ export interface ModelRegistryProvider {
   input_cost_per_million: number | null;
   output_cost_per_million: number | null;
   health: string;
+  auth_modes?: string[];
+  connection_status?: string;
+  account_id?: string;
+  credential_ref?: string;
+  session_ref?: string;
+  quota_status?: string;
+  last_validated_at?: string;
   notes: string;
 }
 
@@ -1735,6 +2329,281 @@ export interface ModelRegistryResponse {
   providers: ModelRegistryProvider[];
   roles: ModelRegistryRole[];
   presets: ModelRoutingPreset[];
+}
+
+export type ProviderAuthMode = 'api_key' | 'oauth_browser' | 'device_code' | 'cli_bridge' | 'env_profile' | 'none' | string;
+export type ProviderConnectionStatus = 'not_configured' | 'linked' | 'expired' | 'limited' | 'offline' | 'error' | 'unknown' | string;
+
+export interface ProviderCliBridgeManifest {
+  cli_name: string;
+  candidate_binaries: string[];
+  version_args: string[];
+  status_args: string[];
+  login_args: string[];
+  delegation_modes: string[];
+  notes: string;
+}
+
+export interface ProviderAccountManifest {
+  id: string;
+  label: string;
+  kind: string;
+  description: string;
+  auth_modes: ProviderAuthMode[];
+  default_auth_mode: ProviderAuthMode;
+  credential_env_vars: string[];
+  capabilities: string[];
+  model_families: string[];
+  quota_status: string;
+  docs_url: string;
+  security_notes: string[];
+  cli_bridge: ProviderCliBridgeManifest | null;
+  metadata: Record<string, unknown>;
+}
+
+export interface ProviderLinkedAccount {
+  account_id: string;
+  provider_id: string;
+  provider_label: string;
+  auth_mode: ProviderAuthMode;
+  status: ProviderConnectionStatus;
+  account_label: string;
+  subject_hash: string;
+  credential_ref: string;
+  credential_hint: string;
+  session_ref: string;
+  scopes: string[];
+  quota_status: string;
+  expires_at: string;
+  created_at: string;
+  updated_at: string;
+  last_validated_at: string;
+  last_error: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface ProviderSessionInfo {
+  session_id: string;
+  account_id: string;
+  provider_id: string;
+  auth_mode: ProviderAuthMode;
+  status: ProviderConnectionStatus;
+  credential_ref: string;
+  refresh_supported: boolean;
+  expires_at: string;
+  created_at: string;
+  updated_at: string;
+  last_refresh_at: string;
+  last_refresh_error: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface ProviderCliBridgeInfo {
+  provider_id: string;
+  cli_name: string;
+  binary_path: string;
+  version: string;
+  status: ProviderConnectionStatus;
+  auth_status: ProviderConnectionStatus;
+  probe_command: string;
+  supported_delegation_modes: string[];
+  last_probe_at: string;
+  last_error: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface ProviderSourceRootInfo {
+  path: string;
+  exists: boolean;
+  provider_ids: string[];
+  provider_labels: string[];
+  child_count: number;
+  modified_at: string;
+  last_probe_at: string;
+  updated_after_probe: boolean;
+  freshness: string;
+  freshness_label: string;
+  freshness_detail: string;
+}
+
+export interface ProviderSourceDropInfo {
+  provider_id: string;
+  provider_label: string;
+  cli_name: string;
+  source_root: string;
+  detected_from: string;
+  source_candidate: string;
+  path: string;
+  cwd: string;
+  display: string;
+  command: string;
+  version: string;
+  status: string;
+  auth_status: string;
+  last_probe_at: string;
+  modified_at: string;
+  updated_after_probe: boolean;
+  freshness: string;
+  freshness_label: string;
+  freshness_detail: string;
+  refresh_actions: ProviderSourceRefreshAction[];
+  last_error: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface ProviderSourceRefreshAction {
+  id: string;
+  label: string;
+  cwd: string;
+  command: string;
+  available: boolean;
+  detail: string;
+  timeout_seconds: number;
+}
+
+export interface ProviderSourceRefreshRequest {
+  provider_id: string;
+  action_id?: string;
+  source_root?: string;
+  source_candidate?: string;
+  dry_run?: boolean;
+}
+
+export interface ProviderSourceRefreshResponse {
+  ok: boolean;
+  provider_id: string;
+  provider_label: string;
+  action_id: string;
+  action_label: string;
+  status: 'planned' | 'completed' | 'failed' | 'timed_out' | 'not_configured' | 'unsupported' | string;
+  command: string;
+  cwd: string;
+  exit_code: number | null;
+  stdout: string;
+  stderr: string;
+  duration_ms: number;
+  message: string;
+  warnings: string[];
+  snapshot?: ProviderAccountsResponse | null;
+}
+
+export interface ProviderSourceRefreshJobInfo {
+  id: string;
+  provider_id: string;
+  provider_label: string;
+  action_id: string;
+  action_label: string;
+  source_root: string;
+  source_candidate: string;
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'timed_out' | 'not_configured' | 'unsupported' | 'interrupted' | 'canceled' | string;
+  command: string;
+  cwd: string;
+  pid: number | null;
+  exit_code: number | null;
+  stdout: string;
+  stderr: string;
+  duration_ms: number;
+  message: string;
+  warnings: string[];
+  created_at: string;
+  started_at: string;
+  finished_at: string;
+  updated_at: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface ProviderSourceRefreshJobResponse {
+  job: ProviderSourceRefreshJobInfo;
+  snapshot?: ProviderAccountsResponse | null;
+}
+
+export interface ProviderSourceRefreshJobsResponse {
+  jobs: ProviderSourceRefreshJobInfo[];
+  snapshot?: ProviderAccountsResponse | null;
+}
+
+export interface ProviderRouteSafety {
+  route_type: 'local_endpoint' | 'api_key' | 'cli_bridge' | 'environment_profile' | 'oauth_pending' | 'unsupported' | string;
+  privacy_boundary: 'local' | 'cloud' | 'enterprise_cloud' | 'provider_cli' | 'unknown' | string;
+  secret_policy: string;
+  secret_storage: 'none' | 'os_credential_store' | 'provider_cli_only' | 'environment_profile' | 'oauth_pending' | string;
+  cloud_context_requires_consent: boolean;
+  sends_workspace_context: boolean;
+  cost_boundary: string;
+  quota_boundary: string;
+  latency_boundary: string;
+  fallback_policy: string;
+  diagnostics_safe: boolean;
+  user_action_required: string;
+}
+
+export interface ProviderAccountStatus {
+  manifest: ProviderAccountManifest;
+  account: ProviderLinkedAccount | null;
+  cli_bridge: ProviderCliBridgeInfo | null;
+  connection_status: ProviderConnectionStatus;
+  primary_auth_mode: ProviderAuthMode;
+  fallback_eligible: boolean;
+  setup_actions: string[];
+  execution_ready: boolean;
+  readiness: string;
+  readiness_label: string;
+  readiness_detail: string;
+  routing_weight: number;
+  quota_status: string;
+  model_limit_summary: string;
+  route_safety?: ProviderRouteSafety;
+}
+
+export interface ProviderAccountsResponse {
+  generated_at: string;
+  credential_store_available: boolean;
+  providers: ProviderAccountStatus[];
+  accounts: ProviderLinkedAccount[];
+  sessions: ProviderSessionInfo[];
+  cli_bridges: ProviderCliBridgeInfo[];
+  source_roots: ProviderSourceRootInfo[];
+  source_drops: ProviderSourceDropInfo[];
+  source_refresh_jobs: ProviderSourceRefreshJobInfo[];
+  security_notes: string[];
+}
+
+export interface ProviderApiKeyLinkRequest {
+  api_key: string;
+  account_label?: string;
+  scopes?: string[];
+}
+
+export interface ProviderAccountLinkResponse {
+  ok: boolean;
+  account: ProviderLinkedAccount;
+  snapshot: ProviderAccountsResponse;
+}
+
+export interface ProviderCliLoginResponse {
+  ok: boolean;
+  provider_id: string;
+  provider_label: string;
+  status: 'launched' | 'not_configured' | 'unsupported' | 'failed' | string;
+  command: string;
+  cwd: string;
+  pid: number | null;
+  message: string;
+  warnings: string[];
+  snapshot?: ProviderAccountsResponse | null;
+}
+
+export interface ProviderSourceRootOpenRequest {
+  path?: string;
+}
+
+export interface ProviderSourceRootOpenResponse {
+  ok: boolean;
+  path: string;
+  pid: number | null;
+  message: string;
+  warnings: string[];
+  snapshot?: ProviderAccountsResponse | null;
 }
 
 export interface ModelDiskInfo {
@@ -3582,6 +4451,245 @@ export interface AutonomousEngineeringSnapshot {
   analytics: AutonomousAnalyticsMetric[];
   recommendations: string[];
   warnings: string[];
+}
+
+export interface AgentSupervisionTask {
+  id?: string;
+  title?: string;
+  status?: string;
+  agent_id?: string;
+  agent_role?: string;
+  execution_mode?: string;
+  risk?: string;
+  risk_level?: string;
+  reason?: string;
+  summary?: string;
+  model_profile?: Record<string, unknown>;
+  result?: Record<string, unknown>;
+  messages?: Array<Record<string, unknown>>;
+  handoffs?: Array<Record<string, unknown>>;
+  approval_required?: boolean;
+  approval_gates?: unknown[];
+  target_files?: string[];
+  files?: string[];
+  affected_files?: string[];
+  validation_requirements?: string[];
+  impacted_dependencies?: string[];
+  dependencies?: string[];
+  checkpoint_id?: string;
+  rollback_available?: boolean;
+  [key: string]: unknown;
+}
+
+export interface AgentSupervisionWorkflow {
+  id?: string;
+  workflow_id?: string;
+  workflow_type?: string;
+  objective?: string;
+  title?: string;
+  status?: string;
+  active_task_id?: string;
+  created_at?: string;
+  updated_at?: string;
+  tasks?: AgentSupervisionTask[];
+  failure_escalations?: Array<Record<string, unknown>>;
+  handoffs?: Array<Record<string, unknown>>;
+  agent_observability?: Record<string, unknown>;
+  agent_coordination?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+export interface AgentSupervisionAgent {
+  id?: string;
+  agent_id?: string;
+  role?: string;
+  label?: string;
+  name?: string;
+  status?: string;
+  assigned_task?: string;
+  assigned_task_id?: string;
+  assigned_task_title?: string;
+  model_profile?: Record<string, unknown>;
+  model?: string;
+  provider?: string;
+  confidence?: number;
+  risk?: string;
+  risk_level?: string;
+  last_action?: string;
+  logs?: unknown[];
+  handoff_history?: unknown[];
+  task_ids?: string[];
+  [key: string]: unknown;
+}
+
+export interface AgentSupervisionSnapshot {
+  workspace_root: string;
+  core_connected: boolean;
+  delegated_workflows_enabled: boolean;
+  fallback_mode_active: boolean;
+  last_core_error: string;
+  runtime_status: Record<string, unknown>;
+  security_status?: Record<string, unknown>;
+  runtime: Record<string, unknown>;
+  workflows: AgentSupervisionWorkflow[];
+  active_workflows: AgentSupervisionWorkflow[];
+  active_workflow: AgentSupervisionWorkflow | null;
+  coordination: {
+    agents?: AgentSupervisionAgent[];
+    active_agents?: AgentSupervisionAgent[];
+    execution_timeline?: ToolEvent[];
+    context_snapshots?: Array<Record<string, unknown>>;
+    supervision?: Record<string, unknown>;
+    safety?: Record<string, unknown>;
+    [key: string]: unknown;
+  };
+  timeline: ToolEvent[];
+  task_counts: Record<string, number>;
+  safety: Record<string, unknown>;
+  autopilot?: Record<string, unknown>;
+  collaboration?: Record<string, unknown>;
+  governance?: Record<string, unknown>;
+  events_url: string;
+}
+
+export interface AgentSupervisionActionRequest {
+  workspace_root?: string | null;
+  action: string;
+  task_id?: string | null;
+  approval?: boolean;
+  summary?: string | null;
+  payload?: Record<string, unknown>;
+}
+
+export interface AgentSupervisionDelegationRequest {
+  workspace_root?: string | null;
+  task_id: string;
+  agent_id: string;
+  approval?: boolean;
+  reason?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface AgentSupervisionActionResponse {
+  ok: boolean;
+  delegated: boolean;
+  core_connected?: boolean;
+  workflow_id?: string;
+  workspace_root?: string;
+  error?: string;
+  workflow?: AgentSupervisionWorkflow;
+  event?: ToolEvent;
+  timeline?: ToolEvent[];
+  [key: string]: unknown;
+}
+
+export interface QualityGateInfo {
+  id: string;
+  label: string;
+  status: string;
+  severity?: string;
+  summary?: string;
+  blocks_apply?: boolean;
+  checked_at?: string;
+  [key: string]: unknown;
+}
+
+export interface QualityScorecard {
+  completion_score?: number;
+  validation_score?: number;
+  risk_score?: number;
+  confidence_score?: number;
+  repair_score?: number;
+  regression_risk?: number;
+  human_review_required?: boolean;
+  passed_gates?: number;
+  failed_gates?: number;
+  warning_gates?: number;
+  skipped_gates?: number;
+  [key: string]: unknown;
+}
+
+export interface QualityGateEvaluation {
+  id: string;
+  status: string;
+  apply_allowed: boolean;
+  workflow_id?: string | null;
+  validation_id?: string | null;
+  created_at?: string;
+  checkpoint_id?: string | null;
+  gates: QualityGateInfo[];
+  scorecard: QualityScorecard;
+  blockers: Array<Record<string, unknown>>;
+  warnings: string[];
+  changed_files: string[];
+  file_count?: number;
+  validation?: Record<string, unknown>;
+  required_actions?: string[];
+  summary?: string;
+  [key: string]: unknown;
+}
+
+export interface QualityGateSnapshot {
+  ok?: boolean;
+  delegated?: boolean;
+  core_connected?: boolean;
+  fallback_mode_active?: boolean;
+  workspace_root?: string;
+  latest: QualityGateEvaluation | null;
+  recent_runs: QualityGateEvaluation[];
+  reports: Array<Record<string, unknown>>;
+  benchmark_history: Array<Record<string, unknown>>;
+  benchmark_suites: Array<Record<string, unknown>>;
+  statistics: Record<string, unknown>;
+  error?: string;
+  [key: string]: unknown;
+}
+
+export interface QualityGateEvaluationRequest {
+  workspace_root?: string | null;
+  changes?: Array<Record<string, unknown>>;
+  workflow_id?: string | null;
+  validation_id?: string | null;
+  validation?: Record<string, unknown> | null;
+  approval?: boolean;
+  checkpoint_id?: string | null;
+  max_files_changed?: number;
+  restricted_paths?: string[];
+  validation_required?: boolean;
+  dry_run?: boolean;
+  persist?: boolean;
+  metadata?: Record<string, unknown>;
+}
+
+export interface QualityBenchmarkDashboard {
+  ok?: boolean;
+  delegated?: boolean;
+  core_connected?: boolean;
+  workspace_root?: string;
+  suites: Array<Record<string, unknown>>;
+  history: Array<Record<string, unknown>>;
+  latest: Record<string, unknown> | null;
+  statistics: Record<string, unknown>;
+  error?: string;
+  [key: string]: unknown;
+}
+
+export interface QualityBenchmarkRunRequest {
+  workspace_root?: string | null;
+  suite_ids?: string[];
+  workflow_id?: string | null;
+  metadata?: Record<string, unknown>;
+}
+
+export interface EvaluationReportsResponse {
+  ok?: boolean;
+  delegated?: boolean;
+  core_connected?: boolean;
+  workspace_root?: string;
+  reports: Array<Record<string, unknown>>;
+  latest: Record<string, unknown> | null;
+  error?: string;
+  [key: string]: unknown;
 }
 
 export interface FallbackInspectorCandidate {

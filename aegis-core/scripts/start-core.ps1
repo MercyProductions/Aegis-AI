@@ -24,7 +24,11 @@ function Resolve-CorePython {
 
 function Test-AegisCoreHealth {
     try {
-        $response = Invoke-WebRequest -UseBasicParsing $CoreUrl -Headers @{ Accept = "application/json" } -TimeoutSec 2
+        $headers = @{ Accept = "application/json" }
+        if (-not [string]::IsNullOrWhiteSpace($env:AEGIS_CORE_LOCAL_TOKEN)) {
+            $headers.Authorization = "Bearer $($env:AEGIS_CORE_LOCAL_TOKEN)"
+        }
+        $response = Invoke-WebRequest -UseBasicParsing $CoreUrl -Headers $headers -TimeoutSec 2
     } catch {
         $statusCode = $null
         if ($_.Exception.Response) {
@@ -108,4 +112,8 @@ if ($LASTEXITCODE -ne 0) {
     throw "Aegis Core dependencies are missing. From aegis-core, run: python -m pip install -e ."
 }
 
-& $Python -m uvicorn aegis_core.server:create_app --factory --host 127.0.0.1 --port 8788
+if ([string]::IsNullOrWhiteSpace($env:AEGIS_CORE_BIND_HOST)) {
+    $env:AEGIS_CORE_BIND_HOST = "127.0.0.1"
+}
+
+& $Python -m uvicorn aegis_core.server:create_app --factory --host $env:AEGIS_CORE_BIND_HOST --port 8788

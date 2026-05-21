@@ -1,0 +1,56 @@
+{
+  "schema_version": "2026.05.21",
+  "name": "Phase 27 Frontend Extraction Contract",
+  "phase": 27,
+  "evidence_root": ".aegis/frontend-extraction",
+  "current_required_status": "ready",
+  "slice": "Agent bridge provider runtime helper extraction",
+  "extracted_module": "website/frontend/src/utils/agentBridgeProviders.ts",
+  "thin_orchestrator": "website/frontend/src/App.tsx",
+  "required_module_markers": [
+    "export function isExternalBridgeProvider",
+    "export function isLocalBridgeProvider",
+    "export function bridgeModelForProvider",
+    "export function providerIdForModelRuntime",
+    "export function buildBridgeProviderSummary",
+    "export function runtimeTargetForBridgeProvider"
+  ],
+  "required_app_markers": [
+    "from './utils/agentBridgeProviders'",
+    "isLocalBridgeProvider(current)",
+    "runtimeTargetForBridgeProvider(providerId, selectableModelOptions)",
+    "buildBridgeProviderSummary({",
+    "selectedBridgeSummary.runtimeLabel"
+  ],
+  "removed_app_markers": [
+    "const EXTERNAL_BRIDGE_PROVIDER_IDS",
+    "const LOCAL_BRIDGE_PROVIDER_IDS",
+    "function bridgeModelForProvider(",
+    "function providerIdForModelRuntime(",
+    "function isLocalModelEndpoint(",
+    "function findRuntimeTargetForProvider("
+  ],
+  "required_tests": [
+    "website/frontend/src/utils/agentBridgeProviders.test.ts",
+    "website/frontend/src/components/app-shell/AppHeader.test.tsx"
+  ],
+  "required_validation_commands": [
+    "npm test -- src/utils/agentBridgeProviders.test.ts",
+    "npm run build"
+  ],
+  "required_contract_files": [
+    "docs/FRONTEND_EXTRACTION_EVIDENCE.md",
+    "docs/VALIDATION_MATRIX.md",
+    "docs/EVIDENCE_LEDGER.md",
+    "evals/phase27-frontend-extraction-contract.json",
+    "scripts/test-frontend-extraction.ps1",
+    "scripts/validate-ecosystem.ps1",
+    "website/frontend/src/App.tsx",
+    "website/frontend/src/utils/agentBridgeProviders.ts",
+    "website/frontend/src/utils/agentBridgeProviders.test.ts"
+  ],
+  "outputs": [
+    "frontend-extraction.json",
+    "frontend-extraction-summary.md"
+  ]
+}

@@ -1,0 +1,143 @@
+{
+  "schema_version": "2026.05.21",
+  "name": "Phase 25 Core Website Ownership Contract",
+  "phase": 25,
+  "evidence_root": ".aegis/core-website-ownership",
+  "current_required_status": "ready",
+  "ownership_schema_version": "2026.05.21",
+  "ownership_source": "website/backend/aegis_ai/runtime_ownership.py",
+  "ownership_endpoint": "GET /api/runtime/ownership",
+  "required_domains": [
+    { "domain": "health-readiness", "owner": "compatibility" },
+    { "domain": "settings-config", "owner": "compatibility" },
+    { "domain": "memory", "owner": "compatibility" },
+    { "domain": "changes-apply", "owner": "aegis-core" },
+    { "domain": "checkpoints", "owner": "aegis-core" },
+    { "domain": "validation", "owner": "aegis-core" },
+    { "domain": "model-routing", "owner": "aegis-core" },
+    { "domain": "provider-accounts", "owner": "website" },
+    { "domain": "model-registry", "owner": "compatibility" },
+    { "domain": "diagnostics", "owner": "compatibility" },
+    { "domain": "tasks-workflows", "owner": "compatibility" },
+    { "domain": "agent-runtime", "owner": "aegis-core" },
+    { "domain": "workspace-intelligence", "owner": "compatibility" }
+  ],
+  "core_owned_domains": [
+    "changes-apply",
+    "checkpoints",
+    "validation",
+    "model-routing",
+    "agent-runtime"
+  ],
+  "website_owned_domains": [
+    "provider-accounts"
+  ],
+  "compatibility_domains": [
+    "health-readiness",
+    "settings-config",
+    "memory",
+    "model-registry",
+    "diagnostics",
+    "tasks-workflows",
+    "workspace-intelligence"
+  ],
+  "core_delegation_map": [
+    {
+      "domain": "changes-apply",
+      "core_client_markers": ["async def apply_changes", "\"/v1/changes/apply\""],
+      "website_main_markers": ["core_runtime_client.apply_changes"],
+      "core_server_routes": ["/v1/changes/propose", "/v1/changes/apply"]
+    },
+    {
+      "domain": "checkpoints",
+      "core_client_markers": ["async def create_checkpoint", "async def list_checkpoints", "async def restore_checkpoint"],
+      "website_main_markers": ["core_runtime_client.create_checkpoint", "core_runtime_client.list_checkpoints", "core_runtime_client.restore_checkpoint"],
+      "core_server_routes": ["/v1/checkpoints/create", "/v1/checkpoints", "/v1/checkpoints/restore"]
+    },
+    {
+      "domain": "validation",
+      "core_client_markers": ["async def run_validation", "\"/v1/validation/run\""],
+      "website_main_markers": ["core_runtime_client.run_validation"],
+      "core_server_routes": ["/v1/validation/run", "/v1/validation"]
+    },
+    {
+      "domain": "model-routing",
+      "core_client_markers": ["async def route_model", "\"/v1/models/route\""],
+      "website_main_markers": ["core_runtime_client.route_model"],
+      "core_server_routes": ["/v1/models/route", "/v1/models/registry"]
+    },
+    {
+      "domain": "agent-runtime",
+      "core_client_markers": ["async def agent_runtime", "async def delegate_agent_task"],
+      "website_main_markers": ["core_runtime_client.agent_runtime", "core_runtime_client.delegate_agent_task"],
+      "core_server_routes": ["/v1/agents/runtime", "/v1/workflows/{workflow_id}/agents/delegate"]
+    }
+  ],
+  "thin_route_modules": [
+    "website/backend/aegis_ai/routes/checkpoints.py",
+    "website/backend/aegis_ai/routes/validation.py",
+    "website/backend/aegis_ai/routes/routing_apply.py"
+  ],
+  "docs": [
+    {
+      "path": "docs/CORE_WEBSITE_OWNERSHIP.md",
+      "required_markers": ["website/backend/aegis_ai/runtime_ownership.py", "GET /api/runtime/ownership", "Aegis Core", "Website"]
+    },
+    {
+      "path": "WEBSITE_CORE_ADAPTER.md",
+      "required_markers": ["website/backend/aegis_ai/runtime_ownership.py", "GET /api/runtime/ownership", "Core-first runtime workflow delegation"]
+    },
+    {
+      "path": "RUNTIME_CONSOLIDATION.md",
+      "required_markers": ["docs/CORE_WEBSITE_OWNERSHIP.md", "GET /api/runtime/ownership", "Aegis Core should become the reusable shared runtime"]
+    },
+    {
+      "path": "docs/CORE_WEBSITE_OWNERSHIP_EVIDENCE.md",
+      "required_markers": ["phase25-core-website-ownership-contract.json", "test-core-website-ownership.ps1", ".aegis/core-website-ownership"]
+    }
+  ],
+  "client_contracts": [
+    {
+      "id": "frontend",
+      "files": ["website/frontend/src/api.ts", "website/frontend/src/types.ts", "website/frontend/src/api.test.ts"],
+      "required_markers": ["getRuntimeOwnership", "RuntimeOwnershipResponse", "/api/runtime/ownership"]
+    },
+    {
+      "id": "desktop",
+      "files": ["src/AegisClient.cpp"],
+      "required_markers": ["/api/apply", "/api/checkpoints", "/api/validate"]
+    },
+    {
+      "id": "visual-studio",
+      "files": ["visual-studio-extensions/aegis-local-agent-vs/src/AegisLocalAgentVs/Services/AegisCoreClient.cs"],
+      "required_markers": ["/v1/changes/apply", "/v1/checkpoints", "/v1/validation/run", "/v1/models/route"]
+    },
+    {
+      "id": "vscode",
+      "files": ["vscode-plugins/aegis-local-autopilot/extension.js"],
+      "required_markers": ["/v1/tasks"]
+    }
+  ],
+  "required_validation_commands": [
+    "python -m pytest tests/test_runtime_ownership.py -q",
+    "npm test -- src/api.test.ts"
+  ],
+  "required_contract_files": [
+    "docs/CORE_WEBSITE_OWNERSHIP.md",
+    "docs/CORE_WEBSITE_OWNERSHIP_EVIDENCE.md",
+    "WEBSITE_CORE_ADAPTER.md",
+    "RUNTIME_CONSOLIDATION.md",
+    "website/backend/aegis_ai/runtime_ownership.py",
+    "website/backend/tests/test_runtime_ownership.py",
+    "website/frontend/src/api.ts",
+    "website/frontend/src/types.ts",
+    "website/frontend/src/api.test.ts",
+    "evals/phase25-core-website-ownership-contract.json",
+    "scripts/test-core-website-ownership.ps1",
+    "scripts/validate-ecosystem.ps1"
+  ],
+  "outputs": [
+    "core-website-ownership.json",
+    "core-website-ownership-summary.md"
+  ]
+}

@@ -1,46 +1,46 @@
-# Smoke Test Checklist
+# Auralith OS Local Agent Smoke Test
 
-Use this after building `release/aegis-local-autopilot-0.1.1.vsix`.
+## Package Smoke
 
-## Automated/CLI Checks
+From `vscode-plugins\aegis-local-autopilot`:
 
 ```powershell
-npm run compile
 npm run lint
+npm run test:unit
 npm run package
-code --install-extension .\release\aegis-local-autopilot-0.1.1.vsix --force
-code --list-extensions --show-versions | Select-String aegis
 ```
 
-Clean-instance install check:
+Confirm the VSIX exists:
 
 ```powershell
-$smoke = Join-Path $env:TEMP "aegis-vscode-rc-smoke"
-code --user-data-dir "$smoke\user" --extensions-dir "$smoke\extensions" --install-extension .\release\aegis-local-autopilot-0.1.1.vsix --force
-code --user-data-dir "$smoke\user" --extensions-dir "$smoke\extensions" --list-extensions --show-versions | Select-String aegis
+Test-Path .\release\aegis-local-autopilot-0.1.8.vsix
 ```
 
-Expected installed extension:
+## Clean Extension Install
+
+```powershell
+$smoke = Join-Path $env:TEMP "aegis-vscode-0.1.8-smoke"
+code --user-data-dir "$smoke\user" --extensions-dir "$smoke\extensions" --install-extension .\release\aegis-local-autopilot-0.1.8.vsix --force
+code --user-data-dir "$smoke\user" --extensions-dir "$smoke\extensions" --list-extensions --show-versions
+```
+
+Expected extension id:
 
 ```text
-aegis.aegis-local-autopilot@0.1.1
+aegis.aegis-local-autopilot
 ```
 
-## Manual VS Code Checks
+## Runtime Smoke
 
-1. Open a new workspace folder in VS Code.
-2. Confirm the Aegis status bar item appears.
-3. Open the **Aegis Local Agent** Activity Bar view.
+1. Start Ollama.
+2. Open a small test workspace.
+3. Run `Aegis: Run First-Run Setup`.
 4. Run `Aegis: Run Health Check`.
-5. Confirm `.aegis/` is created in the workspace.
-6. Use **Test Prompt** in Model Diagnostics.
-7. Send a short chat message.
-8. Run `Aegis: Generate/Update Project Roadmap`.
-9. Ask for a small safe change and confirm a diff preview appears.
-10. Approve the change.
-11. Run `Aegis: Rollback Last Agent Change`.
-12. Confirm the changed file returns to its previous contents.
+5. Generate a project roadmap.
+6. Ask for one small preview-only change.
+7. Confirm the proposal shows file reasons before applying.
+8. Apply only after reviewing the diff.
+9. Run validation.
+10. Confirm rollback is available.
 
-## Notes
-
-Avoid testing against a project with uncommitted critical work unless you have a separate backup. Aegis is approval-based, but smoke tests should still be done on a disposable or low-risk workspace first.
+Record any skipped smoke reason in the release evidence folder.

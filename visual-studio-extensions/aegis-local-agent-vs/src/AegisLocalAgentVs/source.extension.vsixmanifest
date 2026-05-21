@@ -2,13 +2,13 @@
 <PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011" xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
   <Metadata>
     <Identity Id="AegisLocalAgentVs.5f6b5c6a-4b9a-4c29-8b48-c88e6e2b53b8" Version="0.1.1" Language="en-US" Publisher="Aegis" />
-    <DisplayName>Aegis Local Agent</DisplayName>
+    <DisplayName>Auralith OS Local Agent</DisplayName>
     <Description xml:space="preserve">Local-first Visual Studio coding agent for Ollama, solution scanning, safe proposals, build validation, and project memory.</Description>
     <MoreInfo>https://github.com/MercyProductions/Aegis-AI</MoreInfo>
     <License>LICENSE.txt</License>
     <Icon>Resources\AegisIcon.png</Icon>
     <PreviewImage>Resources\AegisIcon.png</PreviewImage>
-    <Tags>Aegis, Ollama, local AI, coding agent, Visual Studio</Tags>
+    <Tags>Auralith OS, Aegis Core, Ollama, local AI, coding agent, Visual Studio</Tags>
   </Metadata>
   <Installation>
     <InstallationTarget Id="Microsoft.VisualStudio.Community" Version="[17.0,19.0)">

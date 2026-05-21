@@ -1,0 +1,106 @@
+{
+  "schema_version": "2026.05.21",
+  "name": "Phase 33 Observability, Evals, And CI Contract",
+  "phase": 33,
+  "evidence_root": ".aegis/observability-ci",
+  "current_required_status": "ready",
+  "slice": "GitHub Actions CI, golden workflow eval contract, telemetry observability signals, and release evidence wiring",
+  "workflow": ".github/workflows/aegis-validation.yml",
+  "quality_contract": "evals/phase12-quality-contract.json",
+  "quality_script": "scripts/test-quality-contract.ps1",
+  "golden_workflows": "website/backend/tests/test_golden_workflows.py",
+  "telemetry_routes": "website/backend/aegis_ai/routes/telemetry.py",
+  "storage_quality": "website/backend/aegis_ai/storage_quality.py",
+  "validator": "scripts/validate-ecosystem.ps1",
+  "ledger_contract": "evals/phase16-evidence-ledger-contract.json",
+  "required_workflow_jobs": [
+    "core-tests",
+    "website-backend",
+    "website-frontend",
+    "contracts",
+    "desktop-release",
+    "editor-extensions",
+    "ecosystem-matrix"
+  ],
+  "required_ci_commands": [
+    "python -m pytest tests -q",
+    "npm test",
+    "npm run build",
+    "scripts\\test-desktop-contract.ps1",
+    "build.ps1",
+    "npm run test:unit",
+    "npm run lint",
+    "scripts\\test-quality-contract.ps1",
+    "scripts\\test-observability-ci.ps1",
+    "scripts\\test-memory-governance.ps1",
+    "scripts\\test-plugin-lifecycle.ps1",
+    "scripts\\test-evidence-ledger-contract.ps1",
+    "scripts\\validate-ecosystem.ps1 -SkipSmoke"
+  ],
+  "required_golden_eval_markers": [
+    "test_normal_question_does_not_generate_file_changes",
+    "test_modify_existing_file_produces_diff_and_checkpoint_then_rollback_restores",
+    "test_create_vite_app_generates_expected_project_files",
+    "test_validation_failure_repair_attempt_and_project_memory_persist",
+    "restore_checkpoint"
+  ],
+  "required_quality_contract_markers": [
+    "chat_no_write",
+    "coding_diff_checkpoint",
+    "provider_fallback",
+    "memory_continuation",
+    "apply_rollback",
+    "extension_parity",
+    "route_quality",
+    "fallback_inspector",
+    "policy_diff",
+    "workspace_scan",
+    "model_route_preview"
+  ],
+  "required_observability_markers": [
+    "route-quality",
+    "route-health",
+    "fallback-inspector",
+    "feedback",
+    "snapshot",
+    "policy-diff",
+    "token_calibration_status",
+    "structured_preview_status"
+  ],
+  "required_validator_markers": [
+    "quality-contract",
+    "observability-ci-contract",
+    "plugin-lifecycle-contract",
+    "memory-governance-contract",
+    "evidence-ledger-contract"
+  ],
+  "required_ledger_markers": [
+    "observability_ci",
+    ".aegis/observability-ci",
+    "observability-ci-contract"
+  ],
+  "required_validation_commands": [
+    "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\test-quality-contract.ps1",
+    "python -m pytest tests/test_golden_workflows.py -q"
+  ],
+  "required_contract_files": [
+    "docs/OBSERVABILITY_EVALS_CI_EVIDENCE.md",
+    "docs/VALIDATION_MATRIX.md",
+    "docs/EVIDENCE_LEDGER.md",
+    "evals/phase33-observability-ci-contract.json",
+    "evals/phase16-evidence-ledger-contract.json",
+    "evals/phase12-quality-contract.json",
+    "scripts/test-observability-ci.ps1",
+    "scripts/test-quality-contract.ps1",
+    "scripts/test-evidence-ledger-contract.ps1",
+    "scripts/validate-ecosystem.ps1",
+    ".github/workflows/aegis-validation.yml",
+    "website/backend/tests/test_golden_workflows.py",
+    "website/backend/aegis_ai/routes/telemetry.py",
+    "website/backend/aegis_ai/storage_quality.py"
+  ],
+  "outputs": [
+    "observability-ci.json",
+    "observability-ci-summary.md"
+  ]
+}

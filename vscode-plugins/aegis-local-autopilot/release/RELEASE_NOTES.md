@@ -1,47 +1,65 @@
-# Aegis Local Agent 0.1.1 Release Notes
+# Auralith OS Local Agent 0.1.8 Release Notes
 
-This release candidate packages Aegis Local Agent as a local-first VS Code extension for safe Ollama-assisted coding inside the currently opened workspace.
+This package is the VS Code client candidate for the local-first Auralith OS/Aegis workspace agent.
 
 ## Highlights
 
-- Current-workspace project scanning and `.aegis/` project memory.
-- Ollama model detection, model picker, default `qwen3-coder:30b`, and configured fallbacks.
-- Sidebar command center with project overview, chat, actions, plans, diffs, validation output, memory links, settings, diagnostics, and error reporting.
-- Agent workflow with planning, impact analysis, diff preview, approval, backups, validation, repair proposals, and rollback.
-- Dependency graph and symbol index files for focused context and multi-file impact analysis.
-- Health check, status bar states, extension logs, first-run setup, and recovery behavior.
+- VS Code activity-bar panel for local agent workflows.
+- Core-aware client registration and compatibility checks.
+- Workspace scanning, project memory, roadmap generation, proposal preview, validation detection, and rollback support.
+- Package lint and unit helper checks before VSIX creation.
+- Local model defaults for Ollama with explicit fallback model configuration.
 
-## Install
+## Package
 
-```powershell
-npm run package
-code --install-extension .\release\aegis-local-autopilot-0.1.1.vsix --force
+```text
+release/aegis-local-autopilot-0.1.8.vsix
 ```
 
-## Recommended First Run
+## Validation
 
-1. Start Ollama.
-2. Open a project folder in VS Code.
-3. Run `Aegis: Run First-Run Setup`.
-4. Run `Aegis: Run Health Check`.
-5. Generate a roadmap.
-6. Try a small safe change and approve only after reviewing the diff.
+Run from `vscode-plugins\aegis-local-autopilot`:
 
-## Safety Notes
+```powershell
+npm run lint
+npm run test:unit
+npm run package
+```
 
-Aegis does not rewrite projects automatically. It blocks secret and generated paths, writes backups before approved edits, keeps logs under `.aegis/`, and can roll back the latest agent change from its backup manifest.
+## External Alpha Status
+
+This VSIX is part of the conditional private external alpha candidate. Broad external alpha remains blocked until live smoke, signing, installer, and worktree commit grouping decisions are complete.
+
+Package evidence:
+
+- Root package path: `release/aegis-local-autopilot-0.1.8.vsix`
+- SHA-256: `13394f306497687afa299d677973cb0b87cf7fc4b7f53550cbc173aaef24705f`
+- Size bytes: `998347`
+- Final release manifest: `.aegis/final-release-manifest/20260521-062851/final-release-manifest-summary.md`
+- Packaged alpha scenarios: `.aegis/packaged-alpha-scenarios/20260521-064232/packaged-alpha-scenarios-summary.md`
+- Cross-client parity: `.aegis/cross-client-parity/20260521-065519/cross-client-parity-summary.md`
+
+Checksums are required and must match `release/version-manifest.json`.
+
+This is an unsigned local build candidate. The unsigned local build limitation is accepted only for conditional private external alpha.
 
 ## Known Limitations
 
-- It uses lightweight indexing and validation detection, so review plans on large or unusual projects.
-- It cannot guarantee architectural correctness; use the impact analysis and file-change reasons before approval.
-- UI-only flows still require manual VS Code verification after CLI packaging tests.
+- VS Code extension-host smoke can be blocked by a VS Code update mutex or `vscode-updating` mutex.
+- Core offline, Ollama offline, missing model, missing provider, and validation failure paths must stay visible to testers.
+- The package should be tested against real workspaces before broad external use.
+- Cross-client parity evidence is source-backed and package-aware, but live editor smoke still needs a clean retry before broad alpha.
 
-## 0.1.1 Dogfooding Fixes
+## Update And Rollback
 
-- `Aegis: Fix Build Errors` now runs detected validation first and stops when validation already passes.
-- Failed validation output is included in the build-repair request so the model is grounded in the actual error.
-- JSON parsing now handles UTF-8 BOM files, including Windows-created `package.json` files.
-- Impact analysis filters non-file symbol placeholders so `.` no longer appears as a likely affected file.
-- Workspace memory initialization now leaves damaged `.aegis` paths untouched, reports them, and continues in degraded mode.
-- Later `.aegis` index, history, validation-log, decision-log, and recovery writes also skip damaged targets instead of interrupting scans or approved-change bookkeeping.
+Preview an update plan:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\aegis-update.ps1 -Component vscode-extension
+```
+
+Rollback:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\aegis-update.ps1 -Rollback
+```

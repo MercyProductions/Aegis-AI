@@ -1,0 +1,74 @@
+{
+  "schema_version": "2026.05.21",
+  "name": "Phase 29 Editor Extension Modularization Contract",
+  "phase": 29,
+  "evidence_root": ".aegis/editor-extension-modularization",
+  "current_required_status": "ready",
+  "slice": "VS Code Core envelope helper extraction and editor validation parity",
+  "extracted_module": "vscode-plugins/aegis-local-autopilot/src/core/coreEnvelope.ts",
+  "thin_orchestrator": "vscode-plugins/aegis-local-autopilot/extension.js",
+  "helper_tests": "vscode-plugins/aegis-local-autopilot/scripts/test-extension-helpers.js",
+  "package_lint": "vscode-plugins/aegis-local-autopilot/scripts/lint-package.js",
+  "visual_studio_validation_substitute": "visual-studio-extensions/aegis-local-agent-vs/build.ps1 -ValidateOnly",
+  "required_module_markers": [
+    "validateCoreEnvelope",
+    "coreEnvelopeData",
+    "coreEnvelopeError",
+    "requireCoreOk",
+    "formatCoreContract",
+    "AEGIS_CORE_CONTRACT_VERSION"
+  ],
+  "required_extension_markers": [
+    "require('./src/core/coreEnvelope.ts')",
+    "validateCoreEnvelope(envelope, expectedKind, { redactDiagnosticText })",
+    "requireCoreOk(envelope, action, { redactDiagnosticText })",
+    "coreEnvelopeData(",
+    "formatCoreContract("
+  ],
+  "removed_extension_markers": [
+    "const AEGIS_CORE_API_VERSION = 'v1';",
+    "function coreEnvelopeError(envelope)",
+    "function coreEnvelopeData(envelope)",
+    "function formatCoreContract(envelope)"
+  ],
+  "required_helper_test_markers": [
+    "requireCoreOk",
+    "formatCoreContract",
+    "AEGIS_CORE_CONTRACT_VERSION",
+    "Authorization: \\[redacted\\]"
+  ],
+  "required_lint_markers": [
+    "extension.js must import Core envelope helpers",
+    "validateAegisCoreEnvelope must delegate to coreEnvelope.validateCoreEnvelope",
+    "requireAegisCoreOk must delegate to coreEnvelope.requireCoreOk",
+    "extension.js must not retain duplicate Core envelope helper implementations"
+  ],
+  "required_visual_studio_markers": [
+    "Assert-CoreFirstRuntimeGuards",
+    "Visual Studio package validation guards passed.",
+    "ValidateOnly"
+  ],
+  "required_validation_commands": [
+    "npm run test:unit",
+    "npm run lint",
+    "powershell -NoProfile -ExecutionPolicy Bypass -File visual-studio-extensions\\aegis-local-agent-vs\\build.ps1 -ValidateOnly"
+  ],
+  "required_contract_files": [
+    "docs/EDITOR_EXTENSION_MODULARIZATION_EVIDENCE.md",
+    "docs/VALIDATION_MATRIX.md",
+    "docs/EVIDENCE_LEDGER.md",
+    "evals/phase29-editor-extension-modularization-contract.json",
+    "scripts/test-editor-extension-modularization.ps1",
+    "scripts/test-evidence-ledger-contract.ps1",
+    "scripts/validate-ecosystem.ps1",
+    "vscode-plugins/aegis-local-autopilot/extension.js",
+    "vscode-plugins/aegis-local-autopilot/src/core/coreEnvelope.ts",
+    "vscode-plugins/aegis-local-autopilot/scripts/test-extension-helpers.js",
+    "vscode-plugins/aegis-local-autopilot/scripts/lint-package.js",
+    "visual-studio-extensions/aegis-local-agent-vs/build.ps1"
+  ],
+  "outputs": [
+    "editor-extension-modularization.json",
+    "editor-extension-modularization-summary.md"
+  ]
+}

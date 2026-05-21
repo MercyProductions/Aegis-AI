@@ -7,6 +7,7 @@ const backendTarget = (process.env.VITE_API_BASE ?? process.env.AEGIS_BACKEND_UR
 );
 
 export default defineConfig({
+  base: '/chatbot/',
   plugins: [react()],
   build: {
     rollupOptions: {

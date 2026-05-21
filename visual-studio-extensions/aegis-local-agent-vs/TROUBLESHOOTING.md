@@ -46,6 +46,14 @@ ollama pull granite-code:8b
 - The `.aegis/` memory folder is created at the solution root.
 - If the tool window is already open, run `Aegis: Rescan Solution Intelligence`.
 
+## Aegis Core Disconnected
+
+- Start Aegis Core at the configured **Aegis Core URL** before expecting shared workflows, Core checkpoints, Core apply, or cross-client activity to appear.
+- Run `Aegis: Run Health Check`, then inspect the **Runtime Authority** panel.
+- If Core is offline, the extension keeps local Visual Studio fallback behavior for scanning, proposals, builds, local backups, and local rollback.
+- If Core rejects a proposal, apply, or restore for safety reasons, local fallback is intentionally not used. Fix the unsafe path/request and propose again.
+- Check the solution `.aegis` folder for Core-owned records such as workflow runtime files, editing proposals, checkpoints, validation results, and activity logs.
+
 ## Indexing Looks Stale
 
 - Run `Aegis: Rescan Solution Intelligence`.
@@ -74,7 +82,7 @@ Aegis blocks unsafe paths by design, including `.env`, private keys, `.vs/`, `bi
 
 ## Rollback
 
-Use **Rollback Last** in the tool window. Backups are stored under:
+Use **Rollback Last** in the tool window. When Core has applied the last proposal, rollback uses Core checkpoints under `.aegis/checkpoints/` and creates a pre-restore checkpoint before changing files. Local fallback backups are stored under:
 
 ```text
 .aegis/backups/

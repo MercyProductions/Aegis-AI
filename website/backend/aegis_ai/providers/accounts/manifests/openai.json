@@ -1,0 +1,55 @@
+{
+  "id": "openai",
+  "label": "OpenAI",
+  "kind": "cloud",
+  "description": "OpenAI API and Codex CLI account bridge for coding, reasoning, tools, vision, and multimodal routing.",
+  "auth_modes": ["api_key", "cli_bridge", "oauth_browser", "device_code"],
+  "default_auth_mode": "api_key",
+  "credential_env_vars": ["OPENAI_API_KEY"],
+  "capabilities": ["chat", "code", "reasoning", "tools", "vision", "image", "streaming", "structured_json", "agent_delegation"],
+  "model_families": ["gpt", "codex", "image", "realtime", "embedding"],
+  "quota_status": "Provider limits depend on the linked OpenAI account or API project.",
+  "docs_url": "https://platform.openai.com/docs",
+  "security_notes": [
+    "Aegis does not copy Codex OAuth client credentials.",
+    "Codex account-style usage is delegated through the official Codex CLI."
+  ],
+  "cli_bridge": {
+    "cli_name": "Codex CLI",
+    "candidate_binaries": ["codex", "codex.cmd", "codex.exe"],
+    "version_args": ["--version"],
+    "status_args": ["login", "status"],
+    "login_args": ["login"],
+    "delegation_modes": ["exec", "review", "resume"],
+    "notes": "Use existing Codex login by running official Codex CLI commands; never import token files."
+  },
+  "metadata": {
+    "workspace_role": "codex_source_drop",
+    "source_bridge": {
+      "prefer_source": true,
+      "root_candidates": ["../AI", "../../AI"],
+      "binary_candidates": [
+        "codex-rs/target/release/codex.exe",
+        "codex-rs/target/debug/codex.exe",
+        "codex/codex-rs/target/release/codex.exe",
+        "codex/codex-rs/target/debug/codex.exe"
+      ],
+      "refresh_commands": [
+        {
+          "id": "build-codex-debug",
+          "label": "Build Codex",
+          "cwd": "codex-rs",
+          "command": ["cargo", "build", "--bin", "codex"],
+          "timeout_seconds": 600
+        },
+        {
+          "id": "build-codex-nested-debug",
+          "label": "Build nested Codex",
+          "cwd": "codex/codex-rs",
+          "command": ["cargo", "build", "--bin", "codex"],
+          "timeout_seconds": 600
+        }
+      ]
+    }
+  }
+}

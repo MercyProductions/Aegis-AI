@@ -1,0 +1,91 @@
+{
+  "schema_version": "2026.05.21",
+  "name": "Phase 37 Commit Scoping And GitHub Handoff Contract",
+  "phase": 37,
+  "evidence_root": ".aegis/commit-scoping-github-handoff",
+  "current_required_status": "ready",
+  "handoff_status_values": ["attention", "ready"],
+  "expected_remote": "https://github.com/MercyProductions/Aegis-AI.git",
+  "expected_branch_prefix": "codex/",
+  "slice": "Dirty worktree inventory, commit grouping, deleted asset decision flag, release artifact separation, and GitHub target handoff before any push",
+  "required_scope_markers": [
+    "commit_groups",
+    "publish_blockers",
+    "deleted_asset_decision",
+    "github_target",
+    "no_blind_stage",
+    "release_artifact_separation",
+    "handoff_status"
+  ],
+  "required_commit_groups": [
+    "roadmaps_and_docs",
+    "evidence_contracts_and_validation",
+    "aegis_core_runtime",
+    "website_backend",
+    "website_frontend",
+    "native_desktop",
+    "vscode_extension",
+    "visual_studio_extension",
+    "release_update_artifacts",
+    "design_assets_and_misc"
+  ],
+  "required_docs": [
+    "docs/COMMIT_SCOPING_GITHUB_HANDOFF_EVIDENCE.md",
+    "docs/VALIDATION_MATRIX.md",
+    "docs/EVIDENCE_LEDGER.md",
+    "docs/EXTERNAL_ALPHA_RELEASE_NOTES.md",
+    "docs/EXTERNAL_ALPHA_RELEASE_REPORT.md",
+    "KNOWN_UNSTABLE_SURFACES.md",
+    "FULL_PROJECT_REMAINING_ROADMAP_2026-05-21.md",
+    "FULL_PROJECT_REVIEW_ROADMAP_2026-05-21.md",
+    "CHATBOT_PROJECT_REVIEW_ROADMAP_2026-05-21.md"
+  ],
+  "required_doc_markers": [
+    "Phase 37",
+    "commit scoping",
+    "GitHub handoff",
+    "website inspiration.png",
+    "MercyProductions/Aegis-AI",
+    "no blind stage",
+    "release artifact",
+    "push"
+  ],
+  "required_evidence_sources": [
+    {
+      "id": "live_smoke_rc",
+      "root": ".aegis/live-smoke-rc",
+      "json": "live-smoke-rc.json",
+      "summary": "live-smoke-rc-summary.md",
+      "accepted_statuses": ["ready"]
+    },
+    {
+      "id": "release_validation",
+      "root": ".aegis/release-evidence",
+      "json": "validation-matrix.json",
+      "summary": "validation-summary.md",
+      "accepted_statuses": ["attention", "passed"]
+    },
+    {
+      "id": "evidence_ledger",
+      "root": ".aegis/evidence-ledger",
+      "json": "evidence-ledger.json",
+      "summary": "evidence-ledger-summary.md",
+      "accepted_statuses": ["attention", "ready"]
+    }
+  ],
+  "required_validation_gate_ids": [
+    "commit-scoping-github-handoff-contract"
+  ],
+  "required_contract_files": [
+    "evals/phase37-commit-scoping-github-handoff-contract.json",
+    "scripts/test-commit-scoping-github-handoff.ps1",
+    "docs/COMMIT_SCOPING_GITHUB_HANDOFF_EVIDENCE.md",
+    "docs/VALIDATION_MATRIX.md",
+    "docs/EVIDENCE_LEDGER.md",
+    "scripts/validate-ecosystem.ps1"
+  ],
+  "evidence_outputs": [
+    "commit-scoping-github-handoff.json",
+    "commit-scoping-github-handoff-summary.md"
+  ]
+}

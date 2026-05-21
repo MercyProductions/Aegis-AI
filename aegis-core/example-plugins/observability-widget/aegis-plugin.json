@@ -1,0 +1,49 @@
+{
+  "id": "aegis-observability-widget",
+  "name": "Aegis Observability Widget",
+  "version": "1.0.0",
+  "api_version": "2026.05.12",
+  "category": "observability_tools",
+  "description": "Reference UI widget contract for plugin runtime health, failures, duration, and permission usage.",
+  "author": "Aegis",
+  "capabilities": ["observability_widget", "tool", "ide_integration"],
+  "dependencies": [],
+  "permission_scopes": ["observability_read", "ui_extension"],
+  "runtime_compatibility": {
+    "min_core_version": "0.1.0",
+    "supported_workflow_types": ["scan_workspace", "validate_project", "repair_project"]
+  },
+  "tools": [
+    {
+      "name": "observability-snapshot",
+      "description": "Return recent plugin load and tool execution observations.",
+      "input_schema": {"type": "object", "properties": {"limit": {"type": "integer"}}},
+      "output_schema": {"type": "object"},
+      "safety_level": "low",
+      "supported_workflow_types": ["scan_workspace"],
+      "execution_timeout_seconds": 10,
+      "retry_policy": {"max_attempts": 1},
+      "required_permissions": ["observability_read"],
+      "handler": "builtin.observability_snapshot"
+    }
+  ],
+  "ui_extensions": [
+    {
+      "id": "plugin-observability-widget",
+      "kind": "dashboard_widget",
+      "title": "Plugin Runtime Health",
+      "placement": "runtime.dashboard",
+      "route": "/plugins/observability",
+      "data_contract": "plugin.dashboard",
+      "required_permissions": ["ui_extension", "observability_read"]
+    }
+  ],
+  "package": {
+    "checksum": "builtin",
+    "signature": "builtin",
+    "signing_key_fingerprint": "aegis-builtin",
+    "update_channel": "stable"
+  },
+  "enabled": true,
+  "trusted": true
+}

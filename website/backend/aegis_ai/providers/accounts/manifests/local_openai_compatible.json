@@ -1,0 +1,25 @@
+{
+  "id": "local_openai_compatible",
+  "label": "Local Models",
+  "kind": "local",
+  "description": "Local OpenAI-compatible runtimes such as LM Studio, llama.cpp servers, text-generation-webui, vLLM, and custom LAN endpoints.",
+  "auth_modes": ["none"],
+  "default_auth_mode": "none",
+  "credential_env_vars": [],
+  "capabilities": ["local", "private", "offline", "chat", "code", "embeddings", "streaming", "openai_compatible"],
+  "model_families": ["llama", "qwen", "mistral", "gemma", "deepseek", "openai-compatible", "lmstudio", "vllm"],
+  "quota_status": "Local runtime; constrained by installed models, memory, disk, and the configured endpoint.",
+  "docs_url": "",
+  "security_notes": [
+    "No cloud credentials are required for local endpoints.",
+    "Requests stay local when the configured endpoint points to this machine or a trusted private host."
+  ],
+  "metadata": {
+    "recommended_endpoints": [
+      "http://127.0.0.1:1234/v1",
+      "http://127.0.0.1:8080/v1",
+      "http://127.0.0.1:11434/v1"
+    ],
+    "model_api_values": ["lmstudio", "openai-compatible", "ollama", "openai"]
+  }
+}

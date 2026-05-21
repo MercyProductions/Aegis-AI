@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -37,6 +39,11 @@ CAPABILITY_PERMISSION_HINTS: dict[str, set[str]] = {
     "workspace_analyzer": {"read_workspace", "analyzer"},
     "ui_panel": {"ui_panel"},
 }
+
+
+def _fingerprint(payload: Any) -> str:
+    data = json.dumps(payload, sort_keys=True, ensure_ascii=True, default=str)
+    return hashlib.sha256(data.encode("utf-8")).hexdigest()
 
 
 def _parse_time(value: str) -> datetime | None:
@@ -207,6 +214,9 @@ class ProductizationEngine:
             errors.append("Plugin signature and signing_key_fingerprint are required by policy.")
         elif not normalized.signature:
             warnings.append("Plugin signing metadata is missing; keep this plugin untrusted in shared or enterprise workspaces.")
+        expected_checksum = self._manifest_checksum(manifest)
+        if manifest.checksum and manifest.checksum not in {"builtin", expected_checksum}:
+            errors.append("Plugin manifest checksum does not match package metadata.")
 
         for hook in normalized.lifecycle_hooks:
             hook_permissions = set(hook.required_permissions)
@@ -513,6 +523,7 @@ class ProductizationEngine:
         now = utc_now()
         capabilities = sorted(set(manifest.capabilities))
         permissions = sorted(set(manifest.permissions))
+        checksum = manifest.checksum or self._manifest_checksum(manifest)
         return manifest.model_copy(
             update={
                 "id": manifest.id.strip(),
@@ -522,8 +533,27 @@ class ProductizationEngine:
                 "capabilities": capabilities,
                 "permissions": permissions,
                 "sandbox_profile": manifest.sandbox_profile.strip() or "isolated",
+                "checksum": checksum,
+                "update_channel": manifest.update_channel.strip() or "local",
                 "created_at": manifest.created_at or now,
                 "updated_at": now,
+            }
+        )
+
+    def _manifest_checksum(self, manifest: PluginManifest) -> str:
+        return _fingerprint(
+            {
+                "id": manifest.id.strip(),
+                "name": manifest.name.strip(),
+                "version": manifest.version.strip(),
+                "api_version": manifest.api_version.strip(),
+                "capabilities": sorted(set(manifest.capabilities)),
+                "permissions": sorted(set(manifest.permissions)),
+                "sandbox_profile": manifest.sandbox_profile.strip() or "isolated",
+                "entrypoint": manifest.entrypoint,
+                "ui_panel_route": manifest.ui_panel_route,
+                "update_channel": manifest.update_channel.strip() or "local",
+                "lifecycle_hooks": [hook.model_dump(mode="json") for hook in manifest.lifecycle_hooks],
             }
         )
 

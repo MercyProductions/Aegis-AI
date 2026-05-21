@@ -356,6 +356,9 @@ class EcosystemEngine:
             errors.append("Package signature and signing_key_fingerprint are required by organization policy.")
         elif not normalized.signature:
             warnings.append("Package signing metadata is missing; keep trust low outside local workspaces.")
+        expected_checksum = self._package_checksum(manifest)
+        if manifest.checksum and manifest.checksum not in {"builtin", expected_checksum}:
+            errors.append("Package checksum does not match manifest payload.")
 
         compatibility_api = normalized.compatibility.get("api_version")
         if compatibility_api and compatibility_api != ECOSYSTEM_API_VERSION:
@@ -1042,15 +1045,7 @@ class EcosystemEngine:
         return items
 
     def _normalized_package(self, manifest: EcosystemPackageManifest) -> EcosystemPackageManifest:
-        checksum = manifest.checksum or _fingerprint(
-            {
-                "id": manifest.id,
-                "kind": manifest.kind,
-                "version": manifest.version,
-                "entrypoint": manifest.entrypoint,
-                "permission_scopes": manifest.permission_scopes,
-            }
-        )[:24]
+        checksum = manifest.checksum or self._package_checksum(manifest)
         return manifest.model_copy(
             update={
                 "id": manifest.id.strip(),
@@ -1062,3 +1057,17 @@ class EcosystemEngine:
                 "checksum": checksum,
             }
         )
+
+    def _package_checksum(self, manifest: EcosystemPackageManifest) -> str:
+        return _fingerprint(
+            {
+                "id": manifest.id.strip(),
+                "kind": manifest.kind,
+                "version": manifest.version.strip(),
+                "api_version": manifest.api_version.strip(),
+                "entrypoint": manifest.entrypoint,
+                "permission_scopes": sorted(set(manifest.permission_scopes)),
+                "sandbox_permissions": sorted(set(manifest.sandbox_permissions)),
+                "update_channel": manifest.update_channel,
+            }
+        )[:24]

@@ -1,0 +1,157 @@
+{
+  "schema_version": "2026.05.21",
+  "name": "Phase 14 Alpha Readiness And Dogfooding Contract",
+  "evidence_root": ".aegis/alpha-evidence",
+  "feature_tiers": {
+    "stable_alpha": [
+      "workspace_scan",
+      "chat_with_model_route",
+      "propose_patch",
+      "preview_diff",
+      "checkpoint",
+      "apply_after_approval",
+      "validate",
+      "rollback",
+      "memory_resume",
+      "diagnostics_export"
+    ],
+    "beta": [
+      "provider_setup",
+      "local_model_routing",
+      "website_runtime_status",
+      "desktop_runtime_status",
+      "vscode_extension_loop",
+      "visual_studio_extension_loop",
+      "quality_gates",
+      "dogfooding_friction_tracking"
+    ],
+    "experimental": [
+      "plugins",
+      "distributed_runtime",
+      "adaptive_intelligence",
+      "autonomous_engineering",
+      "creative_media",
+      "operating_environment"
+    ],
+    "internal_only": [
+      "release_signing",
+      "external_plugin_execution",
+      "remote_worker_execution",
+      "desktop_automation_adapters",
+      "unrestricted_autonomy",
+      "provider_credential_internals"
+    ]
+  },
+  "core_alpha_apis": [
+    "GET /v1/alpha/readiness",
+    "GET /v1/alpha/features",
+    "GET /v1/alpha/feature-flags",
+    "POST /v1/alpha/feature-flags",
+    "GET /v1/alpha/diagnostics",
+    "POST /v1/alpha/diagnostics/export",
+    "POST /v1/alpha/feedback",
+    "GET /v1/alpha/feedback",
+    "GET /v1/alpha/observability",
+    "GET /v1/alpha/release-channels",
+    "GET /v1/alpha/simulations"
+  ],
+  "dogfooding_apis": [
+    "GET /v1/dogfooding",
+    "POST /v1/dogfooding/events",
+    "GET /v1/dogfooding/friction",
+    "GET /v1/dogfooding/confidence",
+    "GET /v1/dogfooding/workflows",
+    "GET /v1/dogfooding/long-session-plan"
+  ],
+  "onboarding_requirements": [
+    "welcome",
+    "privacy",
+    "local_models",
+    "providers",
+    "workspace",
+    "safety",
+    "theme",
+    "first_workflow",
+    "finish",
+    "settings_import_export",
+    "validate_only_first_workflow"
+  ],
+  "recovery_states": [
+    "backend_down",
+    "core_offline",
+    "ollama_offline",
+    "model_unavailable",
+    "key_missing",
+    "provider_missing",
+    "workspace_blocked",
+    "update_failed",
+    "validation_failed",
+    "extension_disconnected",
+    "desktop_blank_state"
+  ],
+  "scenario_suite": [
+    {
+      "id": "create_app",
+      "description": "Create a small app from a prompt, keep checkpoint and validation evidence, and do not apply without approval."
+    },
+    {
+      "id": "modify_app",
+      "description": "Modify an existing app with a visible proposal, diff, validation target, and rollback path."
+    },
+    {
+      "id": "repair_validation",
+      "description": "Use validation failure evidence to produce one bounded repair attempt and revalidate."
+    },
+    {
+      "id": "review_code",
+      "description": "Review code without writing files and surface actionable findings with file references."
+    },
+    {
+      "id": "connect_provider",
+      "description": "Connect or preview a provider route without exporting plaintext provider keys."
+    },
+    {
+      "id": "use_local_model",
+      "description": "Run local-only model routing with missing-model recovery visible."
+    },
+    {
+      "id": "run_vscode_extension",
+      "description": "Run the VS Code extension loop against Core or documented local fallback."
+    },
+    {
+      "id": "run_visual_studio_extension",
+      "description": "Run the Visual Studio extension validation loop against Core contracts."
+    },
+    {
+      "id": "update_component",
+      "description": "Plan and validate a component update with manifest compatibility evidence."
+    },
+    {
+      "id": "rollback_component",
+      "description": "Restore a component or workspace checkpoint and record the result."
+    }
+  ],
+  "evidence_files": [
+    ".aegis/alpha-readiness.json",
+    ".aegis/alpha-feature-flags.json",
+    ".aegis/alpha-feedback.jsonl",
+    ".aegis/alpha-diagnostics/",
+    ".aegis/dogfooding-events.jsonl",
+    ".aegis/dogfooding-report.json",
+    ".aegis/dogfooding-summary.md"
+  ],
+  "required_contract_files": [
+    "docs/CONTROLLED_EXTERNAL_ALPHA.md",
+    "docs/REAL_WORLD_DOGFOODING_AND_WORKFLOW_REFINEMENT.md",
+    "docs/FIRST_RUN_ONBOARDING.md",
+    "scripts/validate-ecosystem.ps1",
+    "aegis-core/aegis_core/alpha.py",
+    "aegis-core/aegis_core/dogfooding.py",
+    "aegis-core/aegis_core/onboarding.py",
+    "aegis-core/aegis_core/server.py",
+    "aegis-core/tests/test_alpha_readiness.py",
+    "aegis-core/tests/test_dogfooding.py",
+    "aegis-core/tests/test_onboarding.py",
+    "website/backend/aegis_ai/services/settings_service.py"
+  ]
+}

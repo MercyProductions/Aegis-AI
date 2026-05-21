@@ -10,6 +10,16 @@ import type {
   AegisContinuitySnapshot,
   AgentRequest,
   AgentResponse,
+  AgentBridgeExecuteRequest,
+  AgentBridgeExecuteResponse,
+  AgentBridgeJobResponse,
+  AgentBridgeJobsResponse,
+  AgentBridgePreflightResponse,
+  AgentBridgeStreamPayload,
+  AgentSupervisionActionRequest,
+  AgentSupervisionActionResponse,
+  AgentSupervisionDelegationRequest,
+  AgentSupervisionSnapshot,
   ApprovalSettingsResponse,
   AppConfig,
   ApplyRequest,
@@ -50,6 +60,7 @@ import type {
   EcosystemWorkflowDefinition,
   EnterprisePolicyProfile,
   EnterprisePolicyUpdateRequest,
+  EvaluationReportsResponse,
   ExecutionDispatchRequest,
   ExecutionDispatchResponse,
   ExecutionQueueActionRequest,
@@ -79,11 +90,31 @@ import type {
   ModelDeleteRequest,
   ModelInventoryResponse,
   ModelManagerResponse,
+  MemoryControlsResponse,
+  MemoryControlsUpdateRequest,
+  MemoryExportRequest,
+  MemoryExportResponse,
+  MemoryGovernanceResponse,
   MemoryNoteResponse,
   MemoryNotesResponse,
   ModelOperationInfo,
   ModelPullRequest,
   ModelRegistryResponse,
+  ProviderAccountLinkResponse,
+  ProviderAccountsResponse,
+  ProviderApiKeyLinkRequest,
+  ProviderCliLoginResponse,
+  ProviderSourceRefreshRequest,
+  ProviderSourceRefreshJobResponse,
+  ProviderSourceRefreshJobsResponse,
+  ProviderSourceRefreshResponse,
+  ProviderSourceRootOpenRequest,
+  ProviderSourceRootOpenResponse,
+  QualityBenchmarkDashboard,
+  QualityBenchmarkRunRequest,
+  QualityGateEvaluation,
+  QualityGateEvaluationRequest,
+  QualityGateSnapshot,
   PluginActionRequest,
   PluginManifest,
   PluginRegistrationRequest,
@@ -94,6 +125,10 @@ import type {
   OperatingEnvironmentSnapshot,
   OrganizationPolicyProfile,
   OrganizationPolicyUpdateRequest,
+  OnboardingFirstWorkflowRequest,
+  OnboardingFirstWorkflowResponse,
+  OnboardingStatusResponse,
+  OnboardingUpdateRequest,
   PlatformDisciplineSnapshot,
   ProjectContextSelectionRequest,
   ProjectContextSelectionResponse,
@@ -114,8 +149,24 @@ import type {
   RouteQualityResponse,
   RoutePolicyDiffOptions,
   RoutePolicyDiffResponse,
+  RuntimeInteractionSnapshot,
+  RuntimeJobActionRequest,
+  RuntimeJobMutationResponse,
   RuntimeObservabilitySnapshot,
+  RuntimeOwnershipResponse,
   RuntimeRecoverySnapshot,
+  RuntimeReplayResponse,
+  RuntimeSessionMutationResponse,
+  RuntimeSessionRequest,
+  RuntimeSessionSyncRequest,
+  RuntimeSettingsExportResponse,
+  RuntimeSettingsImportRequest,
+  RuntimeSettingsImportResponse,
+  RuntimeStreamsResponse,
+  RuntimeTerminalJobRequest,
+  RuntimeVoiceCommandRequest,
+  RuntimeVoiceCommandResponse,
+  RuntimeVoiceResponse,
   StableApiContract,
   TaskActionRequest,
   TaskActionResponse,
@@ -163,11 +214,13 @@ import type {
 
 const EXPLICIT_API_BASE = (import.meta.env.VITE_API_BASE ?? '').replace(/\/+$/, '');
 const DEFAULT_API_BASES = ['', 'http://127.0.0.1:8787', 'http://127.0.0.1:8793'];
+const API_DISCOVERY_TIMEOUT_MS = 3000;
 const IS_TEST_MODE = import.meta.env.MODE === 'test';
 
 let resolvedApiBase = EXPLICIT_API_BASE;
 let apiBaseDiscovered = Boolean(EXPLICIT_API_BASE);
 let apiDiscoveryEnabledForTests = false;
+let apiDiscoveryPromise: Promise<void> | null = null;
 
 function apiBaseCandidates(): string[] {
   if (EXPLICIT_API_BASE) return [EXPLICIT_API_BASE];
@@ -204,16 +257,26 @@ function isAuralithHealthPayload(payload: unknown): boolean {
   );
 }
 
-async function discoverApiBase(): Promise<void> {
-  if (!shouldDiscoverApiBase()) return;
+async function fetchDiscoveryHealth(base: string): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), API_DISCOVERY_TIMEOUT_MS);
 
+  try {
+    return await fetch(apiUrl(base, '/api/health'), {
+      headers: { Accept: 'application/json' },
+      signal: controller.signal
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+async function runApiBaseDiscovery(): Promise<void> {
   let firstHealthyBase: string | null = null;
 
   for (const base of DEFAULT_API_BASES) {
     try {
-      const response = await fetch(apiUrl(base, '/api/health'), {
-        headers: { Accept: 'application/json' }
-      });
+      const response = await fetchDiscoveryHealth(base);
 
       if (!response.ok) continue;
       const payload = (await response.json().catch(() => null)) as unknown;
@@ -234,6 +297,15 @@ async function discoverApiBase(): Promise<void> {
 
   resolvedApiBase = firstHealthyBase ?? '';
   apiBaseDiscovered = true;
+}
+
+async function discoverApiBase(): Promise<void> {
+  if (!shouldDiscoverApiBase()) return;
+
+  apiDiscoveryPromise ??= runApiBaseDiscovery().finally(() => {
+    apiDiscoveryPromise = null;
+  });
+  await apiDiscoveryPromise;
 }
 
 async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
@@ -277,6 +349,7 @@ export function __resetApiBaseForTests(): void {
   resolvedApiBase = EXPLICIT_API_BASE;
   apiBaseDiscovered = Boolean(EXPLICIT_API_BASE);
   apiDiscoveryEnabledForTests = false;
+  apiDiscoveryPromise = null;
 }
 
 export function __setApiDiscoveryForTests(enabled: boolean): void {
@@ -346,6 +419,15 @@ export function getHealth(): Promise<HealthResponse> {
   return jsonFetch<HealthResponse>('/api/health');
 }
 
+export function getRuntimeOwnership(workspaceRoot?: string): Promise<RuntimeOwnershipResponse> {
+  const query = new URLSearchParams();
+  if (workspaceRoot?.trim()) {
+    query.set('workspace_root', workspaceRoot.trim());
+  }
+  const suffix = query.toString();
+  return jsonFetch<RuntimeOwnershipResponse>(`/api/runtime/ownership${suffix ? `?${suffix}` : ''}`);
+}
+
 export function registerAccount(request: AuthRegisterRequest): Promise<AuthSessionResponse> {
   return jsonFetch<AuthSessionResponse>('/api/auth/register', {
     method: 'POST',
@@ -384,12 +466,145 @@ export function getConfig(): Promise<AppConfig> {
   return jsonFetch<AppConfig>('/api/config');
 }
 
+export function getOnboardingStatus(workspaceRoot?: string): Promise<OnboardingStatusResponse> {
+  const query = new URLSearchParams();
+  if (workspaceRoot?.trim()) {
+    query.set('workspace_root', workspaceRoot.trim());
+  }
+  const suffix = query.toString();
+  return jsonFetch<OnboardingStatusResponse>(`/api/onboarding/status${suffix ? `?${suffix}` : ''}`);
+}
+
+export function updateOnboarding(request: OnboardingUpdateRequest): Promise<OnboardingStatusResponse> {
+  return jsonFetch<OnboardingStatusResponse>('/api/onboarding', {
+    method: 'POST',
+    body: JSON.stringify(request)
+  });
+}
+
+export function runOnboardingFirstWorkflow(
+  request: OnboardingFirstWorkflowRequest
+): Promise<OnboardingFirstWorkflowResponse> {
+  return jsonFetch<OnboardingFirstWorkflowResponse>('/api/onboarding/first-workflow', {
+    method: 'POST',
+    body: JSON.stringify(request)
+  });
+}
+
+export function exportRuntimeSettings(workspaceRoot?: string): Promise<RuntimeSettingsExportResponse> {
+  const query = new URLSearchParams();
+  if (workspaceRoot?.trim()) {
+    query.set('workspace_root', workspaceRoot.trim());
+  }
+  const suffix = query.toString();
+  return jsonFetch<RuntimeSettingsExportResponse>(`/api/settings/export${suffix ? `?${suffix}` : ''}`);
+}
+
+export function importRuntimeSettings(request: RuntimeSettingsImportRequest): Promise<RuntimeSettingsImportResponse> {
+  return jsonFetch<RuntimeSettingsImportResponse>('/api/settings/import', {
+    method: 'POST',
+    body: JSON.stringify(request)
+  });
+}
+
 export function getModels(): Promise<ModelInventoryResponse> {
   return jsonFetch<ModelInventoryResponse>('/api/models');
 }
 
 export function getModelRegistry(): Promise<ModelRegistryResponse> {
   return jsonFetch<ModelRegistryResponse>('/api/model-registry');
+}
+
+export function getProviderAccounts(): Promise<ProviderAccountsResponse> {
+  return jsonFetch<ProviderAccountsResponse>('/api/provider-accounts');
+}
+
+export function linkProviderApiKey(
+  providerId: string,
+  request: ProviderApiKeyLinkRequest
+): Promise<ProviderAccountLinkResponse> {
+  return jsonFetch<ProviderAccountLinkResponse>(`/api/provider-accounts/${encodeURIComponent(providerId)}/api-key`, {
+    method: 'POST',
+    body: JSON.stringify(request)
+  });
+}
+
+export function unlinkProviderAccount(providerId: string): Promise<ProviderAccountsResponse> {
+  return jsonFetch<ProviderAccountsResponse>(`/api/provider-accounts/${encodeURIComponent(providerId)}`, {
+    method: 'DELETE'
+  });
+}
+
+export function startProviderCliLogin(providerId: string): Promise<ProviderCliLoginResponse> {
+  return jsonFetch<ProviderCliLoginResponse>(`/api/provider-accounts/${encodeURIComponent(providerId)}/cli-login`, {
+    method: 'POST'
+  });
+}
+
+export function linkProviderCliSession(providerId: string): Promise<ProviderAccountLinkResponse> {
+  return jsonFetch<ProviderAccountLinkResponse>(`/api/provider-accounts/${encodeURIComponent(providerId)}/cli-session`, {
+    method: 'POST'
+  });
+}
+
+export function openProviderSourceRoot(
+  request: ProviderSourceRootOpenRequest = {}
+): Promise<ProviderSourceRootOpenResponse> {
+  return jsonFetch<ProviderSourceRootOpenResponse>('/api/provider-accounts/source-root/open', {
+    method: 'POST',
+    body: JSON.stringify(request)
+  });
+}
+
+export function refreshProviderSourceDrop(
+  request: ProviderSourceRefreshRequest
+): Promise<ProviderSourceRefreshResponse> {
+  return jsonFetch<ProviderSourceRefreshResponse>('/api/provider-accounts/source-drops/refresh', {
+    method: 'POST',
+    body: JSON.stringify(request)
+  });
+}
+
+export function startProviderSourceRefreshJob(
+  request: ProviderSourceRefreshRequest
+): Promise<ProviderSourceRefreshJobResponse> {
+  return jsonFetch<ProviderSourceRefreshJobResponse>('/api/provider-accounts/source-drops/refresh-jobs', {
+    method: 'POST',
+    body: JSON.stringify(request)
+  });
+}
+
+export function listProviderSourceRefreshJobs(limit = 25): Promise<ProviderSourceRefreshJobsResponse> {
+  const query = new URLSearchParams();
+  query.set('limit', String(limit));
+  return jsonFetch<ProviderSourceRefreshJobsResponse>(`/api/provider-accounts/source-drops/refresh-jobs?${query.toString()}`);
+}
+
+export function getProviderSourceRefreshJob(jobId: string): Promise<ProviderSourceRefreshJobResponse> {
+  return jsonFetch<ProviderSourceRefreshJobResponse>(
+    `/api/provider-accounts/source-drops/refresh-jobs/${encodeURIComponent(jobId)}`
+  );
+}
+
+export function cancelProviderSourceRefreshJob(jobId: string): Promise<ProviderSourceRefreshJobResponse> {
+  return jsonFetch<ProviderSourceRefreshJobResponse>(
+    `/api/provider-accounts/source-drops/refresh-jobs/${encodeURIComponent(jobId)}/cancel`,
+    { method: 'POST' }
+  );
+}
+
+export function retryProviderSourceRefreshJob(jobId: string): Promise<ProviderSourceRefreshJobResponse> {
+  return jsonFetch<ProviderSourceRefreshJobResponse>(
+    `/api/provider-accounts/source-drops/refresh-jobs/${encodeURIComponent(jobId)}/retry`,
+    { method: 'POST' }
+  );
+}
+
+export function probeProviderCliBridges(providerId = ''): Promise<ProviderAccountsResponse> {
+  return jsonFetch<ProviderAccountsResponse>('/api/provider-accounts/cli-bridges/probe', {
+    method: 'POST',
+    body: JSON.stringify({ provider_id: providerId })
+  });
 }
 
 export function getModelManager(): Promise<ModelManagerResponse> {
@@ -446,8 +661,386 @@ export function sendAgentMessage(request: AgentRequest): Promise<AgentResponse> 
   });
 }
 
+export function executeAgentBridge(request: AgentBridgeExecuteRequest): Promise<AgentBridgeExecuteResponse> {
+  return jsonFetch<AgentBridgeExecuteResponse>('/api/agent-bridges/execute', {
+    method: 'POST',
+    body: JSON.stringify(request)
+  });
+}
+
+export function preflightAgentBridge(request: AgentBridgeExecuteRequest): Promise<AgentBridgePreflightResponse> {
+  return jsonFetch<AgentBridgePreflightResponse>('/api/agent-bridges/preflight', {
+    method: 'POST',
+    body: JSON.stringify(request)
+  });
+}
+
+export function startAgentBridgeJob(request: AgentBridgeExecuteRequest): Promise<AgentBridgeJobResponse> {
+  return jsonFetch<AgentBridgeJobResponse>('/api/agent-bridges/jobs', {
+    method: 'POST',
+    body: JSON.stringify(request)
+  });
+}
+
+export function listAgentBridgeJobs(limit = 25): Promise<AgentBridgeJobsResponse> {
+  const query = new URLSearchParams({ limit: String(limit) });
+  return jsonFetch<AgentBridgeJobsResponse>(`/api/agent-bridges/jobs?${query.toString()}`);
+}
+
+export function getAgentBridgeJob(jobId: string): Promise<AgentBridgeJobResponse> {
+  return jsonFetch<AgentBridgeJobResponse>(`/api/agent-bridges/jobs/${encodeURIComponent(jobId)}`);
+}
+
+export function cancelAgentBridgeJob(jobId: string): Promise<AgentBridgeJobResponse> {
+  return jsonFetch<AgentBridgeJobResponse>(`/api/agent-bridges/jobs/${encodeURIComponent(jobId)}/cancel`, {
+    method: 'POST'
+  });
+}
+
+export function retryAgentBridgeJob(jobId: string): Promise<AgentBridgeJobResponse> {
+  return jsonFetch<AgentBridgeJobResponse>(`/api/agent-bridges/jobs/${encodeURIComponent(jobId)}/retry`, {
+    method: 'POST'
+  });
+}
+
+export async function streamAgentBridge(
+  request: AgentBridgeExecuteRequest,
+  handlers: {
+    onMeta?: (payload: AgentBridgeStreamPayload) => void;
+    onStatus?: (payload: AgentBridgeStreamPayload) => void;
+    onDelta?: (payload: AgentBridgeStreamPayload) => void;
+    onFinal?: (payload: AgentBridgeStreamPayload) => void;
+    signal?: AbortSignal;
+  } = {}
+): Promise<AgentBridgeExecuteResponse> {
+  const response = await apiFetch('/api/agent-bridges/stream', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'text/event-stream'
+    },
+    signal: handlers.signal,
+    body: JSON.stringify(request)
+  });
+
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response));
+  }
+
+  if (!response.body) {
+    return executeAgentBridge(request);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let finalResponse: AgentBridgeExecuteResponse | null = null;
+
+  const processFrame = (frame: string) => {
+    const parsed = parseStreamFrame(frame);
+    if (!parsed) return;
+    const { event, payload } = parsed;
+    const bridgePayload = payload as AgentBridgeStreamPayload;
+
+    if (event === 'meta') {
+      handlers.onMeta?.(bridgePayload);
+    } else if (event === 'status') {
+      handlers.onStatus?.(bridgePayload);
+    } else if (event === 'delta') {
+      handlers.onDelta?.(bridgePayload);
+    } else if (event === 'final') {
+      handlers.onFinal?.(bridgePayload);
+      if (bridgePayload.bridge_response) {
+        finalResponse = bridgePayload.bridge_response;
+      }
+    } else if (event === 'error') {
+      throw new Error(bridgePayload.message || bridgePayload.detail || 'Provider bridge streaming request failed');
+    }
+  };
+
+  while (true) {
+    const { value, done } = await reader.read();
+    buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
+    const frames = buffer.split(/\r?\n\r?\n/);
+    buffer = frames.pop() ?? '';
+
+    for (const frame of frames) {
+      processFrame(frame);
+    }
+
+    if (done) {
+      processFrame(buffer);
+      break;
+    }
+  }
+
+  if (finalResponse) return finalResponse;
+  throw new Error('Provider bridge stream ended before a final response was received');
+}
+
 export function getChatStreamContract(): Promise<ChatStreamContractResponse> {
   return jsonFetch<ChatStreamContractResponse>('/api/chat/stream/contract');
+}
+
+export function getAgentSupervision(
+  workspaceRoot?: string,
+  workflowId?: string,
+  limit = 30
+): Promise<AgentSupervisionSnapshot> {
+  const query = new URLSearchParams({ limit: String(limit) });
+
+  if (workspaceRoot?.trim()) {
+    query.set('workspace_root', workspaceRoot.trim());
+  }
+  if (workflowId?.trim()) {
+    query.set('workflow_id', workflowId.trim());
+  }
+
+  return jsonFetch<AgentSupervisionSnapshot>(`/api/agent-supervision?${query.toString()}`);
+}
+
+export function getAutopilotModes(): Promise<Record<string, unknown>> {
+  return jsonFetch<Record<string, unknown>>('/api/autopilot/modes');
+}
+
+export function getAutopilotSupervision(
+  workspaceRoot?: string,
+  autopilotId?: string
+): Promise<Record<string, unknown>> {
+  const query = new URLSearchParams();
+
+  if (workspaceRoot?.trim()) {
+    query.set('workspace_root', workspaceRoot.trim());
+  }
+  if (autopilotId?.trim()) {
+    query.set('autopilot_id', autopilotId.trim());
+  }
+
+  return jsonFetch<Record<string, unknown>>(`/api/autopilot/supervision?${query.toString()}`);
+}
+
+export function startAutopilot(request: Record<string, unknown>): Promise<Record<string, unknown>> {
+  return jsonFetch<Record<string, unknown>>('/api/autopilot/start', {
+    method: 'POST',
+    body: JSON.stringify(request)
+  });
+}
+
+export function sendAutopilotAction(
+  autopilotId: string,
+  request: Record<string, unknown>
+): Promise<Record<string, unknown>> {
+  return jsonFetch<Record<string, unknown>>(`/api/autopilot/runs/${encodeURIComponent(autopilotId)}/action`, {
+    method: 'POST',
+    body: JSON.stringify(request)
+  });
+}
+
+export function getAutopilotReplay(workspaceRoot: string | undefined, autopilotId: string): Promise<Record<string, unknown>> {
+  const query = new URLSearchParams();
+  if (workspaceRoot?.trim()) {
+    query.set('workspace_root', workspaceRoot.trim());
+  }
+  return jsonFetch<Record<string, unknown>>(`/api/autopilot/runs/${encodeURIComponent(autopilotId)}/replay?${query.toString()}`);
+}
+
+export function getAutopilotObservability(workspaceRoot?: string): Promise<Record<string, unknown>> {
+  const query = new URLSearchParams();
+  if (workspaceRoot?.trim()) {
+    query.set('workspace_root', workspaceRoot.trim());
+  }
+  return jsonFetch<Record<string, unknown>>(`/api/autopilot/observability?${query.toString()}`);
+}
+
+export function getAutopilotMemory(workspaceRoot?: string): Promise<Record<string, unknown>> {
+  const query = new URLSearchParams();
+  if (workspaceRoot?.trim()) {
+    query.set('workspace_root', workspaceRoot.trim());
+  }
+  return jsonFetch<Record<string, unknown>>(`/api/autopilot/memory?${query.toString()}`);
+}
+
+export function getCollaborationDashboard(
+  workspaceRoot?: string,
+  options: { userId?: string; role?: string; limit?: number } = {}
+): Promise<Record<string, unknown>> {
+  const query = new URLSearchParams();
+  if (workspaceRoot?.trim()) {
+    query.set('workspace_root', workspaceRoot.trim());
+  }
+  if (options.userId?.trim()) {
+    query.set('user_id', options.userId.trim());
+  }
+  if (options.role?.trim()) {
+    query.set('role', options.role.trim());
+  }
+  if (options.limit) {
+    query.set('limit', String(options.limit));
+  }
+  return jsonFetch<Record<string, unknown>>(`/api/collaboration?${query.toString()}`);
+}
+
+export function getGovernanceDashboard(
+  workspaceRoot?: string,
+  options: { includeAudit?: boolean; limit?: number } = {}
+): Promise<Record<string, unknown>> {
+  const query = new URLSearchParams();
+  if (workspaceRoot?.trim()) {
+    query.set('workspace_root', workspaceRoot.trim());
+  }
+  if (options.includeAudit !== undefined) {
+    query.set('include_audit', String(options.includeAudit));
+  }
+  if (options.limit) {
+    query.set('limit', String(options.limit));
+  }
+  return jsonFetch<Record<string, unknown>>(`/api/governance?${query.toString()}`);
+}
+
+export function registerCollaborationMember(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
+  return jsonFetch<Record<string, unknown>>('/api/collaboration/members', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+}
+
+export function registerCollaborationRepository(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
+  return jsonFetch<Record<string, unknown>>('/api/collaboration/repositories', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+}
+
+export function createCollaborationWorkflow(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
+  return jsonFetch<Record<string, unknown>>('/api/collaboration/workflows', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+}
+
+export function collaborationWorkflowAction(
+  workflowId: string,
+  payload: Record<string, unknown>
+): Promise<Record<string, unknown>> {
+  return jsonFetch<Record<string, unknown>>(`/api/collaboration/workflows/${encodeURIComponent(workflowId)}/action`, {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+}
+
+export function createCollaborationApproval(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
+  return jsonFetch<Record<string, unknown>>('/api/collaboration/approvals', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+}
+
+export function decideCollaborationApproval(
+  approvalId: string,
+  payload: Record<string, unknown>
+): Promise<Record<string, unknown>> {
+  return jsonFetch<Record<string, unknown>>(`/api/collaboration/approvals/${encodeURIComponent(approvalId)}/decision`, {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+}
+
+export function assignCollaborationRoadmapItem(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
+  return jsonFetch<Record<string, unknown>>('/api/collaboration/roadmap/items', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+}
+
+export function stepAgentWorkflow(
+  workflowId: string,
+  request: AgentSupervisionActionRequest
+): Promise<AgentSupervisionActionResponse> {
+  return jsonFetch<AgentSupervisionActionResponse>(
+    `/api/agent-supervision/workflows/${encodeURIComponent(workflowId)}/step`,
+    {
+      method: 'POST',
+      body: JSON.stringify(request)
+    }
+  );
+}
+
+export function delegateAgentWorkflowTask(
+  workflowId: string,
+  request: AgentSupervisionDelegationRequest
+): Promise<AgentSupervisionActionResponse> {
+  return jsonFetch<AgentSupervisionActionResponse>(
+    `/api/agent-supervision/workflows/${encodeURIComponent(workflowId)}/agents/delegate`,
+    {
+      method: 'POST',
+      body: JSON.stringify(request)
+    }
+  );
+}
+
+export function agentSupervisionEventsUrl(workflowId: string, workspaceRoot?: string, since = 0): string {
+  const query = new URLSearchParams({ follow: 'true', since: String(Math.max(0, since)) });
+
+  if (workspaceRoot?.trim()) {
+    query.set('workspace_root', workspaceRoot.trim());
+  }
+
+  return apiResourceUrl(`/api/agent-supervision/workflows/${encodeURIComponent(workflowId)}/events?${query.toString()}`);
+}
+
+export function getQualityGates(workspaceRoot?: string, limit = 50): Promise<QualityGateSnapshot> {
+  const query = new URLSearchParams({ limit: String(limit) });
+  if (workspaceRoot?.trim()) {
+    query.set('workspace_root', workspaceRoot.trim());
+  }
+  return jsonFetch<QualityGateSnapshot>(`/api/quality-gates?${query.toString()}`);
+}
+
+export function evaluateQualityGates(request: QualityGateEvaluationRequest): Promise<QualityGateEvaluation> {
+  return jsonFetch<QualityGateEvaluation>('/api/quality-gates/evaluate', {
+    method: 'POST',
+    body: JSON.stringify(request)
+  });
+}
+
+export function getWorkflowQualityGates(workflowId: string, workspaceRoot?: string): Promise<QualityGateSnapshot> {
+  const query = new URLSearchParams();
+  if (workspaceRoot?.trim()) {
+    query.set('workspace_root', workspaceRoot.trim());
+  }
+  return jsonFetch<QualityGateSnapshot>(
+    `/api/quality-gates/workflows/${encodeURIComponent(workflowId)}?${query.toString()}`
+  );
+}
+
+export function getQualityBenchmarks(workspaceRoot?: string, limit = 50): Promise<QualityBenchmarkDashboard> {
+  const query = new URLSearchParams({ limit: String(limit) });
+  if (workspaceRoot?.trim()) {
+    query.set('workspace_root', workspaceRoot.trim());
+  }
+  return jsonFetch<QualityBenchmarkDashboard>(`/api/benchmarks?${query.toString()}`);
+}
+
+export function runQualityBenchmark(request: QualityBenchmarkRunRequest): Promise<Record<string, unknown>> {
+  return jsonFetch<Record<string, unknown>>('/api/benchmarks/run', {
+    method: 'POST',
+    body: JSON.stringify(request)
+  });
+}
+
+export function getEvaluationReports(
+  workspaceRoot?: string,
+  workflowId?: string,
+  limit = 50
+): Promise<EvaluationReportsResponse> {
+  const query = new URLSearchParams({ limit: String(limit) });
+  if (workspaceRoot?.trim()) {
+    query.set('workspace_root', workspaceRoot.trim());
+  }
+  if (workflowId?.trim()) {
+    query.set('workflow_id', workflowId.trim());
+  }
+  return jsonFetch<EvaluationReportsResponse>(`/api/evaluation-reports?${query.toString()}`);
 }
 
 export async function streamAgentMessage(
@@ -791,6 +1384,142 @@ export function getDistributedRuntime(workspaceRoot?: string): Promise<Distribut
   }
 
   return jsonFetch<DistributedRuntimeSnapshot>(`/api/distributed-runtime?${query.toString()}`);
+}
+
+export function getRuntimeInteraction(workspaceRoot?: string, limit = 100): Promise<RuntimeInteractionSnapshot> {
+  const query = new URLSearchParams({ limit: String(limit) });
+
+  if (workspaceRoot?.trim()) {
+    query.set('workspace_root', workspaceRoot.trim());
+  }
+
+  return jsonFetch<RuntimeInteractionSnapshot>(`/api/runtime-interaction?${query.toString()}`);
+}
+
+export function createRuntimeTerminalJob(request: RuntimeTerminalJobRequest): Promise<RuntimeJobMutationResponse> {
+  return jsonFetch<RuntimeJobMutationResponse>('/api/runtime-interaction/jobs', {
+    method: 'POST',
+    body: JSON.stringify(request)
+  });
+}
+
+export function cancelRuntimeTerminalJob(
+  jobId: string,
+  request: RuntimeJobActionRequest
+): Promise<RuntimeJobMutationResponse> {
+  return jsonFetch<RuntimeJobMutationResponse>(`/api/runtime-interaction/jobs/${encodeURIComponent(jobId)}/cancel`, {
+    method: 'POST',
+    body: JSON.stringify(request)
+  });
+}
+
+export function retryRuntimeTerminalJob(
+  jobId: string,
+  request: RuntimeJobActionRequest
+): Promise<RuntimeJobMutationResponse> {
+  return jsonFetch<RuntimeJobMutationResponse>(`/api/runtime-interaction/jobs/${encodeURIComponent(jobId)}/retry`, {
+    method: 'POST',
+    body: JSON.stringify(request)
+  });
+}
+
+export function getRuntimeInteractionStreams(
+  workspaceRoot?: string,
+  options: { jobId?: string; workflowId?: string; since?: number; limit?: number } = {}
+): Promise<RuntimeStreamsResponse> {
+  const query = new URLSearchParams({
+    since: String(Math.max(0, options.since ?? 0)),
+    limit: String(options.limit ?? 100)
+  });
+
+  if (workspaceRoot?.trim()) {
+    query.set('workspace_root', workspaceRoot.trim());
+  }
+  if (options.jobId?.trim()) {
+    query.set('job_id', options.jobId.trim());
+  }
+  if (options.workflowId?.trim()) {
+    query.set('workflow_id', options.workflowId.trim());
+  }
+
+  return jsonFetch<RuntimeStreamsResponse>(`/api/runtime-interaction/streams?${query.toString()}`);
+}
+
+export function runtimeInteractionEventsUrl(
+  workspaceRoot?: string,
+  options: { jobId?: string; workflowId?: string; since?: number; limit?: number; maxSeconds?: number } = {}
+): string {
+  const query = new URLSearchParams({
+    follow: 'true',
+    since: String(Math.max(0, options.since ?? 0)),
+    limit: String(options.limit ?? 100),
+    max_seconds: String(options.maxSeconds ?? 30)
+  });
+
+  if (workspaceRoot?.trim()) {
+    query.set('workspace_root', workspaceRoot.trim());
+  }
+  if (options.jobId?.trim()) {
+    query.set('job_id', options.jobId.trim());
+  }
+  if (options.workflowId?.trim()) {
+    query.set('workflow_id', options.workflowId.trim());
+  }
+
+  return apiResourceUrl(`/api/runtime-interaction/events?${query.toString()}`);
+}
+
+export function createRuntimeSession(request: RuntimeSessionRequest): Promise<RuntimeSessionMutationResponse> {
+  return jsonFetch<RuntimeSessionMutationResponse>('/api/runtime-interaction/sessions', {
+    method: 'POST',
+    body: JSON.stringify(request)
+  });
+}
+
+export function syncRuntimeSession(
+  sessionId: string,
+  request: RuntimeSessionSyncRequest
+): Promise<RuntimeSessionMutationResponse> {
+  return jsonFetch<RuntimeSessionMutationResponse>(`/api/runtime-interaction/sessions/${encodeURIComponent(sessionId)}/sync`, {
+    method: 'POST',
+    body: JSON.stringify(request)
+  });
+}
+
+export function getRuntimeVoice(workspaceRoot?: string): Promise<RuntimeVoiceResponse> {
+  const query = new URLSearchParams();
+
+  if (workspaceRoot?.trim()) {
+    query.set('workspace_root', workspaceRoot.trim());
+  }
+
+  return jsonFetch<RuntimeVoiceResponse>(`/api/runtime-interaction/voice?${query.toString()}`);
+}
+
+export function routeRuntimeVoiceCommand(request: RuntimeVoiceCommandRequest): Promise<RuntimeVoiceCommandResponse> {
+  return jsonFetch<RuntimeVoiceCommandResponse>('/api/runtime-interaction/voice/command', {
+    method: 'POST',
+    body: JSON.stringify(request)
+  });
+}
+
+export function getRuntimeReplay(
+  workspaceRoot?: string,
+  options: { workflowId?: string; jobId?: string; limit?: number } = {}
+): Promise<RuntimeReplayResponse> {
+  const query = new URLSearchParams({ limit: String(options.limit ?? 200) });
+
+  if (workspaceRoot?.trim()) {
+    query.set('workspace_root', workspaceRoot.trim());
+  }
+  if (options.workflowId?.trim()) {
+    query.set('workflow_id', options.workflowId.trim());
+  }
+  if (options.jobId?.trim()) {
+    query.set('job_id', options.jobId.trim());
+  }
+
+  return jsonFetch<RuntimeReplayResponse>(`/api/runtime-interaction/replay?${query.toString()}`);
 }
 
 export function getRuntimeObservability(workspaceRoot?: string): Promise<RuntimeObservabilitySnapshot> {
@@ -1768,6 +2497,48 @@ export function listMemoryNotes(workspaceRoot?: string, category?: string): Prom
   return jsonFetch<MemoryNotesResponse>(`/api/memory?${query.toString()}`);
 }
 
+export function getMemoryGovernance(workspaceRoot?: string): Promise<MemoryGovernanceResponse> {
+  const query = new URLSearchParams();
+
+  if (workspaceRoot?.trim()) {
+    query.set('workspace_root', workspaceRoot.trim());
+  }
+
+  return jsonFetch<MemoryGovernanceResponse>(`/api/memory/governance?${query.toString()}`);
+}
+
+export function exportMemoryNotes(
+  workspaceRoot: string | undefined,
+  request: MemoryExportRequest = {}
+): Promise<MemoryExportResponse> {
+  const query = new URLSearchParams();
+
+  if (workspaceRoot?.trim()) {
+    query.set('workspace_root', workspaceRoot.trim());
+  }
+
+  return jsonFetch<MemoryExportResponse>(`/api/memory/export?${query.toString()}`, {
+    method: 'POST',
+    body: JSON.stringify(request)
+  });
+}
+
+export function updateMemoryControls(
+  workspaceRoot: string | undefined,
+  request: MemoryControlsUpdateRequest
+): Promise<MemoryControlsResponse> {
+  const query = new URLSearchParams();
+
+  if (workspaceRoot?.trim()) {
+    query.set('workspace_root', workspaceRoot.trim());
+  }
+
+  return jsonFetch<MemoryControlsResponse>(`/api/memory/controls?${query.toString()}`, {
+    method: 'POST',
+    body: JSON.stringify(request)
+  });
+}
+
 export function updateMemoryNote(
   workspaceRoot: string | undefined,
   noteId: string,
@@ -1798,4 +2569,20 @@ export function deleteMemoryNote(
   return jsonFetch<DeleteMemoryNoteResponse>(`/api/memory/${encodeURIComponent(noteId)}?${query.toString()}`, {
     method: 'DELETE'
   });
+}
+
+export function getReleaseManifest(workspaceRoot?: string): Promise<Record<string, unknown>> {
+  const query = new URLSearchParams();
+  if (workspaceRoot?.trim()) {
+    query.set('workspace_root', workspaceRoot.trim());
+  }
+  return jsonFetch<Record<string, unknown>>(`/api/release/manifest?${query.toString()}`);
+}
+
+export function getReleaseCompatibility(workspaceRoot?: string): Promise<Record<string, unknown>> {
+  const query = new URLSearchParams();
+  if (workspaceRoot?.trim()) {
+    query.set('workspace_root', workspaceRoot.trim());
+  }
+  return jsonFetch<Record<string, unknown>>(`/api/release/compatibility?${query.toString()}`);
 }

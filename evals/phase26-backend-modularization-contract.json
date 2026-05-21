@@ -1,0 +1,49 @@
+{
+  "schema_version": "2026.05.21",
+  "name": "Phase 26 Backend Modularization Contract",
+  "phase": 26,
+  "evidence_root": ".aegis/backend-modularization",
+  "current_required_status": "ready",
+  "slice": "Core route-preview adapter extraction",
+  "extracted_module": "website/backend/aegis_ai/services/route_preview_service.py",
+  "thin_orchestrator": "website/backend/aegis_ai/main.py",
+  "required_module_exports": [
+    "core_route_request_kwargs",
+    "route_preview_from_core"
+  ],
+  "removed_main_helpers": [
+    "def _route_preview_context_files",
+    "def _route_profile_id",
+    "def _route_preview_requires_private_context",
+    "def _model_attempt_from_core_candidate"
+  ],
+  "required_main_markers": [
+    "from .services.route_preview_service import",
+    "core_route_request_kwargs as _core_route_request_kwargs",
+    "route_preview_from_core as _route_preview_from_core",
+    "**_core_route_request_kwargs(request, preview)",
+    "_route_preview_from_core(preview, core_result.data)"
+  ],
+  "required_tests": [
+    "website/backend/tests/test_route_preview_service.py",
+    "website/backend/tests/test_runtime_ownership.py"
+  ],
+  "required_validation_commands": [
+    "python -m pytest tests/test_route_preview_service.py tests/test_runtime_ownership.py -q"
+  ],
+  "required_contract_files": [
+    "docs/BACKEND_MODULARIZATION_EVIDENCE.md",
+    "docs/VALIDATION_MATRIX.md",
+    "docs/EVIDENCE_LEDGER.md",
+    "evals/phase26-backend-modularization-contract.json",
+    "scripts/test-backend-modularization.ps1",
+    "scripts/validate-ecosystem.ps1",
+    "website/backend/aegis_ai/main.py",
+    "website/backend/aegis_ai/services/route_preview_service.py",
+    "website/backend/tests/test_route_preview_service.py"
+  ],
+  "outputs": [
+    "backend-modularization.json",
+    "backend-modularization-summary.md"
+  ]
+}

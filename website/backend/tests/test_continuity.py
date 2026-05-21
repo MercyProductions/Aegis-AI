@@ -37,6 +37,7 @@ class ContinuityTests(unittest.TestCase):
             title="Fix validation failure",
             user_goal="Fix validation failure",
             related_files=["src/App.tsx"],
+            validation_commands=["npm run validate"],
         )
         memory = ProjectMemoryEntry(
             id="mem-1",
@@ -83,6 +84,13 @@ class ContinuityTests(unittest.TestCase):
         self.assertTrue(snapshot.skill_packs)
         self.assertTrue(snapshot.universal_data_sources)
         self.assertGreater(snapshot.digital_twin.confidence, 0)
+        self.assertEqual(snapshot.continuation.active_goal, "Fix validation failure")
+        self.assertEqual(snapshot.continuation.source_record_id, "task:task-1")
+        self.assertEqual(snapshot.continuation.related_tasks, ["task-1"])
+        self.assertEqual(snapshot.continuation.related_files, ["src/App.tsx"])
+        self.assertEqual(snapshot.continuation.validation_commands, ["npm run validate"])
+        self.assertIn("Continue the persisted objective", snapshot.continuation.resume_prompt)
+        self.assertGreater(snapshot.continuation.confidence, 0.5)
         self.assertTrue(search.results)
 
     def test_continuity_api_uses_persisted_context_and_searches_timeline(self) -> None:
@@ -133,6 +141,8 @@ class ContinuityTests(unittest.TestCase):
         self.assertTrue(payload["timeline"]["entries"])
         self.assertTrue(payload["self_diagnostics"])
         self.assertTrue(payload["research_lab"])
+        self.assertEqual(payload["continuation"]["active_goal"], "Validate project")
+        self.assertIn("Validate project", payload["continuation"]["resume_prompt"])
         self.assertTrue(search_response.json()["results"])
 
 

@@ -36,9 +36,63 @@ namespace Aegis.LocalAgent.VisualStudio.Models
         public int MaxRepairAttempts { get; set; } = 3;
         public List<string> AffectedFiles { get; } = new List<string>();
         public BuildResult LastBuildResult { get; set; }
+        public string CoreWorkflowId { get; set; } = string.Empty;
+        public string CoreTaskId { get; set; } = string.Empty;
+        public string CoreProposalId { get; set; } = string.Empty;
+        public string CoreJobId { get; set; } = string.Empty;
+        public string CoreCheckpointId { get; set; } = string.Empty;
 
         public string ModeLabel => Mode.ToString();
         public string RepairLabel => $"{RepairAttemptCount}/{MaxRepairAttempts}";
+    }
+
+    internal sealed class CoreRuntimeState
+    {
+        public bool CoreConnected { get; set; }
+        public bool FallbackActive { get; set; } = true;
+        public string CoreStatus { get; set; } = "Not checked";
+        public string LastCoreError { get; set; } = string.Empty;
+        public string LastOperation { get; set; } = "Startup";
+        public string ReleaseCompatibilityStatus { get; set; } = "Not checked";
+        public string ReleaseSchemaVersion { get; set; } = string.Empty;
+        public string ActiveWorkflowId { get; set; } = string.Empty;
+        public string ActiveWorkflowStatus { get; set; } = string.Empty;
+        public string PendingProposalId { get; set; } = string.Empty;
+        public string LastCheckpointId { get; set; } = string.Empty;
+        public string LatestValidationSummary { get; set; } = string.Empty;
+        public string QualityGateStatus { get; set; } = "Not checked";
+        public string QualityGateSummary { get; set; } = string.Empty;
+        public double QualityConfidenceScore { get; set; } = -1;
+        public double QualityValidationScore { get; set; } = -1;
+        public double QualityRiskScore { get; set; } = -1;
+        public List<string> QualityBlockers { get; } = new List<string>();
+        public string SelectedModel { get; set; } = string.Empty;
+        public string RouteProfile { get; set; } = string.Empty;
+        public string ModelRouteExplanation { get; set; } = string.Empty;
+        public string ProviderHealthSummary { get; set; } = string.Empty;
+        public string RegisteredClientId { get; set; } = "aegis-visual-studio";
+        public DateTime LastUpdatedUtc { get; set; } = DateTime.UtcNow;
+        public List<string> RecentOperations { get; } = new List<string>();
+    }
+
+    internal sealed class CoreCallResult
+    {
+        public bool Success { get; set; }
+        public bool CanFallback { get; set; } = true;
+        public string Kind { get; set; } = string.Empty;
+        public string Error { get; set; } = string.Empty;
+        public Newtonsoft.Json.Linq.JObject Envelope { get; set; }
+        public Newtonsoft.Json.Linq.JObject Data { get; set; }
+
+        public static CoreCallResult FromError(string error, bool canFallback = true)
+        {
+            return new CoreCallResult
+            {
+                Success = false,
+                CanFallback = canFallback,
+                Error = error ?? string.Empty
+            };
+        }
     }
 
     internal sealed class SolutionContext
@@ -138,10 +192,17 @@ namespace Aegis.LocalAgent.VisualStudio.Models
         public List<FileEdit> FileEdits { get; set; } = new List<FileEdit>();
         public List<AgentCommand> Commands { get; set; } = new List<AgentCommand>();
         public List<string> Tests { get; set; } = new List<string>();
+        public string CoreWorkflowId { get; set; } = string.Empty;
+        public string CoreProposalId { get; set; } = string.Empty;
+        public string CoreTaskId { get; set; } = string.Empty;
+        public string CoreJobId { get; set; } = string.Empty;
+        public string CoreProjectId { get; set; } = string.Empty;
+        public string CoreCheckpointId { get; set; } = string.Empty;
     }
 
     internal sealed class FileEdit
     {
+        public string Id { get; set; } = string.Empty;
         public string Path { get; set; } = string.Empty;
         public string Reason { get; set; } = string.Empty;
         public string Content { get; set; } = string.Empty;

@@ -256,7 +256,7 @@ export function shouldOfferWorkspaceSetup(
 ): boolean {
   if (!profile) return false;
   if (!profile.has_manifest) return true;
-  return !recipe?.command && profile.dependency_profile.validation_commands.length === 0;
+  return !recipe?.command && workspaceValidationCommandCount(profile) === 0;
 }
 
 export function shouldOfferReadinessValidation(
@@ -265,7 +265,12 @@ export function shouldOfferReadinessValidation(
 ): boolean {
   if (!profile) return false;
   if (!['needs_validation', 'needs_repair'].includes(profile.readiness.status)) return false;
-  return Boolean(recipe?.command || profile.dependency_profile.validation_commands.length);
+  return Boolean(recipe?.command || workspaceValidationCommandCount(profile));
+}
+
+function workspaceValidationCommandCount(profile: WorkspaceProfileResponse): number {
+  const commands = profile.dependency_profile?.validation_commands;
+  return Array.isArray(commands) ? commands.length : 0;
 }
 
 export function delay(ms: number): Promise<void> {

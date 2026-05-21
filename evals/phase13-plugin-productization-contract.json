@@ -1,0 +1,164 @@
+{
+  "schema_version": "2026.05.21",
+  "name": "Phase 13 Plugin And Ecosystem Productization Contract",
+  "evidence_root": ".aegis/plugin-evidence",
+  "core_plugin_runtime": {
+    "api_version": "2026.05.12",
+    "runtime_version": "0.1.0",
+    "manifest_names": ["aegis-plugin.json", "plugin.json", "manifest.json"],
+    "required_manifest_fields": [
+      "id",
+      "name",
+      "version",
+      "api_version",
+      "category",
+      "capabilities",
+      "permission_scopes"
+    ],
+    "categories": [
+      "model_providers",
+      "workflow_types",
+      "analyzers",
+      "validators",
+      "repair_strategies",
+      "project_templates",
+      "media_generators",
+      "ide_integrations",
+      "deployment_tools",
+      "observability_tools"
+    ],
+    "permission_scopes": [
+      "filesystem_read",
+      "filesystem_write",
+      "network_access",
+      "model_access",
+      "workspace_scan",
+      "process_execution",
+      "validation_execution",
+      "ui_extension",
+      "observability_read",
+      "provider_credentials"
+    ],
+    "high_risk_scopes": [
+      "filesystem_write",
+      "network_access",
+      "process_execution",
+      "validation_execution",
+      "provider_credentials"
+    ],
+    "builtin_handlers": [
+      "builtin.echo",
+      "builtin.validation_hint",
+      "builtin.architecture_summary",
+      "builtin.roadmap_hint",
+      "builtin.provider_status",
+      "builtin.observability_snapshot"
+    ]
+  },
+  "lifecycle_guards": [
+    {
+      "id": "manifest_discovery",
+      "description": "Core discovers built-in and workspace plugin manifests without loading plugin code.",
+      "required_markers": ["discover_plugins", "PLUGIN_MANIFEST_NAMES", "example-plugins"]
+    },
+    {
+      "id": "manifest_validation",
+      "description": "Core validates ids, versions, API compatibility, categories, permissions, dependency shape, checksums, and tools.",
+      "required_markers": ["validate_manifest", "Plugin api_version must be", "Plugin manifest checksum does not match"]
+    },
+    {
+      "id": "trust_before_high_risk_enable",
+      "description": "High-risk plugins cannot be enabled unless approval or trust is present.",
+      "required_markers": ["plugin.enable_blocked", "Approval and trust are required for high-risk plugin scopes"]
+    },
+    {
+      "id": "approval_before_high_risk_tool",
+      "description": "High-risk plugin tools require explicit approval before running.",
+      "required_markers": ["User approval is required before running high-risk plugin tool scopes"]
+    },
+    {
+      "id": "external_handler_block",
+      "description": "Non-builtin handlers are cataloged but blocked until an external sandbox exists.",
+      "required_markers": ["Plugin code execution is disabled until an isolated external sandbox is available"]
+    },
+    {
+      "id": "observability_audit",
+      "description": "Plugin state changes and tool runs are recorded in local JSONL observability.",
+      "required_markers": ["PLUGIN_OBSERVABILITY_FILE", "plugin-observability.jsonl", "_record_observability"]
+    },
+    {
+      "id": "disable_as_safe_removal",
+      "description": "Disable is the current safe removal path while uninstall remains a manifest hook contract.",
+      "required_markers": ["disable", "uninstall", "PluginLifecycleHookName"]
+    }
+  ],
+  "reference_plugins": [
+    "aegis-custom-validator",
+    "aegis-architecture-analyzer",
+    "aegis-local-provider-adapter",
+    "aegis-roadmap-enhancement",
+    "aegis-observability-widget"
+  ],
+  "ecosystem_package_contract": {
+    "kinds": [
+      "agent",
+      "validator",
+      "scaffold_pack",
+      "workflow",
+      "routing_profile",
+      "telemetry_analyzer",
+      "workspace_intelligence_pack"
+    ],
+    "trust_levels": ["untrusted", "reviewed", "trusted", "organization", "signed"],
+    "update_channels": ["stable", "beta", "nightly", "local"],
+    "high_risk_permissions": [
+      "write_workspace",
+      "run_commands",
+      "network",
+      "model_access",
+      "provider",
+      "sync",
+      "collaboration_write",
+      "organization_policy"
+    ]
+  },
+  "productization_routes": [
+    "/api/productization/plugins",
+    "/api/productization/plugins/validate",
+    "/api/productization/plugins/register",
+    "/api/productization/plugins/{plugin_id}/enable",
+    "/api/productization/plugins/{plugin_id}/disable",
+    "/api/productization/plugins/{plugin_id}/trust"
+  ],
+  "ecosystem_routes": [
+    "/api/ecosystem/marketplace",
+    "/api/ecosystem/packages/validate",
+    "/api/ecosystem/packages/register",
+    "/api/ecosystem/packages/{package_id}/enable",
+    "/api/ecosystem/packages/{package_id}/disable",
+    "/api/ecosystem/packages/{package_id}/trust",
+    "/api/ecosystem/workflows/{workflow_id}/run",
+    "/api/ecosystem/shared-profiles/import",
+    "/api/ecosystem/shared-profiles/{profile_id}/export",
+    "/api/ecosystem/shared-profiles/export-current",
+    "/api/ecosystem/reproducibility",
+    "/api/ecosystem/audit"
+  ],
+  "required_contract_files": [
+    "docs/PLUGIN_ECOSYSTEM.md",
+    "docs/WORKSPACE_SAFETY.md",
+    "scripts/validate-ecosystem.ps1",
+    "aegis-core/aegis_core/plugin_runtime.py",
+    "aegis-core/aegis_core/server.py",
+    "aegis-core/aegis_core/contracts.py",
+    "aegis-core/aegis_core/ecosystem_maturity.py",
+    "aegis-core/tests/test_plugin_runtime.py",
+    "aegis-core/tests/test_ecosystem_maturity.py",
+    "website/backend/aegis_ai/productization.py",
+    "website/backend/aegis_ai/ecosystem.py",
+    "website/backend/aegis_ai/routes/productization.py",
+    "website/backend/aegis_ai/routes/ecosystem.py",
+    "website/backend/tests/test_productization.py",
+    "website/backend/tests/test_ecosystem.py"
+  ]
+}

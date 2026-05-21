@@ -1,0 +1,98 @@
+{
+  "schema_version": "2026.05.21",
+  "name": "Phase 31 Memory Governance Contract",
+  "phase": 31,
+  "evidence_root": ".aegis/memory-governance",
+  "current_required_status": "ready",
+  "slice": "Website memory governance bridge, export redaction, and Core controls",
+  "backend_service": "website/backend/aegis_ai/services/utility_service.py",
+  "backend_core_client": "website/backend/aegis_ai/services/core_client.py",
+  "backend_routes": "website/backend/aegis_ai/routes/utility.py",
+  "backend_main": "website/backend/aegis_ai/main.py",
+  "backend_tests": "website/backend/tests/test_core_runtime_delegation.py",
+  "frontend_api": "website/frontend/src/api.ts",
+  "frontend_types": "website/frontend/src/types.ts",
+  "frontend_tests": "website/frontend/src/api.test.ts",
+  "required_service_markers": [
+    "async def get_memory_governance",
+    "async def export_memory_notes",
+    "async def update_memory_governance_controls",
+    "def _memory_governance_from_core_data",
+    "def _memory_governance_from_legacy",
+    "def _legacy_memory_export_records",
+    "sensitive_export_default",
+    "website-backend-local-memory-files",
+    "Memory governance controls require Aegis Core"
+  ],
+  "required_core_client_markers": [
+    "personal.memory.controls",
+    "async def update_personal_memory_controls",
+    "/v1/personal-memory/controls"
+  ],
+  "required_route_markers": [
+    "/api/memory/governance",
+    "/api/memory/export",
+    "/api/memory/controls"
+  ],
+  "required_main_markers": [
+    "get_memory_governance=lambda workspace_root",
+    "export_memory_notes=lambda request, workspace_root",
+    "update_memory_governance_controls=lambda request, workspace_root"
+  ],
+  "required_backend_test_markers": [
+    "test_memory_routes_delegate_to_core_and_preserve_legacy_shape",
+    "cloud_context_requires_consent",
+    "website-backend-local-memory-files",
+    "legacy-secret-value",
+    "[REDACTED_SECRET]",
+    "/api/memory/governance",
+    "/api/memory/export",
+    "/api/memory/controls"
+  ],
+  "required_frontend_api_markers": [
+    "getMemoryGovernance",
+    "exportMemoryNotes",
+    "updateMemoryControls",
+    "/api/memory/governance",
+    "/api/memory/export",
+    "/api/memory/controls"
+  ],
+  "required_frontend_type_markers": [
+    "export interface MemoryGovernanceInfo",
+    "export interface MemoryGovernanceResponse",
+    "export interface MemoryExportResponse",
+    "export interface MemoryControlsResponse"
+  ],
+  "required_frontend_test_markers": [
+    "getMemoryGovernance",
+    "exportMemoryNotes",
+    "updateMemoryControls",
+    "sensitive_export_default"
+  ],
+  "required_validation_commands": [
+    "python -m pytest tests/test_core_runtime_delegation.py -q",
+    "npm test -- api.test.ts"
+  ],
+  "required_contract_files": [
+    "docs/MEMORY_GOVERNANCE_EVIDENCE.md",
+    "docs/VALIDATION_MATRIX.md",
+    "docs/EVIDENCE_LEDGER.md",
+    "evals/phase31-memory-governance-contract.json",
+    "evals/phase16-evidence-ledger-contract.json",
+    "scripts/test-memory-governance.ps1",
+    "scripts/test-evidence-ledger-contract.ps1",
+    "scripts/validate-ecosystem.ps1",
+    "website/backend/aegis_ai/services/utility_service.py",
+    "website/backend/aegis_ai/services/core_client.py",
+    "website/backend/aegis_ai/routes/utility.py",
+    "website/backend/aegis_ai/main.py",
+    "website/backend/tests/test_core_runtime_delegation.py",
+    "website/frontend/src/api.ts",
+    "website/frontend/src/types.ts",
+    "website/frontend/src/api.test.ts"
+  ],
+  "outputs": [
+    "memory-governance.json",
+    "memory-governance-summary.md"
+  ]
+}

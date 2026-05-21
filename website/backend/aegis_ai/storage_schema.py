@@ -3,8 +3,21 @@ from __future__ import annotations
 import sqlite3
 
 
+def _ensure_columns(conn: sqlite3.Connection, table: str, columns: dict[str, str]) -> None:
+    existing = {row["name"] for row in conn.execute(f"pragma table_info({table})").fetchall()}
+    if not existing:
+        return
+    for name, ddl in columns.items():
+        if name not in existing:
+            conn.execute(f"alter table {table} add column {name} {ddl}")
+
+
+def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
+    row = conn.execute("select name from sqlite_master where type = 'table' and name = ?", (table,)).fetchone()
+    return row is not None
+
+
 def ensure_task_columns(conn: sqlite3.Connection) -> None:
-    existing = {row["name"] for row in conn.execute("pragma table_info(tasks)").fetchall()}
     columns: dict[str, str] = {
         "updated_at": "text",
         "completed_at": "text",
@@ -20,14 +33,149 @@ def ensure_task_columns(conn: sqlite3.Connection) -> None:
         "error_summary": "text not null default ''",
         "final_summary": "text not null default ''",
     }
-    for name, ddl in columns.items():
-        if name not in existing:
-            conn.execute(f"alter table tasks add column {name} {ddl}")
+    _ensure_columns(conn, "tasks", columns)
     conn.execute("update tasks set updated_at = coalesce(updated_at, created_at) where updated_at is null or updated_at = ''")
     conn.execute("update tasks set completed_at = coalesce(completed_at, finished_at) where completed_at is null and finished_at is not null")
     conn.execute("update tasks set project_id = workspace_root where project_id = ''")
     conn.execute("update tasks set user_goal = message where user_goal = ''")
     conn.execute("update tasks set title = substr(message, 1, 80) where title = ''")
+
+
+def ensure_provider_account_schema(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        create table if not exists provider_accounts (
+            account_id text primary key,
+            provider_id text not null,
+            provider_label text not null,
+            auth_mode text not null,
+            status text not null,
+            account_label text not null,
+            subject_hash text not null,
+            credential_ref text not null,
+            credential_hint text not null,
+            session_ref text not null,
+            scopes_json text not null,
+            quota_status text not null,
+            expires_at text not null,
+            created_at text not null,
+            updated_at text not null,
+            last_validated_at text not null,
+            last_error text not null,
+            metadata_json text not null
+        )
+        """
+    )
+    conn.execute(
+        """
+        create table if not exists provider_sessions (
+            session_id text primary key,
+            account_id text not null,
+            provider_id text not null,
+            auth_mode text not null,
+            status text not null,
+            credential_ref text not null,
+            refresh_supported integer not null,
+            expires_at text not null,
+            created_at text not null,
+            updated_at text not null,
+            last_refresh_at text not null,
+            last_refresh_error text not null,
+            metadata_json text not null,
+            foreign key(account_id) references provider_accounts(account_id)
+        )
+        """
+    )
+    conn.execute(
+        """
+        create table if not exists provider_cli_bridges (
+            provider_id text primary key,
+            cli_name text not null,
+            binary_path text not null,
+            version text not null,
+            status text not null,
+            auth_status text not null,
+            probe_command text not null,
+            supported_delegation_modes_json text not null,
+            last_probe_at text not null,
+            last_error text not null,
+            metadata_json text not null
+        )
+        """
+    )
+    conn.execute(
+        """
+        create table if not exists routing_runs (
+            id text primary key,
+            created_at text not null,
+            workspace_root text not null,
+            task_id text not null,
+            selected_provider_id text not null,
+            selected_model text not null,
+            selected_account_id text not null,
+            policy_reason text not null,
+            alternatives_json text not null,
+            fallback_chain_json text not null,
+            metadata_json text not null
+        )
+        """
+    )
+    _ensure_columns(
+        conn,
+        "model_attempt_telemetry",
+        {
+            "provider_account_id": "text not null default ''",
+            "routing_run_id": "text not null default ''",
+            "limit_class": "text not null default ''",
+            "retry_after": "integer",
+            "resumed_from_attempt_id": "text not null default ''",
+        },
+    )
+    conn.execute("create index if not exists idx_provider_accounts_provider on provider_accounts(provider_id, status)")
+    conn.execute("create index if not exists idx_provider_sessions_account on provider_sessions(account_id, status)")
+    conn.execute("create index if not exists idx_routing_runs_workspace_created on routing_runs(workspace_root, created_at)")
+    if _table_exists(conn, "model_attempt_telemetry"):
+        conn.execute(
+            "create index if not exists idx_model_attempt_routing_run on model_attempt_telemetry(routing_run_id, provider_account_id)"
+        )
+
+
+def ensure_release_migration_schema(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        create table if not exists release_migrations (
+            id text primary key,
+            component_id text not null,
+            schema_version text not null,
+            applied_at text not null,
+            status text not null,
+            detail text not null,
+            metadata_json text not null
+        )
+        """
+    )
+    conn.execute(
+        """
+        create table if not exists release_update_audit (
+            id text primary key,
+            component_id text not null,
+            created_at text not null,
+            from_version text not null,
+            to_version text not null,
+            status text not null,
+            backup_path text not null,
+            package_sha256 text not null,
+            detail text not null,
+            metadata_json text not null
+        )
+        """
+    )
+    conn.execute(
+        "create index if not exists idx_release_migrations_component on release_migrations(component_id, schema_version, applied_at)"
+    )
+    conn.execute(
+        "create index if not exists idx_release_update_audit_component on release_update_audit(component_id, created_at)"
+    )
 
 
 def initialize_event_store_schema(conn: sqlite3.Connection) -> None:
@@ -347,6 +495,8 @@ def initialize_event_store_schema(conn: sqlite3.Connection) -> None:
         )
         """
     )
+    ensure_provider_account_schema(conn)
+    ensure_release_migration_schema(conn)
     conn.execute(
         """
         create table if not exists telemetry_snapshots (

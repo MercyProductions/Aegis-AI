@@ -1,0 +1,102 @@
+{
+  "schema_version": "2026.05.21",
+  "name": "Phase 38 Desktop Smoke And Package Gate Execution Contract",
+  "phase": 38,
+  "evidence_root": ".aegis/desktop-smoke-package-gates",
+  "current_required_status": "ready",
+  "execution_status_values": ["attention", "ready"],
+  "attempt_status_values": ["not_run", "passed", "retryable", "blocked"],
+  "slice": "Desktop smoke execution, package-gate mutation decisions, owner next actions, and evidence handoff back into release-candidate scoping",
+  "target_gate_ids": [
+    "desktop-smoke",
+    "visual-studio-package",
+    "release-package-dry-run",
+    "final-release-manifest-contract",
+    "update-plan-dry-run"
+  ],
+  "required_execution_markers": [
+    "execution_status",
+    "target_gate_observations",
+    "gate_attempts",
+    "desktop_smoke_attempt",
+    "package_gate_decisions",
+    "owner_next_actions",
+    "artifacts",
+    "phase36_refresh_required",
+    "phase37_refresh_required"
+  ],
+  "required_docs": [
+    "docs/DESKTOP_SMOKE_PACKAGE_GATES_EVIDENCE.md",
+    "docs/VALIDATION_MATRIX.md",
+    "docs/EVIDENCE_LEDGER.md",
+    "docs/EXTERNAL_ALPHA_RELEASE_NOTES.md",
+    "docs/EXTERNAL_ALPHA_RELEASE_REPORT.md",
+    "KNOWN_UNSTABLE_SURFACES.md",
+    "FULL_PROJECT_REMAINING_ROADMAP_2026-05-21.md",
+    "FULL_PROJECT_REVIEW_ROADMAP_2026-05-21.md",
+    "CHATBOT_PROJECT_REVIEW_ROADMAP_2026-05-21.md"
+  ],
+  "required_doc_markers": [
+    "Phase 38",
+    "desktop smoke",
+    "package gate",
+    "desktop-smoke",
+    "visual-studio-package",
+    "release-package-dry-run",
+    "update-plan-dry-run",
+    "screenshots/log evidence",
+    "owner next actions"
+  ],
+  "required_evidence_sources": [
+    {
+      "id": "live_smoke_rc",
+      "root": ".aegis/live-smoke-rc",
+      "json": "live-smoke-rc.json",
+      "summary": "live-smoke-rc-summary.md",
+      "accepted_statuses": ["ready"]
+    },
+    {
+      "id": "commit_scoping_github_handoff",
+      "root": ".aegis/commit-scoping-github-handoff",
+      "json": "commit-scoping-github-handoff.json",
+      "summary": "commit-scoping-github-handoff-summary.md",
+      "accepted_statuses": ["ready"]
+    },
+    {
+      "id": "release_validation",
+      "root": ".aegis/release-evidence",
+      "json": "validation-matrix.json",
+      "summary": "validation-summary.md",
+      "accepted_statuses": ["attention", "passed"]
+    },
+    {
+      "id": "desktop_shell_hardening",
+      "root": ".aegis/desktop-shell-hardening",
+      "json": "desktop-shell-hardening.json",
+      "summary": "desktop-shell-hardening-summary.md",
+      "accepted_statuses": ["ready"]
+    },
+    {
+      "id": "distribution_update",
+      "root": ".aegis/distribution-update",
+      "json": "distribution-update.json",
+      "summary": "distribution-update-summary.md",
+      "accepted_statuses": ["ready"]
+    }
+  ],
+  "required_validation_gate_ids": [
+    "desktop-smoke-package-gates-contract"
+  ],
+  "required_contract_files": [
+    "evals/phase38-desktop-smoke-package-gates-contract.json",
+    "scripts/test-desktop-smoke-package-gates.ps1",
+    "docs/DESKTOP_SMOKE_PACKAGE_GATES_EVIDENCE.md",
+    "docs/VALIDATION_MATRIX.md",
+    "docs/EVIDENCE_LEDGER.md",
+    "scripts/validate-ecosystem.ps1"
+  ],
+  "evidence_outputs": [
+    "desktop-smoke-package-gates.json",
+    "desktop-smoke-package-gates-summary.md"
+  ]
+}

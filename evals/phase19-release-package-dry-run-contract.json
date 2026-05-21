@@ -1,0 +1,49 @@
+{
+  "schema_version": "2026.05.21",
+  "name": "Phase 19 Release Package Dry-Run Contract",
+  "phase": 19,
+  "evidence_root": ".aegis/release-package-dry-run",
+  "current_required_status": "ready",
+  "components": [
+    "aegis-core",
+    "website",
+    "desktop",
+    "vscode-extension",
+    "visual-studio-extension"
+  ],
+  "required_artifacts": [
+    "aegis-core-0.1.0.zip",
+    "aegis-website-0.1.0.zip",
+    "aegis-desktop-0.2.0-portable.zip",
+    "aegis-local-autopilot-0.1.8.vsix",
+    "AegisLocalAgentVs.vsix"
+  ],
+  "required_checks": [
+    "build_release_skip_build",
+    "version_manifest_generated",
+    "artifact_files_present",
+    "artifact_hashes_stamped",
+    "artifact_sizes_stamped",
+    "update_plan_dry_runs",
+    "release_tools_copied"
+  ],
+  "required_contract_files": [
+    "VERSION.json",
+    "docs/RELEASE_PACKAGE_DRY_RUN.md",
+    "docs/RELEASE_PACKAGING_AND_UPDATES.md",
+    "docs/RELEASE_ARTIFACT_PREFLIGHT.md",
+    "docs/EVIDENCE_LEDGER.md",
+    "docs/EXTERNAL_ALPHA_RELEASE_REPORT.md",
+    "docs/VALIDATION_MATRIX.md",
+    "evals/phase19-release-package-dry-run-contract.json",
+    "scripts/test-release-package-dry-run.ps1",
+    "scripts/build-release.ps1",
+    "scripts/aegis-update.ps1",
+    "scripts/validate-ecosystem.ps1"
+  ],
+  "dry_run_outputs": [
+    "release-package-dry-run.json",
+    "release-package-dry-run-summary.md",
+    "release/version-manifest.json"
+  ]
+}

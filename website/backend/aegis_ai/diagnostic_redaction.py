@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from typing import Any
 
 
 SENSITIVE_FIELD = (
@@ -25,10 +26,44 @@ AUTHORIZATION_HEADER_RE = re.compile(
 )
 BEARER_TOKEN_RE = re.compile(r"\b(Bearer\s+)[A-Za-z0-9._~+/\-=]+", re.IGNORECASE)
 URL_CREDENTIAL_RE = re.compile(r"\b([a-z][a-z0-9+.-]*://)[^:/@\s]+:[^/@\s]+@", re.IGNORECASE)
+SENSITIVE_PAYLOAD_KEYS = {
+    "api_key",
+    "apikey",
+    "x_api_key",
+    "x-api-key",
+    "api_token",
+    "access_token",
+    "refresh_token",
+    "id_token",
+    "token",
+    "authorization",
+    "client_secret",
+    "private_key",
+    "password",
+    "passwd",
+}
 
 
 def redact_inline(text: str) -> str:
     return "\n".join(_redact_inline_secrets(line) for line in str(text).splitlines())
+
+
+def redact_payload(value: Any) -> Any:
+    if isinstance(value, str):
+        return redact_inline(value)
+    if isinstance(value, list):
+        return [redact_payload(item) for item in value]
+    if isinstance(value, tuple):
+        return [redact_payload(item) for item in value]
+    if isinstance(value, dict):
+        redacted: dict[Any, Any] = {}
+        for key, item in value.items():
+            if _is_sensitive_payload_key(key):
+                redacted[key] = "[redacted]" if item not in (None, "") else item
+            else:
+                redacted[key] = redact_payload(item)
+        return redacted
+    return value
 
 
 def _redact_inline_secrets(line: str) -> str:
@@ -47,6 +82,11 @@ def _redact_assignment(match: re.Match[str]) -> str:
     if field.lower() == "token" and not _looks_like_secret_value(value):
         return match.group(0)
     return f"{field}{separator}[redacted]"
+
+
+def _is_sensitive_payload_key(key: Any) -> bool:
+    normalized = str(key).strip().lower().replace("-", "_")
+    return normalized in {item.replace("-", "_") for item in SENSITIVE_PAYLOAD_KEYS}
 
 
 def _looks_like_secret_value(value: str) -> bool:

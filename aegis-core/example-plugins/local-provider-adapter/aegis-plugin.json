@@ -1,0 +1,54 @@
+{
+  "id": "aegis-local-provider-adapter",
+  "name": "Aegis Local Provider Adapter",
+  "version": "1.0.0",
+  "api_version": "2026.05.12",
+  "category": "model_providers",
+  "description": "Reference provider adapter contract for local model integrations.",
+  "author": "Aegis",
+  "capabilities": ["model_provider", "tool", "ide_integration"],
+  "dependencies": [],
+  "permission_scopes": ["model_access", "ui_extension"],
+  "runtime_compatibility": {
+    "min_core_version": "0.1.0",
+    "supported_workflow_types": ["chat_request", "generate_feature", "repair_project"]
+  },
+  "tools": [
+    {
+      "name": "provider-status",
+      "description": "Report declared local provider adapter metadata.",
+      "input_schema": {"type": "object"},
+      "output_schema": {"type": "object"},
+      "safety_level": "medium",
+      "supported_workflow_types": ["chat_request", "generate_feature"],
+      "execution_timeout_seconds": 10,
+      "retry_policy": {"max_attempts": 1},
+      "required_permissions": ["model_access"],
+      "handler": "builtin.provider_status"
+    }
+  ],
+  "provider_extensions": {
+    "provider_id": "local-reference-provider",
+    "provider_type": "local",
+    "configuration_panel": "aegis-local-provider-config"
+  },
+  "ui_extensions": [
+    {
+      "id": "local-provider-config",
+      "kind": "provider_configuration_panel",
+      "title": "Local Provider Adapter",
+      "placement": "settings.models",
+      "route": "/plugins/local-provider",
+      "data_contract": "plugin.dashboard",
+      "required_permissions": ["ui_extension"]
+    }
+  ],
+  "package": {
+    "checksum": "builtin",
+    "signature": "builtin",
+    "signing_key_fingerprint": "aegis-builtin",
+    "update_channel": "stable"
+  },
+  "enabled": true,
+  "trusted": true
+}

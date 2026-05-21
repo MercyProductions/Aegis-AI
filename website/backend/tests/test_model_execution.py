@@ -95,6 +95,106 @@ class ModelExecutionPlannerTests(unittest.TestCase):
         self.assertEqual(execution.primary.metadata["benchmark_suite"], "chat")
         self.assertAlmostEqual(execution.primary.metadata["benchmark_suite_score"], 0.98)
 
+    def test_selected_provider_override_promotes_requested_local_model(self) -> None:
+        providers = [
+            ModelRegistryProvider(
+                id="ollama:llama3.2:3b",
+                label="Llama Chat",
+                api="ollama",
+                endpoint="http://127.0.0.1:11434",
+                model_name="llama3.2:3b",
+                local=True,
+                enabled=True,
+                configured=True,
+                capabilities=["chat", "structured_json"],
+                roles=["chat", "fallback"],
+            ),
+            ModelRegistryProvider(
+                id="ollama:qwen-coder",
+                label="Qwen Coder",
+                api="ollama",
+                endpoint="http://127.0.0.1:11434",
+                model_name="qwen2.5-coder:7b",
+                local=True,
+                enabled=True,
+                configured=True,
+                capabilities=["chat", "code", "structured_json"],
+                roles=["chat", "code", "fallback"],
+            ),
+        ]
+        plan = TaskPlan(
+            intent="conversation",
+            objective="answer a general question",
+            workflow="answer-clarify",
+            routing=RoutingDecision(
+                task_role="chat",
+                privacy_mode="local-first",
+                candidates=[
+                    RouteCandidate(
+                        role="chat",
+                        provider_hint="ollama:llama3.2:3b",
+                        required_capabilities=["chat"],
+                        privacy_mode="local-first",
+                        reason="Use the configured chat route.",
+                        confidence=0.8,
+                        candidate_id="primary:chat",
+                    )
+                ],
+                fallback_roles=["chat"],
+            ),
+        )
+
+        planner = ModelExecutionPlanner()
+        execution = planner.build_plan(plan, providers=providers)
+        selected = planner.apply_selected_provider(
+            execution,
+            selected_provider_id="ollama",
+            selected_provider_label="Ollama",
+            selected_provider_api="ollama",
+            selected_provider_endpoint="http://127.0.0.1:11434",
+            selected_provider_model="qwen2.5-coder:7b",
+            providers=providers,
+        )
+
+        self.assertEqual(selected.primary.provider_id, "ollama:qwen-coder")
+        self.assertEqual(selected.primary.model, "qwen2.5-coder:7b")
+        self.assertEqual(selected.primary.metadata["candidate_source"], "selected-provider")
+        self.assertTrue(selected.primary.metadata["selected_provider_override"])
+        self.assertEqual([attempt.attempt for attempt in selected.attempts], list(range(1, len(selected.attempts) + 1)))
+
+    def test_selected_provider_override_can_route_ad_hoc_local_endpoint(self) -> None:
+        plan = ModelExecutionPlan(
+            attempts=[
+                ModelAttemptInfo(
+                    attempt=1,
+                    role="chat",
+                    provider_id="deterministic:fallback",
+                    provider_label="Deterministic Fallback",
+                    provider_api="internal",
+                    privacy_mode="local-only",
+                    status="planned",
+                    reason="No provider selected.",
+                    retryable=False,
+                )
+            ]
+        )
+
+        selected = ModelExecutionPlanner().apply_selected_provider(
+            plan,
+            selected_provider_id="local_openai_compatible",
+            selected_provider_label="Local",
+            selected_provider_api="openai-compatible",
+            selected_provider_endpoint="http://127.0.0.1:1234/v1",
+            selected_provider_model="local-coder",
+        )
+
+        self.assertEqual(selected.primary.provider_id, "local_openai_compatible")
+        self.assertEqual(selected.primary.provider_api, "openai-compatible")
+        self.assertEqual(selected.primary.endpoint, "http://127.0.0.1:1234/v1")
+        self.assertEqual(selected.primary.model, "local-coder")
+        self.assertEqual(selected.primary.privacy_mode, "local-only")
+        self.assertTrue(selected.primary.retryable)
+
     def test_registry_role_primary_model_is_honored_before_keyword_defaults(self) -> None:
         providers = [
             ModelRegistryProvider(

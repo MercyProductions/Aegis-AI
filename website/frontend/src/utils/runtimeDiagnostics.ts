@@ -137,7 +137,7 @@ function buildWorkspaceCheck(
 
   const status = profile.readiness.status;
   const score = profile.readiness.score;
-  const hasValidationCommand = Boolean(recipe?.command || profile.dependency_profile.validation_commands.length);
+  const hasValidationCommand = Boolean(recipe?.command || workspaceValidationCommandCount(profile));
   if (status === 'ready') {
     return {
       id: 'workspace',
@@ -198,5 +198,10 @@ function runtimeDiagnosticsLabel(status: RuntimeDiagnosticStatus, checks: Runtim
 
 function shouldSetupWorkspace(profile: WorkspaceProfileResponse, recipe: ValidationRecipe | null): boolean {
   if (!profile.has_manifest) return true;
-  return !recipe?.command && profile.dependency_profile.validation_commands.length === 0;
+  return !recipe?.command && workspaceValidationCommandCount(profile) === 0;
+}
+
+function workspaceValidationCommandCount(profile: WorkspaceProfileResponse): number {
+  const commands = profile.dependency_profile?.validation_commands;
+  return Array.isArray(commands) ? commands.length : 0;
 }

@@ -172,6 +172,39 @@ std::string CompactErrorDetail(std::string detail)
     return RedactDiagnosticText(detail);
 }
 
+std::string ReadEnvironmentVariable(const char* name)
+{
+    const DWORD required = GetEnvironmentVariableA(name, nullptr, 0);
+    if (required == 0) {
+        return {};
+    }
+    std::string value(static_cast<size_t>(required), '\0');
+    const DWORD written = GetEnvironmentVariableA(name, value.data(), required);
+    if (written == 0 || written >= required) {
+        return {};
+    }
+    value.resize(static_cast<size_t>(written));
+    return value;
+}
+
+std::string LocalApiToken()
+{
+    const std::string core_token = ReadEnvironmentVariable("AEGIS_CORE_LOCAL_TOKEN");
+    if (!core_token.empty()) {
+        return core_token;
+    }
+    return ReadEnvironmentVariable("AEGIS_LOCAL_AUTH_TOKEN");
+}
+
+bool IsLoopbackHost(const std::wstring& host)
+{
+    std::wstring lowered = host;
+    std::transform(lowered.begin(), lowered.end(), lowered.begin(), [](wchar_t ch) {
+        return static_cast<wchar_t>(std::towlower(ch));
+    });
+    return lowered == L"127.0.0.1" || lowered == L"localhost" || lowered == L"::1";
+}
+
 HttpResponse SendWinHttpRequest(
     const std::wstring& method,
     const std::string& url,
@@ -237,6 +270,12 @@ HttpResponse SendWinHttpRequest(
     }
 
     std::wstring headers = L"Accept: " + accept + L"\r\n";
+    const std::string local_api_token = LocalApiToken();
+    if (!local_api_token.empty() && IsLoopbackHost(host)) {
+        const std::wstring token = Utf8ToWide(local_api_token);
+        headers += L"Authorization: Bearer " + token + L"\r\n";
+        headers += L"X-Aegis-Local-Token: " + token + L"\r\n";
+    }
     if (body != nullptr) {
         headers += L"Content-Type: application/json; charset=utf-8\r\n";
     }

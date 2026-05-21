@@ -12,6 +12,10 @@ from .diagnostics import scrub
 from .ollama import OllamaClient
 from .tasks import list_tasks
 from .validation import validation_summary
+from . import plugin_runtime
+from . import distributed_runtime
+from . import personal_memory
+from . import runtime_interaction
 
 
 MEMORY_FILES = {
@@ -74,6 +78,10 @@ def dashboard_summary(workspace: str | Path) -> dict[str, Any]:
     memory = shared_memory_summary(root)
     diagnostics = diagnostics_summary(root)
     validation = validation_summary(root)
+    plugin_summary = _plugin_summary(root)
+    distributed_summary = distributed_runtime.compact_summary(root)
+    personal_memory_summary = personal_memory.compact_memory_summary(root)
+    runtime_interaction_summary = runtime_interaction.compact_summary(root)
     active_tasks = [
         task
         for task in tasks
@@ -92,9 +100,36 @@ def dashboard_summary(workspace: str | Path) -> dict[str, Any]:
         "diagnostics": diagnostics,
         "roadmap": memory["entries"].get("roadmap", {}),
         "validation": validation,
+        "plugins": plugin_summary,
+        "distributed_runtime": distributed_summary,
+        "personal_memory": personal_memory_summary,
+        "runtime_interaction": runtime_interaction_summary,
         "recent_activity": _recent_activity(root),
         "suggested_actions": _suggested_actions(model_status, active_tasks, stale_tasks, diagnostics),
         "branding": branding_tokens(),
+    }
+
+
+def _plugin_summary(root: Path) -> dict[str, Any]:
+    try:
+        dashboard = plugin_runtime.plugin_dashboard(root, include_disabled=True, refresh=False)
+    except Exception as exc:
+        return {
+            "status": "error",
+            "plugin_count": 0,
+            "enabled_count": 0,
+            "tool_count": 0,
+            "ui_extension_count": 0,
+            "error": scrub(str(exc)),
+        }
+    diagnostics = dashboard.get("diagnostics", {}) if isinstance(dashboard.get("diagnostics"), dict) else {}
+    return {
+        "status": diagnostics.get("status", "ok"),
+        "plugin_count": diagnostics.get("plugin_count", len(dashboard.get("plugins", []))),
+        "enabled_count": diagnostics.get("enabled_count", len(dashboard.get("enabled_plugins", []))),
+        "tool_count": len(dashboard.get("tool_catalog", [])),
+        "ui_extension_count": len(dashboard.get("ui_extensions", [])),
+        "load_failures": diagnostics.get("load_failures", []),
     }
 
 

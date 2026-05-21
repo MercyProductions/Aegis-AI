@@ -1,0 +1,153 @@
+{
+  "schema_version": "2026.05.21",
+  "name": "Phase 24 Release Notes And Limitations Evidence Contract",
+  "phase": 24,
+  "evidence_root": ".aegis/release-notes-limitations",
+  "current_required_status": "ready",
+  "release_notes": {
+    "root": "docs/EXTERNAL_ALPHA_RELEASE_NOTES.md",
+    "website": "docs/WEBSITE_RELEASE_NOTES.md",
+    "desktop": "docs/DESKTOP_RELEASE_NOTES.md",
+    "vscode-extension": "vscode-plugins/aegis-local-autopilot/release/RELEASE_NOTES.md",
+    "visual-studio-extension": "visual-studio-extensions/aegis-local-agent-vs/release/RELEASE_NOTES.md"
+  },
+  "release_components": [
+    "aegis-core",
+    "website",
+    "desktop",
+    "vscode-extension",
+    "visual-studio-extension"
+  ],
+  "required_evidence_sources": [
+    {
+      "id": "release_validation",
+      "root": ".aegis/release-evidence",
+      "json": "validation-matrix.json",
+      "summary": "validation-summary.md",
+      "accepted_statuses": ["passed", "attention"]
+    },
+    {
+      "id": "release_preflight",
+      "root": ".aegis/release-preflight",
+      "json": "release-artifact-preflight.json",
+      "summary": "release-artifact-preflight-summary.md",
+      "accepted_statuses": ["ready"]
+    },
+    {
+      "id": "release_package_dry_run",
+      "root": ".aegis/release-package-dry-run",
+      "json": "release-package-dry-run.json",
+      "summary": "release-package-dry-run-summary.md",
+      "accepted_statuses": ["ready"]
+    },
+    {
+      "id": "final_release_manifest",
+      "root": ".aegis/final-release-manifest",
+      "json": "final-release-manifest.json",
+      "summary": "final-release-manifest-summary.md",
+      "accepted_statuses": ["ready"]
+    },
+    {
+      "id": "release_apply_rollback",
+      "root": ".aegis/release-apply-rollback",
+      "json": "release-apply-rollback.json",
+      "summary": "release-apply-rollback-summary.md",
+      "accepted_statuses": ["ready"]
+    },
+    {
+      "id": "packaged_alpha_scenarios",
+      "root": ".aegis/packaged-alpha-scenarios",
+      "json": "packaged-alpha-scenarios.json",
+      "summary": "packaged-alpha-scenarios-summary.md",
+      "accepted_statuses": ["ready"]
+    },
+    {
+      "id": "cross_client_parity",
+      "root": ".aegis/cross-client-parity",
+      "json": "cross-client-parity.json",
+      "summary": "cross-client-parity-summary.md",
+      "accepted_statuses": ["ready"]
+    }
+  ],
+  "required_limitations": [
+    {
+      "id": "worktree_commit_grouping",
+      "pattern": "worktree|commit grouping"
+    },
+    {
+      "id": "vscode_update_mutex",
+      "pattern": "VS Code extension-host smoke|vscode-updating|update mutex"
+    },
+    {
+      "id": "visual_studio_runtime_smoke",
+      "pattern": "Visual Studio experimental-instance smoke|Visual Studio UI workflows"
+    },
+    {
+      "id": "desktop_installer_update_smoke",
+      "pattern": "Desktop runtime smoke|desktop installer|installer/update"
+    },
+    {
+      "id": "provider_local_model_checks",
+      "pattern": "live provider checks|local model checks|Ollama/provider fallback"
+    },
+    {
+      "id": "plugin_productization",
+      "pattern": "Plugin/ecosystem|plugin install|trust, update, and rollback"
+    },
+    {
+      "id": "memory_privacy_controls",
+      "pattern": "Memory, provider routing, and autopilot controls|remembered|reset"
+    },
+    {
+      "id": "unsigned_build_disclosure",
+      "pattern": "unsigned local build|unsigned-build limitation|not signed"
+    }
+  ],
+  "required_release_note_sections": [
+    "Status",
+    "Package Manifest",
+    "Validation Evidence",
+    "Checksums And Signing",
+    "Known Limitations",
+    "Update And Rollback",
+    "Tester Scope"
+  ],
+  "required_recovery_paths": [
+    ".aegis/update-state.json",
+    ".aegis/safe-mode.json",
+    ".aegis/updates/backups",
+    ".aegis/updates/downloads"
+  ],
+  "required_commands": [
+    "scripts\\aegis-update.ps1 -Component desktop",
+    "scripts\\aegis-update.ps1 -Rollback"
+  ],
+  "required_contract_files": [
+    "docs/EXTERNAL_ALPHA_RELEASE_NOTES.md",
+    "docs/RELEASE_NOTES_LIMITATIONS_EVIDENCE.md",
+    "docs/WEBSITE_RELEASE_NOTES.md",
+    "docs/DESKTOP_RELEASE_NOTES.md",
+    "docs/EXTERNAL_ALPHA_RELEASE_REPORT.md",
+    "docs/EVIDENCE_LEDGER.md",
+    "docs/VALIDATION_MATRIX.md",
+    "docs/RELEASE_ARTIFACT_DECISION.md",
+    "docs/RELEASE_PACKAGING_AND_UPDATES.md",
+    "docs/RELEASE_APPLY_ROLLBACK_EVIDENCE.md",
+    "docs/PACKAGED_ALPHA_SCENARIO_EVIDENCE.md",
+    "docs/CROSS_CLIENT_PARITY_EVIDENCE.md",
+    "KNOWN_UNSTABLE_SURFACES.md",
+    "evals/phase15-external-alpha-release-contract.json",
+    "evals/phase16-evidence-ledger-contract.json",
+    "evals/phase24-release-notes-limitations-contract.json",
+    "scripts/test-release-notes-limitations.ps1",
+    "scripts/test-external-alpha-contract.ps1",
+    "scripts/test-evidence-ledger-contract.ps1",
+    "scripts/validate-ecosystem.ps1",
+    "vscode-plugins/aegis-local-autopilot/release/RELEASE_NOTES.md",
+    "visual-studio-extensions/aegis-local-agent-vs/release/RELEASE_NOTES.md"
+  ],
+  "outputs": [
+    "release-notes-limitations.json",
+    "release-notes-limitations-summary.md"
+  ]
+}

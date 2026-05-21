@@ -6,31 +6,31 @@ export function getPalette(isDarkMode: boolean) {
   if (isDarkMode) {
     return {
       bgGlow:
-        'radial-gradient(circle at 18% 8%, rgba(124,58,237,0.24), transparent 28%), radial-gradient(circle at 78% 2%, rgba(59,130,246,0.18), transparent 30%), radial-gradient(circle at 52% 96%, rgba(34,197,94,0.05), transparent 24%), linear-gradient(180deg, #080B17 0%, #070A14 58%, #050712 100%)',
-      bg: '#080B17',
-      shell: 'rgba(17,24,39,0.82)',
+        'radial-gradient(circle at 14% 8%, rgba(196,127,90,0.13), transparent 28%), radial-gradient(circle at 82% 4%, rgba(91,141,239,0.12), transparent 31%), linear-gradient(180deg, #111111 0%, #0d0d0d 58%, #090909 100%)',
+      bg: '#111111',
+      shell: 'rgba(24,24,24,0.86)',
       shellBorder: 'rgba(255,255,255,0.06)',
-      card: 'rgba(17,24,39,0.72)',
-      cardAlt: 'rgba(21,26,36,0.78)',
-      control: 'rgba(26,32,48,0.72)',
-      sidebar: 'linear-gradient(180deg, rgba(17,24,39,0.86), rgba(8,11,23,0.94))',
-      navActive: 'linear-gradient(135deg, rgba(124,58,237,0.24), rgba(59,130,246,0.12))',
-      settingsRail: 'rgba(8,11,23,0.68)',
-      settingsActive: 'rgba(124,58,237,0.16)',
-      muted: '#8C98AD',
-      text: '#F8FAFC',
-      textSoft: '#CBD5E1',
-      input: 'rgba(8,11,23,0.76)',
+      card: 'rgba(26,26,26,0.76)',
+      cardAlt: 'rgba(33,33,33,0.82)',
+      control: 'rgba(40,40,40,0.78)',
+      sidebar: 'linear-gradient(180deg, rgba(28,28,28,0.94), rgba(15,15,15,0.96))',
+      navActive: 'linear-gradient(135deg, rgba(196,127,90,0.18), rgba(91,141,239,0.10))',
+      settingsRail: 'rgba(12,12,12,0.72)',
+      settingsActive: 'rgba(196,127,90,0.14)',
+      muted: '#9a9a9a',
+      text: '#f4f1ec',
+      textSoft: '#d6d1c8',
+      input: 'rgba(18,18,18,0.82)',
       inputBorder: 'rgba(255,255,255,0.06)',
-      accent: '#7C3AED',
-      accentSoft: 'rgba(124,58,237,0.14)',
-      accentAlt: '#3B82F6',
-      userBubble: 'rgba(26,32,48,0.88)',
-      assistantBubble: 'rgba(17,24,39,0.86)',
+      accent: '#c47f5a',
+      accentSoft: 'rgba(196,127,90,0.14)',
+      accentAlt: '#5b8def',
+      userBubble: 'rgba(41,38,35,0.9)',
+      assistantBubble: 'rgba(25,25,25,0.9)',
       good: '#22c55e',
       bad: '#ef4444',
       warning: '#f59e0b',
-      codeBg: 'rgba(5,7,18,0.92)'
+      codeBg: 'rgba(8,8,8,0.94)'
     };
   }
 
@@ -68,7 +68,7 @@ export function getPalette(isDarkMode: boolean) {
 export type Palette = ReturnType<typeof getPalette>;
 
 export function isDarkPalette(p: Palette): boolean {
-  return p.bg === '#080B17';
+  return p.bg === '#111111';
 }
 
 export const styles = {
@@ -729,6 +729,21 @@ export const styles = {
     padding: '32px 12px',
     position: 'relative'
   } as CSSProperties,
+
+  commandCrumbs: (p: Palette): CSSProperties => ({
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 7,
+    minHeight: 30,
+    padding: '0 10px',
+    marginBottom: 16,
+    borderRadius: 999,
+    border: `1px solid ${p.inputBorder}`,
+    background: isDarkPalette(p) ? 'rgba(18,18,18,0.72)' : p.cardAlt,
+    color: p.textSoft,
+    fontSize: 13,
+    fontWeight: 750
+  }),
 
   emptyLogo: (p: Palette): CSSProperties => ({
     width: 76,
@@ -1410,24 +1425,27 @@ export const styles = {
   }),
 
   composerWrap: (p: Palette): CSSProperties => ({
-    padding: 16,
+    display: 'grid',
+    justifyItems: 'center',
+    gap: 12,
+    padding: '16px clamp(16px, 5vw, 72px) 18px',
     borderTop: `1px solid ${p.inputBorder}`,
     background: isDarkPalette(p)
-      ? 'linear-gradient(180deg, rgba(8,11,23,0.76), rgba(8,11,23,0.94)), radial-gradient(circle at 50% 0%, rgba(124,58,237,0.12), transparent 45%)'
+      ? 'linear-gradient(180deg, rgba(18,18,18,0.80), rgba(12,12,12,0.96)), radial-gradient(circle at 50% 0%, rgba(196,127,90,0.08), transparent 42%)'
       : p.card,
-    boxShadow: '0 -20px 70px rgba(2,6,23,0.34), inset 0 1px 0 rgba(255,255,255,0.04)'
+    boxShadow: '0 -20px 70px rgba(0,0,0,0.34), inset 0 1px 0 rgba(255,255,255,0.04)'
   }),
 
   contextPinBar: (p: Palette): CSSProperties => ({
+    width: 'min(100%, 920px)',
     display: 'flex',
     alignItems: 'center',
     gap: 8,
     flexWrap: 'wrap',
-    marginBottom: 14,
     padding: 10,
-    borderRadius: 14,
+    borderRadius: 8,
     border: `1px solid ${p.inputBorder}`,
-    background: isDarkPalette(p) ? 'rgba(21,26,36,0.68)' : p.cardAlt,
+    background: isDarkPalette(p) ? 'rgba(18,18,18,0.68)' : p.cardAlt,
     boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)'
   }),
 
@@ -1470,12 +1488,53 @@ export const styles = {
     padding: 0
   }),
 
+  agentModeBar: (p: Palette): CSSProperties => ({
+    width: 'min(100%, 920px)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    flexWrap: 'wrap',
+    color: p.muted
+  }),
+
+  agentModeTabs: (p: Palette): CSSProperties => ({
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 3,
+    padding: 3,
+    borderRadius: 8,
+    border: `1px solid ${p.inputBorder}`,
+    background: isDarkPalette(p) ? 'rgba(18,18,18,0.72)' : p.cardAlt
+  }),
+
+  agentModeTab: (p: Palette, active: boolean): CSSProperties => ({
+    minHeight: 30,
+    minWidth: 70,
+    borderRadius: 6,
+    border: 'none',
+    background: active ? p.control : 'transparent',
+    color: active ? p.text : p.muted,
+    cursor: 'pointer',
+    fontSize: 12,
+    fontWeight: 850,
+    padding: '0 10px',
+    boxShadow: active ? 'inset 0 1px 0 rgba(255,255,255,0.05)' : 'none'
+  }),
+
+  agentModeMeta: (p: Palette): CSSProperties => ({
+    color: p.textSoft,
+    fontSize: 12,
+    fontWeight: 800,
+    overflowWrap: 'anywhere'
+  }),
+
   composerOptions: (p: Palette): CSSProperties => ({
+    width: 'min(100%, 920px)',
     display: 'flex',
     justifyContent: 'space-between',
     gap: 12,
     flexWrap: 'wrap',
-    marginBottom: 12,
     padding: '0 2px',
     color: p.muted
   }),
@@ -1496,6 +1555,8 @@ export const styles = {
   }),
 
   composerForm: {
+    width: 'min(100%, 920px)',
+    margin: '0 auto',
     display: 'grid',
     gridTemplateColumns: '1fr auto',
     gap: 14,
@@ -1507,9 +1568,9 @@ export const styles = {
     maxHeight: 180,
     resize: 'vertical',
     width: '100%',
-    borderRadius: 20,
+    borderRadius: 12,
     border: `1px solid ${p.inputBorder}`,
-    background: isDarkPalette(p) ? 'rgba(8,11,23,0.72)' : p.input,
+    background: isDarkPalette(p) ? 'rgba(22,22,22,0.88)' : p.input,
     color: p.text,
     padding: '18px 20px',
     outline: 'none',
@@ -1520,9 +1581,9 @@ export const styles = {
   }),
 
   sendButton: (p: Palette, disabled: boolean): CSSProperties => ({
-    width: 58,
-    height: 58,
-    borderRadius: 18,
+    width: 54,
+    height: 54,
+    borderRadius: 999,
     border: 'none',
     background: disabled ? p.cardAlt : `linear-gradient(135deg, ${p.accent}, ${p.accentAlt})`,
     color: disabled ? p.muted : '#fff',

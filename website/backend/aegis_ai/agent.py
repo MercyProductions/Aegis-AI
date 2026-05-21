@@ -237,6 +237,22 @@ class AgentEngine:
     async def model_inventory(self) -> LocalModelInventory:
         return await self.model.inventory()
 
+    def _apply_selected_provider_route(
+        self,
+        request: AgentRequest,
+        model_execution_plan: ModelExecutionPlan,
+        providers: list[ModelRegistryProvider],
+    ) -> ModelExecutionPlan:
+        return self.model_execution_planner.apply_selected_provider(
+            model_execution_plan,
+            selected_provider_id=request.selected_provider_id,
+            selected_provider_label=request.selected_provider_label,
+            selected_provider_api=request.selected_provider_api,
+            selected_provider_endpoint=request.selected_provider_endpoint,
+            selected_provider_model=request.selected_provider_model,
+            providers=providers,
+        )
+
     def instruction_status_snapshot(self, workspace_root: Path) -> WorkspaceInstructionStatusInfo:
         payload = self._read_aegis_json(workspace_root, "instruction_status.json")
         if payload:
@@ -660,6 +676,11 @@ class AgentEngine:
             benchmark_scores=model_benchmark_snapshot.provider_scores,
             route_health=route_health,
         )
+        model_execution_plan = self._apply_selected_provider_route(
+            request,
+            model_execution_plan,
+            model_registry_snapshot.providers,
+        )
         context_budget = self.context_budgeter.build_budget(
             task_plan=task_plan,
             workspace_files=workspace_files,
@@ -867,6 +888,11 @@ class AgentEngine:
             benchmark_scores=model_benchmark_snapshot.provider_scores,
             route_health=route_health,
         )
+        model_execution_plan = self._apply_selected_provider_route(
+            request,
+            model_execution_plan,
+            model_registry_snapshot.providers,
+        )
         context_budget = self.context_budgeter.build_budget(
             task_plan=task_plan,
             workspace_files=workspace_files,
@@ -999,6 +1025,9 @@ class AgentEngine:
                         "message": f"Streaming with {config.label or config.provider_id}.",
                         "task_id": task_id,
                         "provider_id": config.provider_id,
+                        "provider_label": config.label,
+                        "provider_api": config.api,
+                        "endpoint": config.endpoint,
                         "model": config.model,
                     },
                 )
@@ -1014,6 +1043,9 @@ class AgentEngine:
                                     "delta": event.delta,
                                     "task_id": task_id,
                                     "provider_id": config.provider_id,
+                                    "provider_label": config.label,
+                                    "provider_api": config.api,
+                                    "endpoint": config.endpoint,
                                     "model": config.model,
                                 },
                             )
@@ -1545,6 +1577,11 @@ class AgentEngine:
             roles=model_registry_snapshot.roles,
             benchmark_scores=model_benchmark_snapshot.provider_scores,
             route_health=route_health,
+        )
+        model_execution_plan = self._apply_selected_provider_route(
+            request,
+            model_execution_plan,
+            model_registry_snapshot.providers,
         )
         context_budget = self.context_budgeter.build_budget(
             task_plan=task_plan,

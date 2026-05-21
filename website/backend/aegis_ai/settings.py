@@ -21,6 +21,16 @@ AEGIS_MODEL_API=ollama
 AEGIS_MODEL_ENDPOINT=http://127.0.0.1:11434
 AEGIS_MODEL_NAME=qwen2.5-coder:7b
 AEGIS_CORE_API_URL=http://127.0.0.1:8788
+AEGIS_CORE_DELEGATED_WORKFLOWS_ENABLED=true
+AEGIS_CORE_REQUEST_TIMEOUT_SECONDS=8
+AEGIS_LOCAL_API_TOKEN=
+AEGIS_REQUIRE_LOCAL_API_TOKEN=false
+AEGIS_CORE_LOCAL_TOKEN=
+AEGIS_ALLOWED_ORIGINS=
+AEGIS_MAX_REQUEST_BYTES=8000000
+AEGIS_RATE_LIMIT_PER_MINUTE=600
+AEGIS_PRIVACY_MODE=local_first
+AEGIS_CLOUD_DISABLED=false
 AEGIS_ROUTER_EXECUTION_ENABLED=true
 AEGIS_ALLOW_EXPLICIT_WORKSPACE_PATHS=true
 AEGIS_ADDITIONAL_WORKSPACE_ROOTS=
@@ -78,6 +88,16 @@ class Settings(BaseSettings):
     aegis_model_endpoint: str = Field(default="http://127.0.0.1:11434", alias="AEGIS_MODEL_ENDPOINT")
     aegis_model_name: str = Field(default="qwen2.5-coder:7b", alias="AEGIS_MODEL_NAME")
     aegis_core_api_url: str = Field(default="http://127.0.0.1:8788", alias="AEGIS_CORE_API_URL")
+    aegis_core_delegated_workflows_enabled: bool = Field(default=True, alias="AEGIS_CORE_DELEGATED_WORKFLOWS_ENABLED")
+    aegis_core_request_timeout_seconds: float = Field(default=8.0, alias="AEGIS_CORE_REQUEST_TIMEOUT_SECONDS")
+    aegis_local_api_token: str = Field(default="", alias="AEGIS_LOCAL_API_TOKEN")
+    aegis_require_local_api_token: bool = Field(default=False, alias="AEGIS_REQUIRE_LOCAL_API_TOKEN")
+    aegis_core_local_token: str = Field(default="", alias="AEGIS_CORE_LOCAL_TOKEN")
+    aegis_allowed_origins: str = Field(default="", alias="AEGIS_ALLOWED_ORIGINS")
+    aegis_max_request_bytes: int = Field(default=8_000_000, alias="AEGIS_MAX_REQUEST_BYTES")
+    aegis_rate_limit_per_minute: int = Field(default=600, alias="AEGIS_RATE_LIMIT_PER_MINUTE")
+    aegis_privacy_mode: str = Field(default="local_first", alias="AEGIS_PRIVACY_MODE")
+    aegis_cloud_disabled: bool = Field(default=False, alias="AEGIS_CLOUD_DISABLED")
     aegis_model_timeout_seconds: float = Field(default=120.0, alias="AEGIS_MODEL_TIMEOUT_SECONDS")
     aegis_model_temperature: float = Field(default=0.2, alias="AEGIS_MODEL_TEMPERATURE")
     aegis_router_execution_enabled: bool = Field(default=True, alias="AEGIS_ROUTER_EXECUTION_ENABLED")

@@ -351,6 +351,63 @@ function Assert-SolutionScannerParityGuards {
   }
 }
 
+function Assert-CoreFirstRuntimeGuards {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$ProjectDirectory
+  )
+
+  $coreClientText = Get-Content -Raw -LiteralPath (Join-Path $ProjectDirectory "Services\AegisCoreClient.cs")
+  $runtimeText = Get-Content -Raw -LiteralPath (Join-Path $ProjectDirectory "Services\AegisAgentRuntime.cs")
+  $modelsText = Get-Content -Raw -LiteralPath (Join-Path $ProjectDirectory "Models\AgentModels.cs")
+  $toolWindowText = Get-Content -Raw -LiteralPath (Join-Path $ProjectDirectory "ToolWindows\AegisToolWindowControl.xaml")
+  $toolWindowCodeText = Get-Content -Raw -LiteralPath (Join-Path $ProjectDirectory "ToolWindows\AegisToolWindowControl.xaml.cs")
+
+  $issues = @()
+  foreach ($endpoint in @(
+    "/v1/clients/sync",
+    "/v1/workflows",
+    "/v1/changes/propose",
+    "/v1/changes/apply",
+    "/v1/checkpoints",
+    "/v1/checkpoints/restore",
+    "/v1/validation/run",
+    "/v1/workspaces/intelligence",
+    "/v1/workspaces/roadmap"
+  )) {
+    if ($coreClientText -notmatch [regex]::Escape($endpoint)) {
+      $issues += "AegisCoreClient must include Core endpoint $endpoint."
+    }
+  }
+
+  foreach ($runtimeNeedle in @(
+    "StartCoreWorkflowAsync",
+    "RecordVisualStudioValidationWithCoreAsync",
+    "core.ApplyProposalAsync",
+    "core.RestoreCheckpointAsync",
+    "core.WorkspaceIntelligenceAsync",
+    "MarkCoreFallback"
+  )) {
+    if ($runtimeText -notmatch [regex]::Escape($runtimeNeedle)) {
+      $issues += "AegisAgentRuntime must keep Core-first runtime hook '$runtimeNeedle'."
+    }
+  }
+
+  foreach ($modelNeedle in @("CoreRuntimeState", "CoreWorkflowId", "CoreProposalId", "CoreCheckpointId")) {
+    if ($modelsText -notmatch [regex]::Escape($modelNeedle)) {
+      $issues += "Agent models must expose '$modelNeedle' for Core workflow tracking."
+    }
+  }
+
+  if ($toolWindowText -notmatch "RuntimeStatusBox" -or $toolWindowCodeText -notmatch "SetRuntimeState") {
+    $issues += "Visual Studio tool window must expose runtime authority status."
+  }
+
+  if ($issues.Count -gt 0) {
+    throw "Visual Studio Core-first runtime validation failed:`n - $($issues -join "`n - ")"
+  }
+}
+
 Assert-VisualStudioCommandTable `
   -VsctPath (Join-Path $projectDir "AegisLocalAgentPackage.vsct") `
   -CommandIdsPath (Join-Path $projectDir "CommandIds.cs") `
@@ -360,6 +417,7 @@ Assert-DiagnosticRedactionGuards -ProjectDirectory $projectDir
 Assert-UrlNormalizationGuards -ProjectDirectory $projectDir
 Assert-SafeEditRollbackGuards -ProjectDirectory $projectDir
 Assert-SolutionScannerParityGuards -ProjectDirectory $projectDir
+Assert-CoreFirstRuntimeGuards -ProjectDirectory $projectDir
 Assert-ReleaseDocumentationSources -Root $root -FileNames $releaseDocumentationFiles
 
 if ($ValidateOnly) {

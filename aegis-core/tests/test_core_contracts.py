@@ -485,6 +485,8 @@ def test_v1_endpoint_family_smoke_contracts(tmp_path: Path) -> None:
 
     get_endpoints = [
         ("/v1/health", {"workspace": str(workspace)}, "health"),
+        ("/v1/release/manifest", {"workspace": str(workspace)}, "release.manifest"),
+        ("/v1/release/migrations", {"workspace": str(workspace)}, "release.migrations"),
         ("/v1/models", {"workspace": str(workspace)}, "models"),
         ("/v1/settings", {"workspace": str(workspace)}, "settings"),
         ("/v1/memory", {"workspace": str(workspace)}, "memory.summary"),
@@ -493,10 +495,12 @@ def test_v1_endpoint_family_smoke_contracts(tmp_path: Path) -> None:
         ("/v1/clients", {"workspace": str(workspace)}, "clients.list"),
         ("/v1/tasks", {"workspace": str(workspace)}, "tasks.list"),
         ("/v1/agents", {}, "agents.roster"),
+        ("/v1/agents/runtime", {"workspace": str(workspace)}, "agent.runtime"),
         ("/v1/orchestration", {"workspace": str(workspace)}, "orchestration.dashboard"),
         ("/v1/jobs", {"workspace": str(workspace)}, "jobs.dashboard"),
         ("/v1/quality", {"workspace": str(workspace)}, "quality.dashboard"),
         ("/v1/knowledge/graph", {"workspace": str(workspace)}, "knowledge.graph"),
+        ("/v1/knowledge/architecture-summary", {"workspace": str(workspace)}, "knowledge.architecture_summary"),
         ("/v1/operations", {"workspace": str(workspace)}, "operations.dashboard"),
         ("/v1/personal-intelligence", {"workspace": str(workspace)}, "personal.intelligence"),
         ("/v1/ecosystem/dashboard", {"workspace": str(workspace)}, "ecosystem.dashboard"),
@@ -569,6 +573,30 @@ def test_v1_endpoint_family_smoke_contracts(tmp_path: Path) -> None:
             True,
         ),
         (
+            "/v1/knowledge/search",
+            {"workspace": str(workspace), "query": "README", "limit": 5},
+            "knowledge.search",
+            True,
+        ),
+        (
+            "/v1/knowledge/relationships",
+            {"workspace": str(workspace), "focus": "README.md", "depth": 1},
+            "knowledge.relationships",
+            True,
+        ),
+        (
+            "/v1/knowledge/symbol",
+            {"workspace": str(workspace), "symbol": "README", "limit": 5},
+            "knowledge.symbol",
+            True,
+        ),
+        (
+            "/v1/knowledge/impact-analysis",
+            {"workspace": str(workspace), "target": "README.md", "change_type": "modify"},
+            "knowledge.impact_analysis",
+            True,
+        ),
+        (
             "/v1/simulation/change",
             {
                 "workspace": str(workspace),
@@ -602,6 +630,36 @@ def test_v1_endpoint_family_smoke_contracts(tmp_path: Path) -> None:
             True,
         ),
         ("/v1/personal-intelligence/reset", {"workspace": str(workspace)}, "personal.intelligence.reset", True),
+        (
+            "/v1/release/compatibility",
+            {
+                "workspace": str(workspace),
+                "client_type": "desktop",
+                "client_version": "0.2.0",
+                "schema_version": CORE_CONTRACT_VERSION,
+                "capabilities": ["release-compatibility"],
+            },
+            "release.compatibility",
+            True,
+        ),
+        (
+            "/v1/release/migrations/run",
+            {"workspace": str(workspace), "dry_run": True},
+            "release.migrations.run",
+            True,
+        ),
+        (
+            "/v1/release/update-plan",
+            {
+                "component_id": "desktop",
+                "current_version": "0.2.0",
+                "target_version": "0.2.0",
+                "package_uri": "release/aegis-desktop-0.2.0-portable.zip",
+                "sha256": "0" * 64,
+            },
+            "release.update_plan",
+            True,
+        ),
     ]
 
     created_task_id = None
@@ -634,6 +692,11 @@ def test_v1_endpoint_family_smoke_contracts(tmp_path: Path) -> None:
 def test_contract_catalog_covers_unified_phase_runtime_shapes() -> None:
     required = {
         "health",
+        "release.manifest",
+        "release.compatibility",
+        "release.migrations",
+        "release.migrations.run",
+        "release.update_plan",
         "models",
         "settings",
         "workspace.scan",
@@ -655,11 +718,35 @@ def test_contract_catalog_covers_unified_phase_runtime_shapes() -> None:
         "quality.snapshot",
         "knowledge.graph",
         "knowledge.query",
+        "knowledge.search",
+        "knowledge.relationships",
+        "knowledge.symbol",
+        "knowledge.impact_analysis",
+        "knowledge.architecture_summary",
         "simulation.change",
         "simulation.compare",
         "operations.dashboard",
         "personal.intelligence",
         "personal.intelligence.reset",
+        "changes.proposal",
+        "changes.apply",
+        "checkpoints.create",
+        "checkpoints.list",
+        "checkpoints.restore",
+        "validation.run",
+        "core.job",
+        "project.activity",
+        "workflow.created",
+        "workflows.list",
+        "workflow.dashboard",
+        "workflow.step",
+        "client.sync",
+        "client.sync.dashboard",
+        "workspace.intelligence",
+        "workflow.statistics",
+        "agent.runtime",
+        "agent.coordination",
+        "agent.delegation",
         "patch.proposal",
         "rollback.entry",
         "rollback.result",
@@ -1220,6 +1307,12 @@ def test_knowledge_graph_get_is_read_only(tmp_path: Path) -> None:
 
     assert response.status_code == 200
     assert_core_contract(response.json(), "knowledge.graph")
+    assert not (workspace / ".aegis").exists()
+
+    summary = client.get("/v1/knowledge/architecture-summary", params={"workspace": str(workspace)})
+
+    assert summary.status_code == 200
+    assert_core_contract(summary.json(), "knowledge.architecture_summary")
     assert not (workspace / ".aegis").exists()
 
 
@@ -2985,6 +3078,117 @@ def test_model_router_contract_endpoint_returns_versioned_route(tmp_path: Path, 
     assert data["mode"] == "local_only"
 
 
+def test_model_registry_contract_surfaces_capabilities_profiles_and_provider_status(tmp_path: Path, monkeypatch) -> None:
+    workspace = tmp_path / "model-registry-project"
+    workspace.mkdir()
+    monkeypatch.setattr(
+        "aegis_core.model_router.OllamaClient.health",
+        lambda self: OllamaStatus(True, 5, ["qwen3-coder:30b", "nomic-embed-text"], "qwen3-coder:30b", []),
+    )
+
+    registry = model_router_module.model_registry(workspace, credentials=DummyCredentialStore({"openai": "stored"}))
+
+    assert registry["client_guidance"]["source_of_truth"] == "aegis-core"
+    assert {profile["id"] for profile in registry["routing_profiles"]} >= {"local_only", "best_coding", "private_sensitive"}
+    assert any(provider["id"] == "azure_openai" for provider in registry["providers"])
+    assert any(model["provider_id"] == "ollama" and model["model_id"] == "qwen3-coder:30b" for model in registry["models"])
+    openai_status = next(item for item in registry["provider_status"] if item["provider_id"] == "openai")
+    assert openai_status["linked"] == "linked"
+    assert openai_status["key_present"] is True
+
+
+def test_model_registry_endpoint_returns_versioned_contract(tmp_path: Path, monkeypatch) -> None:
+    workspace = tmp_path / "model-registry-api-project"
+    workspace.mkdir()
+    monkeypatch.setattr(
+        "aegis_core.model_router.OllamaClient.health",
+        lambda self: OllamaStatus(True, 5, ["qwen3-coder:30b"], "qwen3-coder:30b", []),
+    )
+    client = TestClient(create_app())
+
+    response = client.get("/v1/models/registry", params={"workspace": str(workspace)})
+
+    assert response.status_code == 200
+    assert_core_contract(response.json(), "model.registry")
+    data = response.json()["data"]
+    assert data["active_profile"] == "local_only"
+    assert data["selected_model"]["provider_id"] == "ollama"
+
+
+def test_model_router_private_sensitive_profile_stays_local(tmp_path: Path, monkeypatch) -> None:
+    workspace = tmp_path / "private-route-project"
+    aegis_dir = workspace / ".aegis"
+    aegis_dir.mkdir(parents=True)
+    (aegis_dir / "config.json").write_text(
+        json.dumps({"model_routing_mode": "cloud_allowed", "preferred_cloud_provider": "openai"}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "aegis_core.model_router.OllamaClient.health",
+        lambda self: OllamaStatus(True, 5, ["qwen3-coder:30b"], "qwen3-coder:30b", []),
+    )
+
+    route = route_model(
+        workspace,
+        "hard_debugging",
+        allow_cloud=True,
+        cloud_approved=True,
+        route_profile="private_sensitive",
+        privacy_sensitive=True,
+        credentials=DummyCredentialStore({"openai": "stored"}),
+    )
+
+    assert route["selected"]["provider_id"] == "ollama"
+    assert route["mode"] == "local_only"
+    assert route["route_profile_id"] == "private_sensitive"
+    assert route["explanation"]["privacy_risk"] == "low"
+    assert [candidate["provider_id"] for candidate in route["fallback_order"]] == ["ollama"]
+
+
+def test_model_router_best_coding_profile_explains_selection(tmp_path: Path, monkeypatch) -> None:
+    workspace = tmp_path / "best-coding-route-project"
+    workspace.mkdir()
+    monkeypatch.setattr(
+        "aegis_core.model_router.OllamaClient.health",
+        lambda self: OllamaStatus(True, 5, ["qwen3-coder:30b"], "qwen3-coder:30b", []),
+    )
+
+    route = route_model(
+        workspace,
+        "chat",
+        route_profile="best_coding",
+        required_capabilities=["code"],
+        credentials=DummyCredentialStore({"openai": "stored"}),
+    )
+
+    assert route["task_type"] == "code_completion"
+    assert route["route_profile_id"] == "best_coding"
+    assert route["explanation"]["selected_provider"] == "ollama"
+    assert route["explanation"]["expected_capability_fit"] == "good"
+    assert route["explanation"]["fallback_chain"][0]["provider_id"] == "ollama"
+
+
+def test_model_router_creative_media_warns_when_local_route_lacks_media_capability(tmp_path: Path, monkeypatch) -> None:
+    workspace = tmp_path / "creative-media-route-project"
+    workspace.mkdir()
+    monkeypatch.setattr(
+        "aegis_core.model_router.OllamaClient.health",
+        lambda self: OllamaStatus(True, 5, ["qwen3-coder:30b"], "qwen3-coder:30b", []),
+    )
+
+    route = route_model(
+        workspace,
+        "generate_media",
+        route_profile="private_sensitive",
+        required_capabilities=["vision"],
+        credentials=DummyCredentialStore({"openai": "stored"}),
+    )
+
+    assert route["selected"]["provider_id"] == "ollama"
+    assert route["missing_capability_warnings"]
+    assert route["explanation"]["expected_capability_fit"] == "partial"
+
+
 def test_provider_inventory_reports_credential_store_read_failures(tmp_path: Path) -> None:
     workspace = tmp_path / "provider-inventory-project"
     workspace.mkdir()
@@ -2994,7 +3198,15 @@ def test_provider_inventory_reports_credential_store_read_failures(tmp_path: Pat
     assert inventory["credential_store_available"] is True
     assert inventory["credential_store_healthy"] is False
     assert inventory["credential_store_errors"]
-    assert {item["provider_id"] for item in inventory["credential_store_errors"]} == {"openai", "anthropic", "google", "openrouter"}
+    assert {item["provider_id"] for item in inventory["credential_store_errors"]} == {
+        "openai",
+        "anthropic",
+        "google",
+        "openrouter",
+        "azure_openai",
+        "bedrock",
+        "vertex_ai",
+    }
     assert all(item["error"] for item in inventory["credential_store_errors"])
     assert all("secret-like" in item["error"] for item in inventory["credential_store_errors"])
     assert all(not item["key_stored"] for item in inventory["providers"] if item["requires_key"])

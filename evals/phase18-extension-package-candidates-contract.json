@@ -1,0 +1,52 @@
+{
+  "schema_version": "2026.05.21",
+  "name": "Phase 18 Extension Package Candidates Contract",
+  "evidence_root": ".aegis/extension-package-candidates",
+  "current_required_status": "ready",
+  "package_candidates": [
+    {
+      "id": "vscode-extension",
+      "artifact": "vscode-plugins/aegis-local-autopilot/release/aegis-local-autopilot-0.1.8.vsix",
+      "minimum_size_bytes": 100000,
+      "required_docs": [
+        "vscode-plugins/aegis-local-autopilot/release/CHANGELOG.md",
+        "vscode-plugins/aegis-local-autopilot/release/INSTALL.md",
+        "vscode-plugins/aegis-local-autopilot/release/RELEASE_NOTES.md",
+        "vscode-plugins/aegis-local-autopilot/release/SMOKE_TEST.md",
+        "vscode-plugins/aegis-local-autopilot/release/TROUBLESHOOTING.md"
+      ],
+      "validation_commands": ["npm run lint", "npm run test:unit", "npm run package"]
+    },
+    {
+      "id": "visual-studio-extension",
+      "artifact": "visual-studio-extensions/aegis-local-agent-vs/release/AegisLocalAgentVs.vsix",
+      "minimum_size_bytes": 100000,
+      "required_docs": [
+        "visual-studio-extensions/aegis-local-agent-vs/release/README.md",
+        "visual-studio-extensions/aegis-local-agent-vs/release/INSTALL.md",
+        "visual-studio-extensions/aegis-local-agent-vs/release/CHANGELOG.md",
+        "visual-studio-extensions/aegis-local-agent-vs/release/RELEASE_NOTES.md",
+        "visual-studio-extensions/aegis-local-agent-vs/release/TROUBLESHOOTING.md",
+        "visual-studio-extensions/aegis-local-agent-vs/release/LICENSE.txt"
+      ],
+      "validation_commands": [
+        "powershell -NoProfile -ExecutionPolicy Bypass -File visual-studio-extensions/aegis-local-agent-vs/build.ps1 -ValidateOnly",
+        "powershell -NoProfile -ExecutionPolicy Bypass -File visual-studio-extensions/aegis-local-agent-vs/build.ps1"
+      ]
+    }
+  ],
+  "required_contract_files": [
+    "docs/EXTENSION_PACKAGE_CANDIDATES.md",
+    "docs/RELEASE_ARTIFACT_PREFLIGHT.md",
+    "docs/RELEASE_PACKAGING_AND_UPDATES.md",
+    "evals/phase18-extension-package-candidates-contract.json",
+    "scripts/test-extension-package-candidates.ps1",
+    "scripts/validate-ecosystem.ps1",
+    "vscode-plugins/aegis-local-autopilot/package.json",
+    "visual-studio-extensions/aegis-local-agent-vs/build.ps1"
+  ],
+  "candidate_outputs": [
+    "extension-package-candidates.json",
+    "extension-package-candidates-summary.md"
+  ]
+}

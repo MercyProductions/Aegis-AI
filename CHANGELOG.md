@@ -4,6 +4,15 @@
 
 ### Stabilization
 
+- Fixed the VS Code extension create/project workflow so implementation-style chat requests are routed into Agent Mode and generated code-block instructions are converted into reviewable file edits instead of asking the user to paste files manually.
+- Improved VS Code extension selected-folder behavior so Explorer selections focus context without forcing generated files into that folder; proposals now write relative to the workspace root and prompt the model to choose the best project location.
+- Updated the VS Code extension package icon to use the new `autopilotlogo.png` Aegis logo asset.
+- Added the VS Code plugin phase-1 modular source structure, destination-reasoning module, Extension Host smoke-test scaffold, helper tests, and a webview panel explaining why each proposed file path was chosen.
+- Replaced the VS Code Activity Bar icon with a simple `currentColor` SVG so it renders cleanly in light and dark themes.
+- Improved Aegis Core dogfooding friction categories so weekly workflow reviews can record startup, roadmap, diff, diagnostics, error-message, onboarding, and maintainability issues directly.
+- Added the first Website provider-account foundation: provider manifests, API-key linking through the OS credential vault, account/session metadata tables, CLI bridge probes, and a Provider Accounts settings panel.
+- Extended model registry/provider telemetry shapes with account/session references, quota status, routing-run IDs, limit classifications, retry-after hints, and resume attempt references for future account-aware fallback.
+- Documented the provider-account security boundary: existing Codex/Gemini/Claude-style CLI logins are delegated through official commands only, and raw provider secrets stay out of SQLite and diagnostics.
 - Fixed Website workspace resolution so uncreatable or invalid workspace roots return clean `400` API errors instead of `500` stack traces.
 - Fixed the Website UI E2E mock routing so tests intercept both direct backend URLs and the Vite `/api` proxy.
 - Added release candidate install and validation documentation for daily dogfooding.

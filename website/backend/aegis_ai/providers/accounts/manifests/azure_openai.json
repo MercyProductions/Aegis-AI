@@ -1,0 +1,16 @@
+{
+  "id": "azure_openai",
+  "label": "Azure OpenAI",
+  "kind": "enterprise",
+  "description": "Azure OpenAI account surface for enterprise deployments, regional endpoints, and managed identity setups.",
+  "auth_modes": ["api_key", "env_profile", "oauth_browser"],
+  "default_auth_mode": "env_profile",
+  "credential_env_vars": ["AZURE_OPENAI_API_KEY", "AZURE_OPENAI_ENDPOINT"],
+  "capabilities": ["chat", "code", "reasoning", "tools", "vision", "streaming", "structured_json", "enterprise"],
+  "model_families": ["azure-openai"],
+  "quota_status": "Limits depend on Azure deployment, region, model deployment, and subscription quota.",
+  "docs_url": "https://learn.microsoft.com/azure/ai-services/openai/",
+  "security_notes": [
+    "Managed identity and Azure profiles should use official Azure authentication libraries in a later phase."
+  ]
+}

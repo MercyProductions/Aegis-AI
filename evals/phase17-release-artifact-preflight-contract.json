@@ -1,0 +1,60 @@
+{
+  "schema_version": "2026.05.21",
+  "name": "Phase 17 Release Artifact Preflight Contract",
+  "evidence_root": ".aegis/release-preflight",
+  "current_required_status": "ready",
+  "status_values": ["blocked", "attention", "ready"],
+  "components": [
+    "aegis-core",
+    "website",
+    "desktop",
+    "vscode-extension",
+    "visual-studio-extension"
+  ],
+  "required_preflight_checks": [
+    "source_manifest_present",
+    "release_scripts_present",
+    "components_in_manifest",
+    "core_stage_inputs",
+    "website_stage_inputs",
+    "desktop_stage_inputs",
+    "vscode_vsix_candidate",
+    "visual_studio_vsix_candidate",
+    "release_manifest_generated",
+    "final_release_manifest_evidence",
+    "dirty_release_artifact_decision",
+    "release_package_dry_run",
+    "update_plan_dry_run"
+  ],
+  "tracked_blocker_ids": [
+    "release_manifest_missing",
+    "release_package_dry_run_not_passed",
+    "update_plan_dry_run_not_passed",
+    "dirty_release_artifacts_need_decision",
+    "vscode_vsix_missing",
+    "visual_studio_vsix_missing"
+  ],
+  "required_blocker_ids": [],
+  "required_contract_files": [
+    "VERSION.json",
+    "docs/RELEASE_ARTIFACT_PREFLIGHT.md",
+    "docs/RELEASE_PACKAGE_DRY_RUN.md",
+    "docs/RELEASE_PACKAGING_AND_UPDATES.md",
+    "docs/EVIDENCE_LEDGER.md",
+    "docs/EXTERNAL_ALPHA_RELEASE_REPORT.md",
+    "docs/VALIDATION_MATRIX.md",
+    "evals/phase17-release-artifact-preflight-contract.json",
+    "evals/phase19-release-package-dry-run-contract.json",
+    "evals/phase20-final-release-manifest-contract.json",
+    "scripts/test-release-artifact-preflight.ps1",
+    "scripts/test-release-package-dry-run.ps1",
+    "scripts/test-final-release-manifest.ps1",
+    "scripts/build-release.ps1",
+    "scripts/aegis-update.ps1",
+    "scripts/validate-ecosystem.ps1"
+  ],
+  "preflight_outputs": [
+    "release-artifact-preflight.json",
+    "release-artifact-preflight-summary.md"
+  ]
+}

@@ -1,5 +1,15 @@
 # Troubleshooting
 
+## Provider Accounts
+
+The Website Provider Accounts panel is available under Settings -> Models. It shows provider manifests, linked accounts, CLI bridge probes, and model-limit status.
+
+If API-key linking fails with a credential-store error, make sure Windows Credential Manager is available or install a Python `keyring` backend for the Website backend environment. Aegis intentionally has no plaintext provider-secret fallback.
+
+If a CLI bridge shows `not configured`, install the official provider CLI and sign in using that CLI's documented login command. Aegis only runs version/status probes and does not read Codex, Gemini, Claude, browser, keychain, or token-cache files.
+
+If a CLI bridge shows `unknown`, the binary was detected but this CLI version did not expose a safe status command that Aegis can classify. API-key linking and direct provider adapters can still be used.
+
 ## Aegis Core
 
 Start Core from `aegis-core/`:

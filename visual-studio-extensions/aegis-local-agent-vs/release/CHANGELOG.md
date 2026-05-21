@@ -2,6 +2,16 @@
 
 ## 0.1.1 - Visual Studio Dogfooding Hardening
 
+- Made the Visual Studio extension Core-first for runtime workflows while keeping local Visual Studio fallback behavior.
+- Expanded the Core client from health/register only to client sync, workflow creation/logging, workspace intelligence, roadmap generation, proposal recording, Core apply, checkpoint restore, validation run recording, and checkpoint listing.
+- Added Core workflow/proposal/job/checkpoint IDs to agent session state and proposal details so operations can be tracked across clients.
+- Added the Runtime Authority panel to show Core connection, fallback mode, active workflow, pending proposal, latest checkpoint, latest validation result, and recent runtime operations.
+- Routed approved apply through Core `/v1/changes/apply` when a Core proposal exists, with local safe-edit fallback only when Core is unavailable or the endpoint is unsupported.
+- Routed rollback through Core checkpoints first, with local `.aegis/backups` rollback as fallback when no Core checkpoint is available.
+- Routed roadmap generation and solution intelligence refresh through Core first, preserving local Ollama/scanner fallback.
+- Added Core workflow creation for build, validation, repair, feature, roadmap continuation, and proposal workflows.
+- Recorded Visual Studio build/validation results into Core validation/workflow activity when Core is available while preserving MSBuild/Error List parsing in the extension.
+- Added package validation guards that fail if Core-first runtime endpoint coverage, workflow hooks, session IDs, or runtime status UI drift out of the extension.
 - Repackaged the Visual Studio extension after dogfooding install/open smoke tests.
 - Replaced localhost VSIX MoreInfo metadata with the GitHub repository URL.
 - Removed internal dogfooding notes from the packaged VSIX archive.
@@ -24,6 +34,9 @@
 - Hardened Aegis Core contract mismatch diagnostics so unexpected `api_version` and `kind` values are redacted, and packaging now fails if those paths drift back to raw values.
 - Improved solution scanning and smart context indexing for `.fsproj`, `.vbproj`, `.slnx`, F#/Visual Basic symbols/imports, Visual Basic XAML code-behind, and newer C++ source/header suffixes.
 - Fixed solution scanning so NuGet `packages.lock.json` is treated as important dependency metadata, and package validation now rejects the invalid `packages-lock.json` typo.
+- Improved Unity solution scanning so package manifests, Unity package lockfiles, key `ProjectSettings` metadata, and `.asmdef`/`.asmref` files are treated as important context/config files.
+- Hardened safe edits so Unity `Library`, `Temp`, and `Logs` folders cannot be modified by proposed file edits.
+- Hardened secret safe-edit matching for password, API-key, auth, SSH-key, and keystore-like filenames while avoiding false positives such as `tokenizer.py`.
 - Hardened solution scanning and smart context secret filters for password, API-key, auth, SSH-key, and keystore-like filenames while preserving ordinary source names such as `tokenizer.py`.
 - Hardened diagnostic redaction and memory sanitization for OAuth/provider fields such as `access_token`, `refresh_token`, `client_secret`, `x-api-key`, and `private_key`.
 - Updated install and troubleshooting documentation to make manual rescan the expected first-run indexing workflow.

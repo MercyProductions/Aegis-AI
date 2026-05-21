@@ -1,0 +1,298 @@
+{
+  "schema_version": "2026.05.21",
+  "name": "Phase 16 Evidence Ledger Contract",
+  "evidence_root": ".aegis/evidence-ledger",
+  "current_required_status": "attention",
+  "status_values": ["missing", "blocked", "attention", "ready"],
+  "evidence_roots": [
+    ".aegis/release-evidence",
+    ".aegis/release-preflight",
+    ".aegis/release-package-dry-run",
+    ".aegis/final-release-manifest",
+    ".aegis/release-apply-rollback",
+    ".aegis/packaged-alpha-scenarios",
+    ".aegis/cross-client-parity",
+    ".aegis/release-notes-limitations",
+    ".aegis/core-website-ownership",
+    ".aegis/backend-modularization",
+    ".aegis/frontend-extraction",
+    ".aegis/desktop-shell-hardening",
+    ".aegis/editor-extension-modularization",
+    ".aegis/provider-secret-safety",
+    ".aegis/memory-governance",
+    ".aegis/plugin-lifecycle",
+    ".aegis/observability-ci",
+    ".aegis/distribution-update",
+    ".aegis/alpha-readiness-polish",
+    ".aegis/live-smoke-rc",
+    ".aegis/commit-scoping-github-handoff",
+    ".aegis/desktop-smoke-package-gates",
+    ".aegis/editor-smoke-release-package-decision",
+    ".aegis/extension-package-candidates",
+    ".aegis/quality-evidence",
+    ".aegis/plugin-evidence",
+    ".aegis/alpha-evidence",
+    ".aegis/external-alpha-evidence",
+    ".aegis/evidence-ledger"
+  ],
+  "ledger_sources": [
+    {
+      "id": "release_validation",
+      "root": ".aegis/release-evidence",
+      "required_files": ["validation-summary.md", "validation-matrix.json", "release-artifact-status.txt"]
+    },
+    {
+      "id": "release_artifact_preflight",
+      "root": ".aegis/release-preflight",
+      "required_files": ["release-artifact-preflight-summary.md", "release-artifact-preflight.json"]
+    },
+    {
+      "id": "release_package_dry_run",
+      "root": ".aegis/release-package-dry-run",
+      "required_files": ["release-package-dry-run-summary.md", "release-package-dry-run.json"]
+    },
+    {
+      "id": "final_release_manifest",
+      "root": ".aegis/final-release-manifest",
+      "required_files": ["final-release-manifest-summary.md", "final-release-manifest.json"]
+    },
+    {
+      "id": "release_apply_rollback",
+      "root": ".aegis/release-apply-rollback",
+      "required_files": ["release-apply-rollback-summary.md", "release-apply-rollback.json"]
+    },
+    {
+      "id": "packaged_alpha_scenarios",
+      "root": ".aegis/packaged-alpha-scenarios",
+      "required_files": ["packaged-alpha-scenarios-summary.md", "packaged-alpha-scenarios.json"]
+    },
+    {
+      "id": "cross_client_parity",
+      "root": ".aegis/cross-client-parity",
+      "required_files": ["cross-client-parity-summary.md", "cross-client-parity.json"]
+    },
+    {
+      "id": "release_notes_limitations",
+      "root": ".aegis/release-notes-limitations",
+      "required_files": ["release-notes-limitations-summary.md", "release-notes-limitations.json"]
+    },
+    {
+      "id": "core_website_ownership",
+      "root": ".aegis/core-website-ownership",
+      "required_files": ["core-website-ownership-summary.md", "core-website-ownership.json"]
+    },
+    {
+      "id": "backend_modularization",
+      "root": ".aegis/backend-modularization",
+      "required_files": ["backend-modularization-summary.md", "backend-modularization.json"]
+    },
+    {
+      "id": "frontend_extraction",
+      "root": ".aegis/frontend-extraction",
+      "required_files": ["frontend-extraction-summary.md", "frontend-extraction.json"]
+    },
+    {
+      "id": "desktop_shell_hardening",
+      "root": ".aegis/desktop-shell-hardening",
+      "required_files": ["desktop-shell-hardening-summary.md", "desktop-shell-hardening.json"]
+    },
+    {
+      "id": "editor_extension_modularization",
+      "root": ".aegis/editor-extension-modularization",
+      "required_files": ["editor-extension-modularization-summary.md", "editor-extension-modularization.json"]
+    },
+    {
+      "id": "provider_secret_safety",
+      "root": ".aegis/provider-secret-safety",
+      "required_files": ["provider-secret-safety-summary.md", "provider-secret-safety.json"]
+    },
+    {
+      "id": "memory_governance",
+      "root": ".aegis/memory-governance",
+      "required_files": ["memory-governance-summary.md", "memory-governance.json"]
+    },
+    {
+      "id": "plugin_lifecycle",
+      "root": ".aegis/plugin-lifecycle",
+      "required_files": ["plugin-lifecycle-summary.md", "plugin-lifecycle.json"]
+    },
+    {
+      "id": "observability_ci",
+      "root": ".aegis/observability-ci",
+      "required_files": ["observability-ci-summary.md", "observability-ci.json"]
+    },
+    {
+      "id": "distribution_update",
+      "root": ".aegis/distribution-update",
+      "required_files": ["distribution-update-summary.md", "distribution-update.json"]
+    },
+    {
+      "id": "alpha_readiness_polish",
+      "root": ".aegis/alpha-readiness-polish",
+      "required_files": ["alpha-readiness-polish-summary.md", "alpha-readiness-polish.json"]
+    },
+    {
+      "id": "live_smoke_rc",
+      "root": ".aegis/live-smoke-rc",
+      "required_files": ["live-smoke-rc-summary.md", "live-smoke-rc.json"]
+    },
+    {
+      "id": "commit_scoping_github_handoff",
+      "root": ".aegis/commit-scoping-github-handoff",
+      "required_files": ["commit-scoping-github-handoff-summary.md", "commit-scoping-github-handoff.json"]
+    },
+    {
+      "id": "desktop_smoke_package_gates",
+      "root": ".aegis/desktop-smoke-package-gates",
+      "required_files": ["desktop-smoke-package-gates-summary.md", "desktop-smoke-package-gates.json"]
+    },
+    {
+      "id": "editor_smoke_release_package_decision",
+      "root": ".aegis/editor-smoke-release-package-decision",
+      "required_files": ["editor-smoke-release-package-decision-summary.md", "editor-smoke-release-package-decision.json"]
+    },
+    {
+      "id": "extension_package_candidates",
+      "root": ".aegis/extension-package-candidates",
+      "required_files": ["extension-package-candidates-summary.md", "extension-package-candidates.json"]
+    },
+    {
+      "id": "quality_contract",
+      "root": ".aegis/quality-evidence",
+      "required_files": ["quality-contract-summary.md", "quality-contract.json"]
+    },
+    {
+      "id": "plugin_contract",
+      "root": ".aegis/plugin-evidence",
+      "required_files": ["plugin-contract-summary.md", "plugin-contract.json"]
+    },
+    {
+      "id": "alpha_contract",
+      "root": ".aegis/alpha-evidence",
+      "required_files": ["alpha-contract-summary.md", "alpha-contract.json"]
+    },
+    {
+      "id": "external_alpha_contract",
+      "root": ".aegis/external-alpha-evidence",
+      "required_files": ["external-alpha-contract-summary.md", "external-alpha-contract.json"]
+    }
+  ],
+  "required_blocker_ids": [],
+  "required_validation_gate_ids": [
+    "release-package-dry-run-contract",
+    "final-release-manifest-contract",
+    "release-apply-rollback-contract",
+    "packaged-alpha-scenarios-contract",
+    "cross-client-parity-contract",
+    "release-notes-limitations-contract",
+    "core-website-ownership-contract",
+    "backend-modularization-contract",
+    "frontend-extraction-contract",
+    "desktop-shell-hardening-contract",
+    "editor-extension-modularization-contract",
+    "provider-secret-safety-contract",
+    "memory-governance-contract",
+    "plugin-lifecycle-contract",
+    "observability-ci-contract",
+    "distribution-update-contract",
+    "alpha-readiness-polish-contract",
+    "live-smoke-rc-contract",
+    "commit-scoping-github-handoff-contract",
+    "desktop-smoke-package-gates-contract",
+    "editor-smoke-release-package-decision-contract",
+    "release-package-dry-run",
+    "update-plan-dry-run",
+    "release-artifact-preflight",
+    "extension-package-candidates",
+    "alpha-contract",
+    "external-alpha-contract",
+    "evidence-ledger-contract"
+  ],
+  "required_contract_files": [
+    "docs/EVIDENCE_LEDGER.md",
+    "docs/EXTERNAL_ALPHA_RELEASE_REPORT.md",
+    "docs/VALIDATION_MATRIX.md",
+    "docs/RELEASE_ARTIFACT_PREFLIGHT.md",
+    "docs/RELEASE_PACKAGE_DRY_RUN.md",
+    "docs/RELEASE_ARTIFACT_DECISION.md",
+    "docs/RELEASE_APPLY_ROLLBACK_EVIDENCE.md",
+    "docs/PACKAGED_ALPHA_SCENARIO_EVIDENCE.md",
+    "docs/CROSS_CLIENT_PARITY_EVIDENCE.md",
+    "docs/RELEASE_NOTES_LIMITATIONS_EVIDENCE.md",
+    "docs/CORE_WEBSITE_OWNERSHIP_EVIDENCE.md",
+    "docs/CORE_WEBSITE_OWNERSHIP.md",
+    "docs/BACKEND_MODULARIZATION_EVIDENCE.md",
+    "docs/FRONTEND_EXTRACTION_EVIDENCE.md",
+    "docs/NATIVE_DESKTOP_SHELL_EVIDENCE.md",
+    "docs/EDITOR_EXTENSION_MODULARIZATION_EVIDENCE.md",
+    "docs/PROVIDER_SECRET_SAFETY_EVIDENCE.md",
+    "docs/MEMORY_GOVERNANCE_EVIDENCE.md",
+    "docs/PLUGIN_LIFECYCLE_EVIDENCE.md",
+    "docs/OBSERVABILITY_EVALS_CI_EVIDENCE.md",
+    "docs/DISTRIBUTION_INSTALLER_UPDATE_EVIDENCE.md",
+    "docs/ALPHA_READINESS_POLISH_EVIDENCE.md",
+    "docs/LIVE_SMOKE_RC_SCOPING_EVIDENCE.md",
+    "docs/COMMIT_SCOPING_GITHUB_HANDOFF_EVIDENCE.md",
+    "docs/DESKTOP_SMOKE_PACKAGE_GATES_EVIDENCE.md",
+    "docs/EDITOR_SMOKE_RELEASE_PACKAGE_DECISION_EVIDENCE.md",
+    "docs/EXTERNAL_ALPHA_RELEASE_NOTES.md",
+    "docs/WEBSITE_RELEASE_NOTES.md",
+    "docs/DESKTOP_RELEASE_NOTES.md",
+    "docs/EXTENSION_PACKAGE_CANDIDATES.md",
+    "KNOWN_UNSTABLE_SURFACES.md",
+    "evals/phase16-evidence-ledger-contract.json",
+    "evals/phase19-release-package-dry-run-contract.json",
+    "evals/phase20-final-release-manifest-contract.json",
+    "evals/phase21-release-apply-rollback-contract.json",
+    "evals/phase22-packaged-alpha-scenarios-contract.json",
+    "evals/phase23-cross-client-parity-contract.json",
+    "evals/phase24-release-notes-limitations-contract.json",
+    "evals/phase25-core-website-ownership-contract.json",
+    "evals/phase26-backend-modularization-contract.json",
+    "evals/phase27-frontend-extraction-contract.json",
+    "evals/phase28-native-desktop-shell-contract.json",
+    "evals/phase29-editor-extension-modularization-contract.json",
+    "evals/phase30-provider-secret-safety-contract.json",
+    "evals/phase31-memory-governance-contract.json",
+    "evals/phase32-plugin-lifecycle-contract.json",
+    "evals/phase33-observability-ci-contract.json",
+    "evals/phase34-distribution-update-contract.json",
+    "evals/phase35-alpha-readiness-polish-contract.json",
+    "evals/phase36-live-smoke-rc-contract.json",
+    "evals/phase37-commit-scoping-github-handoff-contract.json",
+    "evals/phase38-desktop-smoke-package-gates-contract.json",
+    "evals/phase39-editor-smoke-release-package-decision-contract.json",
+    "evals/phase18-extension-package-candidates-contract.json",
+    ".github/workflows/aegis-validation.yml",
+    "scripts/test-evidence-ledger-contract.ps1",
+    "scripts/test-release-artifact-preflight.ps1",
+    "scripts/test-release-package-dry-run.ps1",
+    "scripts/test-final-release-manifest.ps1",
+    "scripts/test-release-apply-rollback.ps1",
+    "scripts/test-packaged-alpha-scenarios.ps1",
+    "scripts/test-cross-client-parity.ps1",
+    "scripts/test-release-notes-limitations.ps1",
+    "scripts/test-core-website-ownership.ps1",
+    "scripts/test-backend-modularization.ps1",
+    "scripts/test-frontend-extraction.ps1",
+    "scripts/test-native-desktop-shell.ps1",
+    "scripts/test-editor-extension-modularization.ps1",
+    "scripts/test-provider-secret-safety.ps1",
+    "scripts/test-memory-governance.ps1",
+    "scripts/test-plugin-lifecycle.ps1",
+    "scripts/test-observability-ci.ps1",
+    "scripts/test-distribution-update.ps1",
+    "scripts/test-alpha-readiness-polish.ps1",
+    "scripts/test-live-smoke-rc.ps1",
+    "scripts/test-commit-scoping-github-handoff.ps1",
+    "scripts/test-desktop-smoke-package-gates.ps1",
+    "scripts/test-editor-smoke-release-package-decision.ps1",
+    "scripts/test-extension-package-candidates.ps1",
+    "scripts/test-external-alpha-contract.ps1",
+    "scripts/validate-ecosystem.ps1"
+  ],
+  "ledger_outputs": [
+    "evidence-ledger.json",
+    "evidence-ledger-summary.md"
+  ]
+}

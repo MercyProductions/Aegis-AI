@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from aegis_ai import main
+from aegis_ai.services.utility_service import redact_feedback_text
 from aegis_ai.core_bridge import CoreBridgeResult
 from aegis_ai.schemas import AppConfig
 from aegis_ai.settings import Settings
@@ -227,7 +228,7 @@ class ConfigUpdateTests(unittest.TestCase):
             ]
         )
 
-        redacted, count = main._redact_feedback_text(text)
+        redacted, count = redact_feedback_text(text)
 
         self.assertGreaterEqual(count, 6)
         self.assertNotIn("feedback-access-secret", redacted)

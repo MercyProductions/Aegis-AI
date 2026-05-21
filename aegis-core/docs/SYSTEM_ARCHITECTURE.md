@@ -31,6 +31,8 @@ Aegis Core owns reusable intelligence and workflow services:
 - Engineering operations for release readiness, debt, lifecycle, maintenance, productivity, and cross-project coordination
 - Adaptive personal engineering intelligence for local preference memory, workflow/style learning, reusable pattern suggestions, habit analysis, and context personalization
 - Validation command detection and safe execution
+- Core-owned editing runtime for proposed file changes, patch preview metadata, selected/all apply, checkpoint creation, checkpoint restore, validation result storage, operation jobs, and project activity
+- Unified workflow graph runtime for long-running cross-client workflows, dependency chains, pause/resume/cancel/retry, event streams, client sync, and observability
 - Agent planning, repair planning, rollback metadata, and approval contracts
 - Diagnostics and logs
 
@@ -58,8 +60,9 @@ Default assumptions:
 
 - Local Ollama models are preferred.
 - Secrets and protected paths are not read or edited.
-- Edits are proposal-first and approval-based.
+- Edits are proposal-first, approval-based, workspace-local, and checkpointed before writes.
 - Validation commands are explicit and non-destructive.
+- Long-running workflows are persisted, inspectable, pauseable, cancellable, and resumable after restart.
 - Autonomous orchestration means staged queues, specialized owner agents, and approval gates, not uncontrolled edits.
 - Scheduled jobs can scan, summarize, report, and recommend, but risky actions still require approval.
 - Quality snapshots write generated `.aegis` observability artifacts, not source changes.
@@ -85,8 +88,10 @@ Default assumptions:
 13. Predictive planning forecasts flow through `/v1/simulation/*` and feed Planner Agent task ordering.
 14. Engineering operations dashboards flow through `/v1/operations/*`.
 15. Adaptive personal engineering guidance flows through `/v1/personal-intelligence/*`.
-16. Agent planning and repair loops move into Core.
-17. Clients keep UI approvals, diff/apply/rollback, and editor-native affordances.
+16. Core-owned editing endpoints become the shared authority for proposed changes, apply, checkpoints, restore, validation result storage, operation jobs, and activity.
+17. Core workflow runtime becomes the shared authority for workflow IDs, task graphs, dependencies, progress, event streams, client sync, timelines, retries, cancellation, and audit history.
+18. Agent planning and repair loops move into Core.
+19. Clients keep UI approvals, diff review presentation, editor APIs, IDE build/error integrations, and native affordances.
 
 ## Shared API Layer
 
@@ -133,9 +138,107 @@ GET  /v1/orchestration?workspace=C:/path/to/project
 POST /v1/orchestration/step
 ```
 
-Core records the objective, task list, active step, pending approvals, validation results, and rollback metadata. Clients still own showing proposed diffs, collecting approval, applying files, and restoring checkpoints.
+Core records the objective, task list, active step, pending approvals, validation results, and rollback metadata. Clients still own showing proposed diffs and collecting approval. Once approved, clients should migrate file apply, checkpointing, restore, validation result storage, and operation tracking onto the Core-owned editing runtime.
 
 Every orchestration task has an `owner_agent`. The current roles are Planner, Architect, Coder, Reviewer, Tester, Repair, and Documentation. Agent decisions are written to `agent-history.json`.
+
+## Core-Owned Editing Runtime
+
+Editing runtime state is stored under the workspace `.aegis` folder:
+
+```text
+.aegis/editing-proposals.json
+.aegis/operation-jobs.json
+.aegis/editing-activity.json
+.aegis/validation-results.json
+.aegis/editing-log.md
+.aegis/checkpoints/<checkpoint-id>/manifest.json
+```
+
+The first active editing contract is surfaced through:
+
+```text
+POST /v1/changes/propose
+POST /v1/changes/apply
+POST /v1/checkpoints/create
+GET  /v1/checkpoints?workspace=C:/path/to/project
+POST /v1/checkpoints/restore
+POST /v1/validation/run
+GET  /v1/jobs/{job_id}?workspace=C:/path/to/project
+GET  /v1/projects/{project_id}/activity?workspace=C:/path/to/project
+```
+
+This makes Core the shared runtime authority for file-change application, rollback safety, validation records, and operation tracking. Website should eventually delegate its `/api/apply`, `/api/checkpoints`, `/api/restore-checkpoint`, `/api/validate`, and repair-loop write bookkeeping to these Core contracts. Desktop, VS Code, and Visual Studio should consume the same contracts after their approval UI has shown the proposed diff or preview.
+
+The safety model is intentionally conservative:
+
+- paths are normalized and must stay inside the workspace
+- ignored, generated, dependency, hidden-directory, and secret-like paths are rejected
+- dry runs return preview metadata without writing
+- apply creates a checkpoint before any write or delete
+- restore creates a pre-restore checkpoint before mutating files
+- validation output is scrubbed and persisted as Core activity
+
+## Unified Workflow Runtime
+
+The workflow runtime is the next layer above editing, validation, scan, quality, and knowledge services. It is surfaced through:
+
+```text
+POST /v1/workflows
+GET  /v1/workflows?workspace=C:/path/to/project
+GET  /v1/workflows/{workflow_id}?workspace=C:/path/to/project
+POST /v1/workflows/{workflow_id}/step
+POST /v1/workflows/{workflow_id}/pause
+POST /v1/workflows/{workflow_id}/resume
+POST /v1/workflows/{workflow_id}/cancel
+POST /v1/workflows/{workflow_id}/retry
+GET  /v1/workflows/{workflow_id}/events?workspace=C:/path/to/project
+GET  /v1/workflows/events?workspace=C:/path/to/project
+GET  /v1/workflows/stats?workspace=C:/path/to/project
+GET  /v1/workflows/agent-runtime
+POST /v1/clients/sync
+GET  /v1/client-sync?workspace=C:/path/to/project
+POST /v1/workspaces/intelligence
+```
+
+Persistent state lives in:
+
+```text
+.aegis/workflow-runtime.json
+.aegis/workflow-events.json
+.aegis/client-sync.json
+.aegis/workflow-audit.md
+.aegis/workspace-intelligence.json
+```
+
+Workflow tasks support:
+
+- parent/child relationships
+- dependency chains
+- retries and retry limits
+- cancellation
+- pause/resume at the workflow level
+- execution statuses: `pending`, `queued`, `running`, `waiting_input`, `validating`, `repairing`, `completed`, `failed`, `cancelled`
+- progress percentages
+- timestamps and structured logs
+- approval gates and deterministic role ownership
+
+The first workflow types are:
+
+- `chat_request`
+- `generate_feature`
+- `validate_project`
+- `repair_project`
+- `continue_roadmap`
+- `build_project`
+- `scan_workspace`
+- `benchmark_models`
+- `generate_media`
+- `research_task`
+
+The role runtime is deliberately plain. `planner`, `coder`, `validator`, `repair_agent`, `researcher`, and `summarizer` are task owners and audit labels. They do not imply hidden autonomy. Automatic execution is limited to deterministic local operations such as workspace intelligence refresh, roadmap refresh, and approved validation. File edits route through the Core editing runtime; provider/media/research/benchmark tasks wait for explicit approval and client-supplied results until dedicated safe executors are implemented.
+
+Clients should subscribe to SSE streams instead of polling when they need live updates. The stream emits persisted workflow events, so a client can reconnect after restart and recover missed updates from the timeline.
 
 ## Workflow Automation
 

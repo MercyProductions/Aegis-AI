@@ -1,0 +1,16 @@
+{
+  "id": "openrouter",
+  "label": "OpenRouter",
+  "kind": "cloud",
+  "description": "OpenRouter API aggregator for broad hosted model fallback and cost-aware routing.",
+  "auth_modes": ["api_key"],
+  "default_auth_mode": "api_key",
+  "credential_env_vars": ["OPENROUTER_API_KEY"],
+  "capabilities": ["chat", "code", "reasoning", "tools", "vision", "streaming", "structured_json"],
+  "model_families": ["openrouter"],
+  "quota_status": "Limits and pricing depend on the selected upstream model and OpenRouter account balance.",
+  "docs_url": "https://openrouter.ai/docs",
+  "security_notes": [
+    "Aegis stores OpenRouter API keys in the OS credential vault only."
+  ]
+}

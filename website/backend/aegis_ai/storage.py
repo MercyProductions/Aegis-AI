@@ -136,7 +136,8 @@ from .storage_quality import (
     token_calibration_trend_recommendation as storage_token_calibration_trend_recommendation,
     token_estimator_label as storage_token_estimator_label,
 )
-from .diagnostic_redaction import redact_inline
+from .diagnostic_redaction import redact_inline, redact_payload
+from .repositories import ProjectMemoryRepository
 from .storage_records import (
     execution_job_from_row as storage_execution_job_from_row,
     execution_job_values as storage_execution_job_values,
@@ -162,6 +163,10 @@ class EventStore:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
         self._import_legacy_db_if_needed()
+        self.project_memory_repository = ProjectMemoryRepository(
+            store_project_root=self.project_root,
+            session_factory=self._session,
+        )
 
     def create_task(
         self,
@@ -321,12 +326,14 @@ class EventStore:
         detail: str = "",
         payload: dict[str, Any] | None = None,
     ) -> ToolEvent:
+        safe_detail = redact_inline(detail)
+        safe_payload = redact_payload(payload or {})
         event = ToolEvent(
             kind=kind,
             title=title,
             status=status,
-            detail=detail,
-            payload=payload or {},
+            detail=safe_detail,
+            payload=safe_payload,
             created_at=utc_now(),
         )
         with self._session() as conn:
@@ -579,82 +586,23 @@ class EventStore:
         source: str,
         confidence: float,
     ) -> None:
-        now = utc_now()
-        normalized_root = str(project_root.resolve())
-        fingerprint = self._fingerprint(category, title, detail)
-        with self._session() as conn:
-            conn.execute(
-                """
-                insert into project_memory (
-                    id, created_at, updated_at, project_root, category, title, detail, source, confidence, fingerprint
-                ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                on conflict(project_root, fingerprint) do update set
-                    updated_at = excluded.updated_at,
-                    category = excluded.category,
-                    title = excluded.title,
-                    detail = excluded.detail,
-                    source = excluded.source,
-                    confidence = case
-                        when excluded.confidence > project_memory.confidence then excluded.confidence
-                        else project_memory.confidence
-                    end
-                """,
-                (
-                    str(uuid4()),
-                    now,
-                    now,
-                    normalized_root,
-                    category,
-                    title,
-                    detail,
-                    source,
-                    confidence,
-                    fingerprint,
-                ),
-            )
+        self.project_memory_repository.remember_project_note(
+            project_root=project_root,
+            category=category,
+            title=title,
+            detail=detail,
+            source=source,
+            confidence=confidence,
+        )
 
     def project_memory(self, *, project_root: Path, limit: int = 8) -> list[ProjectMemoryEntry]:
-        aliases = self._project_root_aliases(project_root)
-        placeholders = ",".join("?" for _ in aliases)
-        with self._session() as conn:
-            rows = conn.execute(
-                f"""
-                select id, created_at, updated_at, project_root, category, title, detail, source, confidence
-                from project_memory
-                where project_root in ({placeholders})
-                order by updated_at desc, created_at desc
-                limit ?
-                """,
-                (*aliases, limit),
-            ).fetchall()
-
-        notes: list[ProjectMemoryEntry] = []
-        seen: set[str] = set()
-        for row in rows:
-            payload = dict(row)
-            dedupe_key = self._fingerprint(payload["category"], payload["title"], payload["detail"])
-            if dedupe_key in seen:
-                continue
-            seen.add(dedupe_key)
-            payload["project_root"] = str(project_root.resolve())
-            notes.append(ProjectMemoryEntry.model_validate(payload))
-        return notes
+        return self.project_memory_repository.project_memory(project_root=project_root, limit=limit)
 
     def relevant_project_memory(self, *, project_root: Path, query: str, limit: int = 4) -> list[ProjectMemoryEntry]:
-        candidates = self.project_memory(project_root=project_root, limit=40)
-        scored = [
-            (self._memory_match_score(query, item.category, item.title, item.detail, item.source), item)
-            for item in candidates
-        ]
-        ranked = [item for score, item in sorted(scored, key=lambda pair: pair[0], reverse=True) if score > 0]
-        return ranked[:limit]
+        return self.project_memory_repository.relevant_project_memory(project_root=project_root, query=query, limit=limit)
 
     def clear_project_memory(self, *, project_root: Path) -> int:
-        aliases = self._project_root_aliases(project_root)
-        placeholders = ",".join("?" for _ in aliases)
-        with self._session() as conn:
-            cursor = conn.execute(f"delete from project_memory where project_root in ({placeholders})", tuple(aliases))
-            return int(cursor.rowcount or 0)
+        return self.project_memory_repository.clear_project_memory(project_root=project_root)
 
     def save_project_intelligence(self, snapshot: ProjectIntelligenceSnapshot) -> None:
         now = utc_now()
@@ -1441,6 +1389,7 @@ class EventStore:
         enabled: bool | None = None,
         trusted: bool | None = None,
         reason: str = "",
+        metadata_updates: dict[str, Any] | None = None,
     ) -> PluginManifest:
         now = utc_now()
         with self._session() as conn:
@@ -1456,6 +1405,8 @@ class EventStore:
             metadata = dict(payload.get("metadata") or {})
             if reason:
                 metadata["latest_state_change_reason"] = reason
+            if metadata_updates:
+                metadata.update(metadata_updates)
             payload["metadata"] = metadata
             conn.execute(
                 """
@@ -1653,11 +1604,14 @@ class EventStore:
         enabled: bool | None = None,
         trust_level: str | None = None,
         reason: str = "",
+        metadata_updates: dict[str, Any] | None = None,
     ) -> EcosystemPackageManifest:
         current = self.ecosystem_package(package_id)
         metadata = dict(current.metadata or {})
         if reason:
             metadata["latest_state_change_reason"] = reason
+        if metadata_updates:
+            metadata.update(metadata_updates)
         saved = current.model_copy(
             update={
                 "enabled": current.enabled if enabled is None else enabled,
@@ -2445,8 +2399,9 @@ class EventStore:
                     insert into model_attempt_telemetry (
                         id, task_id, created_at, workspace_root, attempt_number, role, provider_id,
                         provider_label, provider_api, model, endpoint, privacy_mode, status, retryable,
-                        input_tokens, output_tokens, estimated_cost_usd, latency_ms, reason, error, metadata_json
-                    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        input_tokens, output_tokens, estimated_cost_usd, latency_ms, reason, error, metadata_json,
+                        provider_account_id, routing_run_id, limit_class, retry_after, resumed_from_attempt_id
+                    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         str(uuid4()),
@@ -2470,6 +2425,11 @@ class EventStore:
                         attempt.reason,
                         attempt.error,
                         json.dumps(attempt.metadata, ensure_ascii=True),
+                        attempt.provider_account_id,
+                        attempt.routing_run_id,
+                        attempt.limit_class,
+                        attempt.retry_after,
+                        attempt.resumed_from_attempt_id,
                     ),
                 )
 
@@ -2614,7 +2574,8 @@ class EventStore:
                 f"""
                 select task_id, created_at, workspace_root, attempt_number, role, provider_id,
                        provider_label, provider_api, model, endpoint, privacy_mode, status, retryable,
-                       input_tokens, output_tokens, estimated_cost_usd, latency_ms, reason, error, metadata_json
+                       input_tokens, output_tokens, estimated_cost_usd, latency_ms, reason, error, metadata_json,
+                       provider_account_id, routing_run_id, limit_class, retry_after, resumed_from_attempt_id
                 from model_attempt_telemetry
                 where workspace_root in ({placeholders})
                 order by created_at desc, attempt_number asc
@@ -2643,6 +2604,11 @@ class EventStore:
                 "latency_ms": payload.pop("latency_ms"),
                 "reason": payload.pop("reason"),
                 "error": payload.pop("error"),
+                "provider_account_id": payload.pop("provider_account_id", ""),
+                "routing_run_id": payload.pop("routing_run_id", ""),
+                "limit_class": payload.pop("limit_class", ""),
+                "retry_after": payload.pop("retry_after", None),
+                "resumed_from_attempt_id": payload.pop("resumed_from_attempt_id", ""),
                 "metadata": self._json_payload(payload.pop("metadata_json")),
             }
             payload["workspace_root"] = str(project_root.resolve())

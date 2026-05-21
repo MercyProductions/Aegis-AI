@@ -1,17 +1,52 @@
 # Distributed Runtime
 
-Distributed Runtime keeps Aegis local-first while adding a persistent worker and queue layer for future LAN, remote, sandbox, and team execution.
+Distributed Runtime keeps Aegis local-first while adding a persistent node, workload, trust, recovery, and observability layer for LAN, remote, sandbox, validation, indexing, GPU/model, and team execution.
+
+## Current Authority
+
+Aegis Core is now the shared runtime authority for distributed execution contracts. Core persists node registration, workload scheduling decisions, audit events, recovery state, and bootstrap metadata under the workspace `.aegis` folder:
+
+- `.aegis/distributed-runtime.json`
+- `.aegis/distributed-runtime-audit.jsonl`
+
+The Website backend still has an older compatibility surface for `/api/distributed-runtime` consumers. That Website surface should gradually delegate to Core's `/v1/distributed-runtime/*` endpoints, the same way apply/checkpoint/validation workflows migrated to Core-first behavior. Desktop, VS Code, and Visual Studio clients should treat Core as the preferred local authority and use Website only as a compatibility gateway where needed.
 
 ## Modules
 
-- `website/backend/aegis_ai/distributed_runtime.py` owns worker capability policy, trust checks, runnable-job selection, worker assignment, hybrid model routing, sync manifest hashing, audit event creation, and runtime observability aggregation.
+- `aegis-core/aegis_core/distributed_runtime.py` owns the Core node registry, trust checks, workload queue, capability scheduler, local execution/fallback behavior, recovery, bootstrap scripts, JSON persistence, and audit events.
+- `aegis-core/aegis_core/server.py` exposes versioned `/v1/distributed-runtime/*` contracts.
+- `aegis-core/scripts/bootstrap-runtime-node.ps1` is the reference worker bootstrap script.
+- `website/backend/aegis_ai/distributed_runtime.py` remains the Website compatibility implementation for existing Website API consumers while migration to Core continues.
 - `website/backend/aegis_ai/storage.py` persists `runtime_workers`, `execution_queue`, `worker_audit_events`, and `workspace_sync_manifests` in SQLite.
 - `website/backend/aegis_ai/main.py` exposes `/api/distributed-runtime` endpoints for workers, queue operations, dispatch, model routing, sync manifests, audit events, and observability.
-- `website/frontend/src/types.ts` and `website/frontend/src/api.ts` expose typed browser/client contracts for future desktop, browser, mobile, and remote dashboards.
+- `website/frontend/src/types.ts` and `website/frontend/src/api.ts` expose browser/client contracts for node-management dashboards. Future UI work should consume the Core node/workload contracts directly or through Website gateway delegation.
+
+## Core Runtime Nodes
+
+Core supports these node categories:
+
+- `local`
+- `trusted_remote`
+- `isolated_worker`
+- `validation`
+- `indexing`
+- `gpu_model`
+
+Every node advertises:
+
+- node id, node type, endpoint, status, trust level, trust scope, heartbeat time
+- CPU/GPU/RAM/storage hints
+- supported workflow types
+- installed models and plugins
+- permission scopes
+- max parallel workload count
+- isolation profile
+- transport/auth metadata
+- current workload ids and count
 
 ## Worker Runtime
 
-Every runtime worker advertises a `WorkerCapabilitySet`:
+The Website compatibility layer still uses `WorkerCapabilitySet`. Core's equivalent node contract tracks the same intent:
 
 - installed SDKs and supported languages
 - build tools
@@ -23,30 +58,32 @@ Every runtime worker advertises a `WorkerCapabilitySet`:
 - max parallel jobs
 - remote-sync support
 
-The default `local-runtime` worker is created automatically from local machine capabilities. It is always local-first, trusted, and cannot be revoked through the API. LAN and remote workers must register with a deterministic signature over worker id, name, trust scope, and public key. Invalid signatures persist as untrusted workers and are not eligible for dispatch.
+The default Core `local` node is created automatically from local machine capabilities. It is always local-first, trusted, and cannot be revoked through the API. Remote nodes must register with `AEGIS_DISTRIBUTED_NODE_TOKEN`, `AEGIS_CORE_LOCAL_TOKEN`, or explicit user approval. Untrusted nodes remain visible for diagnostics but are not eligible for scheduling.
 
-## Execution Queue
+## Core Workloads
 
-Execution jobs are persisted as `ExecutionQueueItem` rows. Supported kinds are:
+Core distributed workloads are persisted as JSON under `.aegis`. Supported workload types are:
 
-- `task`
+- `workflow`
 - `validation`
-- `build`
 - `indexing`
+- `model_inference`
+- `plugin_tool`
 - `repair`
+- `build`
 - `benchmark`
-- `telemetry`
-- `sync`
 
-The queue supports priority ordering, dependency ordering, retries, cancellation, worker assignment, permission scope checks, sandbox profile selection, attempts, error summaries, and result summaries. Runnable jobs are selected only when dependencies have succeeded and attempts remain below `max_attempts`.
+Workloads track priority, retries, cancellation, node assignment, required capabilities, permission scopes, dry-run state, approval state, errors, warnings, scheduling reason, results, and operation logs.
 
-Local and sandbox workers execute synchronously through the backend process. LAN and remote workers are assigned only when the dispatch request explicitly sets `allow_remote=true`; assignment is audit logged and the job remains `assigned` for a future worker callback/heartbeat flow.
+Core schedules only to nodes that match trust, status, capacity, required capabilities, supported workflow type, required permission scopes, and remote opt-in rules. Remote nodes are assigned only when the workload explicitly sets `allow_remote=true`; assignment is audit logged and the workload remains `assigned` for a future external worker callback/transport. Local execution remains deterministic and conservative.
 
 ## Command And Sandbox Safety
 
-Command-backed jobs, including validation and build jobs, require `allow_commands=true` at dispatch time. The queue still delegates to the existing `CommandRunner`, allowlist, approval settings, and sandbox profiles. A blocked command becomes a `blocked` job instead of running silently.
+Core command-backed jobs, including validation and build jobs, require explicit approval and payload opt-in before process execution. Without approval, validation workloads can still run in dry-run mode to discover safe validation commands. Actual command execution delegates to Core's existing validation allowlist.
 
 Validation failures are attached to the task timeline. A focused repair job is queued as a follow-up event, but distributed repair jobs do not modify files directly; code edits still flow through the normal task runtime, approval gates, checkpoints, validation, and rollback behavior.
+
+Plugin tool workloads delegate only to Core's permission-checked plugin runtime. Arbitrary plugin code remains blocked until an external sandbox runner exists.
 
 ## Hybrid Model Routing
 
@@ -75,21 +112,44 @@ Remote workspace sync is currently a manifest/export layer, not a blind file cop
 
 The manifest stores included sections, a payload, an encrypted flag, and a deterministic hash over the canonical payload. The current `encryption_label` records the local manifest-hash mode so future encrypted transport can be layered without changing the API shape.
 
+Core's first distributed milestone focuses on node/workload authority. Blind workspace copying is still intentionally out of scope. Any future sync layer must preserve local checkpoints, audit logs, and user-approved workspace mounts.
+
 ## Observability
 
-`RuntimeObservabilitySnapshot` aggregates:
+Core runtime observability aggregates:
 
-- worker counts by status and trust state
-- queued/running/failed/succeeded job counts
-- throughput by job kind
-- model latency by worker
-- validation success rate
-- repair-loop counts
-- queue latency
+- node counts by status and trust state
+- queued/active/completed/failed/cancelled workload counts
+- workload counts by type
+- execution duration metrics
+- scheduling policy metadata
+- recent audit events
+- offline/recovery events
 
-All worker registration, heartbeat, revocation, queue creation, retry, cancel, dispatch, model route, and sync manifest operations write `WorkerAuditEvent` rows.
+All Core node registration, heartbeat, revocation, workload creation, retry, cancel, dispatch, recovery, and local execution operations write JSONL audit events.
 
 ## Endpoint Summary
+
+Core endpoints:
+
+- `GET /v1/distributed-runtime`
+- `GET /v1/distributed-runtime/nodes`
+- `POST /v1/distributed-runtime/nodes/register`
+- `POST /v1/distributed-runtime/nodes/{node_id}/heartbeat`
+- `POST /v1/distributed-runtime/nodes/{node_id}/revoke`
+- `GET /v1/distributed-runtime/workloads`
+- `POST /v1/distributed-runtime/workloads`
+- `GET /v1/distributed-runtime/workloads/{workload_id}`
+- `POST /v1/distributed-runtime/workloads/{workload_id}/dispatch`
+- `POST /v1/distributed-runtime/workloads/{workload_id}/retry`
+- `POST /v1/distributed-runtime/workloads/{workload_id}/cancel`
+- `POST /v1/distributed-runtime/dispatch`
+- `POST /v1/distributed-runtime/recover`
+- `GET /v1/distributed-runtime/observability`
+- `GET /v1/distributed-runtime/audit`
+- `GET /v1/distributed-runtime/deployment/bootstrap`
+
+Website compatibility endpoints:
 
 - `GET /api/distributed-runtime`
 - `GET /api/distributed-runtime/observability`
@@ -117,3 +177,23 @@ All worker registration, heartbeat, revocation, queue creation, retry, cancel, d
 - Distributed repair must not silently modify workspace files.
 - Queue and worker changes must be audit logged.
 - Existing task, validation, checkpoint, rollback, provider registry, and desktop API behavior remains the compatibility baseline.
+
+## Deployment Model
+
+Core exposes `GET /v1/distributed-runtime/deployment/bootstrap` to generate a node registration script. The checked-in PowerShell reference is `aegis-core/scripts/bootstrap-runtime-node.ps1`.
+
+Operators should:
+
+- run Core on localhost as the authority
+- set `AEGIS_DISTRIBUTED_NODE_TOKEN` on Core and trusted worker nodes
+- prefer HTTPS or local tunnel endpoints for remote nodes
+- keep workspace mounts read-only by default
+- approve high-risk scopes before validation, plugin, model, or write-capable work
+- rely on `/v1/distributed-runtime/recover` to requeue work after node disconnects
+
+## Remaining Limitations
+
+- Remote node transport is currently an assignment contract, not a full RPC worker protocol.
+- Container sandboxing is represented in node isolation metadata but not launched by Core yet.
+- Workspace sync remains manifest-oriented and should not copy arbitrary files.
+- Website `/api/distributed-runtime` is still a compatibility implementation and should delegate to Core in a follow-up.

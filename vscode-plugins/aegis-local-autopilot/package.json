@@ -1,11 +1,11 @@
 {
   "name": "aegis-local-autopilot",
-  "displayName": "Aegis Local Agent",
-  "description": "Local-first Ollama coding agent for safe workspace analysis, planning, diffs, validation, rollback, and project memory.",
-  "version": "0.1.1",
+  "displayName": "Auralith OS Local Agent",
+  "description": "Local-first Auralith OS client for safe workspace analysis, planning, diffs, validation, rollback, and project memory.",
+  "version": "0.1.8",
   "publisher": "aegis",
   "license": "UNLICENSED",
-  "icon": "media/aegis.png",
+  "icon": "media/autopilotlogo.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/MercyProductions/Aegis-AI.git"
@@ -62,7 +62,7 @@
       "activitybar": [
         {
           "id": "aegis-local-ai",
-          "title": "Aegis Local Agent",
+          "title": "Auralith OS",
           "icon": "media/aegis.svg"
         }
       ]
@@ -71,7 +71,7 @@
       "aegis-local-ai": [
         {
           "id": "aegisLocalAutopilot.panel",
-          "name": "Aegis Local Agent",
+          "name": "Auralith OS",
           "type": "webview"
         }
       ]
@@ -179,7 +179,7 @@
       }
     ],
     "configuration": {
-      "title": "Aegis Local Agent",
+      "title": "Auralith OS Local Agent",
       "properties": {
         "aegisLocalAutopilot.ollamaUrl": {
           "type": "string",
@@ -267,7 +267,14 @@
             "review-only"
           ],
           "default": "standard",
-          "description": "Safety mode. review-only prevents applying generated edits."
+          "description": "Safety mode. strict blocks additional risky paths (e.g. minified bundles, source maps). review-only prevents applying generated edits."
+        },
+        "aegisLocalAutopilot.maxProposalDiffTabs": {
+          "type": "number",
+          "default": 12,
+          "minimum": 1,
+          "maximum": 25,
+          "description": "Maximum diff editors to open when previewing a multi-file proposal."
         },
         "aegisLocalAutopilot.excludeGlob": {
           "type": "string",
@@ -300,9 +307,14 @@
     "compile": "node --check extension.js",
     "lint": "npm run compile && node scripts/lint-package.js",
     "lint:package": "node scripts/lint-package.js",
+    "test:unit": "node scripts/test-extension-helpers.js",
+    "test:smoke": "node scripts/run-extension-host-smoke.js",
     "package": "node scripts/package-release.js",
     "install-local": "npm run package && node scripts/install-local.js",
     "check": "npm run compile",
     "install:local": "npm run install-local"
+  },
+  "devDependencies": {
+    "@vscode/test-electron": "^2.5.2"
   }
 }

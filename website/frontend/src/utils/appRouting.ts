@@ -2,6 +2,7 @@ import type { AuthSessionResponse } from '../types';
 
 export type SidebarSection =
   | 'chat'
+  | 'onboarding'
   | 'projects'
   | 'intelligence'
   | 'workspace-intelligence'
@@ -19,6 +20,9 @@ type StorageLike = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
 export const AUTH_SESSION_STORAGE_KEY = 'aegis.auth.session.v1';
 
+const rawBasePath = (import.meta.env.BASE_URL ?? '/').replace(/\/+$/, '');
+export const APP_BASE_PATH = rawBasePath && rawBasePath !== '/' ? rawBasePath : '';
+
 const legacyProtectedRoutes: Record<string, string> = {
   '/chat': '/app/chat',
   '/workspace': '/app/workspace',
@@ -35,6 +39,7 @@ const legacyProtectedRoutes: Record<string, string> = {
 
 const protectedSectionRoutes: Record<SidebarSection, string> = {
   chat: '/app/chat',
+  onboarding: '/app/onboarding',
   projects: '/app/projects',
   intelligence: '/app/research',
   'workspace-intelligence': '/app/workspace',
@@ -52,6 +57,7 @@ const protectedSectionRoutes: Record<SidebarSection, string> = {
 const protectedRouteSections: Record<string, SidebarSection> = {
   '/app': 'chat',
   '/app/chat': 'chat',
+  '/app/onboarding': 'onboarding',
   '/app/workspace': 'workspace-intelligence',
   '/app/projects': 'projects',
   '/app/tasks': 'tasks',
@@ -70,8 +76,23 @@ const protectedRouteSections: Record<string, SidebarSection> = {
   '/app/autonomous': 'autonomous'
 };
 
+export function stripAppBase(path: string) {
+  const cleanPath = `/${(path || '/').split(/[?#]/)[0].replace(/^\/+/, '')}`;
+  if (!APP_BASE_PATH) return cleanPath.replace(/\/+$/, '') || '/';
+  if (cleanPath === APP_BASE_PATH) return '/';
+  if (cleanPath.startsWith(`${APP_BASE_PATH}/`)) return cleanPath.slice(APP_BASE_PATH.length).replace(/\/+$/, '') || '/';
+  return cleanPath.replace(/\/+$/, '') || '/';
+}
+
+export function withAppBase(path: string) {
+  const cleanPath = `/${(path || '/').replace(/^\/+/, '')}`.replace(/\/+$/, '') || '/';
+  if (!APP_BASE_PATH) return cleanPath;
+  if (cleanPath === '/') return `${APP_BASE_PATH}/`;
+  return `${APP_BASE_PATH}${cleanPath}`;
+}
+
 export function normalizeRoutePath(path: string) {
-  const cleanPath = (path || '/').split(/[?#]/)[0].replace(/\/+$/, '') || '/';
+  const cleanPath = stripAppBase(path);
   return legacyProtectedRoutes[cleanPath] ?? cleanPath;
 }
 

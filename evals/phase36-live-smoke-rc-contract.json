@@ -1,0 +1,99 @@
+{
+  "schema_version": "2026.05.21",
+  "name": "Phase 36 Live Smoke Closure And Release Candidate Scoping Contract",
+  "phase": 36,
+  "evidence_root": ".aegis/live-smoke-rc",
+  "current_required_status": "ready",
+  "release_candidate_status_values": ["attention", "ready"],
+  "slice": "Live smoke closure inventory, skipped-gate explanations, release package/update planner scoping, worktree grouping, and GitHub target confirmation before publish",
+  "required_live_gate_ids": [
+    "desktop-smoke",
+    "vscode-smoke",
+    "visual-studio-package",
+    "release-package-dry-run",
+    "update-plan-dry-run"
+  ],
+  "required_validation_gate_ids": [
+    "live-smoke-rc-contract"
+  ],
+  "required_rc_scope_markers": [
+    "release_candidate_status",
+    "live_gate_closure",
+    "intentional_release_artifact_decision",
+    "worktree_scope_required",
+    "github_target_pending",
+    "broad_alpha_blocked"
+  ],
+  "required_docs": [
+    "docs/LIVE_SMOKE_RC_SCOPING_EVIDENCE.md",
+    "docs/VALIDATION_MATRIX.md",
+    "docs/EVIDENCE_LEDGER.md",
+    "docs/EXTERNAL_ALPHA_RELEASE_NOTES.md",
+    "docs/EXTERNAL_ALPHA_RELEASE_REPORT.md",
+    "KNOWN_UNSTABLE_SURFACES.md",
+    "FULL_PROJECT_REMAINING_ROADMAP_2026-05-21.md",
+    "FULL_PROJECT_REVIEW_ROADMAP_2026-05-21.md",
+    "CHATBOT_PROJECT_REVIEW_ROADMAP_2026-05-21.md"
+  ],
+  "required_doc_markers": [
+    "Phase 36",
+    "live smoke",
+    "release candidate",
+    "desktop-smoke",
+    "vscode-smoke",
+    "visual-studio-package",
+    "release-package-dry-run",
+    "update-plan-dry-run",
+    "worktree scope",
+    "GitHub target"
+  ],
+  "required_evidence_sources": [
+    {
+      "id": "alpha_readiness_polish",
+      "root": ".aegis/alpha-readiness-polish",
+      "json": "alpha-readiness-polish.json",
+      "summary": "alpha-readiness-polish-summary.md",
+      "accepted_statuses": ["ready"]
+    },
+    {
+      "id": "distribution_update",
+      "root": ".aegis/distribution-update",
+      "json": "distribution-update.json",
+      "summary": "distribution-update-summary.md",
+      "accepted_statuses": ["ready"]
+    },
+    {
+      "id": "release_package_dry_run",
+      "root": ".aegis/release-package-dry-run",
+      "json": "release-package-dry-run.json",
+      "summary": "release-package-dry-run-summary.md",
+      "accepted_statuses": ["ready"]
+    },
+    {
+      "id": "final_release_manifest",
+      "root": ".aegis/final-release-manifest",
+      "json": "final-release-manifest.json",
+      "summary": "final-release-manifest-summary.md",
+      "accepted_statuses": ["ready"]
+    },
+    {
+      "id": "release_apply_rollback",
+      "root": ".aegis/release-apply-rollback",
+      "json": "release-apply-rollback.json",
+      "summary": "release-apply-rollback-summary.md",
+      "accepted_statuses": ["ready"]
+    }
+  ],
+  "required_contract_files": [
+    "evals/phase36-live-smoke-rc-contract.json",
+    "scripts/test-live-smoke-rc.ps1",
+    "docs/LIVE_SMOKE_RC_SCOPING_EVIDENCE.md",
+    "docs/VALIDATION_MATRIX.md",
+    "docs/EVIDENCE_LEDGER.md",
+    "scripts/validate-ecosystem.ps1"
+  ],
+  "evidence_outputs": [
+    "live-smoke-rc.json",
+    "live-smoke-rc-summary.md"
+  ]
+}

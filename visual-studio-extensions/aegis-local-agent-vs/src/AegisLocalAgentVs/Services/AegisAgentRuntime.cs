@@ -24,6 +24,7 @@ namespace Aegis.LocalAgent.VisualStudio.Services
         private readonly AegisCoreClient core;
         private AegisToolWindowControl control;
         private AgentSession session = new AgentSession();
+        private readonly CoreRuntimeState coreState = new CoreRuntimeState();
         private BuildResult lastFailedBuild;
 
         public static AegisAgentRuntime Current { get; private set; }
@@ -55,6 +56,7 @@ namespace Aegis.LocalAgent.VisualStudio.Services
             control = attachedControl;
             control?.SetAgentSession(session);
             control?.SetSettingsSummary(GetSettings());
+            control?.SetRuntimeState(coreState);
             _ = RefreshSolutionInfoAsync();
         }
 
@@ -122,20 +124,127 @@ namespace Aegis.LocalAgent.VisualStudio.Services
 
             try
             {
-                await core.HealthAsync(context.SolutionRoot);
-                result.Lines.Add("PASS - Aegis Core reachable.");
-                try
+                var coreHealth = await core.TryHealthAsync(context.SolutionRoot);
+                if (coreHealth.Success)
                 {
-                    await core.RegisterClientAsync(context);
-                    result.Lines.Add("PASS - Visual Studio client registered with Aegis Core.");
+                    result.Lines.Add("PASS - Aegis Core reachable.");
+                    MarkCoreSuccess("Health check connected to Core.");
+                    var sync = await core.SyncClientAsync(context, session.CoreWorkflowId);
+                    if (sync.Success)
+                    {
+                        result.Lines.Add("PASS - Visual Studio client synced with Aegis Core.");
+                    }
+                    else
+                    {
+                        result.Lines.Add($"WARN - Aegis Core reachable, but client sync used fallback registration path: {sync.Error}");
+                        try
+                        {
+                            await core.RegisterClientAsync(context);
+                            result.Lines.Add("PASS - Visual Studio client registered with legacy Core registry.");
+                        }
+                        catch (Exception ex)
+                        {
+                            result.Lines.Add($"WARN - Legacy Core client registration failed: {SafeDiagnostic(ex)}");
+                        }
+                    }
+
+                    var compatibility = await core.CheckCompatibilityAsync(context);
+                    if (compatibility.Success)
+                    {
+                        var status = compatibility.Data.Value<string>("status") ?? "unknown";
+                        var schema = compatibility.Data.Value<string>("required_schema_version") ?? string.Empty;
+                        coreState.ReleaseCompatibilityStatus = status;
+                        coreState.ReleaseSchemaVersion = schema;
+                        coreState.LastOperation = "Compatibility: " + status;
+                        result.Lines.Add($"PASS - Release compatibility checked. Status: {status}, schema: {schema}.");
+                    }
+                    else
+                    {
+                        coreState.ReleaseCompatibilityStatus = "Unavailable";
+                        result.Lines.Add($"WARN - Aegis Core release compatibility unavailable: {compatibility.Error}");
+                    }
+
+                    var registry = await core.ModelRegistryAsync(context);
+                    if (registry.Success)
+                    {
+                        var models = registry.Data["models"] as JArray ?? new JArray();
+                        var providers = registry.Data["provider_status"] as JArray ?? new JArray();
+                        var selected = registry.Data["selected_model"] as JObject ?? new JObject();
+                        var selectedModel = selected.Value<string>("model_id") ?? selected.Value<string>("display_name") ?? string.Empty;
+                        coreState.SelectedModel = selectedModel;
+                        coreState.RouteProfile = registry.Data.Value<string>("active_profile") ?? string.Empty;
+                        coreState.ProviderHealthSummary = $"{providers.Count} provider status item(s), {models.Count} model target(s)";
+                        result.Lines.Add($"PASS - Aegis Core model registry available. Providers: {providers.Count}, models: {models.Count}.");
+                        if (!string.IsNullOrWhiteSpace(selectedModel))
+                        {
+                            result.Lines.Add($"INFO - Core selected model: {selectedModel} via {coreState.RouteProfile}.");
+                        }
+
+                        var coreModelNames = models
+                            .OfType<JObject>()
+                            .Where(model => string.Equals(model.Value<string>("provider_id"), "ollama", StringComparison.OrdinalIgnoreCase))
+                            .Select(model => model.Value<string>("model_id") ?? model.Value<string>("display_name"))
+                            .Where(name => !string.IsNullOrWhiteSpace(name))
+                            .Distinct(StringComparer.OrdinalIgnoreCase)
+                            .ToArray();
+                        if (coreModelNames.Length > 0)
+                        {
+                            control?.SetModels(coreModelNames);
+                            control?.SetModelStatus($"Aegis Core registry online. {coreModelNames.Length} local model target(s).");
+                        }
+                    }
+                    else
+                    {
+                        result.Lines.Add($"WARN - Aegis Core model registry unavailable: {registry.Error}");
+                    }
+
+                    var route = await core.RouteModelAsync(context, "generate_feature", "best_coding", new[] { "code" });
+                    if (route.Success)
+                    {
+                        var explanation = route.Data["explanation"] as JObject ?? new JObject();
+                        coreState.ModelRouteExplanation = explanation.Value<string>("reason_selected") ?? string.Empty;
+                        var selectedProvider = explanation.Value<string>("selected_provider") ?? route.Data["selected"]?["provider_id"]?.ToString();
+                        var selectedRouteModel = explanation.Value<string>("selected_model") ?? route.Data["selected"]?["model"]?.ToString();
+                        result.Lines.Add($"PASS - Core model routing available. Selected: {selectedProvider}/{selectedRouteModel}.");
+                    }
+                    else
+                    {
+                        result.Lines.Add($"WARN - Aegis Core model routing unavailable: {route.Error}");
+                    }
+
+                    var quality = await core.QualityGatesAsync(context);
+                    if (quality.Success)
+                    {
+                        UpdateQualityGateState(quality);
+                        result.Lines.Add("PASS - Aegis Core quality gate dashboard available.");
+                    }
+                    else
+                    {
+                        result.Lines.Add($"WARN - Aegis Core quality gate dashboard unavailable: {quality.Error}");
+                    }
+
+                    var security = await core.SecurityStatusAsync(context);
+                    if (security.Success)
+                    {
+                        var privacy = security.Data["privacy"] as JObject ?? new JObject();
+                        var localApi = security.Data["local_api"] as JObject ?? new JObject();
+                        result.Lines.Add($"PASS - Core trust status available. Privacy: {privacy.Value<string>("mode") ?? "unknown"}, token enforced: {localApi.Value<bool?>("token_enforced") == true}.");
+                    }
+                    else
+                    {
+                        result.Lines.Add($"WARN - Aegis Core trust status unavailable: {security.Error}");
+                    }
+                    UpdateCoreStatusUi();
                 }
-                catch (Exception ex)
+                else
                 {
-                    result.Lines.Add($"WARN - Aegis Core reachable, but client registration was skipped: {SafeDiagnostic(ex)}");
+                    MarkCoreFailure(coreHealth.Error, fallbackActive: true);
+                    result.Lines.Add($"WARN - Aegis Core unavailable: {coreHealth.Error}");
                 }
             }
             catch (Exception ex)
             {
+                MarkCoreFailure(SafeDiagnostic(ex), fallbackActive: true);
                 result.Lines.Add($"WARN - Aegis Core unavailable: {SafeDiagnostic(ex)}");
             }
 
@@ -236,6 +345,34 @@ namespace Aegis.LocalAgent.VisualStudio.Services
             await ShowToolWindowAsync();
             SetStatus("Running Agent");
             var context = await PrepareContextAsync();
+            var coreRoadmap = await core.GenerateRoadmapAsync(context);
+            if (coreRoadmap.Success)
+            {
+                var markdown = coreRoadmap.Data.Value<string>("markdown")
+                    ?? coreRoadmap.Data.SelectToken("roadmap.markdown")?.Value<string>()
+                    ?? string.Empty;
+                if (!string.IsNullOrWhiteSpace(markdown))
+                {
+                    await memory.WriteRoadmapAsync(context, markdown);
+                    AppendChat("Aegis", markdown);
+                    MarkCoreSuccess("Roadmap generated by Aegis Core.");
+                    SetStatus("Roadmap updated");
+                    await RefreshSolutionInfoAsync(context);
+                    return;
+                }
+            }
+            else
+            {
+                MarkCoreFailure(coreRoadmap.Error, fallbackActive: coreRoadmap.CanFallback);
+                if (!coreRoadmap.CanFallback)
+                {
+                    AppendChat("Aegis", "Aegis Core rejected roadmap generation: " + coreRoadmap.Error);
+                    SetStatus("Core blocked roadmap");
+                    return;
+                }
+                AppendChat("Aegis", "Aegis Core roadmap generation is unavailable, so Visual Studio is using the local Ollama fallback.");
+            }
+
             var prompt = string.Join(Environment.NewLine, new[]
             {
                 "Generate a practical roadmap for this Visual Studio solution.",
@@ -246,6 +383,7 @@ namespace Aegis.LocalAgent.VisualStudio.Services
             var roadmap = await ollama.ChatWithFallbackAsync(prompt, false, GetSelectedModel());
             await memory.WriteRoadmapAsync(context, roadmap);
             AppendChat("Aegis", roadmap);
+            MarkCoreFallback("Roadmap used local Visual Studio/Ollama fallback.");
             SetStatus("Roadmap updated");
         }
 
@@ -262,6 +400,7 @@ namespace Aegis.LocalAgent.VisualStudio.Services
                 return;
             }
 
+            var workflow = await StartCoreWorkflowAsync(context, "continue_roadmap", "Continue from Visual Studio roadmap");
             var task = await ollama.ChatWithFallbackAsync(
                 "Pick one highest-value safe next task from this roadmap and current solution memory. Return one concise instruction only." +
                 Environment.NewLine + intelligence.BuildSmartContextText(context, "Continue from roadmap", ContextLimit(24000)) +
@@ -269,6 +408,7 @@ namespace Aegis.LocalAgent.VisualStudio.Services
                 false,
                 GetSelectedModel());
             StartSession(AgentMode.ContinueCurrentSolution, "Continue from roadmap: " + task, BuildValidationTarget.Solution);
+            AttachWorkflowToSession(workflow);
             await ProposeChangesAsync(context, "Continue from roadmap: " + task);
         }
 
@@ -280,6 +420,7 @@ namespace Aegis.LocalAgent.VisualStudio.Services
             var snapshot = await build.ReadBuildSnapshotAsync();
             control?.SetBuildStatus(snapshot.Summary);
             StartSession(AgentMode.ContinueCurrentSolution, "Continue work on this Visual Studio solution.", BuildValidationTarget.Solution);
+            AttachWorkflowToSession(await StartCoreWorkflowAsync(context, "generate_feature", session.Objective));
             await ProposeChangesAsync(context,
                 "Continue work on this Visual Studio solution. Pick one small, high-value, low-risk task based on solution structure, current errors, and project memory. Propose edits only after explaining impact." +
                 Environment.NewLine + snapshot.Summary);
@@ -405,6 +546,7 @@ namespace Aegis.LocalAgent.VisualStudio.Services
 
             control?.SetSelectedError(selected.ToString());
             StartSession(AgentMode.FixSelectedError, "Fix selected Visual Studio error.", BuildValidationTarget.SelectedProject, GetSelectedOrStartupProject(context));
+            AttachWorkflowToSession(await StartCoreWorkflowAsync(context, "repair_project", session.Objective));
             await ProposeChangesAsync(context,
                 "Fix this selected Visual Studio Error List item using the smallest safe change. Explain impacted files and require approval." +
                 Environment.NewLine + selected);
@@ -417,8 +559,9 @@ namespace Aegis.LocalAgent.VisualStudio.Services
             var context = await PrepareContextAsync();
             var project = GetSelectedOrStartupProject(context);
             StartSession(AgentMode.FixCurrentProject, "Fix errors in selected project.", BuildValidationTarget.SelectedProject, project);
+            AttachWorkflowToSession(await StartCoreWorkflowAsync(context, "repair_project", session.Objective));
             var result = await build.BuildProjectAsync(project);
-            await memory.AppendValidationAsync(context, result);
+            await RecordValidationAsync(context, result);
             control?.SetValidationOutput(result.Output);
             control?.SetBuildStatus(result.Output);
             if (result.Success)
@@ -461,8 +604,9 @@ namespace Aegis.LocalAgent.VisualStudio.Services
             SetStatus("Running Agent");
             var context = await PrepareContextAsync();
             StartSession(AgentMode.FixCurrentProject, "Fix Visual Studio build errors.", BuildValidationTarget.Solution);
+            AttachWorkflowToSession(await StartCoreWorkflowAsync(context, "repair_project", session.Objective));
             var result = await build.BuildSolutionAsync();
-            await memory.AppendValidationAsync(context, result);
+            await RecordValidationAsync(context, result);
             control?.SetValidationOutput(result.Output);
             control?.SetBuildStatus(result.Output);
             if (result.Success)
@@ -520,7 +664,82 @@ namespace Aegis.LocalAgent.VisualStudio.Services
         public async Task ApplyPendingProposalAsync()
         {
             var context = await PrepareContextAsync();
-            var messages = await safeEdit.ApplyPendingProposalAsync(context, memory);
+            var proposal = safeEdit.PendingProposal;
+            IReadOnlyList<string> messages = Array.Empty<string>();
+            if (proposal != null && !string.IsNullOrWhiteSpace(proposal.CoreProposalId))
+            {
+                var quality = await core.EvaluateQualityGatesAsync(context, proposal, approval: true);
+                if (quality.Success)
+                {
+                    UpdateQualityGateState(quality);
+                    if (quality.Envelope?.Value<bool?>("ok") == false || quality.Data.Value<bool?>("apply_allowed") == false)
+                    {
+                        var reason = QualityGateBlockReason(quality);
+                        MarkCoreFailure(reason, fallbackActive: false);
+                        messages = new[] { "Aegis Core quality gates blocked apply. Local fallback was not used.", reason };
+                        control?.SetValidationOutput(string.Join(Environment.NewLine, messages));
+                        SetStatus("Quality gate blocked apply");
+                        return;
+                    }
+
+                    MarkCoreSuccess("Quality gates passed before apply.");
+                }
+                else if (!quality.CanFallback)
+                {
+                    MarkCoreFailure(quality.Error, fallbackActive: false);
+                    messages = new[] { "Aegis Core rejected the quality gate check and local fallback was not used: " + quality.Error };
+                    control?.SetValidationOutput(string.Join(Environment.NewLine, messages));
+                    SetStatus("Quality gate failed");
+                    return;
+                }
+                else
+                {
+                    MarkCoreFallback("Quality gate preflight unavailable; continuing with existing Visual Studio fallback rules. " + quality.Error);
+                }
+
+                var coreApply = await core.ApplyProposalAsync(context, proposal, applyAll: true, approval: true);
+                var coreApplied = coreApply.Success && coreApply.Data.Value<bool?>("ok") == true;
+                if (coreApplied)
+                {
+                    UpdateQualityGateState(coreApply);
+                    proposal.CoreCheckpointId = coreApply.Data.Value<string>("checkpoint_id") ?? string.Empty;
+                    session.CoreCheckpointId = proposal.CoreCheckpointId;
+                    session.CoreJobId = coreApply.Data.Value<string>("job_id") ?? session.CoreJobId;
+                    coreState.LastCheckpointId = proposal.CoreCheckpointId;
+                    messages = BuildCoreApplyMessages(coreApply);
+                    safeEdit.ClearPendingProposal();
+                    MarkCoreSuccess("Applied approved proposal through Aegis Core.");
+                }
+                else if (coreApply.Success)
+                {
+                    var warnings = coreApply.Data["warnings"] as JArray ?? new JArray();
+                    var reason = warnings.Count == 0 ? QualityGateBlockReason(coreApply) : string.Join("; ", warnings.Select(item => item.ToString()));
+                    MarkCoreFailure(reason, fallbackActive: false);
+                    messages = new[] { "Aegis Core did not apply the proposal, and local fallback was not used: " + reason };
+                    control?.SetValidationOutput(string.Join(Environment.NewLine, messages));
+                    SetStatus("Core blocked apply");
+                    return;
+                }
+                else if (!coreApply.Success && !coreApply.CanFallback)
+                {
+                    MarkCoreFailure(coreApply.Error, fallbackActive: false);
+                    messages = new[] { "Aegis Core rejected the apply request and local fallback was not used: " + coreApply.Error };
+                    control?.SetValidationOutput(string.Join(Environment.NewLine, messages));
+                    SetStatus("Core blocked apply");
+                    return;
+                }
+                else
+                {
+                    MarkCoreFallback("Apply used local Visual Studio fallback. " + coreApply.Error);
+                    messages = await safeEdit.ApplyPendingProposalAsync(context, memory);
+                }
+            }
+            else
+            {
+                MarkCoreFallback("Apply used local Visual Studio fallback because no Core proposal ID was available.");
+                messages = await safeEdit.ApplyPendingProposalAsync(context, memory);
+            }
+
             control?.SetValidationOutput(string.Join(Environment.NewLine, messages));
             if (messages.Any(line => line.StartsWith("Applied", StringComparison.OrdinalIgnoreCase)))
             {
@@ -535,7 +754,7 @@ namespace Aegis.LocalAgent.VisualStudio.Services
                 }
 
                 var result = await ValidateSessionAsync(context);
-                await memory.AppendValidationAsync(context, result);
+                await RecordValidationAsync(context, result);
                 control?.SetValidationOutput(string.Join(Environment.NewLine, messages) + Environment.NewLine + Environment.NewLine + result.Output);
                 control?.SetBuildStatus(result.Output);
                 session.LastBuildResult = result;
@@ -553,7 +772,54 @@ namespace Aegis.LocalAgent.VisualStudio.Services
         public async Task RollbackLastChangeAsync()
         {
             var context = await PrepareContextAsync();
-            var messages = await safeEdit.RollbackLastChangeAsync(context);
+            IReadOnlyList<string> messages;
+            var checkpointId = !string.IsNullOrWhiteSpace(session.CoreCheckpointId)
+                ? session.CoreCheckpointId
+                : coreState.LastCheckpointId;
+            if (string.IsNullOrWhiteSpace(checkpointId))
+            {
+                var checkpoints = await core.ListCheckpointsAsync(context, limit: 1);
+                checkpointId = checkpoints.Success
+                    ? checkpoints.Data.SelectToken("checkpoints[0].id")?.Value<string>() ?? string.Empty
+                    : string.Empty;
+                if (!checkpoints.Success)
+                {
+                    MarkCoreFailure(checkpoints.Error, fallbackActive: checkpoints.CanFallback);
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(checkpointId))
+            {
+                var restore = await core.RestoreCheckpointAsync(context, checkpointId);
+                if (restore.Success && restore.Data.Value<bool?>("ok") == true)
+                {
+                    messages = BuildCoreRestoreMessages(restore);
+                    MarkCoreSuccess("Restored checkpoint through Aegis Core.");
+                }
+                else if (restore.Success)
+                {
+                    var warnings = restore.Data["warnings"] as JArray ?? new JArray();
+                    var reason = warnings.Count == 0 ? "Core returned ok=false." : string.Join("; ", warnings.Select(item => item.ToString()));
+                    messages = new[] { "Aegis Core did not restore the checkpoint, and local fallback was not used: " + reason };
+                    MarkCoreFailure(reason, fallbackActive: false);
+                }
+                else if (!restore.Success && !restore.CanFallback)
+                {
+                    messages = new[] { "Aegis Core rejected rollback and local fallback was not used: " + restore.Error };
+                    MarkCoreFailure(restore.Error, fallbackActive: false);
+                }
+                else
+                {
+                    MarkCoreFallback("Rollback used local Visual Studio fallback. " + restore.Error);
+                    messages = await safeEdit.RollbackLastChangeAsync(context);
+                }
+            }
+            else
+            {
+                MarkCoreFallback("Rollback used local Visual Studio fallback because no Core checkpoint was available.");
+                messages = await safeEdit.RollbackLastChangeAsync(context);
+            }
+
             control?.SetValidationOutput(string.Join(Environment.NewLine, messages));
         }
 
@@ -584,6 +850,7 @@ namespace Aegis.LocalAgent.VisualStudio.Services
             await ShowToolWindowAsync();
             var context = await PrepareContextAsync();
             StartSession(AgentMode.Idle, "Manual Build Solution", BuildValidationTarget.Solution);
+            AttachWorkflowToSession(await StartCoreWorkflowAsync(context, "build_project", session.Objective));
             var result = await build.BuildSolutionAsync();
             await RecordValidationAsync(context, result);
         }
@@ -594,6 +861,7 @@ namespace Aegis.LocalAgent.VisualStudio.Services
             var context = await PrepareContextAsync();
             var project = GetStartupProject(context) ?? GetSelectedOrStartupProject(context);
             StartSession(AgentMode.Idle, "Manual Build Startup Project", BuildValidationTarget.StartupProject, project);
+            AttachWorkflowToSession(await StartCoreWorkflowAsync(context, "build_project", session.Objective));
             var result = await build.BuildProjectAsync(project);
             await RecordValidationAsync(context, result);
         }
@@ -604,6 +872,7 @@ namespace Aegis.LocalAgent.VisualStudio.Services
             var context = await PrepareContextAsync();
             var project = GetSelectedOrStartupProject(context);
             StartSession(AgentMode.Idle, "Manual Build Selected Project", BuildValidationTarget.SelectedProject, project);
+            AttachWorkflowToSession(await StartCoreWorkflowAsync(context, "build_project", session.Objective));
             var result = await build.BuildProjectAsync(project);
             await RecordValidationAsync(context, result);
         }
@@ -612,6 +881,8 @@ namespace Aegis.LocalAgent.VisualStudio.Services
         {
             await ShowToolWindowAsync();
             var context = await PrepareContextAsync();
+            StartSession(AgentMode.Idle, "Manual Clean Solution", BuildValidationTarget.Solution);
+            AttachWorkflowToSession(await StartCoreWorkflowAsync(context, "build_project", session.Objective));
             var result = await build.CleanSolutionAsync();
             await RecordValidationAsync(context, result);
         }
@@ -620,6 +891,8 @@ namespace Aegis.LocalAgent.VisualStudio.Services
         {
             await ShowToolWindowAsync();
             var context = await PrepareContextAsync();
+            StartSession(AgentMode.Idle, "Manual Rebuild Solution", BuildValidationTarget.Solution);
+            AttachWorkflowToSession(await StartCoreWorkflowAsync(context, "build_project", session.Objective));
             var result = await build.RebuildSolutionAsync();
             await RecordValidationAsync(context, result);
         }
@@ -636,6 +909,19 @@ namespace Aegis.LocalAgent.VisualStudio.Services
             await memory.EnsureMemoryAsync(context);
             await intelligence.UpdateAsync(context, force: true);
             await memory.UpdateFromScanAsync(context);
+            var coreScan = await core.WorkspaceIntelligenceAsync(context, refresh: true);
+            if (coreScan.Success)
+            {
+                MarkCoreSuccess("Workspace intelligence refreshed through Aegis Core.");
+            }
+            else if (coreScan.CanFallback)
+            {
+                MarkCoreFallback("Solution scan used Visual Studio fallback. " + coreScan.Error);
+            }
+            else
+            {
+                MarkCoreFailure(coreScan.Error, fallbackActive: false);
+            }
             await RefreshSolutionInfoAsync(context);
             SetStatus(string.IsNullOrWhiteSpace(context.SolutionRoot) ? "No Solution" : "Ready");
             if (showWindow)
@@ -661,10 +947,43 @@ namespace Aegis.LocalAgent.VisualStudio.Services
         private async Task ProposeChangesAsync(SolutionContext context, string objective, bool isRepair = false)
         {
             SetStatus("Creating safe proposal...");
+            if (string.IsNullOrWhiteSpace(session.CoreWorkflowId))
+            {
+                AttachWorkflowToSession(await StartCoreWorkflowAsync(context, WorkflowTypeForMode(session.Mode), objective));
+            }
+
             var prompt = BuildProposalPrompt(context, objective, await memory.ReadMemoryContextAsync(context));
             var raw = await ollama.ChatWithFallbackAsync(prompt, true, GetSelectedModel());
             var proposal = ParseProposal(raw, objective);
-            var validation = safeEdit.SetPendingProposal(context, proposal);
+            proposal.CoreWorkflowId = session.CoreWorkflowId;
+            var validation = safeEdit.SetPendingProposal(context, proposal).ToList();
+            if (!validation.Any())
+            {
+                var coreProposal = await core.ProposeChangesAsync(context, proposal, session.CoreTaskId, isRepair, session.RepairAttemptCount);
+                if (coreProposal.Success)
+                {
+                    var record = coreProposal.Data["proposal"] as JObject;
+                    proposal.CoreProposalId = record?.Value<string>("id") ?? string.Empty;
+                    proposal.CoreProjectId = coreProposal.Data.Value<string>("project_id") ?? record?.Value<string>("project_id") ?? string.Empty;
+                    proposal.CoreJobId = coreProposal.Data.Value<string>("job_id") ?? record?.Value<string>("job_id") ?? string.Empty;
+                    proposal.CoreTaskId = coreProposal.Data.Value<string>("task_id") ?? record?.Value<string>("source_task_id") ?? session.CoreTaskId;
+                    session.CoreProposalId = proposal.CoreProposalId;
+                    session.CoreTaskId = proposal.CoreTaskId;
+                    session.CoreJobId = proposal.CoreJobId;
+                    coreState.PendingProposalId = proposal.CoreProposalId;
+                    MarkCoreSuccess("Proposal recorded in Aegis Core.");
+                }
+                else if (!coreProposal.CanFallback)
+                {
+                    validation.Add("Aegis Core rejected the proposal: " + coreProposal.Error);
+                    MarkCoreFailure(coreProposal.Error, fallbackActive: false);
+                }
+                else
+                {
+                    MarkCoreFallback("Proposal is local-only until Core is available. " + coreProposal.Error);
+                }
+            }
+
             UpdateSessionFromProposal(proposal, validation, isRepair);
             control?.SetProposal(proposal, validation, safeEdit.BuildPreviewText(context, proposal));
             await memory.AppendHistoryAsync(context, new
@@ -674,6 +993,9 @@ namespace Aegis.LocalAgent.VisualStudio.Services
                 objective,
                 mode = session.ModeLabel,
                 repairAttempt = session.RepairAttemptCount,
+                coreWorkflowId = proposal.CoreWorkflowId,
+                coreProposalId = proposal.CoreProposalId,
+                coreTaskId = proposal.CoreTaskId,
                 proposal.Summary,
                 files = proposal.FileEdits.Select(edit => edit.Path).ToList()
             });
@@ -727,10 +1049,44 @@ namespace Aegis.LocalAgent.VisualStudio.Services
 
         private async Task<BuildResult> ValidateSessionAsync(SolutionContext context)
         {
-            SetStatus("Validating with Visual Studio build...");
+            SetStatus("Validating with Aegis Core...");
             var target = session.ValidationTarget == BuildValidationTarget.Solution
                 ? ResolvePreferredValidationTarget()
                 : session.ValidationTarget;
+            if (target == BuildValidationTarget.Solution)
+            {
+                var coreValidation = await core.RunValidationAsync(context, dryRun: false, taskId: session.CoreTaskId, timeoutSeconds: 180);
+                if (coreValidation.Success)
+                {
+                    var coreResult = BuildResultFromCoreValidation(coreValidation);
+                    if (CoreValidationRanCommand(coreValidation))
+                    {
+                        MarkCoreSuccess("Validation ran through Aegis Core.");
+                        if (coreResult.Success)
+                        {
+                            return coreResult;
+                        }
+
+                        SetStatus("Collecting Visual Studio build details...");
+                        var detailResult = await build.BuildSolutionAsync();
+                        detailResult.Output = coreResult.Output + Environment.NewLine + Environment.NewLine + "Visual Studio diagnostic detail:" + Environment.NewLine + detailResult.Output;
+                        return detailResult;
+                    }
+                }
+                else if (!coreValidation.CanFallback)
+                {
+                    MarkCoreFailure(coreValidation.Error, fallbackActive: false);
+                    return new BuildResult
+                    {
+                        Success = false,
+                        Output = "Aegis Core rejected validation and local fallback was not used: " + coreValidation.Error
+                    };
+                }
+
+                MarkCoreFallback("Validation used Visual Studio fallback. " + coreValidation.Error);
+            }
+
+            SetStatus("Validating with Visual Studio build...");
             switch (target)
             {
                 case BuildValidationTarget.SelectedProject:
@@ -750,6 +1106,7 @@ namespace Aegis.LocalAgent.VisualStudio.Services
             session.LastBuildResult = result;
             session.ApprovalStatus = result.Success ? "Validation passed." : "Validation failed.";
             await memory.AppendValidationAsync(context, result);
+            await RecordVisualStudioValidationWithCoreAsync(context, result);
             control?.SetValidationOutput(result.Output);
             control?.SetBuildStatus(result.Output);
             control?.SetAgentSession(session);
@@ -788,6 +1145,7 @@ namespace Aegis.LocalAgent.VisualStudio.Services
             await memory.EnsureMemoryAsync(context);
             await intelligence.UpdateAsync(context);
             await memory.UpdateFromScanAsync(context);
+            await SyncCoreClientAsync(context);
             await RefreshSolutionInfoAsync(context);
             await RefreshNativeStateAsync();
             return context;
@@ -811,6 +1169,365 @@ namespace Aegis.LocalAgent.VisualStudio.Services
             control?.SetSelectedError(selected?.ToString() ?? "No selected Error List item detected.");
             var snapshot = await build.ReadBuildSnapshotAsync();
             control?.SetBuildStatus(snapshot.Summary);
+        }
+
+        private async Task SyncCoreClientAsync(SolutionContext context)
+        {
+            if (context == null || string.IsNullOrWhiteSpace(context.SolutionRoot))
+            {
+                return;
+            }
+
+            var result = await core.SyncClientAsync(
+                context,
+                session.CoreWorkflowId,
+                status: "active",
+                metadata: new Dictionary<string, object>
+                {
+                    ["solution"] = context.SolutionName,
+                    ["startup_project"] = context.StartupProject,
+                    ["selected_project"] = context.SelectedProjectName,
+                    ["mode"] = session.ModeLabel,
+                    ["validation_target"] = session.ValidationTarget.ToString()
+                });
+            if (result.Success)
+            {
+                MarkCoreSuccess("Visual Studio client synced with Core.");
+            }
+            else if (result.CanFallback)
+            {
+                MarkCoreFailure(result.Error, fallbackActive: true);
+            }
+            else
+            {
+                MarkCoreFailure(result.Error, fallbackActive: false);
+            }
+        }
+
+        private async Task<CoreCallResult> StartCoreWorkflowAsync(SolutionContext context, string workflowType, string objective)
+        {
+            var result = await core.CreateWorkflowAsync(
+                context,
+                workflowType,
+                objective,
+                ContextFilesForCore(context),
+                new Dictionary<string, object>
+                {
+                    ["visual_studio_mode"] = session.ModeLabel,
+                    ["validation_target"] = session.ValidationTarget.ToString(),
+                    ["target_project"] = session.TargetProjectName,
+                    ["startup_project"] = context?.StartupProject ?? string.Empty
+                });
+            if (result.Success)
+            {
+                MarkCoreSuccess("Created Core workflow for " + workflowType + ".");
+            }
+            else if (result.CanFallback)
+            {
+                MarkCoreFallback("Workflow orchestration is local until Core is available. " + result.Error);
+            }
+            else
+            {
+                MarkCoreFailure(result.Error, fallbackActive: false);
+            }
+
+            return result;
+        }
+
+        private void AttachWorkflowToSession(CoreCallResult result)
+        {
+            if (result == null || !result.Success)
+            {
+                return;
+            }
+
+            var workflow = result.Data["workflow"] as JObject ?? result.Data;
+            var workflowId = workflow.Value<string>("id") ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(workflowId))
+            {
+                return;
+            }
+
+            session.CoreWorkflowId = workflowId;
+            coreState.ActiveWorkflowId = workflowId;
+            coreState.ActiveWorkflowStatus = workflow.Value<string>("status") ?? string.Empty;
+            var firstTask = workflow["tasks"]?.FirstOrDefault() as JObject;
+            session.CoreTaskId = firstTask?.Value<string>("id") ?? session.CoreTaskId;
+            control?.SetAgentSession(session);
+            UpdateCoreStatusUi();
+        }
+
+        private static string WorkflowTypeForMode(AgentMode mode)
+        {
+            switch (mode)
+            {
+                case AgentMode.FixSelectedError:
+                case AgentMode.FixCurrentProject:
+                case AgentMode.RepairValidation:
+                    return "repair_project";
+                case AgentMode.ContinueCurrentSolution:
+                case AgentMode.ImplementFeature:
+                case AgentMode.RefactorSelectedCode:
+                case AgentMode.GenerateTests:
+                    return "generate_feature";
+                case AgentMode.ExplainBuildFailure:
+                    return "validate_project";
+                case AgentMode.Idle:
+                default:
+                    return "chat_request";
+            }
+        }
+
+        private static IEnumerable<string> ContextFilesForCore(SolutionContext context)
+        {
+            if (context == null || string.IsNullOrWhiteSpace(context.SolutionRoot))
+            {
+                return Enumerable.Empty<string>();
+            }
+
+            var files = new List<string>();
+            if (!string.IsNullOrWhiteSpace(context.ActiveDocumentPath))
+            {
+                files.Add(SolutionScanner.MakeRelative(context.SolutionRoot, context.ActiveDocumentPath));
+            }
+            if (!string.IsNullOrWhiteSpace(context.SelectedExplorerPath))
+            {
+                files.Add(SolutionScanner.MakeRelative(context.SolutionRoot, context.SelectedExplorerPath));
+            }
+            files.AddRange(context.ImportantFiles.Take(8));
+            return files
+                .Where(file => !string.IsNullOrWhiteSpace(file) && !file.StartsWith("..", StringComparison.Ordinal))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(20);
+        }
+
+        private async Task RecordVisualStudioValidationWithCoreAsync(SolutionContext context, BuildResult result)
+        {
+            var metadata = new JObject
+            {
+                ["source"] = "visual_studio",
+                ["ok"] = result?.Success ?? false,
+                ["errors"] = result?.Errors?.Count ?? 0,
+                ["warnings"] = result?.Warnings?.Count ?? 0,
+                ["failed_project"] = result?.FailedProjectName ?? string.Empty,
+                ["mode"] = session.ModeLabel,
+                ["validation_target"] = session.ValidationTarget.ToString(),
+                ["summary"] = SolutionScanner.Truncate(result?.Output ?? string.Empty, 3000)
+            };
+
+            var validation = await core.RunValidationAsync(context, dryRun: true, taskId: session.CoreTaskId, repairAttempt: metadata, timeoutSeconds: 30);
+            if (validation.Success)
+            {
+                session.CoreJobId = validation.Data.Value<string>("job_id") ?? session.CoreJobId;
+                coreState.LatestValidationSummary = result.Success ? "Visual Studio validation passed" : "Visual Studio validation failed";
+                MarkCoreSuccess("Visual Studio validation result recorded in Core.");
+            }
+            else if (validation.CanFallback)
+            {
+                MarkCoreFallback("Visual Studio validation was stored locally only. " + validation.Error);
+            }
+            else
+            {
+                MarkCoreFailure(validation.Error, fallbackActive: false);
+            }
+
+            if (!string.IsNullOrWhiteSpace(session.CoreWorkflowId))
+            {
+                await core.RecordWorkflowLogAsync(
+                    context,
+                    session.CoreWorkflowId,
+                    result.Success ? "Visual Studio validation passed" : "Visual Studio validation failed",
+                    metadata);
+            }
+        }
+
+        private void UpdateQualityGateState(CoreCallResult result)
+        {
+            var data = result?.Data ?? new JObject();
+            var evaluation = data["quality_gate"] as JObject
+                ?? data["current_evaluation"] as JObject
+                ?? (data["apply_allowed"] != null ? data : null);
+            if (evaluation == null || evaluation.Count == 0)
+            {
+                return;
+            }
+
+            var scorecard = evaluation["scorecard"] as JObject ?? new JObject();
+            var blockers = evaluation["blockers"] as JArray ?? new JArray();
+            coreState.QualityGateStatus = evaluation.Value<bool?>("apply_allowed") == false ? "Blocked" : "Clear";
+            coreState.QualityGateSummary = evaluation.Value<string>("summary") ?? string.Empty;
+            coreState.QualityConfidenceScore = scorecard.Value<double?>("confidence_score") ?? 0;
+            coreState.QualityValidationScore = scorecard.Value<double?>("validation_score") ?? 0;
+            coreState.QualityRiskScore = scorecard.Value<double?>("risk_score") ?? 0;
+            coreState.QualityBlockers.Clear();
+            foreach (var blocker in blockers.Take(8))
+            {
+                var text = blocker.ToString();
+                if (!string.IsNullOrWhiteSpace(text))
+                {
+                    coreState.QualityBlockers.Add(DiagnosticRedactor.RedactAndTruncate(text));
+                }
+            }
+
+            UpdateCoreStatusUi();
+        }
+
+        private static string QualityGateBlockReason(CoreCallResult result)
+        {
+            var data = result?.Data ?? new JObject();
+            var evaluation = data["quality_gate"] as JObject
+                ?? data["current_evaluation"] as JObject
+                ?? (data["apply_allowed"] != null ? data : new JObject());
+            var blockers = evaluation["blockers"] as JArray ?? new JArray();
+            if (blockers.Count > 0)
+            {
+                return DiagnosticRedactor.RedactAndTruncate(string.Join("; ", blockers.Select(item => item.ToString()).Take(5)));
+            }
+
+            var warnings = data["warnings"] as JArray ?? new JArray();
+            if (warnings.Count > 0)
+            {
+                return DiagnosticRedactor.RedactAndTruncate(string.Join("; ", warnings.Select(item => item.ToString()).Take(5)));
+            }
+
+            return DiagnosticRedactor.RedactAndTruncate(evaluation.Value<string>("summary") ?? "Core quality gate did not allow apply.");
+        }
+
+        private static IReadOnlyList<string> BuildCoreApplyMessages(CoreCallResult result)
+        {
+            var applied = result.Data["applied"] as JArray ?? new JArray();
+            var warnings = result.Data["warnings"] as JArray ?? new JArray();
+            var lines = new List<string>
+            {
+                $"Applied approved Aegis proposal through Core. Files: {applied.Count}",
+                "Core checkpoint: " + (result.Data.Value<string>("checkpoint_id") ?? "(none)"),
+                "Core job: " + (result.Data.Value<string>("job_id") ?? "(none)")
+            };
+            lines.AddRange(applied.Select(item => "- " + item));
+            if (warnings.Count > 0)
+            {
+                lines.Add("Warnings:");
+                lines.AddRange(warnings.Select(item => "- " + item));
+            }
+
+            return lines;
+        }
+
+        private static IReadOnlyList<string> BuildCoreRestoreMessages(CoreCallResult result)
+        {
+            var restored = result.Data["restored"] as JArray ?? new JArray();
+            var warnings = result.Data["warnings"] as JArray ?? new JArray();
+            var lines = new List<string>
+            {
+                $"Rolled back {restored.Count} file(s) through Core checkpoint {result.Data.Value<string>("checkpoint_id")}.",
+                "Pre-restore checkpoint: " + (result.Data.Value<string>("pre_restore_checkpoint_id") ?? "(none)"),
+                "Core job: " + (result.Data.Value<string>("job_id") ?? "(none)")
+            };
+            lines.AddRange(restored.Select(item => "- " + item));
+            if (warnings.Count > 0)
+            {
+                lines.Add("Warnings:");
+                lines.AddRange(warnings.Select(item => "- " + item));
+            }
+
+            return lines;
+        }
+
+        private static BuildResult BuildResultFromCoreValidation(CoreCallResult result)
+        {
+            var validation = result.Data["validation"] as JObject ?? new JObject();
+            var ok = validation.Value<bool?>("ok") == true;
+            var stdout = validation.Value<string>("stdout") ?? string.Empty;
+            var stderr = validation.Value<string>("stderr") ?? string.Empty;
+            var command = validation["command"] is JArray commandArray
+                ? string.Join(" ", commandArray.Select(item => item.ToString()))
+                : validation.Value<string>("command") ?? string.Empty;
+            var output = string.Join(Environment.NewLine, new[]
+            {
+                "Aegis Core validation: " + (ok ? "passed" : "failed"),
+                "Command: " + (string.IsNullOrWhiteSpace(command) ? "(none detected)" : command),
+                "Return code: " + (validation["returncode"]?.ToString() ?? "(none)"),
+                string.Empty,
+                "stdout:",
+                stdout,
+                string.Empty,
+                "stderr:",
+                stderr
+            });
+            var build = new BuildResult
+            {
+                Success = ok,
+                Output = output,
+                BuildOutput = stdout + Environment.NewLine + stderr
+            };
+            if (!ok)
+            {
+                build.Errors.Add(string.IsNullOrWhiteSpace(stderr) ? "Aegis Core validation failed." : stderr);
+            }
+            return build;
+        }
+
+        private static bool CoreValidationRanCommand(CoreCallResult result)
+        {
+            var validation = result.Data["validation"] as JObject;
+            if (validation == null)
+            {
+                return false;
+            }
+
+            return validation["command"] != null
+                && validation["command"].Type != JTokenType.Null
+                && validation.Value<bool?>("dry_run") != true
+                && validation.Value<bool?>("blocked") != true;
+        }
+
+        private void MarkCoreSuccess(string operation)
+        {
+            coreState.CoreConnected = true;
+            coreState.FallbackActive = false;
+            coreState.CoreStatus = "Connected";
+            coreState.LastCoreError = string.Empty;
+            AddCoreOperation(operation);
+        }
+
+        private void MarkCoreFailure(string error, bool fallbackActive)
+        {
+            coreState.CoreConnected = false;
+            coreState.FallbackActive = fallbackActive;
+            coreState.CoreStatus = fallbackActive ? "Disconnected - fallback active" : "Error - fallback blocked";
+            coreState.LastCoreError = DiagnosticRedactor.RedactAndTruncate(error);
+            AddCoreOperation(coreState.CoreStatus + ": " + coreState.LastCoreError);
+        }
+
+        private void MarkCoreFallback(string operation)
+        {
+            coreState.FallbackActive = true;
+            coreState.LastCoreError = DiagnosticRedactor.RedactAndTruncate(operation);
+            if (!coreState.CoreConnected)
+            {
+                coreState.CoreStatus = "Disconnected - fallback active";
+            }
+            AddCoreOperation(operation);
+        }
+
+        private void AddCoreOperation(string operation)
+        {
+            coreState.LastOperation = operation ?? string.Empty;
+            coreState.LastUpdatedUtc = DateTime.UtcNow;
+            if (!string.IsNullOrWhiteSpace(operation))
+            {
+                coreState.RecentOperations.Insert(0, $"{DateTime.Now:T} {operation}");
+                if (coreState.RecentOperations.Count > 8)
+                {
+                    coreState.RecentOperations.RemoveRange(8, coreState.RecentOperations.Count - 8);
+                }
+            }
+            UpdateCoreStatusUi();
+        }
+
+        private void UpdateCoreStatusUi()
+        {
+            control?.SetRuntimeState(coreState);
         }
 
         private string BuildProposalPrompt(SolutionContext context, string objective, string memoryContext)

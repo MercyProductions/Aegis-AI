@@ -82,6 +82,70 @@ namespace Aegis.LocalAgent.VisualStudio.ToolWindows
             });
         }
 
+        internal void SetRuntimeState(CoreRuntimeState state)
+        {
+            OnUi(() =>
+            {
+                if (state == null)
+                {
+                    RuntimeStatusBox.Text = "Runtime status unavailable.";
+                    return;
+                }
+
+                var lines = new List<string>
+                {
+                    "Core: " + state.CoreStatus,
+                    "Fallback Mode: " + (state.FallbackActive ? "Active" : "Inactive"),
+                    "Registered Client: " + state.RegisteredClientId,
+                    "Release Compatibility: " + (string.IsNullOrWhiteSpace(state.ReleaseCompatibilityStatus) ? "(not checked)" : state.ReleaseCompatibilityStatus),
+                    "Release Schema: " + (string.IsNullOrWhiteSpace(state.ReleaseSchemaVersion) ? "(unknown)" : state.ReleaseSchemaVersion),
+                    "Active Workflow: " + (string.IsNullOrWhiteSpace(state.ActiveWorkflowId) ? "(none)" : state.ActiveWorkflowId),
+                    "Workflow Status: " + (string.IsNullOrWhiteSpace(state.ActiveWorkflowStatus) ? "(unknown)" : state.ActiveWorkflowStatus),
+                    "Pending Proposal: " + (string.IsNullOrWhiteSpace(state.PendingProposalId) ? "(none)" : state.PendingProposalId),
+                    "Last Checkpoint: " + (string.IsNullOrWhiteSpace(state.LastCheckpointId) ? "(none)" : state.LastCheckpointId),
+                    "Latest Validation: " + (string.IsNullOrWhiteSpace(state.LatestValidationSummary) ? "(none)" : state.LatestValidationSummary),
+                    "Quality Gate: " + (string.IsNullOrWhiteSpace(state.QualityGateStatus) ? "(not checked)" : state.QualityGateStatus),
+                    "Quality Scores: confidence " + Percent(state.QualityConfidenceScore) + ", validation " + Percent(state.QualityValidationScore) + ", risk " + Percent(state.QualityRiskScore),
+                    "Selected Model: " + (string.IsNullOrWhiteSpace(state.SelectedModel) ? "(unknown)" : state.SelectedModel),
+                    "Route Profile: " + (string.IsNullOrWhiteSpace(state.RouteProfile) ? "(unknown)" : state.RouteProfile),
+                    "Provider Health: " + (string.IsNullOrWhiteSpace(state.ProviderHealthSummary) ? "(unknown)" : state.ProviderHealthSummary),
+                    "Route Reason: " + (string.IsNullOrWhiteSpace(state.ModelRouteExplanation) ? "(unknown)" : state.ModelRouteExplanation),
+                    "Last Operation: " + state.LastOperation,
+                    "Last Updated UTC: " + state.LastUpdatedUtc.ToString("o")
+                };
+
+                if (!string.IsNullOrWhiteSpace(state.LastCoreError))
+                {
+                    lines.Add("Last Core Error: " + state.LastCoreError);
+                }
+
+                if (!string.IsNullOrWhiteSpace(state.QualityGateSummary))
+                {
+                    lines.Add("Quality Summary: " + state.QualityGateSummary);
+                }
+
+                if (state.QualityBlockers.Count > 0)
+                {
+                    lines.Add("Quality Blockers:");
+                    lines.AddRange(state.QualityBlockers.Select(item => "- " + item));
+                }
+
+                if (state.RecentOperations.Count > 0)
+                {
+                    lines.Add("");
+                    lines.Add("Recent Operations:");
+                    lines.AddRange(state.RecentOperations.Select(item => "- " + item));
+                }
+
+                RuntimeStatusBox.Text = string.Join(Environment.NewLine, lines);
+            });
+        }
+
+        private static string Percent(double value)
+        {
+            return value < 0 ? "(unknown)" : Math.Round(value * 100).ToString("0") + "%";
+        }
+
         internal void SetSolutionInfo(SolutionContext context)
         {
             OnUi(() =>
@@ -161,7 +225,7 @@ namespace Aegis.LocalAgent.VisualStudio.ToolWindows
                 }
 
                 CurrentModeText.Text = $"Mode: {session.ModeLabel}  Target: {session.ValidationTarget}  Project: {session.TargetProjectName}";
-                ApprovalStatusText.Text = $"Approval: {session.ApprovalStatus}";
+                ApprovalStatusText.Text = $"Approval: {session.ApprovalStatus}  Core Workflow: {EmptyLabel(session.CoreWorkflowId)}  Proposal: {EmptyLabel(session.CoreProposalId)}";
                 RepairAttemptText.Text = $"Repair Attempts: {session.RepairLabel}";
                 PlanBox.Text = session.CurrentPlan ?? string.Empty;
                 AffectedFilesBox.Text = session.AffectedFiles.Count == 0
@@ -247,6 +311,11 @@ namespace Aegis.LocalAgent.VisualStudio.ToolWindows
                         proposal.Summary,
                         proposal.Risk,
                         proposal.Rationale,
+                        proposal.CoreWorkflowId,
+                        proposal.CoreProposalId,
+                        proposal.CoreTaskId,
+                        proposal.CoreJobId,
+                        proposal.CoreProjectId,
                         proposal.Notes,
                         Safety = safetyMessages,
                         Files = proposal.FileEdits.Select(edit => new { edit.Path, edit.Reason, ContentLength = edit.Content?.Length ?? 0 }),
@@ -255,6 +324,11 @@ namespace Aegis.LocalAgent.VisualStudio.ToolWindows
                     }, Formatting.Indented);
                 DiffBox.Text = diffPreview ?? string.Empty;
             });
+        }
+
+        private static string EmptyLabel(string value)
+        {
+            return string.IsNullOrWhiteSpace(value) ? "(none)" : value;
         }
 
         private void OnUi(Action action)

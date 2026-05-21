@@ -7,6 +7,36 @@ const root = path.resolve(__dirname, '..');
 const manifestPath = path.join(root, 'package.json');
 const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
 
+// Phase-1 modularization: load modules for behavioral parity testing
+require.extensions['.ts'] = require.extensions['.ts'] || require.extensions['.js'];
+const errorsModule = require(path.join(root, 'src/utils/errors.ts'));
+const pathSafeModule = require(path.join(root, 'src/utils/pathSafe.ts'));
+const fsSafeModule = require(path.join(root, 'src/utils/fsSafe.ts'));
+const proposalSafetyModule = require(path.join(root, 'src/proposal/proposalSafety.ts'));
+const validationDetectorModule = require(path.join(root, 'src/validation/validationDetector.ts'));
+const workspaceResolverModule = require(path.join(root, 'src/workspace/workspaceResolver.ts'));
+const projectScannerModule = require(path.join(root, 'src/workspace/projectScanner.ts'));
+const proposalParserModule = require(path.join(root, 'src/proposal/proposalParser.ts'));
+const settingsModule = require(path.join(root, 'src/settings/settings.ts'));
+const agentModeModule = require(path.join(root, 'src/agent/agentMode.ts'));
+const contextDiscoveryModule = require(path.join(root, 'src/workspace/contextDiscovery.ts'));
+const coreEnvelopeModule = require(path.join(root, 'src/core/coreEnvelope.ts'));
+
+const sharedModuleContext = {
+  _errorsModule: errorsModule,
+  _pathSafeModule: pathSafeModule,
+  _fsSafeModule: fsSafeModule,
+  _proposalSafetyModule: proposalSafetyModule,
+  _validationDetectorModule: validationDetectorModule,
+  _workspaceResolverModule: workspaceResolverModule,
+  _projectScannerModule: projectScannerModule,
+  _proposalParserModule: proposalParserModule,
+  _settingsModule: settingsModule,
+  _agentModeModule: agentModeModule,
+  _contextDiscoveryModule: contextDiscoveryModule,
+  coreEnvelopeModule
+};
+
 const requiredTopLevel = [
   'name',
   'displayName',
@@ -89,9 +119,58 @@ if (!manifest.contributes.viewsContainers || !manifest.contributes.views || !man
   fail('sidebar/webview/settings contributions are incomplete.');
 }
 
-for (const file of ['extension.js', 'README.md', 'media/aegis.svg', '.vscodeignore']) {
+for (const file of ['extension.js', 'README.md', 'media/aegis.svg', 'media/autopilotlogo.png', '.vscodeignore']) {
   if (!fs.existsSync(path.join(root, file))) {
     fail(`required file missing: ${file}`);
+  }
+}
+
+if (manifest.icon !== 'media/autopilotlogo.png') {
+  fail('package icon must use media/autopilotlogo.png.');
+}
+
+for (const file of [
+  'src/extension.ts',
+  'src/agent/agentMode.ts',
+  'src/agent/autopilotLoop.ts',
+  'src/agent/taskRunner.ts',
+  'src/agent/repairLoop.ts',
+  'src/proposal/proposalTypes.ts',
+  'src/proposal/proposalParser.ts',
+  'src/proposal/proposalPreview.ts',
+  'src/proposal/proposalApply.ts',
+  'src/proposal/proposalSafety.ts',
+  'src/proposal/rollback.ts',
+  'src/workspace/workspaceResolver.ts',
+  'src/workspace/projectScanner.ts',
+  'src/workspace/projectSnapshot.ts',
+  'src/workspace/projectSignals.ts',
+  'src/workspace/destinationReasoning.ts',
+  'src/validation/validationDetector.ts',
+  'src/validation/validationRunner.ts',
+  'src/validation/validationTypes.ts',
+  'src/core/aegisCoreClient.ts',
+  'src/core/coreEnvelope.ts',
+  'src/core/taskSync.ts',
+  'src/models/ollamaClient.ts',
+  'src/models/modelRouter.ts',
+  'src/memory/aegisMemory.ts',
+  'src/memory/backups.ts',
+  'src/memory/logs.ts',
+  'src/memory/indexes.ts',
+  'src/memory/recovery.ts',
+  'src/ui/LocalAutopilotViewProvider.ts',
+  'src/ui/renderPanelHtml.ts',
+  'src/ui/webviewMessages.ts',
+  'src/ui/webviewState.ts',
+  'src/settings/settings.ts',
+  'src/utils/fsSafe.ts',
+  'src/utils/pathSafe.ts',
+  'src/utils/vscodeHelpers.ts',
+  'src/utils/errors.ts'
+]) {
+  if (!fs.existsSync(path.join(root, file))) {
+    fail(`phase-1 source module missing: ${file}`);
   }
 }
 
@@ -194,6 +273,13 @@ const buildFileClassifier = loadExtensionFunctions(
   { path }
 );
 assertBuildFileDetection(buildFileClassifier);
+const workspaceTargetBuilder = loadExtensionFunctions(
+  extensionText,
+  ['isPathInside', 'makeWorkspaceTarget'],
+  'makeWorkspaceTarget',
+  { path }
+);
+assertWorkspaceTargetFocus(workspaceTargetBuilder);
 assertProjectRiskPattern(extensionText);
 assertPythonLockfilePatterns(extensionText);
 assertGeneratedFolderSafety(extensionText);
@@ -202,6 +288,37 @@ assertSecretFileSafety(extensionText);
 const blockedProposalFormatter = loadExtensionFunction(extensionText, 'formatBlockedProposalEditSummary');
 assertBlockedProposalEditSummary(blockedProposalFormatter);
 assertBlockedProposalVisibleMessages(extensionText);
+assertDestinationReasoningPanel(extensionText);
+const proposalCodeBlockHelpers = loadExtensionFunctions(
+  extensionText,
+  [
+    'normalizeLineEndings',
+    'isBlockedRelativePath',
+    'looksLikeWorkspaceChangeRequest',
+    'proposalObjectFromInstructionalCodeBlocks',
+    'shouldInferFileEditsFromCodeBlocks',
+    'extractFencedCodeBlocks',
+    'normalizeFenceLanguage',
+    'inferCodeBlockPath',
+    'extractFilePathHint',
+    'collectFilePathCandidates',
+    'normalizePotentialGeneratedPath',
+    'pathLooksLikeFile',
+    'isShellLanguage',
+    'filePathFromLanguageAndContent',
+    'firstUnusedPath',
+    'extractCommandRecommendationsFromCodeBlocks',
+    'isReasonableSuggestedCommand'
+  ],
+  '({ looksLikeWorkspaceChangeRequest, proposalObjectFromInstructionalCodeBlocks })',
+  {
+    path,
+    BLOCKED_PATH_SEGMENTS: new Set(['.git', '.aegis', 'node_modules', 'dist', 'build', 'vendor']),
+    SECRET_FILE_PATTERNS: [/^\.env(?:\.|$)/i, /(?:secret|token|password|credential|api[_-]?key)/i]
+  }
+);
+assertWorkspaceChangeRouting(proposalCodeBlockHelpers.looksLikeWorkspaceChangeRequest);
+assertInstructionalCodeBlockProposal(proposalCodeBlockHelpers.proposalObjectFromInstructionalCodeBlocks);
 const sourceIndexing = loadExtensionFunctions(
   extensionText,
   [
@@ -246,11 +363,17 @@ for (const guard of unsafeErrorMessagePatterns) {
     fail(guard.message);
   }
 }
-if (!/function validateAegisCoreEnvelope[\s\S]*redactDiagnosticText\(apiVersion\)[\s\S]*redactDiagnosticText\(kind\)/.test(extensionText)) {
-  fail('validateAegisCoreEnvelope must redact unexpected api_version and kind values before throwing.');
+if (!/const\s*\{[\s\S]*validateCoreEnvelope[\s\S]*coreEnvelopeData[\s\S]*requireCoreOk[\s\S]*formatCoreContract[\s\S]*\}\s*=\s*require\('\.\/src\/core\/coreEnvelope\.ts'\)/.test(extensionText)) {
+  fail('extension.js must import Core envelope helpers from src/core/coreEnvelope.ts.');
 }
-if (!/function coreEnvelopeError[\s\S]*redactDiagnosticText\(detail\)/.test(extensionText)) {
-  fail('coreEnvelopeError must redact Core error detail before returning user-visible text.');
+if (!/function validateAegisCoreEnvelope[\s\S]*validateCoreEnvelope\(envelope,\s*expectedKind,\s*\{\s*redactDiagnosticText\s*\}\)/.test(extensionText)) {
+  fail('validateAegisCoreEnvelope must delegate to coreEnvelope.validateCoreEnvelope with extension redaction.');
+}
+if (!/function requireAegisCoreOk[\s\S]*requireCoreOk\(envelope,\s*action,\s*\{\s*redactDiagnosticText\s*\}\)/.test(extensionText)) {
+  fail('requireAegisCoreOk must delegate to coreEnvelope.requireCoreOk with extension redaction.');
+}
+if (/function coreEnvelopeError\(/.test(extensionText) || /function coreEnvelopeData\(/.test(extensionText) || /function formatCoreContract\(/.test(extensionText)) {
+  fail('extension.js must not retain duplicate Core envelope helper implementations.');
 }
 
 for (const scriptFile of ['scripts/package-release.js', 'scripts/install-local.js', 'scripts/run-command.js']) {
@@ -279,15 +402,210 @@ for (const privateFile of ['.gitignore', 'DETECTED_MODELS.md', 'DOGFOODING_NOTES
   }
 }
 
+// Phase-1 modularization: verify src/ utility modules export the expected functions
+// and that their implementations are consistent with the extension.js inline versions.
+// Verify module implementations pass the same behavioral assertions as inline functions.
+for (const [name, expectedExports] of [
+  ['src/utils/errors.ts', ['safeErrorMessage', 'redactDiagnosticText', 'sanitizeMemoryText', 'truncateMiddle']],
+  ['src/utils/pathSafe.ts', ['BLOCKED_PATH_SEGMENTS', 'SECRET_FILE_PATTERNS', 'LOCKFILE_PATTERNS', 'isPathInside', 'isBlockedRelativePath', 'normalizeLineEndings', 'timestampForPath']],
+  ['src/utils/fsSafe.ts', ['readWorkspaceFile', 'resolveInside', 'stripUtf8Bom', 'parseJsonText', 'formatFileChunk']],
+  ['src/proposal/proposalSafety.ts', ['validateProposalEdit', 'formatBlockedProposalEditSummary', 'normalizeConfidenceScore', 'sanitizeProposalForStorage', 'isSafeBackupId']],
+  ['src/validation/validationDetector.ts', ['detectValidationCommands', 'pickPackageManagerForPath', 'normalizePackageManagerName', 'packageScriptCommand', 'isSafeValidationCommand']],
+  ['src/workspace/workspaceResolver.ts', ['isWorkspaceTarget', 'makeWorkspaceTarget']],
+  ['src/workspace/projectScanner.ts', ['inferProjectLanguages', 'inferProjectCommands', 'isLikelyTestFile', 'isLikelyConfigFile', 'isImportantWorkspaceFile']],
+  ['src/proposal/proposalParser.ts', ['parseProposal', 'proposalToPlanText', 'normalizeModelImpactAnalysis', 'normalizeModelStages', 'normalizeProposalStages']],
+  ['src/settings/settings.ts', ['normalizeHttpBaseUrl', 'stripKnownServiceEndpointPath', 'serviceUrl', 'boundedConfigInt', 'getNormalizedConfig']],
+  ['src/core/coreEnvelope.ts', ['AEGIS_CORE_API_VERSION', 'AEGIS_CORE_CONTRACT_VERSION', 'validateCoreEnvelope', 'coreEnvelopeData', 'coreEnvelopeError', 'requireCoreOk', 'formatCoreContract', 'isCoreEnvelope']],
+  ['src/agent/agentMode.ts', ['makeEmptyAgentState', 'makeEmptyHealthCheckState', 'makeEmptyModelDiagnosticsState', 'makeEmptyErrorInfo', 'buildProgressUpdate', 'buildContextFilesUpdate']]
+]) {
+  const mod = require(path.join(root, name));
+  for (const fn of expectedExports) {
+    if (mod[fn] === undefined) {
+      fail(`${name} is missing expected export: ${fn}`);
+    }
+  }
+}
+
+// Verify module implementations pass the same behavioral assertions as inline functions.
+const emptyState = agentModeModule.makeEmptyAgentState();
+if (emptyState.status !== 'Idle' || !Array.isArray(emptyState.progressItems)) {
+  fail('agentMode module makeEmptyAgentState failed to create correct state object.');
+}
+const updatedProgress = agentModeModule.buildProgressUpdate(emptyState, 'Test Progress', 'Detail');
+if (updatedProgress.length !== 1 || updatedProgress[0].label !== 'Test Progress') {
+  fail('agentMode module buildProgressUpdate failed.');
+}
+const contextUpdate = agentModeModule.buildContextFilesUpdate(['file1.ts'], 'test reason');
+if (contextUpdate.length !== 1 || contextUpdate[0].path !== 'file1.ts') {
+  fail('agentMode module buildContextFilesUpdate failed.');
+}
+
+if (settingsModule.normalizeHttpBaseUrl('127.0.0.1:11434', 'fallback') !== 'http://127.0.0.1:11434') {
+  fail('settings module normalizeHttpBaseUrl failed to add http prefix.');
+}
+if (settingsModule.stripKnownServiceEndpointPath('/api/chat') !== '') {
+  fail('settings module stripKnownServiceEndpointPath failed to strip /api/chat.');
+}
+if (settingsModule.boundedConfigInt('not-a-number', 1, 10, 5) !== 5) {
+  fail('settings module boundedConfigInt failed to use fallback.');
+}
+const mockVscodeConfig = {
+  get: (key, fallback) => fallback
+};
+const normConfig = settingsModule.getNormalizedConfig(mockVscodeConfig);
+if (normConfig.ollamaUrl !== 'http://127.0.0.1:11434') {
+  fail('settings module getNormalizedConfig returned incorrect default.');
+}
+
+// Verify module implementations pass the same behavioral assertions as inline functions.
+const mockProposalJson = JSON.stringify({
+  summary: 'Fix bugs',
+  fileEdits: [{ path: 'app.ts', content: 'const x = 1;', reason: 'bugfix' }]
+});
+const parsed = proposalParserModule.parseProposal(
+  `\`\`\`json\n${mockProposalJson}\n\`\`\``,
+  { root: '/test', label: 'test' },
+  'Fix bugs'
+);
+if (parsed.summary !== 'Fix bugs' || parsed.fileEdits.length !== 1) {
+  fail('proposalParser module parseProposal failed to parse valid JSON proposal.');
+}
+if (parsed.fileEdits[0].path !== 'app.ts') {
+  fail('proposalParser module parseProposal path mismatch.');
+}
+const planText = proposalParserModule.proposalToPlanText(parsed);
+if (!planText.includes('Fix bugs') || !planText.includes('app.ts')) {
+  fail('proposalParser module proposalToPlanText failed to generate plan text.');
+}
+
+// Verify module implementations pass the same behavioral assertions as inline functions.
+if (!projectScannerModule.isLikelyTestFile('src/app.test.ts')) {
+  fail('projectScanner module isLikelyTestFile must recognize test files.');
+}
+if (!projectScannerModule.isImportantWorkspaceFile('package.json')) {
+  fail('projectScanner module isImportantWorkspaceFile must recognize package.json.');
+}
+const langInfo = projectScannerModule.inferProjectLanguages([{ relative: 'index.ts' }], []);
+if (!langInfo.languages.includes('TypeScript')) {
+  fail('projectScanner module inferProjectLanguages failed to detect TypeScript.');
+}
+
+// Verify module implementations pass the same behavioral assertions as inline functions.
+if (!workspaceResolverModule.isWorkspaceTarget({ root: '/a', label: 'a' })) {
+  fail('workspaceResolver module isWorkspaceTarget must recognize valid targets.');
+}
+const target = workspaceResolverModule.makeWorkspaceTarget('/test/src', { name: 'test', uri: { fsPath: '/test' } });
+if (target.root !== path.resolve('/test/src') || target.workspaceFolderName !== 'test') {
+  fail('workspaceResolver module makeWorkspaceTarget failed to create correct target object.');
+}
+if (target.label !== 'src') {
+  fail(`workspaceResolver module makeWorkspaceTarget label mismatch. Expected 'src', got '${target.label}'`);
+}
+
+
+
+// Verify module implementations pass the same behavioral assertions as inline functions.
+if (!validationDetectorModule.isSafeValidationCommand('npm test')) {
+  fail('validationDetector module isSafeValidationCommand must allow npm test.');
+}
+if (validationDetectorModule.isSafeValidationCommand('rm -rf /')) {
+  fail('validationDetector module isSafeValidationCommand must reject unsafe commands.');
+}
+if (validationDetectorModule.packageScriptCommand('npm', 'test') !== 'npm test') {
+  fail('validationDetector module packageScriptCommand mismatch for npm test.');
+}
+if (validationDetectorModule.packageScriptCommand('pnpm', 'lint') !== 'pnpm lint') {
+  fail('validationDetector module packageScriptCommand mismatch for pnpm lint.');
+}
+const mockSnapshot = {
+  target: { root: '/test' },
+  files: [{ relative: 'package.json' }, { relative: 'package-lock.json' }],
+  importantContents: [{ path: 'package.json', text: '{"scripts":{"test":"vitest"}}' }],
+  packageManagers: ['npm']
+};
+const detected = validationDetectorModule.detectValidationCommands(mockSnapshot);
+if (!detected.some((c) => c.command === 'npm test')) {
+  fail('validationDetector module detectValidationCommands failed to detect npm test from package.json.');
+}
+
+
+
+// Verify module implementations pass the same behavioral assertions as inline functions.
+if (proposalSafetyModule.normalizeConfidenceScore(85) !== 0.85) {
+  fail('proposalSafety module normalizeConfidenceScore must convert percentage to decimal.');
+}
+if (proposalSafetyModule.normalizeConfidenceScore('not-a-number') !== 0.55) {
+  fail('proposalSafety module normalizeConfidenceScore must use default for invalid input.');
+}
+if (!proposalSafetyModule.isSafeBackupId('backup-2026-05-11')) {
+  fail('proposalSafety module isSafeBackupId must allow valid backup IDs.');
+}
+if (proposalSafetyModule.isSafeBackupId('invalid/path')) {
+  fail('proposalSafety module isSafeBackupId must reject invalid backup IDs.');
+}
+const testProposal = { workspace: '/test' };
+const blockedEdit = { path: 'node_modules/pkg/index.js' };
+const validateResult = proposalSafetyModule.validateProposalEdit(testProposal, blockedEdit);
+if (validateResult.ok || validateResult.reason !== 'Path is blocked by safety rules.') {
+  fail('proposalSafety module validateProposalEdit must block node_modules paths.');
+}
+const summary = proposalSafetyModule.formatBlockedProposalEditSummary([{ edit: { path: 'secret.key' }, reason: 'Secrets are blocked' }]);
+if (!summary.includes('secret.key') || !summary.includes('Secrets are blocked')) {
+  fail('proposalSafety module formatBlockedProposalEditSummary must format blocked edits correctly.');
+}
+assertDiagnosticRedaction(
+  errorsModule.redactDiagnosticText,
+  'HTTP 401 {"api_key":"json-secret-token","message":"invalid"}',
+  ['json-secret-token'],
+  ['"api_key":"[redacted]"', 'invalid']
+);
+assertDiagnosticRedaction(
+  errorsModule.redactDiagnosticText,
+  'Provider rejected Authorization: Basic basic-secret-token via https://user:password@example.test/v1?token=query-secret',
+  ['basic-secret-token', 'user:password', 'query-secret'],
+  ['Authorization: [redacted]', 'https://[redacted]@example.test/v1?token=[redacted]']
+);
+if (errorsModule.truncateMiddle('hello world', 5) === 'hello world') {
+  fail('errors module truncateMiddle must truncate text longer than maxChars.');
+}
+if (errorsModule.truncateMiddle('ok', 100) !== 'ok') {
+  fail('errors module truncateMiddle must return short text unchanged.');
+}
+if (!pathSafeModule.isBlockedRelativePath('.git/config')) {
+  fail('pathSafe module must block .git paths.');
+}
+if (!pathSafeModule.isBlockedRelativePath('node_modules/pkg/index.js')) {
+  fail('pathSafe module must block node_modules paths.');
+}
+if (pathSafeModule.isBlockedRelativePath('src/App.tsx')) {
+  fail('pathSafe module must allow normal source paths.');
+}
+if (!pathSafeModule.isPathInside('/workspace', '/workspace/src/file.ts')) {
+  fail('pathSafe module isPathInside must detect contained paths.');
+}
+if (pathSafeModule.isPathInside('/workspace', '/other/file.ts')) {
+  fail('pathSafe module isPathInside must reject paths outside root.');
+}
+if (pathSafeModule.normalizeLineEndings('a\r\nb\rc') !== 'a\nb\nc') {
+  fail('pathSafe module normalizeLineEndings must convert CRLF and CR to LF.');
+}
+if (fsSafeModule.stripUtf8Bom('\uFEFFhello') !== 'hello') {
+  fail('fsSafe module stripUtf8Bom must strip BOM.');
+}
+if (fsSafeModule.parseJsonText('{"a":1}').a !== 1) {
+  fail('fsSafe module parseJsonText must parse JSON.');
+}
+
 console.log(`Aegis package lint passed for ${manifest.name}@${manifest.version}.`);
 
+
 function loadExtensionFunction(source, name, context = {}) {
-  return vm.runInNewContext(`${extractExtensionFunctionSource(source, name)}\n${name};`, context);
+  return vm.runInNewContext(`${extractExtensionFunctionSource(source, name)}\n${name};`, Object.assign({}, sharedModuleContext, context));
 }
 
 function loadExtensionFunctions(source, names, exportedName, context = {}) {
   const functionSources = names.map((name) => extractExtensionFunctionSource(source, name)).join('\n');
-  return vm.runInNewContext(`${functionSources}\n${exportedName};`, context);
+  return vm.runInNewContext(`${functionSources}\n${exportedName};`, Object.assign({}, sharedModuleContext, context));
 }
 
 function extractExtensionFunctionSource(source, name) {
@@ -638,6 +956,41 @@ function assertBuildFileDetection(classifier) {
   }
 }
 
+function assertWorkspaceTargetFocus(makeWorkspaceTarget) {
+  const workspaceRoot = path.join('C:\\', 'AegisTest', 'Workspace');
+  const folder = {
+    name: 'Workspace',
+    uri: { fsPath: workspaceRoot }
+  };
+  const selectedFolder = path.join(workspaceRoot, 'src', 'features');
+  const folderTarget = makeWorkspaceTarget(workspaceRoot, folder, {
+    focusPath: selectedFolder,
+    focusKind: 'folder'
+  });
+  if (path.resolve(folderTarget.root) !== path.resolve(workspaceRoot)) {
+    fail('selected-folder targets must keep the workspace root as the write root.');
+  }
+  if (folderTarget.focusRelative !== 'src/features') {
+    fail('selected-folder targets must retain the selected folder as focus metadata.');
+  }
+  if (!folderTarget.label.includes('src/features')) {
+    fail('selected-folder target labels must show the focused folder.');
+  }
+
+  const selectedFile = path.join(workspaceRoot, 'src', 'features', 'Widget.tsx');
+  const fileTarget = makeWorkspaceTarget(workspaceRoot, folder, {
+    focusPath: path.dirname(selectedFile),
+    focusKind: 'file',
+    focusFilePath: selectedFile
+  });
+  if (fileTarget.focusFileRelative !== 'src/features/Widget.tsx') {
+    fail('selected-file targets must retain the selected file as focus metadata.');
+  }
+  if (path.resolve(fileTarget.root) !== path.resolve(workspaceRoot)) {
+    fail('selected-file targets must not narrow the write root to the file directory.');
+  }
+}
+
 function assertGeneratedFolderSafety(source) {
   for (const segment of ['library', 'temp', 'logs']) {
     if (!source.includes(`'${segment}'`)) {
@@ -745,6 +1098,90 @@ function assertBlockedProposalVisibleMessages(source) {
   }
   if (!source.includes('Aegis refused to apply ${blocked.length} unsafe edit(s): ${formatBlockedProposalEditSummary(blocked)}')) {
     fail('proposal apply blocked-edit error must name the blocked path.');
+  }
+}
+
+function assertDestinationReasoningPanel(source) {
+  for (const required of [
+    'Why Aegis chose these files',
+    'destinationReasoning',
+    'Source: ',
+    'Safety: ',
+    'Selected context: '
+  ]) {
+    if (!source.includes(required)) {
+      fail(`webview destination reasoning panel is missing ${required}.`);
+    }
+  }
+}
+
+function assertWorkspaceChangeRouting(looksLikeWorkspaceChangeRequest) {
+  const implementationRequests = [
+    'create a small test project',
+    'add a settings page',
+    'fix the failing build',
+    'scaffold a React app in this workspace'
+  ];
+  for (const request of implementationRequests) {
+    if (!looksLikeWorkspaceChangeRequest(request)) {
+      fail(`workspace-change intent detection missed: ${request}`);
+    }
+  }
+  const explanationRequests = [
+    'how do I create a file in VS Code?',
+    'explain the current file',
+    'tell me what this project does',
+    'show me how to run this manually'
+  ];
+  for (const request of explanationRequests) {
+    if (looksLikeWorkspaceChangeRequest(request)) {
+      fail(`workspace-change intent detection should not capture explanation request: ${request}`);
+    }
+  }
+}
+
+function assertInstructionalCodeBlockProposal(proposalObjectFromInstructionalCodeBlocks) {
+  const htmlResponse = [
+    'Create `index.html` and paste this:',
+    '```html',
+    '<!doctype html>',
+    '<html><body><h1>Aegis Test</h1></body></html>',
+    '```',
+    'Then run:',
+    '```bash',
+    'npm run dev',
+    '```'
+  ].join('\n');
+  const htmlProposal = proposalObjectFromInstructionalCodeBlocks(htmlResponse, 'create a test project');
+  if (!htmlProposal || htmlProposal.fileEdits.length !== 1) {
+    fail('instructional HTML response must be converted into one file edit.');
+  }
+  if (htmlProposal.fileEdits[0].path !== 'index.html' || !htmlProposal.fileEdits[0].content.includes('<h1>Aegis Test</h1>')) {
+    fail('instructional HTML response must preserve the inferred index.html content.');
+  }
+  if (!htmlProposal.commands.some((item) => item.command === 'npm run dev')) {
+    fail('shell code blocks from instructional responses should become suggested commands, not file edits.');
+  }
+
+  const jsResponse = [
+    'Use this file:',
+    '```javascript',
+    "document.querySelector('#app').textContent = 'Ready';",
+    '```'
+  ].join('\n');
+  const jsProposal = proposalObjectFromInstructionalCodeBlocks(jsResponse, 'create a tiny browser app');
+  if (!jsProposal || jsProposal.fileEdits[0].path !== 'script.js') {
+    fail('unlabeled browser JavaScript code should infer script.js for create/app requests.');
+  }
+
+  const shellOnly = proposalObjectFromInstructionalCodeBlocks('```bash\nnpm test\n```', 'create project');
+  if (shellOnly) {
+    fail('shell-only instructional responses must not become file edits.');
+  }
+
+  const explanationOnly = proposalObjectFromInstructionalCodeBlocks('```html\n<div>example</div>\n```', 'explain this html');
+  if (explanationOnly) {
+    fail('explanation requests with code blocks must not become applyable proposals.');
   }
 }
 

@@ -63,7 +63,7 @@
       <AdditionalIncludeDirectories>imgui;imgui\backends;src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <ExceptionHandling>Sync</ExceptionHandling>
-      <AdditionalOptions>/utf-8 /permissive- %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/utf-8 /permissive- /bigobj %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -82,7 +82,7 @@
       <AdditionalIncludeDirectories>imgui;imgui\backends;src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <ExceptionHandling>Sync</ExceptionHandling>
-      <AdditionalOptions>/utf-8 /permissive- %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/utf-8 /permissive- /bigobj %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -99,6 +99,8 @@
   <ItemGroup>
     <ClCompile Include="src\AegisChatApp.cpp" />
     <ClCompile Include="src\AegisClient.cpp" />
+    <ClCompile Include="src\desktop\RuntimeStatusPresenter.cpp" />
+    <ClCompile Include="src\core\CoreApiClient.cpp" />
     <ClCompile Include="src\Json.cpp" />
     <ClCompile Include="src\Main.cpp" />
     <ClCompile Include="src\Platform.cpp" />
@@ -113,6 +115,8 @@
   <ItemGroup>
     <ClInclude Include="src\AegisChatApp.h" />
     <ClInclude Include="src\AegisClient.h" />
+    <ClInclude Include="src\desktop\RuntimeStatusPresenter.h" />
+    <ClInclude Include="src\core\CoreApiClient.h" />
     <ClInclude Include="src\Json.h" />
     <ClInclude Include="src\Platform.h" />
     <ClInclude Include="src\UiStyle.h" />

@@ -1,0 +1,67 @@
+{
+  "schema_version": "2026.05.21",
+  "name": "Phase 23 Cross-Client Parity Evidence Contract",
+  "phase": 23,
+  "evidence_root": ".aegis/cross-client-parity",
+  "current_required_status": "ready",
+  "clients": [
+    "website",
+    "desktop",
+    "vscode-extension",
+    "visual-studio-extension"
+  ],
+  "release_components": [
+    "aegis-core",
+    "website",
+    "desktop",
+    "vscode-extension",
+    "visual-studio-extension"
+  ],
+  "workflow_capabilities": [
+    "workspace_scan",
+    "model_route",
+    "proposal_or_review",
+    "apply",
+    "validation",
+    "checkpoint",
+    "rollback_or_restore",
+    "diagnostics_export",
+    "release_compatibility"
+  ],
+  "required_evidence_sources": [
+    "final_release_manifest",
+    "release_apply_rollback",
+    "packaged_alpha_scenarios"
+  ],
+  "required_checks": [
+    "root_manifest_present",
+    "packages_present",
+    "packages_match_manifest_hashes",
+    "evidence_sources_attached",
+    "all_clients_have_package_evidence",
+    "all_clients_have_workflow_parity",
+    "parity_evidence_linkable"
+  ],
+  "required_contract_files": [
+    "docs/CROSS_CLIENT_PARITY_EVIDENCE.md",
+    "docs/EXTERNAL_ALPHA_RELEASE_REPORT.md",
+    "docs/EVIDENCE_LEDGER.md",
+    "docs/VALIDATION_MATRIX.md",
+    "docs/PACKAGED_ALPHA_SCENARIO_EVIDENCE.md",
+    "KNOWN_UNSTABLE_SURFACES.md",
+    "evals/phase15-external-alpha-release-contract.json",
+    "evals/phase16-evidence-ledger-contract.json",
+    "evals/phase22-packaged-alpha-scenarios-contract.json",
+    "evals/phase23-cross-client-parity-contract.json",
+    "scripts/test-cross-client-parity.ps1",
+    "scripts/test-evidence-ledger-contract.ps1",
+    "scripts/test-external-alpha-contract.ps1",
+    "scripts/test-editor-parity.ps1",
+    "scripts/test-desktop-contract.ps1",
+    "scripts/validate-ecosystem.ps1"
+  ],
+  "outputs": [
+    "cross-client-parity.json",
+    "cross-client-parity-summary.md"
+  ]
+}

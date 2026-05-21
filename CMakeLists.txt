@@ -9,6 +9,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 add_executable(AegisChatBotDesktop WIN32
     src/AegisChatApp.cpp
     src/AegisClient.cpp
+    src/desktop/RuntimeStatusPresenter.cpp
+    src/core/CoreApiClient.cpp
     src/Json.cpp
     src/Main.cpp
     src/Platform.cpp
@@ -35,7 +37,7 @@ target_compile_definitions(AegisChatBotDesktop PRIVATE
 )
 
 if(MSVC)
-    target_compile_options(AegisChatBotDesktop PRIVATE /W4 /permissive- /EHsc /utf-8)
+    target_compile_options(AegisChatBotDesktop PRIVATE /W4 /permissive- /EHsc /utf-8 /bigobj)
 endif()
 
 target_link_libraries(AegisChatBotDesktop PRIVATE
@@ -43,6 +45,7 @@ target_link_libraries(AegisChatBotDesktop PRIVATE
     dxgi
     dwmapi
     winhttp
+    winmm
     shell32
     ole32
 )

@@ -14,6 +14,8 @@
   <ItemGroup>
     <ClCompile Include="src\AegisChatApp.cpp"><Filter>Source Files</Filter></ClCompile>
     <ClCompile Include="src\AegisClient.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="src\desktop\RuntimeStatusPresenter.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="src\core\CoreApiClient.cpp"><Filter>Source Files</Filter></ClCompile>
     <ClCompile Include="src\Json.cpp"><Filter>Source Files</Filter></ClCompile>
     <ClCompile Include="src\Main.cpp"><Filter>Source Files</Filter></ClCompile>
     <ClCompile Include="src\Platform.cpp"><Filter>Source Files</Filter></ClCompile>
@@ -28,6 +30,8 @@
   <ItemGroup>
     <ClInclude Include="src\AegisChatApp.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="src\AegisClient.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="src\desktop\RuntimeStatusPresenter.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="src\core\CoreApiClient.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="src\Json.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="src\Platform.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="src\UiStyle.h"><Filter>Header Files</Filter></ClInclude>

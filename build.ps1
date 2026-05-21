@@ -49,6 +49,10 @@ function Assert-DesktopUrlNormalizationGuards {
 }
 
 Assert-DesktopUrlNormalizationGuards -RootDirectory $Root
+& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root "scripts\test-desktop-contract.ps1") -Root $Root
+if ($LASTEXITCODE -ne 0) {
+    throw "Desktop source contract failed with exit code $LASTEXITCODE."
+}
 
 & $MSBuild "$Root\AegisChatBotDesktop.sln" /p:Configuration=Release /p:Platform=x64 /m
 if ($LASTEXITCODE -ne 0) {

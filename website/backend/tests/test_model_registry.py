@@ -69,6 +69,33 @@ class ModelRegistryTests(unittest.TestCase):
         self.assertIn("structured_json", provider.capabilities)
         self.assertTrue(snapshot.router_enabled)
 
+    def test_snapshot_preserves_manual_ollama_configuration_when_model_is_missing(self) -> None:
+        settings = Settings(_env_file=None)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            manager = ModelRegistryManager(Path(temp_dir), settings)
+            manager.upsert_provider(
+                ModelRegistryProviderUpsertRequest(
+                    id="ollama:manual-codegemma",
+                    label="Manual CodeGemma",
+                    api="ollama",
+                    endpoint="http://127.0.0.1:11434",
+                    model_name="codegemma:2b",
+                    local=True,
+                    enabled=True,
+                    configured=True,
+                    capabilities=["chat"],
+                    roles=["chat", "fallback"],
+                    notes="Manual benchmark route.",
+                )
+            )
+            manager._installed_ollama_models = lambda _endpoint: {"qwen2.5-coder:7b"}  # type: ignore[method-assign]
+
+            snapshot = manager.snapshot()
+
+        provider = next(item for item in snapshot.providers if item.id == "ollama:manual-codegemma")
+        self.assertTrue(provider.configured)
+        self.assertEqual(provider.health, "missing-local-model")
+
     def test_apply_benchmark_winners_demotes_cooled_down_route(self) -> None:
         settings = Settings(_env_file=None)
         with tempfile.TemporaryDirectory() as temp_dir:

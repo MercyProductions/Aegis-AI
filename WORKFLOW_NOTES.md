@@ -233,6 +233,31 @@ Fixes applied:
 - Added a command table parity guard to the Visual Studio extension build script.
 - Re-ran the Visual Studio VSIX build and package flow successfully.
 
+### 2026-05-18 - Weekly Dogfooding Friction Review
+
+Context:
+- Reviewed `DOGFOODING_NOTES.md`, this workflow ledger, `docs/REAL_WORLD_DOGFOODING_AND_WORKFLOW_REFINEMENT.md`, and generated `.aegis/dogfooding-*` state.
+- Latest generated dogfooding confidence is still `needs_attention` because only two events have been recorded; validation reliability is the weakest measured signal.
+- Most real repeated friction is not new feature demand. It is clarity and trust work: startup probes, validation failure summaries, rollback visibility, package/command parity guards, and maintainability boundaries.
+
+What worked:
+- Previous startup hardening made wrong-service Core ports and blocked Website ports fail with clearer causes.
+- Previous validation hardening added route-contract fixes, explicit HTTP timeouts, URL propagation, and command allowlist checks.
+- VS Code extension dogfooding now has destination reasoning and Extension Host smoke coverage for apply/rollback/review-only behavior.
+
+Friction found:
+- Generated dogfooding taxonomy did not accept several categories that this weekly review explicitly tracks: startup clarity, roadmap usefulness, diff readability, diagnostics clarity, error-message clarity, onboarding, and maintainability.
+- The sample size is too low to justify another broad UX or architecture change.
+- Generated `.aegis/known-issues.md` remains noisy because generated index and cache files appear in its managed TODO scan; that is a follow-up candidate, not part of this small fix.
+
+Fixes applied:
+- Added focused Aegis Core dogfooding tags and recommendations for `startup_slow`, `roadmap_unhelpful`, `diff_unclear`, `diagnostics_unclear`, `error_message_unclear`, `onboarding_friction`, and `maintainability_drag`.
+- Added regression coverage so weekly workflow-review tags normalize and appear in aggregated friction reports.
+- Updated the dogfooding notes to make the current validation-pain signal and small-sample limitation explicit.
+
+Release note:
+- Warranted as a small stabilization note if included in the next batch: "Improved dogfooding friction categories so weekly workflow reviews can capture startup, roadmap, diff, diagnostics, onboarding, and maintainability issues directly."
+
 ### 2026-05-08 - Product Utilization Kickoff
 
 Context:
@@ -283,6 +308,9 @@ Fixes applied:
 | 2026-05-09 | Website acceptance | `acceptance-web.ps1` accepted custom live URLs but child doctor/smoke/e2e npm scripts reverted to default ports. | Medium | Pass root/backend/frontend directly to child scripts and document alternate-port usage. |
 | 2026-05-09 | Aegis Core startup | Core starter accepted any HTTP 200 at `/v1/health` and did not prefer a project virtualenv. | Medium | Verify the Core health envelope, report contract version, and resolve Python predictably. |
 | 2026-05-09 | Aegis Core startup | A non-Core service returning HTTP 200 with invalid JSON could be treated as unreachable. | Medium | Mark malformed responses reachable and report `invalid_json` as the startup blocker. |
+| 2026-05-18 | Dogfooding telemetry | Weekly review categories were broader than Core's accepted friction tags, making startup, roadmap, diff, diagnostics, onboarding, and maintainability issues harder to classify. | Medium | Added direct tags, recommendations, and regression coverage. |
+| 2026-05-18 | Dogfooding confidence | Generated dogfooding confidence is still based on only two events, so recommendations are directionally useful but not statistically strong. | Medium | Keep collecting real workflow events before broad UI or architecture changes. |
+| 2026-05-18 | Known-issues noise | Generated `.aegis/known-issues.md` includes generated index/cache references, which reduces diagnostics clarity. | Low | Track as a future small filter fix; no generated file edits in this heartbeat. |
 
 ## Daily Workflow Checklist
 

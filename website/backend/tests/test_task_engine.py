@@ -170,6 +170,42 @@ class TaskEngineTests(unittest.TestCase):
         self.assertIn("refresh_token=[redacted]", updated.error_summary)
         self.assertIn("private_key=[redacted]", updated.result_summary)
 
+    def test_task_event_ledger_redacts_detail_and_nested_payload_secrets(self) -> None:
+        secret = "oauth-access-token-1234567890"
+        task_id = self.store.create_task(mode="develop", workspace_root=self.workspace, message="Audit provider call")
+
+        event = self.store.record_event(
+            task_id,
+            kind="provider.call",
+            title="Provider call failed",
+            status="warning",
+            detail=f"refresh_token={secret}; unexpected token: <",
+            payload={
+                "api_key": secret,
+                "headers": {"Authorization": f"Bearer {secret}"},
+                "callback": f"https://provider.test/callback?access_token={secret}&state=ok",
+                "diagnostics": [
+                    f'Provider rejected {{"client_secret":"{secret}"}}',
+                    "SyntaxError: unexpected token: <",
+                ],
+                "secret_env": "OPENAI_API_KEY",
+            },
+        )
+        persisted = self.store.task_events(task_id)[0]
+
+        self.assertNotIn(secret, event.detail)
+        self.assertNotIn(secret, str(event.payload))
+        self.assertNotIn(secret, persisted.detail)
+        self.assertNotIn(secret, str(persisted.payload))
+        self.assertIn("refresh_token=[redacted]", persisted.detail)
+        self.assertIn("unexpected token: <", persisted.detail)
+        self.assertEqual(persisted.payload["api_key"], "[redacted]")
+        self.assertEqual(persisted.payload["headers"]["Authorization"], "[redacted]")
+        self.assertIn("access_token=[redacted]", persisted.payload["callback"])
+        self.assertIn('"client_secret":"[redacted]"', persisted.payload["diagnostics"][0])
+        self.assertEqual(persisted.payload["diagnostics"][1], "SyntaxError: unexpected token: <")
+        self.assertEqual(persisted.payload["secret_env"], "OPENAI_API_KEY")
+
     def test_task_api_endpoints(self) -> None:
         workspace_manager = WorkspaceManager(self.project_root, self.settings)
 

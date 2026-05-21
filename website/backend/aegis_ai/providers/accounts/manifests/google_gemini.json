@@ -1,0 +1,60 @@
+{
+  "id": "google_gemini",
+  "label": "Google Gemini",
+  "kind": "cloud",
+  "description": "Gemini API, Google account login, Vertex AI, and Gemini CLI bridge for long-context and multimodal work.",
+  "auth_modes": ["api_key", "cli_bridge", "oauth_browser", "env_profile"],
+  "default_auth_mode": "api_key",
+  "credential_env_vars": ["GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_APPLICATION_CREDENTIALS"],
+  "capabilities": ["chat", "code", "reasoning", "tools", "vision", "streaming", "structured_json", "long_context", "embeddings", "agent_delegation"],
+  "model_families": ["gemini", "embedding", "vertex"],
+  "quota_status": "Provider limits depend on Gemini API key quotas, Google login tier, or Vertex project quotas.",
+  "docs_url": "https://ai.google.dev/gemini-api/docs",
+  "security_notes": [
+    "Browser OAuth requires an Aegis-owned Google OAuth client before direct login is enabled.",
+    "Existing Gemini CLI login is reused by delegation only."
+  ],
+  "cli_bridge": {
+    "cli_name": "Gemini CLI",
+    "candidate_binaries": ["gemini", "gemini.cmd", "gemini.exe"],
+    "version_args": ["--version"],
+    "status_args": ["auth", "status"],
+    "login_args": ["auth", "login"],
+    "delegation_modes": ["prompt", "resume"],
+    "notes": "If this CLI version does not support auth status, Aegis records auth state as unknown."
+  },
+  "metadata": {
+    "workspace_role": "gemini_source_drop",
+    "source_bridge": {
+      "prefer_source": true,
+      "root_candidates": ["../AI", "../../AI"],
+      "command_candidates": [
+        {
+          "label": "Gemini source CLI",
+          "cwd": "gemini",
+          "command": ["node", "bundle/gemini.js"],
+          "version_args": ["--version"],
+          "status_args": ["auth", "status"],
+          "login_args": ["auth", "login"],
+          "env": {}
+        }
+      ],
+      "refresh_commands": [
+        {
+          "id": "install-gemini-deps",
+          "label": "Install Gemini deps",
+          "cwd": "gemini",
+          "command": ["npm", "ci", "--ignore-scripts"],
+          "timeout_seconds": 600
+        },
+        {
+          "id": "bundle-gemini",
+          "label": "Rebuild Gemini bundle",
+          "cwd": "gemini",
+          "command": ["npm", "run", "bundle"],
+          "timeout_seconds": 600
+        }
+      ]
+    }
+  }
+}

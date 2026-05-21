@@ -1,0 +1,165 @@
+{
+  "schema_version": "2026.05.21",
+  "name": "Phase 34 Distribution, Installer, Signing, And Auto-Update Contract",
+  "phase": 34,
+  "evidence_root": ".aegis/distribution-update",
+  "current_required_status": "ready",
+  "slice": "Private-alpha portable ZIP and VSIX distribution policy, unsigned-build disclosure, update-plan dry runs, rollback evidence, and local diagnostics export",
+  "distribution_mode": "portable_zip_and_vsix",
+  "installer_status": "deferred_until_signed_broad_release",
+  "signing_status": "unsigned_local_build_candidate",
+  "source_manifest": "VERSION.json",
+  "release_manifest": "release/version-manifest.json",
+  "package_builder": "scripts/build-release.ps1",
+  "source_updater": "scripts/aegis-update.ps1",
+  "release_updater": "release/aegis-update.ps1",
+  "component_manifest": "aegis-core/installer/aegis-components.json",
+  "diagnostics_source": "aegis-core/aegis_core/alpha.py",
+  "diagnostics_tests": "aegis-core/tests/test_alpha_readiness.py",
+  "distribution_doc": "docs/DISTRIBUTION_INSTALLER_UPDATE_EVIDENCE.md",
+  "release_packaging_doc": "docs/RELEASE_PACKAGING_AND_UPDATES.md",
+  "release_artifact_decision_doc": "docs/RELEASE_ARTIFACT_DECISION.md",
+  "external_release_notes": "docs/EXTERNAL_ALPHA_RELEASE_NOTES.md",
+  "release_components": [
+    "aegis-core",
+    "website",
+    "desktop",
+    "vscode-extension",
+    "visual-studio-extension"
+  ],
+  "package_expectations": [
+    {
+      "id": "aegis-core",
+      "artifact_pattern": "aegis-core-*.zip",
+      "distribution_kind": "portable_zip"
+    },
+    {
+      "id": "website",
+      "artifact_pattern": "aegis-website-*.zip",
+      "distribution_kind": "portable_zip"
+    },
+    {
+      "id": "desktop",
+      "artifact_pattern": "aegis-desktop-*-portable.zip",
+      "distribution_kind": "portable_zip"
+    },
+    {
+      "id": "vscode-extension",
+      "artifact_pattern": "aegis-local-autopilot-*.vsix",
+      "distribution_kind": "vscode_vsix"
+    },
+    {
+      "id": "visual-studio-extension",
+      "artifact_pattern": "AegisLocalAgentVs.vsix",
+      "distribution_kind": "visual_studio_vsix"
+    }
+  ],
+  "required_update_policy": {
+    "requires_checksum": true,
+    "signature_optional_for_local_builds": true,
+    "backup_before_apply": true,
+    "rollback_on_failure": true,
+    "safe_mode_supported": true
+  },
+  "required_updater_markers": [
+    "Test-Checksum",
+    "Test-SignaturePolicy",
+    "Backup-Target",
+    "Restore-Backup",
+    "update-state.json",
+    "safe-mode.json",
+    "security-audit.jsonl",
+    ".aegis\\updates",
+    "Rollback restored",
+    "Downgrade protection"
+  ],
+  "required_diagnostics_markers": [
+    "export_diagnostics_bundle",
+    "runtime_diagnostics_snapshot",
+    "local_only",
+    "external_upload",
+    "secrets_redacted",
+    "/v1/alpha/diagnostics/export",
+    "test_diagnostics_export_is_local_and_redacted"
+  ],
+  "required_doc_markers": [
+    "portable ZIP",
+    "VSIX",
+    "unsigned local build",
+    "signed installer",
+    "checksums",
+    "rollback",
+    "safe-mode",
+    "diagnostics export",
+    "broad release"
+  ],
+  "required_validation_commands": [
+    "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\aegis-update.ps1 -Manifest release\\version-manifest.json -Component aegis-core",
+    "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\aegis-update.ps1 -Manifest release\\version-manifest.json -Component website",
+    "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\aegis-update.ps1 -Manifest release\\version-manifest.json -Component desktop",
+    "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\aegis-update.ps1 -Manifest release\\version-manifest.json -Component vscode-extension",
+    "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\aegis-update.ps1 -Manifest release\\version-manifest.json -Component visual-studio-extension"
+  ],
+  "required_evidence_sources": [
+    {
+      "id": "release_package_dry_run",
+      "root": ".aegis/release-package-dry-run",
+      "json": "release-package-dry-run.json",
+      "summary": "release-package-dry-run-summary.md",
+      "accepted_statuses": ["ready"]
+    },
+    {
+      "id": "final_release_manifest",
+      "root": ".aegis/final-release-manifest",
+      "json": "final-release-manifest.json",
+      "summary": "final-release-manifest-summary.md",
+      "accepted_statuses": ["ready"]
+    },
+    {
+      "id": "release_apply_rollback",
+      "root": ".aegis/release-apply-rollback",
+      "json": "release-apply-rollback.json",
+      "summary": "release-apply-rollback-summary.md",
+      "accepted_statuses": ["ready"]
+    },
+    {
+      "id": "release_notes_limitations",
+      "root": ".aegis/release-notes-limitations",
+      "json": "release-notes-limitations.json",
+      "summary": "release-notes-limitations-summary.md",
+      "accepted_statuses": ["ready"]
+    },
+    {
+      "id": "observability_ci",
+      "root": ".aegis/observability-ci",
+      "json": "observability-ci.json",
+      "summary": "observability-ci-summary.md",
+      "accepted_statuses": ["ready"]
+    }
+  ],
+  "required_contract_files": [
+    "docs/DISTRIBUTION_INSTALLER_UPDATE_EVIDENCE.md",
+    "docs/RELEASE_PACKAGING_AND_UPDATES.md",
+    "docs/RELEASE_ARTIFACT_DECISION.md",
+    "docs/EXTERNAL_ALPHA_RELEASE_NOTES.md",
+    "docs/VALIDATION_MATRIX.md",
+    "docs/EVIDENCE_LEDGER.md",
+    "evals/phase34-distribution-update-contract.json",
+    "evals/phase16-evidence-ledger-contract.json",
+    "scripts/test-distribution-update.ps1",
+    "scripts/test-evidence-ledger-contract.ps1",
+    "scripts/validate-ecosystem.ps1",
+    "VERSION.json",
+    "release/version-manifest.json",
+    "scripts/build-release.ps1",
+    "scripts/aegis-update.ps1",
+    "release/aegis-update.ps1",
+    "aegis-core/installer/aegis-components.json",
+    "aegis-core/aegis_core/alpha.py",
+    "aegis-core/tests/test_alpha_readiness.py"
+  ],
+  "outputs": [
+    "distribution-update.json",
+    "distribution-update-summary.md"
+  ]
+}

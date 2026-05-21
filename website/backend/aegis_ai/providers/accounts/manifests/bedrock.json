@@ -1,0 +1,16 @@
+{
+  "id": "bedrock",
+  "label": "Amazon Bedrock",
+  "kind": "enterprise",
+  "description": "Amazon Bedrock account surface for AWS profile-based access to hosted foundation models.",
+  "auth_modes": ["env_profile"],
+  "default_auth_mode": "env_profile",
+  "credential_env_vars": ["AWS_PROFILE", "AWS_REGION", "AWS_ACCESS_KEY_ID"],
+  "capabilities": ["chat", "code", "reasoning", "streaming", "enterprise"],
+  "model_families": ["bedrock", "anthropic-bedrock", "amazon"],
+  "quota_status": "Limits depend on AWS account, region, model access, and Bedrock quotas.",
+  "docs_url": "https://docs.aws.amazon.com/bedrock/",
+  "security_notes": [
+    "Aegis should rely on official AWS profile/session resolution and should not store AWS secret keys in SQLite."
+  ]
+}

@@ -10,6 +10,7 @@ from .schemas import (
     AegisContinuitySnapshot,
     AmbientPresenceState,
     CognitiveAwarenessState,
+    ContinuationHandoff,
     DigitalTwinWorkspaceModel,
     ForecastSignal,
     HardwareAccelerationProfile,
@@ -61,6 +62,12 @@ class AegisContinuityEngine:
         digital_twin = self._digital_twin(workspace_root, context)
         memory_distillation = self._memory_distillation(context)
         hardware = self._hardware_profile(context)
+        continuation = self._continuation_handoff(
+            workspace_root=workspace_root,
+            context=context,
+            forecasts=forecasts,
+            diagnostics=diagnostics,
+        )
 
         return AegisContinuitySnapshot(
             workspace_root=str(workspace_root),
@@ -79,6 +86,7 @@ class AegisContinuityEngine:
             digital_twin=digital_twin,
             research_lab=self._research_lab(context),
             memory_distillation=memory_distillation,
+            continuation=continuation,
             recommendations=self._recommendations(presence, forecasts, diagnostics, memory_distillation),
             warnings=[],
         )
@@ -558,6 +566,205 @@ class AegisContinuityEngine:
             ),
             continuity_preserved=True,
         )
+
+    def _continuation_handoff(
+        self,
+        *,
+        workspace_root: Path,
+        context: UnifiedContextSnapshot,
+        forecasts: SimulationForecastSnapshot,
+        diagnostics: list[SelfDiagnosticSignal],
+    ) -> ContinuationHandoff:
+        active_tasks = [
+            record
+            for record in context.records
+            if record.kind == "task" and record.status not in {"completed", "failed", "canceled", "dismissed"}
+        ]
+        failed_tasks = [record for record in context.records if record.kind == "task" and record.status == "failed"]
+        recommendations = [
+            record
+            for record in context.records
+            if record.kind == "recommendation" and record.status not in {"dismissed", "completed"}
+        ]
+        candidates = active_tasks or failed_tasks or recommendations
+        memory_records = [record for record in context.records if record.kind in {"memory", "fix_memory"}]
+
+        if not candidates:
+            return self._baseline_continuation_handoff(workspace_root, context, memory_records)
+
+        selected = sorted(candidates, key=self._continuation_record_score, reverse=True)[0]
+        related_tasks = selected.related_tasks or ([selected.reference] if selected.kind == "task" and selected.reference else [])
+        context_records = [
+            record.id
+            for record in context.records
+            if record.id == selected.id or any(task_id in record.related_tasks for task_id in related_tasks)
+        ][:16]
+        validation_commands = self._validation_commands_for_continuation(selected, context_records, context)
+        memory_refs = [record.reference or record.id for record in memory_records[:8]]
+        blockers = self._continuation_blockers(selected, diagnostics)
+        risk_level = self._continuation_risk_level(selected, forecasts, diagnostics)
+        next_action = self._continuation_next_action(selected, validation_commands)
+        active_goal = selected.title or selected.summary or "Workspace continuation"
+
+        return ContinuationHandoff(
+            workspace_root=str(workspace_root),
+            generated_at=utc_now(),
+            active_goal=active_goal,
+            next_action=next_action,
+            source_kind=selected.kind,
+            source_title=selected.title,
+            source_record_id=selected.id,
+            confidence=self._continuation_confidence(selected, context_records, memory_refs),
+            risk_level=risk_level,
+            blockers=blockers,
+            related_tasks=related_tasks[:8],
+            related_files=selected.related_files[:12],
+            validation_commands=validation_commands[:8],
+            memory_refs=memory_refs,
+            context_record_ids=context_records,
+            resume_prompt=self._resume_prompt(active_goal, next_action, selected, validation_commands),
+            rationale=self._continuation_rationale(selected, memory_refs, context_records),
+            warnings=self._continuation_warnings(risk_level, blockers),
+        )
+
+    def _baseline_continuation_handoff(
+        self,
+        workspace_root: Path,
+        context: UnifiedContextSnapshot,
+        memory_records: list[UnifiedContextRecord],
+    ) -> ContinuationHandoff:
+        focus = context.recommended_focus[0] if context.recommended_focus else "Review workspace state and choose the next tracked task."
+        memory_refs = [record.reference or record.id for record in memory_records[:8]]
+        return ContinuationHandoff(
+            workspace_root=str(workspace_root),
+            generated_at=utc_now(),
+            active_goal="Workspace continuity",
+            next_action=focus,
+            source_kind="workspace",
+            source_title="Workspace continuity",
+            source_record_id="project:active",
+            confidence=0.45 if memory_refs else 0.32,
+            risk_level="low",
+            memory_refs=memory_refs,
+            context_record_ids=["project:active"],
+            resume_prompt=f"Continue from persisted workspace state. Next action: {focus}",
+            rationale="No active or failed task was found, so the handoff falls back to recommended focus and project memory.",
+        )
+
+    def _continuation_record_score(self, record: UnifiedContextRecord) -> tuple[float, str]:
+        status_order = {
+            "needs_approval": 1.0,
+            "blocked": 0.95,
+            "failed": 0.9,
+            "running": 0.82,
+            "repairing": 0.78,
+            "validating": 0.76,
+            "planning": 0.72,
+            "queued": 0.64,
+        }
+        return (status_order.get(record.status, 0.55) + record.importance, record.updated_at or record.created_at)
+
+    def _validation_commands_for_continuation(
+        self,
+        selected: UnifiedContextRecord,
+        context_record_ids: list[str],
+        context: UnifiedContextSnapshot,
+    ) -> list[str]:
+        commands: list[str] = []
+        for record in [selected, *[item for item in context.records if item.id in set(context_record_ids)]]:
+            raw = record.metadata.get("validation_commands") if isinstance(record.metadata, dict) else None
+            if isinstance(raw, list):
+                commands.extend(str(item) for item in raw if str(item).strip())
+            if record.kind == "runtime" and "validation" in record.tags and record.reference:
+                commands.append(record.reference)
+        seen: set[str] = set()
+        result: list[str] = []
+        for command in commands:
+            normalized = command.strip()
+            if normalized and normalized not in seen:
+                seen.add(normalized)
+                result.append(normalized)
+        return result
+
+    def _continuation_blockers(
+        self,
+        selected: UnifiedContextRecord,
+        diagnostics: list[SelfDiagnosticSignal],
+    ) -> list[str]:
+        blockers: list[str] = []
+        if selected.status in {"needs_approval", "blocked", "failed"}:
+            blockers.append(f"{selected.title} is {selected.status.replace('_', ' ')}.")
+        blockers.extend(
+            diagnostic.title
+            for diagnostic in diagnostics
+            if diagnostic.status in {"degraded", "critical"}
+        )
+        return blockers[:6]
+
+    def _continuation_risk_level(
+        self,
+        selected: UnifiedContextRecord,
+        forecasts: SimulationForecastSnapshot,
+        diagnostics: list[SelfDiagnosticSignal],
+    ) -> str:
+        if any(item.status == "critical" for item in diagnostics) or forecasts.risk_score >= 0.85:
+            return "critical"
+        if selected.status in {"blocked", "failed"} or forecasts.risk_score >= 0.65:
+            return "high"
+        if selected.status == "needs_approval" or any(item.status == "watch" for item in diagnostics):
+            return "medium"
+        return "low"
+
+    def _continuation_next_action(self, selected: UnifiedContextRecord, validation_commands: list[str]) -> str:
+        if selected.status == "needs_approval":
+            return "Review the pending approval, then resume the task through the task API."
+        if selected.status in {"blocked", "failed"}:
+            return "Inspect the task timeline and artifacts, repair the blocker, then retry with validation."
+        if selected.kind == "recommendation":
+            return "Convert this workspace recommendation into a tracked task if it is still relevant."
+        if validation_commands:
+            return f"Continue the active task and validate with `{validation_commands[0]}` before closing it."
+        return "Continue the active task, update artifacts, and record the next validation step."
+
+    def _continuation_confidence(
+        self,
+        selected: UnifiedContextRecord,
+        context_record_ids: list[str],
+        memory_refs: list[str],
+    ) -> float:
+        score = 0.42 + min(0.28, selected.importance * 0.2) + min(0.18, len(context_record_ids) * 0.015) + min(0.12, len(memory_refs) * 0.015)
+        return round(min(0.95, score), 3)
+
+    def _resume_prompt(
+        self,
+        active_goal: str,
+        next_action: str,
+        selected: UnifiedContextRecord,
+        validation_commands: list[str],
+    ) -> str:
+        files = f" Related files: {', '.join(selected.related_files[:5])}." if selected.related_files else ""
+        validation = f" Validation: {validation_commands[0]}." if validation_commands else ""
+        return _compact(f"Continue the persisted objective: {active_goal}. {next_action}{files}{validation}", 520)
+
+    def _continuation_rationale(
+        self,
+        selected: UnifiedContextRecord,
+        memory_refs: list[str],
+        context_record_ids: list[str],
+    ) -> str:
+        return (
+            f"Selected `{selected.id}` because it is the strongest persisted continuation candidate "
+            f"with status `{selected.status or 'unknown'}`, {len(context_record_ids)} related context record(s), "
+            f"and {len(memory_refs)} memory reference(s)."
+        )
+
+    def _continuation_warnings(self, risk_level: str, blockers: list[str]) -> list[str]:
+        warnings: list[str] = []
+        if risk_level in {"high", "critical"}:
+            warnings.append("Use approval, checkpoint, and validation gates before mutating files.")
+        if blockers:
+            warnings.append("Resolve blockers before dispatching background or autonomous work.")
+        return warnings
 
     def _recommendations(
         self,

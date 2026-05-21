@@ -1,0 +1,50 @@
+{
+  "id": "aegis-custom-validator",
+  "name": "Aegis Custom Validator",
+  "version": "1.0.0",
+  "api_version": "2026.05.12",
+  "category": "validators",
+  "description": "Reference validator plugin that contributes validation hints without executing commands by default.",
+  "author": "Aegis",
+  "capabilities": ["validator", "tool", "workflow_extension"],
+  "dependencies": [],
+  "permission_scopes": ["filesystem_read", "workspace_scan", "validation_execution"],
+  "runtime_compatibility": {
+    "min_core_version": "0.1.0",
+    "supported_workflow_types": ["validate_project", "repair_project", "generate_feature"]
+  },
+  "tools": [
+    {
+      "name": "validation-hint",
+      "description": "Detect likely validation commands without running them.",
+      "input_schema": {"type": "object", "properties": {"focus": {"type": "string"}}},
+      "output_schema": {"type": "object", "properties": {"suggested_commands": {"type": "array"}}},
+      "safety_level": "high",
+      "supported_workflow_types": ["validate_project", "repair_project"],
+      "execution_timeout_seconds": 20,
+      "retry_policy": {"max_attempts": 1},
+      "required_permissions": ["filesystem_read", "validation_execution"],
+      "handler": "builtin.validation_hint"
+    }
+  ],
+  "workflow_extensions": {
+    "validators": [
+      {
+        "id": "validation-command-discovery",
+        "label": "Validation Command Discovery",
+        "workflow_types": ["validate_project", "repair_project"],
+        "tool": "validation-hint",
+        "stage": "validation"
+      }
+    ]
+  },
+  "ui_extensions": [],
+  "package": {
+    "checksum": "builtin",
+    "signature": "builtin",
+    "signing_key_fingerprint": "aegis-builtin",
+    "update_channel": "stable"
+  },
+  "enabled": false,
+  "trusted": true
+}

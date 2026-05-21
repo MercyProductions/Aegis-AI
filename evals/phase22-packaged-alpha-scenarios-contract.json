@@ -1,0 +1,66 @@
+{
+  "schema_version": "2026.05.21",
+  "name": "Phase 22 Packaged Alpha Scenario Evidence Contract",
+  "phase": 22,
+  "evidence_root": ".aegis/packaged-alpha-scenarios",
+  "current_required_status": "ready",
+  "components": [
+    "aegis-core",
+    "website",
+    "desktop",
+    "vscode-extension",
+    "visual-studio-extension"
+  ],
+  "scenario_suite": [
+    "create_app",
+    "modify_app",
+    "repair_validation",
+    "review_code",
+    "connect_provider",
+    "use_local_model",
+    "run_vscode_extension",
+    "run_visual_studio_extension",
+    "update_component",
+    "rollback_component"
+  ],
+  "required_evidence_sources": [
+    "final_release_manifest",
+    "release_package_dry_run",
+    "release_apply_rollback",
+    "release_artifact_preflight",
+    "extension_package_candidates",
+    "alpha_contract"
+  ],
+  "required_checks": [
+    "root_manifest_present",
+    "packages_present",
+    "packages_match_manifest_hashes",
+    "alpha_scenario_contract_attached",
+    "release_apply_rollback_attached",
+    "all_scenarios_have_evidence",
+    "no_plaintext_secret_markers",
+    "scenario_evidence_linkable"
+  ],
+  "required_contract_files": [
+    "VERSION.json",
+    "release/version-manifest.json",
+    "docs/PACKAGED_ALPHA_SCENARIO_EVIDENCE.md",
+    "docs/EXTERNAL_ALPHA_RELEASE_REPORT.md",
+    "docs/EVIDENCE_LEDGER.md",
+    "docs/VALIDATION_MATRIX.md",
+    "KNOWN_UNSTABLE_SURFACES.md",
+    "evals/phase14-alpha-readiness-contract.json",
+    "evals/phase15-external-alpha-release-contract.json",
+    "evals/phase16-evidence-ledger-contract.json",
+    "evals/phase22-packaged-alpha-scenarios-contract.json",
+    "scripts/test-alpha-contract.ps1",
+    "scripts/test-packaged-alpha-scenarios.ps1",
+    "scripts/test-external-alpha-contract.ps1",
+    "scripts/test-evidence-ledger-contract.ps1",
+    "scripts/validate-ecosystem.ps1"
+  ],
+  "evidence_outputs": [
+    "packaged-alpha-scenarios.json",
+    "packaged-alpha-scenarios-summary.md"
+  ]
+}

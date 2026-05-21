@@ -11,7 +11,7 @@ from .schemas import (
     ModelRouteHealthInfo,
 )
 from .task_planner import TaskPlan
-from .providers.base import normalize_capability
+from .providers.base import api_family, is_local_endpoint, normalize_capability, provider_label
 
 
 GENERIC_CAPABILITIES = {"chat", "structured_json"}
@@ -195,6 +195,157 @@ class ModelExecutionPlanner:
             )
 
         return ModelExecutionPlan(attempts=attempts)
+
+    def apply_selected_provider(
+        self,
+        plan: ModelExecutionPlan,
+        *,
+        selected_provider_id: str = "",
+        selected_provider_label: str = "",
+        selected_provider_api: str = "",
+        selected_provider_endpoint: str = "",
+        selected_provider_model: str = "",
+        providers: list[ModelRegistryProvider] | None = None,
+    ) -> ModelExecutionPlan:
+        provider_id = selected_provider_id.strip()
+        api = selected_provider_api.strip().lower()
+        endpoint = selected_provider_endpoint.strip().rstrip("/")
+        model = selected_provider_model.strip()
+        if not any((provider_id, api, endpoint, model)):
+            return plan
+
+        provider_records = providers or []
+        provider = self._resolve_selected_provider(
+            provider_id=provider_id,
+            api=api,
+            endpoint=endpoint,
+            model=model,
+            providers=provider_records,
+        )
+        if provider is not None:
+            provider_id = provider.id
+            api = provider.api.strip().lower() or api
+            endpoint = provider.endpoint.strip().rstrip("/") or endpoint
+            model = model or provider.model_name.strip()
+            selected_provider_label = selected_provider_label.strip() or provider.label
+        else:
+            api = self._selected_provider_api(provider_id, api)
+
+        if not model:
+            return plan
+
+        label = selected_provider_label.strip() or (provider.label if provider is not None else provider_label(api, endpoint))
+        endpoint_is_local = provider.local if provider is not None else is_local_endpoint(endpoint)
+        selected_attempt = ModelAttemptInfo(
+            attempt=1,
+            role=plan.primary.role if plan.primary else "chat",
+            provider_id=provider_id or f"{api or 'local'}:selected",
+            provider_label=label,
+            provider_api=api or "openai-compatible",
+            model=model,
+            endpoint=endpoint,
+            privacy_mode="local-only" if endpoint_is_local else (plan.primary.privacy_mode if plan.primary else "cloud-allowed"),
+            status="planned",
+            reason="Selected in the Aegis provider stack for this chat turn.",
+            retryable=provider.configured if provider is not None else True,
+            metadata={
+                "candidate_id": "ui:selected-provider",
+                "candidate_source": "selected-provider",
+                "selected_provider_override": True,
+                "selected_provider_id": selected_provider_id.strip(),
+                "selected_provider_label": selected_provider_label.strip(),
+                "selected_provider_api": selected_provider_api.strip(),
+                "selected_provider_endpoint": selected_provider_endpoint.strip(),
+                "selected_provider_model": selected_provider_model.strip(),
+                "registry_resolved": provider is not None,
+                "provider_capabilities": self._provider_capabilities(provider),
+                "provider_roles": self._provider_roles(provider),
+                "cost_tier": provider.cost_tier if provider else "low" if endpoint_is_local else "unknown",
+                "context_window": provider.context_window if provider else None,
+                "rate_limit_rpm": provider.rate_limit_rpm if provider else None,
+                "input_cost_per_million": provider.input_cost_per_million if provider else None,
+                "output_cost_per_million": provider.output_cost_per_million if provider else None,
+            },
+        )
+        selected_key = self._attempt_identity(selected_attempt)
+        attempts = [
+            selected_attempt,
+            *[
+                attempt
+                for attempt in plan.attempts
+                if self._attempt_identity(attempt) != selected_key
+            ],
+        ]
+        return ModelExecutionPlan(
+            attempts=[
+                attempt.model_copy(update={"attempt": index})
+                for index, attempt in enumerate(attempts, start=1)
+            ]
+        )
+
+    def _resolve_selected_provider(
+        self,
+        *,
+        provider_id: str,
+        api: str,
+        endpoint: str,
+        model: str,
+        providers: list[ModelRegistryProvider],
+    ) -> ModelRegistryProvider | None:
+        enabled = [provider for provider in providers if provider.enabled]
+        provider_id_lower = provider_id.strip().lower()
+        api_lower = api.strip().lower()
+        endpoint_lower = endpoint.strip().rstrip("/").lower()
+        model_lower = model.strip().lower()
+
+        if provider_id_lower:
+            for provider in enabled:
+                if provider.id.strip().lower() == provider_id_lower:
+                    return provider
+
+        for provider in enabled:
+            provider_api = provider.api.strip().lower()
+            provider_endpoint = provider.endpoint.strip().rstrip("/").lower()
+            provider_matches_model = self._provider_matches_model(provider, model_lower) if model_lower else True
+            if not provider_matches_model:
+                continue
+            if api_lower and provider_api == api_lower:
+                if not endpoint_lower or provider_endpoint == endpoint_lower:
+                    return provider
+            if provider_id_lower == "ollama" and provider_api == "ollama":
+                return provider
+            if provider_id_lower == "local_openai_compatible" and api_family(provider_api) == "openai" and provider.local:
+                if not endpoint_lower or provider_endpoint == endpoint_lower:
+                    return provider
+
+        for provider in enabled:
+            provider_api = provider.api.strip().lower()
+            if provider_id_lower == "ollama" and provider_api == "ollama" and provider.configured:
+                return provider
+            if provider_id_lower == "local_openai_compatible" and api_family(provider_api) == "openai" and provider.local and provider.configured:
+                return provider
+        return None
+
+    def _selected_provider_api(self, provider_id: str, api: str) -> str:
+        if api:
+            return api
+        lowered = provider_id.strip().lower()
+        if lowered == "ollama":
+            return "ollama"
+        if lowered in {"local_openai_compatible", "local-openai-compatible"}:
+            return "openai-compatible"
+        if lowered.startswith("ollama:"):
+            return "ollama"
+        if ":" in lowered:
+            return lowered.split(":", 1)[0] or "openai-compatible"
+        return "openai-compatible"
+
+    def _attempt_identity(self, attempt: ModelAttemptInfo) -> tuple[str, str, str]:
+        return (
+            attempt.provider_id.strip().lower(),
+            attempt.provider_api.strip().lower(),
+            attempt.model.strip().lower(),
+        )
 
     def _resolve_provider(
         self,

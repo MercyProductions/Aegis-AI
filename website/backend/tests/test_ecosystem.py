@@ -122,6 +122,10 @@ class EcosystemTests(unittest.TestCase):
                 "/api/ecosystem/packages/validate",
                 json={"manifest": self._package_manifest().model_dump(mode="json")},
             )
+            checksum_validation = client.post(
+                "/api/ecosystem/packages/validate",
+                json={"manifest": self._package_manifest(checksum="wrong-checksum").model_dump(mode="json")},
+            )
             register = client.post(
                 "/api/ecosystem/packages/register",
                 json={"manifest": self._package_manifest().model_dump(mode="json"), "enable": False, "trust_level": "reviewed"},
@@ -129,6 +133,12 @@ class EcosystemTests(unittest.TestCase):
             package_id = register.json()["id"]
             trusted = client.post(f"/api/ecosystem/packages/{package_id}/trust", json={"trust_level": "trusted", "reason": "test"})
             enabled = client.post(f"/api/ecosystem/packages/{package_id}/enable", json={"reason": "test"})
+            updated = client.post(
+                f"/api/ecosystem/packages/{package_id}/update",
+                json={"manifest": self._package_manifest(version="0.2.0").model_dump(mode="json"), "reason": "upgrade test"},
+            )
+            rolled_back = client.post(f"/api/ecosystem/packages/{package_id}/rollback", json={"reason": "rollback test"})
+            uninstalled = client.post(f"/api/ecosystem/packages/{package_id}/uninstall", json={"reason": "safe remove"})
             disabled = client.post(f"/api/ecosystem/packages/{package_id}/disable", json={"reason": "pause"})
             workflows = client.get("/api/ecosystem/workflows")
             workflow_run = client.post(
@@ -168,11 +178,24 @@ class EcosystemTests(unittest.TestCase):
         self.assertGreaterEqual(len(marketplace.json()), 3)
         self.assertEqual(validate.status_code, 200, validate.text)
         self.assertTrue(validate.json()["valid"])
+        self.assertEqual(checksum_validation.status_code, 200, checksum_validation.text)
+        self.assertFalse(checksum_validation.json()["valid"])
+        self.assertTrue(any("checksum" in item.lower() for item in checksum_validation.json()["errors"]))
         self.assertEqual(register.status_code, 200, register.text)
         self.assertEqual(trusted.status_code, 200, trusted.text)
         self.assertEqual(trusted.json()["trust_level"], "trusted")
         self.assertEqual(enabled.status_code, 200, enabled.text)
         self.assertTrue(enabled.json()["enabled"])
+        self.assertEqual(updated.status_code, 200, updated.text)
+        self.assertEqual(updated.json()["status"], "updated")
+        self.assertEqual(updated.json()["package"]["version"], "0.2.0")
+        self.assertEqual(rolled_back.status_code, 200, rolled_back.text)
+        self.assertEqual(rolled_back.json()["status"], "rolled_back")
+        self.assertEqual(rolled_back.json()["package"]["version"], "0.1.0")
+        self.assertEqual(uninstalled.status_code, 200, uninstalled.text)
+        self.assertEqual(uninstalled.json()["status"], "uninstalled")
+        self.assertFalse(uninstalled.json()["package"]["enabled"])
+        self.assertEqual(uninstalled.json()["package"]["metadata"]["lifecycle_status"], "uninstalled")
         self.assertEqual(disabled.status_code, 200, disabled.text)
         self.assertFalse(disabled.json()["enabled"])
         self.assertEqual(workflows.status_code, 200, workflows.text)
@@ -192,6 +215,9 @@ class EcosystemTests(unittest.TestCase):
         self.assertEqual(reproducibility.json()["status"], "ready")
         self.assertEqual(audit.status_code, 200, audit.text)
         self.assertTrue(any(item["action"] == "package.registered" for item in audit.json()))
+        self.assertTrue(any(item["action"] == "package.updated" for item in audit.json()))
+        self.assertTrue(any(item["action"] == "package.rolled_back" for item in audit.json()))
+        self.assertTrue(any(item["action"] == "package.uninstalled" for item in audit.json()))
 
     def _project_snapshot(self):
         files = self.workspace_manager.scan(self.workspace, max_files=500)

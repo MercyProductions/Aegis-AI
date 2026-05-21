@@ -1,0 +1,49 @@
+{
+  "id": "aegis-architecture-analyzer",
+  "name": "Aegis Architecture Analyzer",
+  "version": "1.0.0",
+  "api_version": "2026.05.12",
+  "category": "analyzers",
+  "description": "Reference analyzer that summarizes workspace architecture signals from the existing Core scanner.",
+  "author": "Aegis",
+  "capabilities": ["analyzer", "tool", "workflow_extension"],
+  "dependencies": [],
+  "permission_scopes": ["filesystem_read", "workspace_scan"],
+  "runtime_compatibility": {
+    "min_core_version": "0.1.0",
+    "supported_workflow_types": ["scan_workspace", "generate_feature", "research_task"]
+  },
+  "tools": [
+    {
+      "name": "architecture-summary",
+      "description": "Return frameworks, languages, build files, and workspace size signals.",
+      "input_schema": {"type": "object"},
+      "output_schema": {"type": "object"},
+      "safety_level": "low",
+      "supported_workflow_types": ["scan_workspace", "generate_feature"],
+      "execution_timeout_seconds": 30,
+      "retry_policy": {"max_attempts": 1},
+      "required_permissions": ["filesystem_read", "workspace_scan"],
+      "handler": "builtin.architecture_summary"
+    }
+  ],
+  "analyzer_extensions": {
+    "architecture_analyzers": [
+      {
+        "id": "scanner-architecture-summary",
+        "label": "Scanner Architecture Summary",
+        "workflow_types": ["scan_workspace", "generate_feature"],
+        "tool": "architecture-summary"
+      }
+    ]
+  },
+  "ui_extensions": [],
+  "package": {
+    "checksum": "builtin",
+    "signature": "builtin",
+    "signing_key_fingerprint": "aegis-builtin",
+    "update_channel": "stable"
+  },
+  "enabled": true,
+  "trusted": true
+}

@@ -1,0 +1,109 @@
+{
+  "schema_version": "2026.05.21",
+  "name": "Phase 39 Editor Smoke And Release Package Decision Contract",
+  "phase": 39,
+  "evidence_root": ".aegis/editor-smoke-release-package-decision",
+  "current_required_status": "ready",
+  "execution_status_values": ["attention", "ready"],
+  "attempt_status_values": ["not_run", "passed", "retryable", "blocked"],
+  "slice": "VS Code extension-host smoke execution, package mutation decisions, owner next actions, and evidence refresh back into release-candidate scoping",
+  "target_gate_ids": [
+    "vscode-smoke",
+    "visual-studio-package",
+    "release-package-dry-run",
+    "final-release-manifest-contract"
+  ],
+  "required_execution_markers": [
+    "execution_status",
+    "target_gate_observations",
+    "gate_attempts",
+    "vscode_smoke_attempt",
+    "package_gate_decisions",
+    "owner_next_actions",
+    "artifacts",
+    "phase36_refresh_required",
+    "phase37_refresh_required",
+    "phase38_refresh_required"
+  ],
+  "required_docs": [
+    "docs/EDITOR_SMOKE_RELEASE_PACKAGE_DECISION_EVIDENCE.md",
+    "docs/VALIDATION_MATRIX.md",
+    "docs/EVIDENCE_LEDGER.md",
+    "docs/EXTERNAL_ALPHA_RELEASE_NOTES.md",
+    "docs/EXTERNAL_ALPHA_RELEASE_REPORT.md",
+    "KNOWN_UNSTABLE_SURFACES.md",
+    "FULL_PROJECT_REMAINING_ROADMAP_2026-05-21.md",
+    "FULL_PROJECT_REVIEW_ROADMAP_2026-05-21.md",
+    "CHATBOT_PROJECT_REVIEW_ROADMAP_2026-05-21.md"
+  ],
+  "required_doc_markers": [
+    "Phase 39",
+    "VS Code extension-host smoke",
+    "vscode-smoke",
+    "visual-studio-package",
+    "release-package-dry-run",
+    "final-release-manifest-contract",
+    "release artifact decision",
+    "mutation scope",
+    "owner next actions"
+  ],
+  "required_evidence_sources": [
+    {
+      "id": "live_smoke_rc",
+      "root": ".aegis/live-smoke-rc",
+      "json": "live-smoke-rc.json",
+      "summary": "live-smoke-rc-summary.md",
+      "accepted_statuses": ["ready"]
+    },
+    {
+      "id": "commit_scoping_github_handoff",
+      "root": ".aegis/commit-scoping-github-handoff",
+      "json": "commit-scoping-github-handoff.json",
+      "summary": "commit-scoping-github-handoff-summary.md",
+      "accepted_statuses": ["ready"]
+    },
+    {
+      "id": "desktop_smoke_package_gates",
+      "root": ".aegis/desktop-smoke-package-gates",
+      "json": "desktop-smoke-package-gates.json",
+      "summary": "desktop-smoke-package-gates-summary.md",
+      "accepted_statuses": ["ready"]
+    },
+    {
+      "id": "release_validation",
+      "root": ".aegis/release-evidence",
+      "json": "validation-matrix.json",
+      "summary": "validation-summary.md",
+      "accepted_statuses": ["attention", "passed"]
+    },
+    {
+      "id": "editor_extension_modularization",
+      "root": ".aegis/editor-extension-modularization",
+      "json": "editor-extension-modularization.json",
+      "summary": "editor-extension-modularization-summary.md",
+      "accepted_statuses": ["ready"]
+    },
+    {
+      "id": "extension_package_candidates",
+      "root": ".aegis/extension-package-candidates",
+      "json": "extension-package-candidates.json",
+      "summary": "extension-package-candidates-summary.md",
+      "accepted_statuses": ["ready"]
+    }
+  ],
+  "required_validation_gate_ids": [
+    "editor-smoke-release-package-decision-contract"
+  ],
+  "required_contract_files": [
+    "evals/phase39-editor-smoke-release-package-decision-contract.json",
+    "scripts/test-editor-smoke-release-package-decision.ps1",
+    "docs/EDITOR_SMOKE_RELEASE_PACKAGE_DECISION_EVIDENCE.md",
+    "docs/VALIDATION_MATRIX.md",
+    "docs/EVIDENCE_LEDGER.md",
+    "scripts/validate-ecosystem.ps1"
+  ],
+  "evidence_outputs": [
+    "editor-smoke-release-package-decision.json",
+    "editor-smoke-release-package-decision-summary.md"
+  ]
+}

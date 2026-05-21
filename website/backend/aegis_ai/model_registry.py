@@ -1993,6 +1993,7 @@ class ModelRegistryManager:
         local = self._clean_bool(provider.get("local"), is_local_endpoint(endpoint))
         configured_default = bool(model_name) if active_like else False
         configured = self._clean_bool(provider.get("configured"), configured_default)
+        auth_modes = self._clean_list(provider.get("auth_modes", [])) or self._default_auth_modes(api, local)
 
         return {
             "id": provider_id,
@@ -2013,8 +2014,25 @@ class ModelRegistryManager:
             "input_cost_per_million": self._clean_optional_float(provider.get("input_cost_per_million")),
             "output_cost_per_million": self._clean_optional_float(provider.get("output_cost_per_million")),
             "health": str(provider.get("health") or ("configured" if configured else "planned")).strip(),
+            "auth_modes": auth_modes,
+            "connection_status": str(provider.get("connection_status") or ("linked" if configured else "unknown")).strip(),
+            "account_id": str(provider.get("account_id") or "").strip(),
+            "credential_ref": str(provider.get("credential_ref") or "").strip(),
+            "session_ref": str(provider.get("session_ref") or "").strip(),
+            "quota_status": str(provider.get("quota_status") or "unknown").strip() or "unknown",
+            "last_validated_at": str(provider.get("last_validated_at") or "").strip(),
             "notes": str(provider.get("notes") or "").strip(),
         }
+
+    def _default_auth_modes(self, api: str, local: bool) -> list[str]:
+        normalized = api.strip().lower()
+        if local or normalized in {"ollama", "lmstudio"}:
+            return ["none"]
+        if normalized in {"bedrock", "vertex", "azure-openai"}:
+            return ["env_profile", "api_key"]
+        if normalized in {"openai", "anthropic", "google", "gemini"}:
+            return ["api_key", "cli_bridge"]
+        return ["api_key"]
 
     def _clean_bool(self, value: Any, default: bool) -> bool:
         if isinstance(value, bool):
@@ -2103,8 +2121,12 @@ class ModelRegistryManager:
                     if installed is not None:
                         available = model_name in installed
                         desired_health = "available" if available else "missing-local-model"
-                        if provider.get("configured") != available:
-                            provider["configured"] = available
+                        desired_configured = available or (
+                            bool(provider.get("configured"))
+                            and not self._is_auto_managed_ollama_provider(provider)
+                        )
+                        if provider.get("configured") != desired_configured:
+                            provider["configured"] = desired_configured
                             changed = True
                         if provider.get("health") != desired_health:
                             provider["health"] = desired_health
@@ -2221,6 +2243,25 @@ class ModelRegistryManager:
                 elif ":" not in name:
                     installed.add(f"{name}:latest")
         return installed
+
+    def _is_auto_managed_ollama_provider(self, provider: dict[str, Any]) -> bool:
+        provider_id = str(provider.get("id") or "").strip()
+        model_name = str(provider.get("model_name") or "").strip()
+        if not provider_id or not model_name:
+            return False
+        if provider_id == self._active_provider_id():
+            return True
+        if provider_id == f"ollama:{self._model_slug(model_name)}":
+            return True
+        notes = str(provider.get("notes") or "").lower()
+        return any(
+            marker in notes
+            for marker in (
+                "created from the active aegis model settings",
+                "expanded local ollama model pack",
+                "discovered from the local ollama inventory",
+            )
+        )
 
     def _ollama_provider(
         self,

@@ -1,0 +1,52 @@
+{
+  "schema_version": "2026.05.21",
+  "name": "Phase 20 Final Release Manifest Contract",
+  "phase": 20,
+  "evidence_root": ".aegis/final-release-manifest",
+  "current_required_status": "ready",
+  "components": [
+    "aegis-core",
+    "website",
+    "desktop",
+    "vscode-extension",
+    "visual-studio-extension"
+  ],
+  "required_artifacts": [
+    "aegis-core-0.1.0.zip",
+    "aegis-website-0.1.0.zip",
+    "aegis-desktop-0.2.0-portable.zip",
+    "aegis-local-autopilot-0.1.8.vsix",
+    "AegisLocalAgentVs.vsix"
+  ],
+  "required_checks": [
+    "artifact_decision_recorded",
+    "root_manifest_generated",
+    "root_artifacts_present",
+    "root_artifact_hashes_stamped",
+    "root_artifact_sizes_stamped",
+    "root_manifest_paths_are_release_relative",
+    "update_plan_dry_runs",
+    "release_tools_copied",
+    "unsigned_build_disclosure"
+  ],
+  "required_contract_files": [
+    "VERSION.json",
+    "docs/RELEASE_ARTIFACT_DECISION.md",
+    "docs/RELEASE_PACKAGE_DRY_RUN.md",
+    "docs/RELEASE_PACKAGING_AND_UPDATES.md",
+    "docs/RELEASE_ARTIFACT_PREFLIGHT.md",
+    "docs/EVIDENCE_LEDGER.md",
+    "docs/EXTERNAL_ALPHA_RELEASE_REPORT.md",
+    "docs/VALIDATION_MATRIX.md",
+    "evals/phase20-final-release-manifest-contract.json",
+    "scripts/test-final-release-manifest.ps1",
+    "scripts/build-release.ps1",
+    "scripts/aegis-update.ps1",
+    "scripts/validate-ecosystem.ps1"
+  ],
+  "final_outputs": [
+    "final-release-manifest.json",
+    "final-release-manifest-summary.md",
+    "release/version-manifest.json"
+  ]
+}

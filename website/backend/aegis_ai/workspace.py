@@ -44,6 +44,22 @@ IGNORE_NAMES = {
 }
 IGNORE_NAMES_NORMALIZED = {name.casefold() for name in IGNORE_NAMES}
 
+SAFE_HIDDEN_WRITE_PATHS = {
+    ".aegis/command_history.json",
+    ".aegis/decisions.md",
+    ".aegis/file_index.json",
+    ".aegis/instruction_status.json",
+    ".aegis/known_errors.json",
+    ".aegis/project.json",
+    ".aegis/roadmap.md",
+    ".aegis/validation_plan.json",
+    ".aegis/validation_profile.json",
+    ".vscode/extensions.json",
+    ".vscode/launch.json",
+    ".vscode/settings.json",
+    ".vscode/tasks.json",
+}
+
 SECRET_FILE_NAMES = {
     ".env",
     ".env.local",
@@ -838,6 +854,25 @@ class WorkspaceManager:
 
         return ApplyResult(applied=applied, warnings=warnings, checkpoint=checkpoint)
 
+    def create_checkpoint(
+        self,
+        root: Path,
+        paths: list[str] | None = None,
+        *,
+        summary: str = "",
+        max_files: int = 5000,
+    ) -> CheckpointSummary:
+        workspace_root = root.resolve()
+        self._ensure_within_allowed_roots(workspace_root)
+        selected_paths = self._checkpoint_paths(workspace_root, paths or [], max_files=max_files)
+        changes = [FileChange(action="update", path=path, content="") for path in selected_paths]
+        checkpoint_id = self._create_checkpoint(workspace_root, changes, summary=summary)
+        checkpoints = self.list_checkpoints(workspace_root, limit=200)
+        for checkpoint in checkpoints:
+            if checkpoint.id == checkpoint_id:
+                return checkpoint
+        return CheckpointSummary(id=checkpoint_id or "", file_count=len(selected_paths), present_count=len(selected_paths))
+
     def restore_checkpoint(self, root: Path, checkpoint_id: str) -> list[str]:
         workspace_root = root.resolve()
         self._ensure_within_allowed_roots(workspace_root)
@@ -1466,7 +1501,29 @@ class WorkspaceManager:
             return "database-project"
         return ""
 
-    def _create_checkpoint(self, root: Path, changes: list[FileChange]) -> str | None:
+    def _checkpoint_paths(self, root: Path, paths: list[str], *, max_files: int) -> list[str]:
+        if paths:
+            selected: list[str] = []
+            for raw_path in paths:
+                path_text = str(raw_path).strip()
+                if not path_text:
+                    continue
+                target = self._safe_path(root, path_text)
+                relative = target.relative_to(root).as_posix()
+                if relative not in selected:
+                    selected.append(relative)
+            return selected[:max(1, max_files)]
+
+        selected = []
+        for item in self.scan(root, max_files=max_files):
+            if item.kind != "text":
+                continue
+            if item.is_large or item.size > self.settings.max_write_bytes:
+                continue
+            selected.append(item.path)
+        return selected
+
+    def _create_checkpoint(self, root: Path, changes: list[FileChange], *, summary: str = "") -> str | None:
         checkpoint_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid4().hex[:8]
         checkpoint_root = root / ".aegis" / "checkpoints" / checkpoint_id
         manifest: list[dict[str, str]] = []
@@ -1490,7 +1547,7 @@ class WorkspaceManager:
 
         checkpoint_root.mkdir(parents=True, exist_ok=True)
         (checkpoint_root / "manifest.json").write_text(
-            json.dumps({"id": checkpoint_id, "files": manifest}, indent=2),
+            json.dumps({"id": checkpoint_id, "summary": summary, "files": manifest}, indent=2),
             encoding="utf-8",
         )
         return checkpoint_id
@@ -2124,6 +2181,10 @@ class WorkspaceManager:
             raise ValueError("path points to a secret-like file")
 
         candidate_parts = candidate.parts
+        normalized_candidate = candidate.as_posix().casefold()
+        if normalized_candidate in SAFE_HIDDEN_WRITE_PATHS or normalized_candidate.startswith(".aegis/build_logs/"):
+            return target
+
         if any(_is_ignored_name(part) for part in candidate_parts) or any(
             part.startswith(".") and part not in {".", ".."} for part in candidate_parts[:-1]
         ):

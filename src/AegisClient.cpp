@@ -1,6 +1,7 @@
 #include "AegisClient.h"
 
 #include "Json.h"
+#include "core/CoreApiClient.h"
 
 #include <algorithm>
 #include <chrono>
@@ -48,6 +49,20 @@ std::vector<std::string> ParseStringArray(const JsonValue& value)
         out.push_back(item.AsString());
     }
     return out;
+}
+
+bool ShouldFallbackFromCoreError(const std::exception& error)
+{
+    const std::string message = Lower(error.what());
+    if (message.find("http 400") != std::string::npos ||
+        message.find("http 403") != std::string::npos ||
+        message.find("unsafe") != std::string::npos ||
+        message.find("outside the workspace") != std::string::npos ||
+        message.find("secret") != std::string::npos ||
+        message.find("refusing") != std::string::npos) {
+        return false;
+    }
+    return true;
 }
 
 std::string CoreEnvelopeError(const JsonValue& envelope)
@@ -1910,7 +1925,7 @@ AgentResponse ParseAgentResponse(const JsonValue& root, const std::string& works
     response.task_plan = ParseTaskPlan(root["task_plan"], &response.has_task_plan);
     response.context_budget = ParseContextBudget(root["context_budget"], &response.has_context_budget);
     response.model_attempts = ParseModelAttempts(root["model_attempts"]);
-    response.assistant_name = root["assistant_name"].AsString("Aegis AI");
+    response.assistant_name = root["assistant_name"].AsString("Auralith Prime");
     response.mode = root["mode"].AsString("build");
     response.engine = root["engine"].AsString();
     response.registry_message = root["registry_message"].AsString();
@@ -2843,7 +2858,7 @@ HealthStatus ParseHealth(const JsonValue& value)
 AppConfig ParseConfig(const JsonValue& value)
 {
     AppConfig config;
-    config.assistant_name = value["assistant_name"].AsString("Aegis AI");
+    config.assistant_name = value["assistant_name"].AsString("Auralith Prime");
     config.assistant_mission = value["assistant_mission"].AsString();
     config.default_mode = value["default_mode"].AsString("build");
     config.default_workspace = value["default_workspace"].AsString();
@@ -3287,6 +3302,36 @@ AegisClient::AegisClient(DesktopSettings settings) : settings_(std::move(setting
 RuntimeSnapshot AegisClient::LoadRuntime(bool allow_backend_start, const std::string& preferred_workspace)
 {
     RuntimeSnapshot snapshot;
+    const auto try_core_only_snapshot = [&](const std::string& website_error) -> bool {
+        const std::string workspace = Trim(preferred_workspace);
+        if (workspace.empty()) {
+            return false;
+        }
+        CoreApiClient core(settings_);
+        DesktopRuntimeStatus runtime_status = core.ProbeRuntime(workspace, nullptr);
+        if (!runtime_status.core_connected) {
+            snapshot.runtime_status = runtime_status;
+            return false;
+        }
+        snapshot.runtime_status = std::move(runtime_status);
+        snapshot.workspace_root = workspace;
+        snapshot.config.default_workspace = workspace;
+        snapshot.health.ok = true;
+        snapshot.health.ready = true;
+        snapshot.health.status = "core";
+        snapshot.health.app = "Aegis Desktop";
+        snapshot.health.engine = "Aegis Core";
+        snapshot.health.engine_ready = true;
+        snapshot.health.engine_message = "Core connected. Website backend fallback is unavailable: " + RedactDiagnosticText(website_error);
+        snapshot.health.model_ready = snapshot.runtime_status.ollama_connected;
+        snapshot.health.model_message = snapshot.runtime_status.ollama_connected ? "Ollama is reachable through Core." : "Core is reachable; model runtime is not ready.";
+        try {
+            snapshot.files = core.ScanWorkspaceFiles(workspace, settings_.max_files);
+        } catch (const std::exception&) {
+        }
+        snapshot.ok = true;
+        return true;
+    };
 
     try {
         snapshot.health = GetHealth();
@@ -3294,6 +3339,9 @@ RuntimeSnapshot AegisClient::LoadRuntime(bool allow_backend_start, const std::st
         if (allow_backend_start && settings_.auto_start_backend) {
             std::string backend_error;
             if (!StartBackendProcess(settings_, backend_error)) {
+                if (try_core_only_snapshot(std::string(first_error.what()) + " Backend start failed: " + backend_error)) {
+                    return snapshot;
+                }
                 snapshot.error = std::string(first_error.what()) + " Backend start failed: " + backend_error;
                 return snapshot;
             }
@@ -3310,10 +3358,16 @@ RuntimeSnapshot AegisClient::LoadRuntime(bool allow_backend_start, const std::st
                 }
             }
             if (!health_ready) {
+                if (try_core_only_snapshot("Backend process started, but health check did not become ready: " + last_health_error)) {
+                    return snapshot;
+                }
                 snapshot.error = "Backend process started, but health check did not become ready: " + last_health_error;
                 return snapshot;
             }
         } else {
+            if (try_core_only_snapshot(first_error.what())) {
+                return snapshot;
+            }
             snapshot.error = first_error.what();
             return snapshot;
         }
@@ -3380,6 +3434,7 @@ RuntimeSnapshot AegisClient::LoadRuntime(bool allow_backend_start, const std::st
         snapshot.workspace_autopilot_status_error = error.what();
     }
     snapshot.recent_tasks = GetHistory(snapshot.workspace_root, 8);
+    snapshot.runtime_status = CoreApiClient(settings_).ProbeRuntime(snapshot.workspace_root, &snapshot.health);
     snapshot.ok = true;
     return snapshot;
 }
@@ -3421,6 +3476,14 @@ ModelInventory AegisClient::GetModels()
 
 ModelRegistrySnapshot AegisClient::GetModelRegistry()
 {
+    try {
+        const std::string workspace = settings_.backend_root.empty()
+            ? std::string(".")
+            : WideToUtf8(settings_.backend_root.wstring());
+        return CoreApiClient(settings_).GetModelRegistry(workspace);
+    } catch (const std::exception& error) {
+        CoreApiClient(settings_).RecordWebsiteFallback("model.registry", error.what());
+    }
     const std::string body = RequireJson(HttpGet(Endpoint("/api/model-registry")), "load model registry");
     const JsonParseResult parsed = ParseJson(body);
     if (!parsed.ok) {
@@ -3710,6 +3773,19 @@ WorkspaceAutopilotStatusInfo AegisClient::GetWorkspaceAutopilotStatus(const std:
 
 std::vector<WorkspaceFile> AegisClient::ListFiles(const std::string& workspace_root, int max_files, std::string* resolved_root)
 {
+    CoreApiClient core(settings_);
+    try {
+        std::vector<WorkspaceFile> files = core.ScanWorkspaceFiles(workspace_root, max_files);
+        if (!files.empty()) {
+            if (resolved_root != nullptr) {
+                *resolved_root = workspace_root;
+            }
+            return files;
+        }
+    } catch (const std::exception& error) {
+        core.RecordWebsiteFallback("workspace.scan", error.what());
+    }
+
     std::string path = "/api/files?max_files=" + std::to_string(std::max(1, std::min(500, max_files)));
     if (!Trim(workspace_root).empty()) {
         path += "&workspace_root=" + UrlEncode(workspace_root);
@@ -3723,7 +3799,9 @@ std::vector<WorkspaceFile> AegisClient::ListFiles(const std::string& workspace_r
     if (resolved_root != nullptr) {
         *resolved_root = parsed.value["workspace_root"].AsString(workspace_root);
     }
-    return ParseWorkspaceFiles(parsed.value["files"]);
+    std::vector<WorkspaceFile> files = ParseWorkspaceFiles(parsed.value["files"]);
+    core.RecordWebsiteSuccess("workspace.scan", "Website fallback listed " + std::to_string(files.size()) + " workspace file(s).");
+    return files;
 }
 
 std::vector<TaskSummary> AegisClient::GetHistory(const std::string& workspace_root, int limit)
@@ -4031,6 +4109,16 @@ AgentResponse AegisClient::PreviewRoute(
 
 ApplyResult AegisClient::ApplyChanges(const std::string& workspace_root, const std::vector<FileChange>& changes)
 {
+    CoreApiClient core(settings_);
+    try {
+        return core.ApplyChanges(workspace_root, changes);
+    } catch (const std::exception& error) {
+        if (!ShouldFallbackFromCoreError(error)) {
+            throw;
+        }
+        core.RecordWebsiteFallback("changes.apply", error.what());
+    }
+
     const std::string json = RequireJson(HttpPostJson(Endpoint("/api/apply"), BuildChangesBody(workspace_root, changes)), "apply changes");
     const JsonParseResult parsed = ParseJson(json);
     if (!parsed.ok) {
@@ -4043,6 +4131,7 @@ ApplyResult AegisClient::ApplyChanges(const std::string& workspace_root, const s
     result.checkpoint = parsed.value["checkpoint"].AsString();
     result.workspace_root = parsed.value["workspace_root"].AsString(workspace_root);
     result.workspace_files = ParseWorkspaceFiles(parsed.value["workspace_files"]);
+    core.RecordWebsiteSuccess("changes.apply", "Website fallback applied " + std::to_string(result.applied.size()) + " change(s).", result.checkpoint);
     return result;
 }
 
@@ -4147,6 +4236,16 @@ ProjectScaffoldResult AegisClient::PreviewProjectScaffold(
 
 RestoreResult AegisClient::RestoreCheckpoint(const std::string& workspace_root, const std::string& checkpoint)
 {
+    CoreApiClient core(settings_);
+    try {
+        return core.RestoreCheckpoint(workspace_root, checkpoint);
+    } catch (const std::exception& error) {
+        if (!ShouldFallbackFromCoreError(error)) {
+            throw;
+        }
+        core.RecordWebsiteFallback("checkpoints.restore", error.what());
+    }
+
     const std::string json = RequireJson(
         HttpPostJson(Endpoint("/api/restore-checkpoint"), BuildRestoreCheckpointBody(workspace_root, checkpoint)),
         "restore checkpoint");
@@ -4160,11 +4259,19 @@ RestoreResult AegisClient::RestoreCheckpoint(const std::string& workspace_root, 
     result.warnings = ParseStringArray(parsed.value["warnings"]);
     result.workspace_root = parsed.value["workspace_root"].AsString(workspace_root);
     result.workspace_files = ParseWorkspaceFiles(parsed.value["workspace_files"]);
+    core.RecordWebsiteSuccess("checkpoints.restore", "Website fallback restored " + std::to_string(result.restored.size()) + " file item(s).", checkpoint);
     return result;
 }
 
 CheckpointListResult AegisClient::ListCheckpoints(const std::string& workspace_root, int limit)
 {
+    CoreApiClient core(settings_);
+    try {
+        return core.ListCheckpoints(workspace_root, limit);
+    } catch (const std::exception& error) {
+        core.RecordWebsiteFallback("checkpoints.list", error.what());
+    }
+
     std::string endpoint = "/api/checkpoints?limit=" + std::to_string(std::max(1, std::min(200, limit)));
     if (!Trim(workspace_root).empty()) {
         endpoint += "&workspace_root=" + UrlEncode(workspace_root);
@@ -4179,11 +4286,22 @@ CheckpointListResult AegisClient::ListCheckpoints(const std::string& workspace_r
     CheckpointListResult result;
     result.workspace_root = parsed.value["workspace_root"].AsString(workspace_root);
     result.checkpoints = ParseCheckpoints(parsed.value["checkpoints"]);
+    core.RecordWebsiteSuccess("checkpoints.list", "Website fallback loaded " + std::to_string(result.checkpoints.size()) + " checkpoint(s).");
     return result;
 }
 
 AgentResponse AegisClient::ValidateWorkspace(const std::string& workspace_root)
 {
+    CoreApiClient core(settings_);
+    try {
+        return core.RunValidation(workspace_root);
+    } catch (const std::exception& error) {
+        if (!ShouldFallbackFromCoreError(error)) {
+            throw;
+        }
+        core.RecordWebsiteFallback("validation.run", error.what());
+    }
+
     std::ostringstream body;
     body << "{\"workspace_root\":" << JsonString(workspace_root) << "}";
     const std::string json = RequireJson(HttpPostJson(Endpoint("/api/validate"), body.str()), "run validation");
@@ -4200,6 +4318,11 @@ AgentResponse AegisClient::ValidateWorkspace(const std::string& workspace_root)
     response.validation = ParseCommandRun(parsed.value["validation"], &response.has_validation);
     response.validation_profile = ParseValidationRecipe(parsed.value["validation_profile"], &response.has_validation_profile);
     response.repair_attempts = ParseRepairAttempts(parsed.value["repair_attempts"]);
+    core.RecordWebsiteSuccess(
+        "validation.run",
+        response.has_validation
+            ? (response.validation.summary.empty() ? "Website fallback validation completed." : response.validation.summary)
+            : "Website fallback validation completed.");
     return response;
 }
 
@@ -4311,38 +4434,114 @@ void AegisClient::RegisterCoreClient(
     const std::string& version,
     const std::vector<std::string>& capabilities)
 {
-    std::ostringstream body;
-    body << "{";
-    body << "\"workspace\":" << JsonString(workspace_root) << ",";
-    body << "\"client_id\":" << JsonString(client_id) << ",";
-    body << "\"client_type\":" << JsonString(client_type) << ",";
-    body << "\"name\":" << JsonString(name) << ",";
-    body << "\"version\":" << JsonString(version) << ",";
-    body << "\"capabilities\":" << JsonStringArray(capabilities);
-    body << "}";
-    const std::string response = RequireJson(HttpPostJson(CoreEndpoint("/v1/clients/register"), body.str()), "register Aegis Core client");
-    const JsonParseResult parsed = ParseJson(response);
-    if (!parsed.ok) {
-        throw std::runtime_error(parsed.error);
-    }
-    ValidateCoreEnvelope(parsed.value, "client.registered", true);
+    CoreApiClient(settings_).RegisterClient(workspace_root, client_id, client_type, name, version, capabilities);
 }
 
 AegisCoreDashboardInfo AegisClient::GetCoreDashboard(const std::string& workspace_root)
 {
-    const std::string endpoint = "/v1/ecosystem/dashboard?workspace=" + UrlEncode(workspace_root);
-    const std::string body = RequireJson(HttpGet(CoreEndpoint(endpoint)), "load Aegis Core dashboard");
-    const JsonParseResult parsed = ParseJson(body);
-    if (!parsed.ok) {
-        throw std::runtime_error(parsed.error);
+    return CoreApiClient(settings_).GetDashboard(workspace_root);
+}
+
+AgentSupervisionInfo AegisClient::GetAgentSupervision(const std::string& workspace_root)
+{
+    try {
+        return CoreApiClient(settings_).GetAgentSupervision(workspace_root);
+    } catch (const std::exception& error) {
+        CoreApiClient(settings_).RecordWebsiteFallback("agent.supervision", error.what());
+        AgentSupervisionInfo info;
+        info.workspace_root = workspace_root;
+        info.last_error = error.what();
+        info.fallback_mode = true;
+        return info;
     }
-    ValidateCoreEnvelope(parsed.value, "ecosystem.dashboard", true);
-    AegisCoreDashboardInfo dashboard = ParseCoreDashboard(parsed.value);
-    if (dashboard.workspace_root.empty()) {
-        dashboard.workspace_root = workspace_root;
+}
+
+QualityGateSnapshotInfo AegisClient::GetQualityGates(const std::string& workspace_root)
+{
+    try {
+        return CoreApiClient(settings_).GetQualityGates(workspace_root);
+    } catch (const std::exception& error) {
+        CoreApiClient(settings_).RecordWebsiteFallback("quality.gates", error.what());
+        QualityGateSnapshotInfo info;
+        info.workspace_root = workspace_root;
+        info.available = false;
+        info.core_connected = false;
+        info.status = "offline";
+        info.summary = error.what();
+        return info;
     }
-    dashboard.reachable = true;
-    return dashboard;
+}
+
+bool AegisClient::StepCoreWorkflow(
+    const std::string& workspace_root,
+    const std::string& workflow_id,
+    const std::string& action,
+    const std::string& task_id,
+    bool approval,
+    const std::string& summary)
+{
+    try {
+        return CoreApiClient(settings_).StepWorkflow(workspace_root, workflow_id, action, task_id, approval, summary);
+    } catch (const std::exception& error) {
+        CoreApiClient(settings_).RecordWebsiteFallback("workflow." + action, error.what());
+        return false;
+    }
+}
+
+DesktopRuntimeStatus AegisClient::GetRuntimeStatus(const std::string& workspace_root)
+{
+    HealthStatus health;
+    bool has_health = false;
+    try {
+        health = GetHealth();
+        has_health = true;
+    } catch (const std::exception&) {
+    }
+    return CoreApiClient(settings_).ProbeRuntime(workspace_root, has_health ? &health : nullptr);
+}
+
+DesktopRuntimeStatus AegisClient::GetCachedRuntimeStatus() const
+{
+    return CoreApiClient(settings_).CachedStatus();
+}
+
+std::string AegisClient::StartRepairWorkflow(
+    const std::string& workspace_root,
+    const std::string& validation_summary,
+    const std::string& validation_command,
+    const std::string& task_id)
+{
+    const std::string objective = Trim(validation_summary).empty()
+        ? "Repair the latest validation failure from the desktop client."
+        : validation_summary;
+    try {
+        return CoreApiClient(settings_).CreateWorkflow(
+            workspace_root,
+            "repair_project",
+            objective + (Trim(validation_command).empty() ? "" : ("\nCommand: " + validation_command)),
+            {},
+            task_id);
+    } catch (const std::exception& error) {
+        CoreApiClient(settings_).RecordWebsiteFallback("workflow.repair_project", error.what());
+        return "";
+    }
+}
+
+std::string AegisClient::StartRoadmapWorkflow(
+    const std::string& workspace_root,
+    const std::string& objective,
+    const std::vector<std::string>& context_files)
+{
+    try {
+        return CoreApiClient(settings_).CreateWorkflow(
+            workspace_root,
+            "continue_roadmap",
+            objective.empty() ? "Continue the workspace roadmap from the desktop client." : objective,
+            context_files);
+    } catch (const std::exception& error) {
+        CoreApiClient(settings_).RecordWebsiteFallback("workflow.continue_roadmap", error.what());
+        return "";
+    }
 }
 
 ValidationProfileInfo AegisClient::GetValidationProfile(const std::string& workspace_root)

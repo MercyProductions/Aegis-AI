@@ -1,0 +1,17 @@
+{
+  "id": "ollama",
+  "label": "Ollama",
+  "kind": "local",
+  "description": "Local Ollama runtime for private/offline chat, code, embeddings, and model fallback.",
+  "auth_modes": ["none"],
+  "default_auth_mode": "none",
+  "credential_env_vars": [],
+  "capabilities": ["local", "private", "offline", "chat", "code", "embeddings", "streaming"],
+  "model_families": ["llama", "qwen", "mistral", "gemma", "deepseek", "embedding"],
+  "quota_status": "Local runtime; constrained by installed models, memory, disk, and Ollama availability.",
+  "docs_url": "https://ollama.com",
+  "security_notes": [
+    "No cloud credentials are required.",
+    "Local model calls stay on the machine unless the configured Ollama endpoint points elsewhere."
+  ]
+}

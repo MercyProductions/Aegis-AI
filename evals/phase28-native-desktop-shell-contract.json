@@ -1,0 +1,63 @@
+{
+  "schema_version": "2026.05.21",
+  "name": "Phase 28 Native Desktop Shell Hardening Contract",
+  "phase": 28,
+  "evidence_root": ".aegis/desktop-shell-hardening",
+  "current_required_status": "ready",
+  "slice": "Runtime status presenter extraction",
+  "extracted_module": "src/desktop/RuntimeStatusPresenter.cpp",
+  "extracted_header": "src/desktop/RuntimeStatusPresenter.h",
+  "thin_orchestrator": "src/AegisChatApp.cpp",
+  "required_module_markers": [
+    "RuntimeServiceLabel",
+    "RuntimeServiceTone",
+    "ReleaseCompatibilityTone",
+    "BuildReleaseCompatibilityView",
+    "Compatibility blocker:",
+    "Compatibility warning:",
+    "Release requires: Core"
+  ],
+  "required_app_markers": [
+    "#include \"desktop/RuntimeStatusPresenter.h\"",
+    "RuntimeStatusToneColor",
+    "RuntimeServiceLabel(core_online)",
+    "BuildReleaseCompatibilityView(runtime_status_)",
+    "release_view.notice_label"
+  ],
+  "removed_app_markers": [
+    "const std::string compatibility_status = runtime_status_.release_compatibility_status.empty()",
+    "const std::string lowered_compatibility = Lower(compatibility_status)",
+    "const ImVec4 compatibility_color = lowered_compatibility",
+    "runtime_status_.release_compatibility_blockers.front()",
+    "runtime_status_.release_compatibility_warnings.front()",
+    "runtime_status_.release_compatibility_recommendations.front()"
+  ],
+  "required_build_markers": [
+    "src/desktop/RuntimeStatusPresenter.cpp",
+    "src\\desktop\\RuntimeStatusPresenter.cpp",
+    "src\\desktop\\RuntimeStatusPresenter.h"
+  ],
+  "required_validation_commands": [
+    "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\test-desktop-contract.ps1",
+    "powershell -NoProfile -ExecutionPolicy Bypass -File build.ps1"
+  ],
+  "required_contract_files": [
+    "docs/NATIVE_DESKTOP_SHELL_EVIDENCE.md",
+    "docs/VALIDATION_MATRIX.md",
+    "docs/EVIDENCE_LEDGER.md",
+    "evals/phase28-native-desktop-shell-contract.json",
+    "scripts/test-native-desktop-shell.ps1",
+    "scripts/test-desktop-contract.ps1",
+    "scripts/validate-ecosystem.ps1",
+    "src/AegisChatApp.cpp",
+    "src/desktop/RuntimeStatusPresenter.cpp",
+    "src/desktop/RuntimeStatusPresenter.h",
+    "AegisChatBotDesktop.vcxproj",
+    "AegisChatBotDesktop.vcxproj.filters",
+    "CMakeLists.txt"
+  ],
+  "outputs": [
+    "desktop-shell-hardening.json",
+    "desktop-shell-hardening-summary.md"
+  ]
+}

@@ -1,0 +1,99 @@
+{
+  "schema_version": "2026.05.21",
+  "name": "Phase 32 Plugin Lifecycle Productization Contract",
+  "phase": 32,
+  "evidence_root": ".aegis/plugin-lifecycle",
+  "current_required_status": "ready",
+  "slice": "Website plugin and ecosystem package update, rollback, safe-uninstall, checksum, and audit lifecycle",
+  "schemas": "website/backend/aegis_ai/schemas.py",
+  "productization_engine": "website/backend/aegis_ai/productization.py",
+  "ecosystem_engine": "website/backend/aegis_ai/ecosystem.py",
+  "storage": "website/backend/aegis_ai/storage.py",
+  "productization_routes": "website/backend/aegis_ai/routes/productization.py",
+  "ecosystem_routes": "website/backend/aegis_ai/routes/ecosystem.py",
+  "backend_main": "website/backend/aegis_ai/main.py",
+  "productization_tests": "website/backend/tests/test_productization.py",
+  "ecosystem_tests": "website/backend/tests/test_ecosystem.py",
+  "required_schema_markers": [
+    "PluginLifecycleActionRequest",
+    "PluginLifecycleActionResponse",
+    "EcosystemPackageLifecycleRequest",
+    "EcosystemPackageLifecycleResponse",
+    "checksum",
+    "update_channel"
+  ],
+  "required_productization_markers": [
+    "Plugin manifest checksum does not match package metadata",
+    "def _manifest_checksum",
+    "checksum",
+    "update_channel"
+  ],
+  "required_ecosystem_markers": [
+    "Package checksum does not match manifest payload",
+    "def _package_checksum",
+    "package.updated",
+    "package.rolled_back",
+    "package.uninstalled"
+  ],
+  "required_storage_markers": [
+    "metadata_updates",
+    "latest_state_change_reason"
+  ],
+  "required_route_markers": [
+    "/api/productization/plugins/{plugin_id}/update",
+    "/api/productization/plugins/{plugin_id}/rollback",
+    "/api/productization/plugins/{plugin_id}/uninstall",
+    "/api/ecosystem/packages/{package_id}/update",
+    "/api/ecosystem/packages/{package_id}/rollback",
+    "/api/ecosystem/packages/{package_id}/uninstall"
+  ],
+  "required_main_markers": [
+    "async def update_productization_plugin",
+    "async def rollback_productization_plugin",
+    "async def uninstall_productization_plugin",
+    "async def update_ecosystem_package",
+    "async def rollback_ecosystem_package",
+    "async def uninstall_ecosystem_package",
+    "previous_manifest",
+    "lifecycle_status",
+    "uninstall_mode",
+    "safe_disable"
+  ],
+  "required_test_markers": [
+    "checksum_validation",
+    "upgrade test",
+    "rollback test",
+    "safe remove",
+    "package.updated",
+    "package.rolled_back",
+    "package.uninstalled"
+  ],
+  "required_validation_commands": [
+    "python -m pytest tests/test_productization.py -q",
+    "python -m pytest tests/test_ecosystem.py -q"
+  ],
+  "required_contract_files": [
+    "docs/PLUGIN_LIFECYCLE_EVIDENCE.md",
+    "docs/PLUGIN_ECOSYSTEM.md",
+    "docs/VALIDATION_MATRIX.md",
+    "docs/EVIDENCE_LEDGER.md",
+    "evals/phase32-plugin-lifecycle-contract.json",
+    "evals/phase16-evidence-ledger-contract.json",
+    "scripts/test-plugin-lifecycle.ps1",
+    "scripts/test-evidence-ledger-contract.ps1",
+    "scripts/validate-ecosystem.ps1",
+    "website/backend/aegis_ai/schemas.py",
+    "website/backend/aegis_ai/productization.py",
+    "website/backend/aegis_ai/ecosystem.py",
+    "website/backend/aegis_ai/storage.py",
+    "website/backend/aegis_ai/routes/productization.py",
+    "website/backend/aegis_ai/routes/ecosystem.py",
+    "website/backend/aegis_ai/main.py",
+    "website/backend/tests/test_productization.py",
+    "website/backend/tests/test_ecosystem.py"
+  ],
+  "outputs": [
+    "plugin-lifecycle.json",
+    "plugin-lifecycle-summary.md"
+  ]
+}

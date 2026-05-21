@@ -1,0 +1,58 @@
+{
+  "id": "aegis-roadmap-enhancement",
+  "name": "Aegis Roadmap Enhancement",
+  "version": "1.0.0",
+  "api_version": "2026.05.12",
+  "category": "workflow_types",
+  "description": "Reference workflow extension that contributes roadmap hints and planning stages.",
+  "author": "Aegis",
+  "capabilities": ["workflow_extension", "analyzer", "tool"],
+  "dependencies": [{"id": "aegis-architecture-analyzer", "version": "1.0.0", "optional": true}],
+  "permission_scopes": ["filesystem_read", "workspace_scan"],
+  "runtime_compatibility": {
+    "min_core_version": "0.1.0",
+    "supported_workflow_types": ["continue_roadmap", "generate_feature"]
+  },
+  "tools": [
+    {
+      "name": "roadmap-hints",
+      "description": "Generate roadmap enhancement hints from scan metadata.",
+      "input_schema": {"type": "object"},
+      "output_schema": {"type": "object"},
+      "safety_level": "low",
+      "supported_workflow_types": ["continue_roadmap", "generate_feature"],
+      "execution_timeout_seconds": 20,
+      "retry_policy": {"max_attempts": 1},
+      "required_permissions": ["filesystem_read", "workspace_scan"],
+      "handler": "builtin.roadmap_hint"
+    }
+  ],
+  "workflow_extensions": {
+    "workflow_stages": [
+      {
+        "id": "roadmap-plugin-context",
+        "label": "Roadmap Plugin Context",
+        "workflow_types": ["continue_roadmap", "generate_feature"],
+        "after": "workspace_analysis",
+        "before": "planning",
+        "tool": "roadmap-hints"
+      }
+    ],
+    "roadmap_analyzers": [
+      {
+        "id": "todo-validation-roadmap-hints",
+        "label": "TODO And Validation Roadmap Hints",
+        "workflow_types": ["continue_roadmap", "generate_feature"],
+        "tool": "roadmap-hints"
+      }
+    ]
+  },
+  "package": {
+    "checksum": "builtin",
+    "signature": "builtin",
+    "signing_key_fingerprint": "aegis-builtin",
+    "update_channel": "stable"
+  },
+  "enabled": true,
+  "trusted": true
+}

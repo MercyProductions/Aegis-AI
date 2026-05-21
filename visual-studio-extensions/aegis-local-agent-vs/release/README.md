@@ -10,7 +10,7 @@ Dogfooding build: `0.1.1`
 - Visual Studio extension development workload / VSSDK
 - .NET Framework 4.7.2 targeting pack
 - Ollama running at `http://127.0.0.1:11434`
-- Optional shared Aegis Core runtime at `http://127.0.0.1:8788`
+- Recommended shared Aegis Core runtime at `http://127.0.0.1:8788`
 
 Recommended model:
 
@@ -76,6 +76,17 @@ Visual Studio Tools menu commands:
 - `Aegis: Rescan Solution Intelligence`
 - `Aegis: Run Health Check`
 
+## Core Autopilot Hooks
+
+The Visual Studio Core client can now call the shared Auralith Autopilot Runtime:
+
+- start a supervised Autopilot run for the current solution
+- read Autopilot supervision state
+- send pause/resume/approve/reject/cancel actions
+- surface Core client hooks for diff inspection, validation review, and checkpoint rollback
+
+Visual Studio still preserves solution-specific strengths such as startup project detection, MSBuild output parsing, Error List context, and selected-code workflows. Autopilot apply/rollback remains Core-owned, checkpoint-backed, and approval-gated.
+
 Solution Explorer context menu commands:
 
 - `Aegis: Explain This File`
@@ -93,6 +104,7 @@ Open **Aegis Local Agent** from the command menu. The tool window includes:
 - current status: Ready, No Solution, Ollama Offline, Indexing, Running Agent, Build Failed, or Error
 - model selector
 - model status and settings summary
+- Runtime Authority panel showing Core connection, fallback mode, active workflow, pending proposal, latest checkpoint, latest validation result, Core-selected model, route profile, provider health summary, route explanation, and recent Core operations
 - chat panel
 - agent action buttons
 - selected Error List item panel
@@ -117,6 +129,10 @@ Open **Tools > Options > Aegis Local Agent > General** to configure:
 - max context size
 - safety mode
 - auto-scan on solution open
+
+## Core Model Registry
+
+The extension now asks Aegis Core for the shared model/provider registry during health checks. Core reports provider status, local/cloud model targets, route profiles, and the route explanation for Visual Studio workflows. If Core is unavailable, Visual Studio keeps its existing Ollama model listing and local solution-aware fallback logic.
 - validate-after-apply behavior
 - build validation preference
 - backup location
@@ -142,6 +158,16 @@ Relative backup paths are kept inside the current solution. Use an absolute path
 
 Rollback metadata includes an explicit backup ID. During rollback, Aegis validates that the manifest belongs to the current solution, resolves only the explicit backup folder, checks manifest and backup file paths before touching solution files, and reports skipped entries if metadata is incomplete or unsafe.
 
+## Core-First Runtime
+
+The Visual Studio extension now treats Aegis Core as the preferred runtime authority while preserving Visual Studio-specific solution awareness. When Core is reachable, the extension syncs the client through `/v1/clients/sync`, creates workflow graphs through `/v1/workflows`, records proposed edits through `/v1/changes/propose`, evaluates quality gates through `/v1/quality-gates/evaluate`, applies approved proposals through `/v1/changes/apply`, restores checkpoints through `/v1/checkpoints/restore`, refreshes shared workspace intelligence through `/v1/workspaces/intelligence`, generates roadmaps through `/v1/workspaces/roadmap`, and records validation activity through `/v1/validation/run` plus workflow logs.
+
+Local Visual Studio services remain available as fallback for offline Core, unsupported endpoint versions, or IDE-only operations. The fallback path keeps solution scanning, startup project detection, Error List parsing, MSBuild build output handling, proposal preview, local safe edit backups, context menu commands, selected-code refactor/explain flows, and project memory under `.aegis`.
+
+Core is not allowed to silently apply unsafe changes. If Core rejects a quality gate, apply, rollback, or proposal request for safety reasons, the extension reports the Core rejection and does not bypass it with local fallback. Local fallback is used for unreachable Core, timeout, unavailable endpoint, or service errors where the existing Visual Studio-safe path can still complete the operation.
+
+Core-owned state is written by Core under the solution `.aegis` folder, including workflow history, proposal records, checkpoints, operation jobs, validation records, and activity logs. The extension still writes Visual Studio-specific memory files such as `symbol-index.json`, `dependency-map.json`, build logs, and preview files so native IDE context remains inspectable.
+
 ## Health Check
 
 Run `Aegis: Run Health Check` after installation or when something feels off. It verifies:
@@ -151,6 +177,7 @@ Run `Aegis: Run Health Check` after installation or when something feels off. It
 - `symbol-index.json` and `dependency-map.json` can be written
 - backup location can create and delete a probe file
 - Aegis Core is reachable, and whether this Visual Studio client can register for shared sync
+- Aegis Core quality gate dashboard is reachable
 - Ollama is reachable
 - default and fallback models are installed
 - Visual Studio build/Error List integration can be read
@@ -172,6 +199,18 @@ Agent modes are:
 - Generate tests
 
 Each editing mode follows the same safe loop:
+
+1. Inspect the current solution, project, active document, selected code, Error List, and Build output when relevant.
+2. Create or sync a Core workflow when Core is reachable.
+3. Create a clear plan and affected-file list.
+4. Propose file edits as previewable diffs and record the proposal in Core.
+5. Wait for approval.
+6. Apply approved edits through Core with a mandatory Core checkpoint, or use local Visual Studio safe-edit backups only when Core fallback is allowed.
+7. Validate with Core when a safe workspace command is available, and keep Visual Studio build validation for project-specific MSBuild diagnostics.
+8. If validation fails, record the failure in Core and propose one minimal repair diff.
+9. Stop after 3 repair attempts unless you explicitly allow another repair.
+
+The older local-only loop is still present as fallback:
 
 1. Inspect the current solution, project, active document, selected code, Error List, and Build output when relevant.
 2. Create a clear plan and affected-file list.
@@ -239,12 +278,32 @@ This keeps model prompts smaller, reduces hallucinated file edits, and helps the
 
 `Aegis: Continue From Roadmap` reads that roadmap, chooses one safe high-value task, creates a plan, proposes diffs, and waits for approval before applying anything.
 
+When Core is reachable, roadmap generation uses `/v1/workspaces/roadmap` and roadmap continuation creates a `continue_roadmap` workflow so other clients can see the active task.
+
+## Interactive Validation Checklist
+
+Use this checklist after installing a new VSIX:
+
+1. Open Visual Studio 2022 and load a solution with at least one project.
+2. Open **Aegis Local Agent** and run **Health Check**. Confirm Core, Ollama, `.aegis`, model, and build integration status are visible.
+3. Check the **Runtime Authority** panel. With Core running, it should show Core connected and fallback inactive. Stop Core and rerun health check to confirm fallback becomes active without crashing the tool window.
+4. Run **Rescan Intelligence**. Confirm Visual Studio scan data updates and Core workspace intelligence is recorded when Core is online.
+5. Run **Generate Roadmap**. Confirm Core-generated roadmap content appears when Core is online, and local Ollama fallback appears when Core is offline.
+6. Run **Build Solution** or **Build Selected Project**. Confirm Visual Studio build output is shown, validation is recorded in `.aegis`, and the active Core workflow/job IDs appear when Core is online.
+7. Trigger **Fix Build Errors** or **Fix Selected Error** against a known build failure. Confirm a Core `repair_project` workflow is created and the proposal remains approval-gated.
+8. Review the proposal and diff preview. Confirm unsafe paths are blocked before apply.
+9. Click **Apply Approved**. Confirm Core creates a checkpoint and applies the proposal when online; confirm local `.aegis/backups` fallback only when Core is unreachable.
+10. Click **Rollback Last**. Confirm Core checkpoint restore runs when a Core checkpoint exists, otherwise the local backup rollback path reports its availability.
+11. Verify context menu commands still work: explain file, review project, generate tests, fix project errors, add feature.
+
+Automated tool-window UI testing is still limited by Visual Studio extensibility hosting. The package build script includes static validation guards for command registration, redaction, URL normalization, safe rollback, scanner parity, and Core-first runtime endpoint coverage.
+
 ## Supported Project Workflows
 
 - C#/.NET: reads `.csproj`, target frameworks, NuGet `PackageReference` entries, namespaces, classes, and WPF XAML files.
 - F# and Visual Basic: recognizes `.fsproj` and `.vbproj` projects, indexes modules/types/functions/imports, and keeps managed project validation hints available.
 - C++: reads `.vcxproj`, header/source pairs, include paths, project configurations, common `.cpp` / `.cc` / `.cxx` and header suffixes, and linker/compiler diagnostics from Visual Studio output.
-- Unity: recognizes `Assets/`, `Packages/`, and `ProjectSettings/`, avoids `Library/` and `Temp/`, and flags `MonoBehaviour` scripts for Unity-safe planning.
+- Unity: recognizes `Assets/`, package manifests and lockfiles, key `ProjectSettings/` metadata, `.asmdef` / `.asmref` files, avoids `Library/` and `Temp/`, and flags `MonoBehaviour` scripts for Unity-safe planning.
 
 ## Safety Model
 

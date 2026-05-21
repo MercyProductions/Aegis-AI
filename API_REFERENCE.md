@@ -1,6 +1,6 @@
 # API Reference
 
-Last updated: 2026-05-09
+Last updated: 2026-05-11
 
 This repository currently exposes two API layers:
 
@@ -17,8 +17,19 @@ Low-risk Website runtime routes now use the Website Core adapter when Core is av
 
 - `GET /api/health` and `GET /api/ready` include shared Core runtime status while preserving the existing health shape.
 - `GET /api/models` keeps the Website model inventory shape and may annotate/augment local models with Core `/v1/models` state.
+- `GET /api/model-registry` keeps the Website registry response shape, but now attempts Core `/v1/models/registry` first and merges Core provider status, routing profiles, active model, and fallback metadata when Core is available.
 - `GET /api/config` keeps Website `.env` settings and includes Core settings adapter status.
 - `POST /api/config` saves Website settings first, then best-effort syncs shared model settings to Core `/v1/settings`.
+
+Runtime workflow routes now use the Website Core runtime client when Core is available while preserving the Website `/api` response shapes:
+
+- `POST /api/apply` delegates to Core `POST /v1/changes/apply`.
+- `POST /api/checkpoints` delegates to Core `POST /v1/checkpoints/create`.
+- `GET /api/checkpoints` delegates to Core `GET /v1/checkpoints`.
+- `POST /api/restore-checkpoint` delegates to Core `POST /v1/checkpoints/restore`.
+- `POST /api/validate` delegates to Core `POST /v1/validation/run` and queues Core `repair_project` workflows through `POST /v1/workflows` after delegated validation failures.
+
+If Core is offline or does not expose a delegated route yet, Website falls back to the existing mature local implementation where one exists. Core safety rejections such as unsafe paths are not bypassed through fallback.
 
 These response models include additive optional fields: `core_runtime_reachable`, `core_runtime_status`, `core_contract_version`, and `core_runtime_message`.
 
@@ -31,7 +42,7 @@ Stable product groups:
 - `POST /api/chat`, `POST /api/chat/stream`
 - `POST /api/routing/preview`
 - `POST /api/apply`
-- `GET /api/checkpoints`, `POST /api/restore-checkpoint`
+- `GET/POST /api/checkpoints`, `POST /api/restore-checkpoint`
 - `POST /api/validate`, `POST /api/verify`
 - `GET/PUT /api/validation/profile`
 - `GET/POST /api/tasks` and task actions/timeline/artifacts
@@ -43,12 +54,13 @@ Stable product groups:
 Failure behavior:
 
 - Invalid or uncreatable `workspace_root` values should return `400` with a useful `detail` message.
-- If Aegis Core is offline, low-risk adapter fields report `core_runtime_status: unavailable` while mature Website `/api` behavior continues where local fallback is safe.
-- Website apply/checkpoint restore remains Website-owned. Core rollback contracts are still schema-only.
+- If Aegis Core is offline, adapter fields report disconnected/unavailable status while mature Website `/api` behavior continues where local fallback is safe.
+- Delegated runtime routes log the mode used. A reachable Core `400` safety response is returned to the caller instead of falling back to older Website write behavior.
 
 Product/advanced groups that stay Website-owned for now:
 
 - model registry, model manager, model benchmarks
+- provider accounts and secure provider session metadata
 - workspace/project intelligence
 - unified runtime/context, continuity, platform discipline
 - distributed runtime, adaptive intelligence, productization, ecosystem, autonomous engineering
@@ -60,6 +72,42 @@ Deprecated/removal status:
 - No Website `/api` route is removed or formally deprecated in the current cleanup phase.
 - Low-risk runtime routes are adapter-backed where noted, but their `/api` response models remain backwards compatible.
 - See `DEPRECATION_PLAN.md` before removing any duplicate Website, Core, Desktop, VS Code, or Visual Studio runtime path.
+
+### Provider Accounts
+
+`GET /api/provider-accounts`
+
+Returns provider manifests, linked account metadata, session metadata, CLI bridge probe results, credential-store availability, and security notes. Raw API keys or provider tokens are never returned.
+
+`POST /api/provider-accounts/{provider_id}/api-key`
+
+Body:
+
+```json
+{
+  "api_key": "provider secret",
+  "account_label": "Work account",
+  "scopes": []
+}
+```
+
+Stores the secret in the OS credential vault and upserts redacted account/session metadata in SQLite.
+
+`DELETE /api/provider-accounts/{provider_id}`
+
+Deletes provider account/session rows and best-effort removes referenced vault secrets.
+
+`POST /api/provider-accounts/cli-bridges/probe`
+
+Body:
+
+```json
+{
+  "provider_id": "openai"
+}
+```
+
+Runs safe allowlisted CLI version/status probes. Empty `provider_id` probes every provider manifest with a CLI bridge. Aegis never reads provider token files.
 
 ## Website-to-Core Bridge
 
@@ -94,11 +142,44 @@ Returns a Website wrapper around stable Core `/v1` envelopes:
   "memory": {"ok": true, "api_version": "v1", "contract_version": "2026.05.09", "kind": "memory.summary", "data": {}},
   "diagnostics": {"ok": true, "api_version": "v1", "contract_version": "2026.05.09", "kind": "diagnostics.summary", "data": {}},
   "dashboard": {"ok": true, "api_version": "v1", "contract_version": "2026.05.09", "kind": "ecosystem.dashboard", "data": {}},
+  "delegation": {
+    "core_connected": true,
+    "delegated_workflows_enabled": true,
+    "fallback_mode_active": false,
+    "last_core_error": "",
+    "delegated_workflows": [
+      "changes.apply",
+      "checkpoints.create",
+      "checkpoints.list",
+      "checkpoints.restore",
+      "validation.run",
+      "repair_project.workflow"
+    ]
+  },
   "errors": []
 }
 ```
 
-This endpoint is read-only. It is the compatibility adapter for observing shared runtime state without breaking Website `/api`.
+This endpoint now includes a `delegation` field that reports Website-to-Core runtime workflow mode.
+
+`GET /api/runtime/delegation`
+
+Returns only the delegation status block:
+
+```json
+{
+  "core_url": "http://127.0.0.1:8788",
+  "core_connected": true,
+  "core_status": "connected",
+  "delegated_workflows_enabled": true,
+  "delegated_workflows": ["changes.apply", "checkpoints.create", "checkpoints.list", "checkpoints.restore", "validation.run", "repair_project.workflow"],
+  "fallback_mode_active": false,
+  "last_core_error": "",
+  "last_mode_by_workflow": {"changes.apply": "core"}
+}
+```
+
+Use `AEGIS_CORE_DELEGATED_WORKFLOWS_ENABLED=false` to disable Core workflow delegation and force Website local fallback where available.
 
 ## Aegis Core `/v1`
 
@@ -131,10 +212,12 @@ Endpoint families:
 | Endpoint | Contract kind | Stability | Purpose |
 | --- | --- | --- | --- |
 | `GET /v1/health` | `health` | stable | Shared Core, workspace, config, and Ollama health |
-| `GET /v1/models` | `models` | stable | Shared local model inventory |
+| `GET /v1/models` | `models` | stable | Shared legacy local model inventory |
+| `GET /v1/models/registry` | `model.registry` | experimental | Core-owned provider/model registry, provider auth/health status, capability catalog, selected model, and route profiles |
+| `GET /v1/models/routing-profiles` | `model.routing_profiles` | experimental | Core-owned routing profiles such as local_only, balanced, best_coding, private_sensitive, and creative_media |
 | `GET /v1/providers` | `model.providers` | experimental | Hybrid provider inventory without secret values |
 | `GET /v1/models/providers` | `model.providers` | experimental | Alias for hybrid provider inventory |
-| `POST /v1/models/route` | `model.route` | experimental | Local-first model route plan with cloud approval state and sanitized context metadata |
+| `POST /v1/models/route` | `model.route` | experimental | Core model route decision with profile, fallback chain, route explanation, privacy risk, missing capability warnings, cloud approval state, and sanitized context metadata |
 | `POST /v1/models/completions` | `model.completion` | experimental | Gated local/cloud completion call; cloud requires explicit approval and stored OS credential |
 | `POST /v1/providers/{provider_id}/key` | `provider.key.status` | experimental | Store provider API key in OS credential storage, never in `.aegis/config.json` |
 | `DELETE /v1/providers/{provider_id}/key` | `provider.key.status` | experimental | Remove provider API key from OS credential storage |
@@ -178,7 +261,8 @@ Schema-only experimental contracts are defined in `aegis-core/aegis_core/contrac
 Hybrid model routing:
 
 - Core defaults to `model_routing_mode: local_only` and routes normal work to Ollama at `http://127.0.0.1:11434`.
-- Optional providers are OpenAI, Anthropic, Google, OpenRouter, and local LM Studio.
+- Optional providers are OpenAI, Anthropic, Google Gemini, OpenRouter, Azure OpenAI, Amazon Bedrock, Vertex AI, and local LM Studio.
+- Clients should ask Core for `model.registry` and `model.route` instead of maintaining separate provider truth. Website, Desktop, VS Code, and Visual Studio now consume the Core registry where possible and keep older model paths as fallback.
 - Explicit local provider requests such as `ollama` or `lm_studio` stay local; they are not reinterpreted as cloud fallback requests.
 - Provider IDs and cloud provider settings accept common casing, spacing, and hyphen aliases such as `LM Studio`, `lm-studio`, `open-router`, and `open router`, and key mutations store under canonical provider IDs.
 - LM Studio settings normalize to the local server base, and completions call its OpenAI-compatible `/v1/chat/completions` endpoint.

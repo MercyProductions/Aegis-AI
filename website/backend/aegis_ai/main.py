@@ -1,17 +1,18 @@
-# backend/main.py
+﻿# backend/main.py
 from __future__ import annotations
 
 import asyncio
-import json
 from pathlib import Path
-import re
-import time
+import threading
+from datetime import datetime, timezone
 from typing import Any, AsyncIterator
+from urllib.parse import urlencode
 from uuid import uuid4
 
-from fastapi import FastAPI, Header, HTTPException, Query
+import httpx
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
 
 from .adaptive_intelligence import AdaptiveIntelligenceEngine
 from .agent import AgentEngine, MODE_OPTIONS
@@ -28,7 +29,7 @@ from .chat_streaming import (
     structured_stream_summary,
 )
 from .continuity import AegisContinuityEngine
-from .core_bridge import AegisCoreBridge, CoreBridgeResult
+from .core_bridge import AegisCoreBridge
 from .creative_media import CreativeMediaEngine
 from .distributed_runtime import DistributedRuntimeManager
 from .ecosystem import ECOSYSTEM_API_VERSION, EcosystemEngine
@@ -38,18 +39,82 @@ from .model_registry import ModelRegistryManager
 from .operating_environment import OperatingEnvironmentEngine
 from .platform_discipline import PlatformDisciplineEngine
 from .productization import ProductizationEngine
+from .providers.accounts import ProviderAccountManager
+from .providers.accounts.agent_bridge import AgentBridgeRunner
 from .project_intelligence import ProjectIntelligenceEngine
+from .routes import (
+    register_adaptive_intelligence_routes,
+    build_workspace_profile,
+    register_agent_bridge_execution_routes,
+    register_agent_bridge_job_routes,
+    register_agent_bridge_streaming_routes,
+    register_agent_supervision_routes,
+    register_autonomous_engineering_routes,
+    register_autopilot_routes,
+    register_auth_routes,
+    register_chat_routes,
+    register_checkpoint_routes,
+    register_collaboration_routes,
+    register_config_routes,
+    register_distributed_runtime_routes,
+    register_ecosystem_routes,
+    register_file_routes,
+    register_governance_routes,
+    register_history_task_routes,
+    register_media_routes,
+    register_model_registry_routes,
+    register_onboarding_settings_routes,
+    register_provider_account_routes,
+    register_productization_routes,
+    register_project_builder_routes,
+    register_project_intelligence_routes,
+    register_quality_evaluation_routes,
+    register_routing_apply_routes,
+    register_runtime_convergence_routes,
+    register_runtime_routes,
+    register_telemetry_routes,
+    register_utility_routes,
+    register_validation_routes,
+    register_workspace_intelligence_routes,
+    register_workspace_profile_routes,
+)
 from .project_scaffolder import ProjectScaffolder
+from .services.core_client import (
+    AegisCoreClient,
+    CoreDelegationResult,
+    checkpoint_summary_from_core,
+)
+from .services.core_delegation import (
+    apply_response_from_core as _apply_response_from_core,
+    checkpoint_list_response_from_core as _checkpoint_list_response_from_core,
+    core_contract_version as _core_contract_version,
+    core_delegation_data as _core_delegation_data,
+    core_delegation_error as _core_delegation_error,
+    core_result_data as _core_result_data,
+    core_route_message as _core_route_message,
+    core_route_status as _core_route_status,
+    record_core_fallback,
+    restore_response_from_core as _restore_response_from_core,
+    validate_response_from_core as _validate_response_from_core,
+)
+from .services.agent_bridge_service import AgentBridgeService
+from .services.distributed_runtime_service import DistributedRuntimeService
+from .services.model_inventory_service import ModelInventoryService, merge_core_model_registry
+from .services.project_builder_service import ProjectBuilderService
+from .services.runtime_health_service import RuntimeHealthService
+from .services.route_preview_service import (
+    core_route_request_kwargs as _core_route_request_kwargs,
+    route_preview_from_core as _route_preview_from_core,
+)
+from .services.settings_service import SettingsService
+from .services.utility_service import UtilityService
+from .services.workspace_intelligence_service import WorkspaceIntelligenceService
 from .unified_context import UnifiedContextEngine
 from .unified_runtime import RuntimeSignalCounts, UnifiedRuntimeEngine
 from .workspace_autopilot import (
     build_workspace_autopilot_status,
 )
 from .workspace_operations import WorkspaceOperationsEngine
-from .workspace_setup import (
-    merge_missing_manifest_fields,
-    workspace_setup_manifest,
-)
 from .schemas import (
     AdaptiveBenchmarkReport,
     AdaptiveBenchmarkRunRequest,
@@ -58,17 +123,17 @@ from .schemas import (
     AdaptivePolicyProfileUpdateRequest,
     AdaptivePolicyRollbackRequest,
     AdaptiveReplayRequest,
+    AgentBridgeExecuteRequest,
+    AgentBridgeExecuteResponse,
+    AgentBridgeJobInfo,
+    AgentBridgeJobResponse,
+    AgentBridgePreflightResponse,
     AgentRequest,
     AgentResponse,
     AegisContinuitySnapshot,
     AppConfig,
     ApplyRequest,
     ApplyResponse,
-    AuthForgotPasswordRequest,
-    AuthLoginRequest,
-    AuthMessageResponse,
-    AuthRegisterRequest,
-    AuthSessionResponse,
     AutonomousApprovalActionRequest,
     AutonomousApprovalGate,
     AutonomousEngineeringSnapshot,
@@ -79,11 +144,15 @@ from .schemas import (
     AutonomousObjectiveIterationRequest,
     AutonomousSimulationEstimate,
     ChatStreamContractResponse,
+    CheckpointCreateRequest,
     CheckpointListResponse,
+    CheckpointSummary,
     ConfigUpdateRequest,
     DistributedRuntimeSnapshot,
     EcosystemAuditEvent,
     EcosystemPackageActionRequest,
+    EcosystemPackageLifecycleRequest,
+    EcosystemPackageLifecycleResponse,
     EcosystemPackageManifest,
     EcosystemPackageRegistrationRequest,
     EcosystemPackageValidationRequest,
@@ -101,8 +170,6 @@ from .schemas import (
     ExecutionQueueCreateRequest,
     ExecutionQueueItem,
     FallbackInspectorResponse,
-    FeedbackRecordRequest,
-    FeedbackRecordResponse,
     FeedbackTelemetryResponse,
     EvaluationReplayResult,
     GlobalCommandRequest,
@@ -112,21 +179,11 @@ from .schemas import (
     HybridRouteRequest,
     IntelligencePolicyProfile,
     KnowledgeGraphSnapshot,
-    MediaAssetLibraryResponse,
-    MediaCapabilitiesResponse,
-    MediaCreativeRequest,
-    MediaExportRequest,
-    MediaExportResponse,
-    MediaJobResponse,
-    MediaPromptPreset,
-    MediaProviderInfo,
     ModelBenchmarkJobInfo,
     ModelBenchmarkRunRequest,
     ModelBenchmarkSnapshot,
-    ModelCapabilities,
     ModelDeleteRequest,
     ModelAdapterHealthInfo,
-    ModelInfo,
     ModelInventoryResponse,
     ModelManagerResponse,
     ModelOperationInfo,
@@ -138,10 +195,10 @@ from .schemas import (
     ModelRegistryCheckpointListResponse,
     ModelRegistryBenchmarkPreviewResponse,
     ModelRegistryProviderUpsertRequest,
-    ModelRegistryResponse,
     ModelRouteHealthInfo,
-    ModeOption,
     PluginActionRequest,
+    PluginLifecycleActionRequest,
+    PluginLifecycleActionResponse,
     PluginManifest,
     PluginRegistrationRequest,
     PluginValidationRequest,
@@ -163,9 +220,6 @@ from .schemas import (
     RemoteWorkspaceSyncRequest,
     ProjectScaffoldPlanRequest,
     ProjectScaffoldPlanResponse,
-    ProjectScaffoldPreset,
-    ProjectScaffoldRequest,
-    ProjectScaffoldResponse,
     ProductizationRefreshRequest,
     ProductizationSnapshot,
     ReproducibilityRecord,
@@ -215,7 +269,6 @@ from .schemas import (
     WorkspaceOperationsScanRequest,
     WorkspaceOperationsSnapshot,
     WorkspaceProfileResponse,
-    WorkspaceProjectManifest,
     WorkspaceRecommendation,
     WorkspaceSetupRequest,
     WorkspaceSetupResponse,
@@ -229,6 +282,7 @@ from .schemas import (
     WorkflowRunResponse,
 )
 from .settings import PROJECT_ROOT, clear_settings_cache, get_settings, has_env_file, update_env
+from .security import install_security_middleware, trust_status
 from .storage import utc_now
 from .workspace import WorkspaceManager
 from .workspace_cache import (
@@ -245,8 +299,11 @@ settings = get_settings()
 workspace_manager = WorkspaceManager(PROJECT_ROOT, settings)
 agent = AgentEngine(PROJECT_ROOT, settings)
 core_bridge = AegisCoreBridge.from_settings(settings)
+core_runtime_client = AegisCoreClient.from_settings(settings)
 creative_media = CreativeMediaEngine(PROJECT_ROOT, settings)
 model_registry = ModelRegistryManager(PROJECT_ROOT, settings)
+provider_accounts = ProviderAccountManager(PROJECT_ROOT, settings)
+agent_bridge_runner = AgentBridgeRunner(provider_accounts.cli_bridge, provider_accounts.execution_environment)
 model_manager = ModelManager(PROJECT_ROOT, settings, model_registry)
 model_benchmarks = ModelBenchmarkManager(PROJECT_ROOT, settings, model_registry)
 project_intelligence = ProjectIntelligenceEngine()
@@ -278,11 +335,22 @@ _project_plan_cache = ProjectPlanCache(
     ttl_seconds=_PROJECT_PLAN_CACHE_TTL_SECONDS,
     max_size=_PROJECT_PLAN_CACHE_MAX,
 )
+_agent_bridge_jobs_path = PROJECT_ROOT / "data" / "agent_bridge_jobs.json"
+_agent_bridge_jobs_lock = threading.RLock()
 
-_FEEDBACK_SECRET_FIELD = (
-    r"x-api-key|api[_-]?key|api[_-]?token|access[_-]?token|refresh[_-]?token|id[_-]?token|"
-    r"client[_-]?secret|secret|token|password|passwd|pwd|credential|authorization|private[_-]?key"
-)
+
+def _workspace_intelligence_service() -> WorkspaceIntelligenceService:
+    return WorkspaceIntelligenceService(
+        workspace_manager_factory=lambda: workspace_manager,
+        agent_factory=lambda: agent,
+        project_intelligence_factory=lambda: project_intelligence,
+        workspace_operations_factory=lambda: workspace_operations,
+        model_benchmarks_factory=lambda: model_benchmarks,
+        workspace_status_cache=_workspace_status_cache,
+        workspace_resolver=_resolve_workspace_or_400,
+        workspace_profile_builder=build_workspace_profile,
+        invalidate_workspace_caches=_invalidate_workspace_caches,
+    )
 
 
 def _normalized_cache_path(path: Path) -> str:
@@ -294,7 +362,7 @@ def _cache_paths_are_related(left: str, right: str) -> bool:
 
 
 def _clear_workspace_status_cache(root: Path | None = None) -> None:
-    _workspace_status_cache.clear(root)
+    _workspace_intelligence_service().clear_workspace_status_cache(root)
 
 
 def _clear_project_plan_cache() -> None:
@@ -307,7 +375,7 @@ def _invalidate_workspace_caches(root: Path | None = None) -> None:
 
 
 def _prune_workspace_status_cache() -> None:
-    _workspace_status_cache.prune()
+    _workspace_intelligence_service().prune_workspace_status_cache()
 
 
 def _prune_project_plan_cache() -> None:
@@ -315,34 +383,7 @@ def _prune_project_plan_cache() -> None:
 
 
 def _workspace_status_snapshot(root: Path) -> WorkspaceStatusSnapshot:
-    now = time.monotonic()
-    cached = _workspace_status_cache.get(root, now=now)
-    if cached is not None:
-        return cached
-
-    manifest = workspace_manager.load_project_manifest(root)
-    dependency_profile = workspace_manager.inspect_dependency_profile(root)
-    instruction_status = agent.instruction_status_snapshot(root)
-    validation_plan = agent.validation_plan_snapshot(root)
-    command_history = agent.command_history_snapshot(root)
-    readiness = agent.workspace_readiness_snapshot(
-        manifest=manifest,
-        dependency_profile=dependency_profile,
-        instruction_status=instruction_status,
-        validation_plan=validation_plan,
-        command_history=command_history,
-    )
-    snapshot = WorkspaceStatusSnapshot(
-        created_at=now,
-        manifest=manifest,
-        dependency_profile=dependency_profile,
-        instruction_status=instruction_status,
-        validation_plan=validation_plan,
-        command_history=command_history,
-        readiness=readiness,
-    )
-    _workspace_status_cache.set(root, snapshot)
-    return snapshot
+    return _workspace_intelligence_service().workspace_status_snapshot(root)
 
 
 def _build_project_intelligence(
@@ -351,48 +392,15 @@ def _build_project_intelligence(
     clear_memory: bool = False,
     rebuild_memory: bool = False,
 ) -> ProjectIntelligenceSnapshot:
-    if clear_memory:
-        agent.store.clear_project_memory(project_root=root)
-
-    _clear_workspace_status_cache(root)
-    snapshot = _workspace_status_snapshot(root)
-    files = workspace_manager.scan(root, max_files=1500)
-    project_memory = agent.store.project_memory(project_root=root, limit=80)
-    recent_tasks = agent.store.list_tasks(project_root=root, limit=80, include_subtasks=False)
-    fix_memory = agent.store.fix_history(project_root=root, limit=80)
-    intelligence = project_intelligence.build_snapshot(
-        workspace_root=root,
-        files=files,
-        dependency_profile=snapshot.dependency_profile,
-        manifest=snapshot.manifest,
-        project_memory=project_memory,
-        recent_tasks=recent_tasks,
-        fix_memory=fix_memory,
+    return _workspace_intelligence_service().build_project_intelligence(
+        root,
+        clear_memory=clear_memory,
+        rebuild_memory=rebuild_memory,
     )
-    agent.store.save_project_intelligence(intelligence)
-
-    if rebuild_memory:
-        for category, title, detail, source, confidence in project_intelligence.memory_notes_for_snapshot(intelligence):
-            agent.store.remember_project_note(
-                project_root=root,
-                category=category,
-                title=title,
-                detail=detail,
-                source=source,
-                confidence=confidence,
-            )
-        intelligence = intelligence.model_copy(update={"project_memory": agent.store.project_memory(project_root=root, limit=80)})
-        agent.store.save_project_intelligence(intelligence)
-
-    return intelligence
 
 
 def _project_intelligence_snapshot(root: Path, *, rebuild: bool = False) -> ProjectIntelligenceSnapshot:
-    if not rebuild:
-        cached = agent.store.project_intelligence(project_root=root)
-        if cached is not None:
-            return cached
-    return _build_project_intelligence(root)
+    return _workspace_intelligence_service().project_intelligence_snapshot(root, rebuild=rebuild)
 
 
 def _build_workspace_operations(
@@ -402,108 +410,20 @@ def _build_workspace_operations(
     generate_recommendations: bool = True,
     include_git: bool = True,
 ) -> WorkspaceOperationsSnapshot:
-    _clear_workspace_status_cache(root)
-    status = _workspace_status_snapshot(root)
-    files = workspace_manager.scan(root, max_files=1500)
-    intelligence = (
-        _build_project_intelligence(root)
-        if refresh_project_intelligence
-        else agent.store.project_intelligence(project_root=root)
-    )
-    snapshot = workspace_operations.build_snapshot(
-        workspace_root=root,
-        files=files,
-        dependency_profile=status.dependency_profile,
-        project_intelligence=intelligence,
-        recent_tasks=agent.store.list_tasks(project_root=root, limit=100, include_subtasks=False),
-        fix_memory=agent.store.fix_history(project_root=root, limit=80),
-        project_memory=agent.store.project_memory(project_root=root, limit=100),
-        previous_watch=agent.store.workspace_watch_snapshot(project_root=root),
-        previous_recommendations=agent.store.workspace_recommendations(project_root=root, include_dismissed=True, limit=200),
-        job_runs=workspace_operations.scheduled_jobs(agent.store.scheduled_intelligence_jobs(project_root=root)),
+    return _workspace_intelligence_service().build_workspace_operations(
+        root,
+        refresh_project_intelligence=refresh_project_intelligence,
+        generate_recommendations=generate_recommendations,
         include_git=include_git,
     )
-    agent.store.save_workspace_watch_snapshot(snapshot.watcher)
-    agent.store.record_workspace_events(snapshot.watcher.events)
-    if generate_recommendations:
-        agent.store.upsert_workspace_recommendations(snapshot.recommendations)
-    for note in snapshot.long_term_memory[:6]:
-        agent.store.remember_project_note(
-            project_root=root,
-            category="operations",
-            title="Workspace operations signal",
-            detail=note,
-            source="workspace_operations",
-            confidence=0.62,
-        )
-    persisted_recommendations = agent.store.workspace_recommendations(project_root=root, include_dismissed=False, limit=100)
-    recent_events = agent.store.workspace_events(project_root=root, limit=80)
-    snapshot = snapshot.model_copy(
-        update={
-            "recommendations": persisted_recommendations,
-            "recent_events": recent_events,
-            "scheduled_jobs": workspace_operations.scheduled_jobs(agent.store.scheduled_intelligence_jobs(project_root=root)),
-        }
-    )
-    agent.store.save_workspace_operations_snapshot(snapshot)
-    return snapshot
 
 
 def _workspace_operations_snapshot(root: Path, *, rebuild: bool = False) -> WorkspaceOperationsSnapshot:
-    if not rebuild:
-        cached = agent.store.workspace_operations_snapshot(project_root=root)
-        if cached is not None:
-            return cached
-    return _build_workspace_operations(root)
+    return _workspace_intelligence_service().workspace_operations_snapshot(root, rebuild=rebuild)
 
 
 def _run_scheduled_intelligence_jobs(root: Path, request: ScheduledJobRunRequest) -> ScheduledJobRunResponse:
-    existing_jobs = workspace_operations.scheduled_jobs(agent.store.scheduled_intelligence_jobs(project_root=root))
-    selected_ids = set(request.job_ids or [item.id for item in existing_jobs])
-    jobs_by_id = {item.id: item for item in existing_jobs}
-    warnings: list[str] = []
-    completed: list[ScheduledIntelligenceJob] = []
-
-    for job_id in selected_ids:
-        job = jobs_by_id.get(job_id)
-        if job is None:
-            warnings.append(f"Unknown scheduled intelligence job: {job_id}")
-            continue
-        summary = "Workspace intelligence scan completed."
-        status = "completed"
-        try:
-            if job.kind in {"indexing", "architecture"}:
-                _build_project_intelligence(root)
-                summary = "Project Intelligence was refreshed."
-            elif job.kind == "telemetry":
-                agent.store.refresh_telemetry_snapshot(project_root=root)
-                summary = "Telemetry snapshot was refreshed."
-            elif job.kind == "validation" and not request.allow_commands:
-                status = "skipped"
-                summary = "Validation snapshot skipped command execution because allow_commands was false."
-            elif job.kind == "validation":
-                validation = agent._run_validation(root, lambda *_args, **_kwargs: None, manual=True)
-                summary = (
-                    f"Validation command `{validation.command}` exited with {validation.exit_code}."
-                    if validation
-                    else "No validation command was available."
-                )
-            elif job.kind == "benchmark":
-                model_benchmarks.snapshot()
-                summary = "Benchmark metadata was inspected; no benchmark command was run automatically."
-            elif job.kind == "memory":
-                summary = "Workspace operations memory signals were summarized."
-            elif job.kind == "dependency":
-                summary = "Dependency manifests were inspected for drift and local freshness warnings."
-        except Exception as exc:
-            status = "failed"
-            summary = f"{type(exc).__name__}: {exc}"
-        record = workspace_operations.job_run_record(job, status=status, summary=summary)
-        agent.store.record_scheduled_intelligence_job(project_root=root, job=record)
-        completed.append(record)
-
-    snapshot = _build_workspace_operations(root, refresh_project_intelligence=True)
-    return ScheduledJobRunResponse(workspace_root=str(root), jobs=completed, snapshot=snapshot, warnings=warnings)
+    return _workspace_intelligence_service().run_scheduled_intelligence_jobs(root, request)
 
 
 def _project_plan_cache_key(request: ProjectScaffoldPlanRequest) -> str:
@@ -529,42 +449,19 @@ def project_scaffolder() -> ProjectScaffolder:
     )
 
 
-_FEEDBACK_REDACTION_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
-    (
-        re.compile(
-            r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----",
-            re.DOTALL,
-        ),
-        "[REDACTED_PRIVATE_KEY]",
-    ),
-    (
-        re.compile(
-            rf"(?i)\b((?:{_FEEDBACK_SECRET_FIELD})\s*[:=]\s*)"
-            r"(['\"]?)[^\s'\"&,;]+",
-        ),
-        r"\1\2[REDACTED_SECRET]",
-    ),
-    (re.compile(r"\bsk-[A-Za-z0-9_-]{20,}\b"), "[REDACTED_OPENAI_KEY]"),
-    (re.compile(r"\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{20,}\b"), "[REDACTED_GITHUB_TOKEN]"),
-    (re.compile(r"\bgithub_pat_[A-Za-z0-9_]{20,}\b"), "[REDACTED_GITHUB_TOKEN]"),
-    (re.compile(r"\bAKIA[0-9A-Z]{16}\b"), "[REDACTED_AWS_KEY]"),
-    (re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{20,}\b"), "[REDACTED_SLACK_TOKEN]"),
-    (re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b"), "[REDACTED_JWT]"),
-    (re.compile(rf"(?i)([?&](?:{_FEEDBACK_SECRET_FIELD}|key|signature)=)[^&\s]+"), r"\1[REDACTED]"),
-    (re.compile(r"\b[\w.+-]+@[\w-]+(?:\.[\w-]+)+\b"), "[REDACTED_EMAIL]"),
-)
-
-
 def refresh_runtime() -> None:
-    global settings, workspace_manager, agent, core_bridge, creative_media, model_registry, model_manager, model_benchmarks, workspace_operations, distributed_runtime, adaptive_intelligence, productization, ecosystem, autonomous_engineering, unified_runtime, operating_environment, unified_context, continuity, platform_discipline
+    global settings, workspace_manager, agent, core_bridge, core_runtime_client, creative_media, model_registry, provider_accounts, agent_bridge_runner, model_manager, model_benchmarks, workspace_operations, distributed_runtime, adaptive_intelligence, productization, ecosystem, autonomous_engineering, unified_runtime, operating_environment, unified_context, continuity, platform_discipline
     clear_settings_cache()
     _invalidate_workspace_caches()
     settings = get_settings()
     workspace_manager = WorkspaceManager(PROJECT_ROOT, settings)
     agent = AgentEngine(PROJECT_ROOT, settings)
     core_bridge = AegisCoreBridge.from_settings(settings)
+    core_runtime_client = AegisCoreClient.from_settings(settings)
     creative_media = CreativeMediaEngine(PROJECT_ROOT, settings)
     model_registry = ModelRegistryManager(PROJECT_ROOT, settings)
+    provider_accounts = ProviderAccountManager(PROJECT_ROOT, settings)
+    agent_bridge_runner = AgentBridgeRunner(provider_accounts.cli_bridge, provider_accounts.execution_environment)
     model_manager = ModelManager(PROJECT_ROOT, settings, model_registry)
     model_benchmarks = ModelBenchmarkManager(PROJECT_ROOT, settings, model_registry)
     workspace_operations = WorkspaceOperationsEngine()
@@ -603,6 +500,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+install_security_middleware(app, settings)
+register_auth_routes(app, account_store_factory=lambda: account_store)
 
 
 def _resolve_workspace_or_400(workspace_root: str | None) -> Path:
@@ -637,8 +536,7 @@ def _dump_runtime_payload(value: Any) -> Any:
 
 
 def _runtime_workers(root: Path) -> list[WorkerRuntimeInfo]:
-    distributed_runtime.ensure_local_worker(agent.store, root)
-    return agent.store.runtime_workers()
+    return _distributed_runtime_service().workers(root)
 
 
 def _runtime_jobs(
@@ -647,7 +545,7 @@ def _runtime_jobs(
     status: str | None = None,
     limit: int = 100,
 ) -> list[ExecutionQueueItem]:
-    return agent.store.execution_jobs(project_root=root, status=status, limit=limit)
+    return _distributed_runtime_service().jobs(root, status=status, limit=limit)
 
 
 def _runtime_audit_events(
@@ -656,25 +554,39 @@ def _runtime_audit_events(
     job_id: str = "",
     limit: int = 100,
 ) -> list[WorkerAuditEvent]:
-    return agent.store.worker_audit_events(worker_id=worker_id, job_id=job_id, limit=limit)
+    return _distributed_runtime_service().audit_events(worker_id=worker_id, job_id=job_id, limit=limit)
 
 
 def _record_runtime_audit(event: WorkerAuditEvent) -> WorkerAuditEvent:
-    return agent.store.record_worker_audit_event(event)
+    return _distributed_runtime_service().record_audit(event)
 
 
 def _runtime_snapshot(root: Path, routing: HybridRouteDecision | None = None) -> DistributedRuntimeSnapshot:
-    workers = _runtime_workers(root)
-    jobs = _runtime_jobs(root, limit=200)
-    audit_events = _runtime_audit_events(limit=120)
-    sync_manifests = agent.store.workspace_sync_manifests(project_root=root, limit=20)
-    return distributed_runtime.snapshot(
-        workers=workers,
-        jobs=jobs,
-        audit_events=audit_events,
-        sync_manifests=sync_manifests,
-        routing=routing,
-    )
+    return _distributed_runtime_service().snapshot(root, routing=routing)
+
+
+def _runtime_snapshot_from_core(root: Path, result: CoreDelegationResult) -> DistributedRuntimeSnapshot | None:
+    return _distributed_runtime_service().snapshot_from_core(root, result)
+
+
+def _core_node_to_worker(node: dict[str, Any]) -> WorkerRuntimeInfo:
+    return _distributed_runtime_service().core_node_to_worker(node)
+
+
+def _core_supported_job_kinds(capabilities: set[str]) -> list[str]:
+    return _distributed_runtime_service().core_supported_job_kinds(capabilities)
+
+
+def _core_workload_to_queue_item(root: Path, workload: dict[str, Any]) -> ExecutionQueueItem:
+    return _distributed_runtime_service().core_workload_to_queue_item(root, workload)
+
+
+def _core_audit_to_worker_event(event: dict[str, Any]) -> WorkerAuditEvent:
+    return _distributed_runtime_service().core_audit_to_worker_event(event)
+
+
+def _core_observability_to_runtime(observability: dict[str, Any], generated_at: str) -> RuntimeObservabilitySnapshot:
+    return _distributed_runtime_service().core_observability_to_runtime(observability, generated_at)
 
 
 def _productization_snapshot(root: Path, *, refresh_metrics: bool = True) -> ProductizationSnapshot:
@@ -813,251 +725,23 @@ def _task_transition_or_event(
 
 
 def _remote_sync_payload(root: Path, sections: list[str]) -> dict[str, Any]:
-    wanted = set(sections or ["task_history", "checkpoints", "project_memory", "architecture_maps", "validation_profiles", "settings"])
-    payload: dict[str, Any] = {}
-    if "task_history" in wanted:
-        payload["task_history"] = _dump_runtime_payload(agent.store.list_tasks(project_root=root, limit=100, include_subtasks=True))
-    if "checkpoints" in wanted:
-        payload["checkpoints"] = _dump_runtime_payload(workspace_manager.list_checkpoints(root, limit=50))
-    if "project_memory" in wanted:
-        payload["project_memory"] = _dump_runtime_payload(agent.store.project_memory(project_root=root, limit=200))
-    if "architecture_maps" in wanted:
-        intelligence = agent.store.project_intelligence(project_root=root)
-        payload["architecture_maps"] = _dump_runtime_payload(intelligence.architecture if intelligence else {})
-        payload["project_profile"] = _dump_runtime_payload(intelligence.profile if intelligence else {})
-    if "validation_profiles" in wanted:
-        payload["validation_profiles"] = _dump_runtime_payload(agent.validation.profile_snapshot(root))
-    if "settings" in wanted:
-        payload["settings"] = {
-            "model_api": settings.aegis_model_api,
-            "model_endpoint": settings.aegis_model_endpoint,
-            "model_name": settings.aegis_model_name,
-            "approval_tier": settings.approval_tier,
-            "sandbox_profile": settings.sandbox_profile,
-            "router_execution_enabled": settings.aegis_router_execution_enabled,
-            "shared_workspace_mode": settings.aegis_shared_workspace_mode,
-        }
-    return payload
+    return _distributed_runtime_service().remote_sync_payload(root, sections)
 
 
 def _save_remote_sync_manifest(root: Path, request: RemoteWorkspaceSyncRequest) -> RemoteWorkspaceSyncManifest:
-    payload = _remote_sync_payload(root, request.sections)
-    manifest = distributed_runtime.sync_manifest(
-        workspace_root=root,
-        sections=request.sections,
-        encrypted=request.encrypted,
-        payload=payload,
-    )
-    saved = agent.store.save_workspace_sync_manifest(manifest)
-    _record_runtime_audit(
-        distributed_runtime.audit_event(
-            event_type="sync.manifest.created",
-            detail=f"Workspace sync manifest {saved.id} captured {len(saved.included_sections)} section(s).",
-            metadata={"workspace_root": str(root), "encrypted": saved.encrypted, "manifest_hash": saved.manifest_hash},
-        )
-    )
-    return saved
+    return _distributed_runtime_service().save_remote_sync_manifest(root, request)
 
 
 def _run_command_job(job: ExecutionQueueItem, root: Path, *, allow_commands: bool) -> tuple[str, str, dict[str, Any]]:
-    command = str(job.payload.get("command") or "").strip()
-    if not allow_commands:
-        return "blocked", "Command execution was not allowed for this dispatch.", {"allow_commands": False}
-
-    if command:
-        result = agent.commands.run(command, root, sandbox_profile=job.sandbox_profile)
-        payload = {
-            "command": result.command,
-            "cwd": result.cwd,
-            "allowed": result.allowed,
-            "exit_code": result.exit_code,
-            "stdout": result.stdout,
-            "stderr": result.stderr,
-            "timed_out": result.timed_out,
-            "reason": result.reason,
-        }
-        if job.task_id:
-            agent.store.record_event(
-                job.task_id,
-                kind="command",
-                title="Distributed command executed",
-                status="ok" if result.ok else "error" if result.allowed else "warning",
-                detail=result.reason,
-                payload=payload,
-            )
-        if result.ok:
-            return "succeeded", f"Command `{command}` exited with 0.", payload
-        if not result.allowed:
-            return "blocked", result.reason, payload
-        return "failed", f"Command `{command}` exited with {result.exit_code}.", payload
-
-    validation = agent._run_validation(root, lambda *_args, **_kwargs: None, manual=True)
-    if validation is None:
-        return "blocked", "No validation command was available for this workspace.", {}
-    payload = validation.model_dump(mode="json")
-    if validation.exit_code == 0:
-        return "succeeded", f"Validation command `{validation.command}` exited with 0.", payload
-    if not validation.allowed:
-        return "blocked", validation.summary or validation.reason, payload
-    return "failed", f"Validation command `{validation.command}` exited with {validation.exit_code}.", payload
+    return _distributed_runtime_service().run_command_job(job, root, allow_commands=allow_commands)
 
 
 def _queue_repair_after_validation_failure(job: ExecutionQueueItem, root: Path, summary: str) -> ExecutionQueueItem:
-    repair = distributed_runtime.create_queue_item(
-        ExecutionQueueCreateRequest(
-            workspace_root=str(root),
-            task_id=job.task_id,
-            kind="repair",
-            title=f"Repair after {job.title or job.kind}",
-            user_goal=f"Repair validation failure from {job.id}.",
-            priority=max(0, job.priority - 1),
-            max_attempts=1,
-            permission_scope="repair",
-            sandbox_profile=job.sandbox_profile,
-            payload={"source_validation_job_id": job.id, "failure_summary": summary},
-        ),
-        root,
-    )
-    created = agent.store.create_execution_job(repair)
-    _record_runtime_audit(
-        distributed_runtime.audit_event(
-            job_id=created.id,
-            event_type="queue.repair.created",
-            detail=f"Repair job was queued after validation failure in {job.id}.",
-            metadata={"source_job_id": job.id, "task_id": job.task_id},
-        )
-    )
-    if job.task_id:
-        agent.store.record_event(
-            job.task_id,
-            kind="repair",
-            title="Repair queued",
-            status="warning",
-            detail=summary,
-            payload={"source_job_id": job.id, "repair_job_id": created.id},
-        )
-    return created
+    return _distributed_runtime_service().queue_repair_after_validation_failure(job, root, summary)
 
 
 def _execute_runtime_job(job: ExecutionQueueItem, worker: WorkerRuntimeInfo, *, allow_commands: bool) -> tuple[ExecutionQueueItem, list[WorkerAuditEvent]]:
-    started_at = time.monotonic()
-    events: list[WorkerAuditEvent] = []
-    root = _resolve_workspace_or_400(job.workspace_root)
-    assigned = agent.store.update_execution_job(
-        job.id,
-        status="running",
-        assigned_worker_id=worker.worker_id,
-        attempts=job.attempts + 1,
-    )
-    agent.store.heartbeat_runtime_worker(worker.worker_id, status="busy", current_jobs=worker.current_jobs + 1)
-    start_event = _record_runtime_audit(
-        distributed_runtime.audit_event(
-            worker_id=worker.worker_id,
-            job_id=job.id,
-            event_type="job.started",
-            detail=f"{worker.name} started {assigned.kind} job {assigned.id}.",
-            metadata={"kind": assigned.kind, "workspace_root": str(root), "sandbox_profile": assigned.sandbox_profile},
-        )
-    )
-    events.append(start_event)
-    _task_transition_or_event(
-        assigned.task_id,
-        "running",
-        title="Distributed job started",
-        detail=f"{worker.name} started {assigned.kind} job {assigned.id}.",
-        payload={"job_id": assigned.id, "worker_id": worker.worker_id, "kind": assigned.kind},
-    )
-    if assigned.kind == "validation":
-        _task_transition_or_event(
-            assigned.task_id,
-            "validating",
-            title="Distributed validation started",
-            detail=f"{worker.name} started validation job {assigned.id}.",
-            payload={"job_id": assigned.id, "worker_id": worker.worker_id},
-        )
-
-    status = "succeeded"
-    summary = f"{assigned.kind.title()} job completed."
-    payload: dict[str, Any] = {}
-    try:
-        if assigned.kind in {"validation", "build"}:
-            status, summary, payload = _run_command_job(assigned, root, allow_commands=allow_commands)
-            if assigned.kind == "validation" and status == "failed" and assigned.task_id:
-                _task_transition_or_event(
-                    assigned.task_id,
-                    "repairing",
-                    title="Validation failed",
-                    detail=summary,
-                    error_summary=summary,
-                    payload={"job_id": assigned.id, "validation": payload},
-                )
-                _queue_repair_after_validation_failure(assigned, root, summary)
-        elif assigned.kind == "indexing":
-            intelligence = _build_project_intelligence(root)
-            summary = f"Project Intelligence indexed {len(intelligence.file_importance)} important file(s)."
-            payload = {
-                "last_indexed_at": intelligence.profile.last_indexed_at,
-                "important_files": [item.path for item in intelligence.file_importance[:12]],
-            }
-        elif assigned.kind == "telemetry":
-            snapshot = agent.store.refresh_telemetry_snapshot(project_root=root)
-            summary = "Telemetry snapshot refreshed."
-            payload = {
-                "model_attempt_count": snapshot.route_quality.overview.model_attempt_count,
-                "feedback_count": snapshot.feedback.summary.feedback_count,
-                "reliability_score": snapshot.route_quality.overview.reliability_score,
-            }
-        elif assigned.kind == "benchmark":
-            snapshot = model_benchmarks.snapshot()
-            summary = "Benchmark state inspected without starting a model benchmark run."
-            best_model_name = snapshot.provider_scores[0].model_name if snapshot.provider_scores else ""
-            payload = {"best_model_name": best_model_name, "provider_count": len(snapshot.provider_scores)}
-        elif assigned.kind == "sync":
-            manifest = _save_remote_sync_manifest(root, RemoteWorkspaceSyncRequest(workspace_root=str(root), sections=[], encrypted=True))
-            summary = f"Workspace sync manifest {manifest.id} was created."
-            payload = manifest.model_dump(mode="json")
-        elif assigned.kind == "repair":
-            status = "blocked"
-            summary = "Repair jobs are recorded and require the task runtime to make code changes with normal approval and checkpoint rules."
-            payload = {"source_validation_job_id": assigned.payload.get("source_validation_job_id", "")}
-        else:
-            summary = "Task job recorded by distributed runtime; no file changes were applied by the queue worker."
-            payload = {"local_first": True, "file_changes_applied": False}
-    except Exception as exc:
-        status = "failed"
-        summary = f"{type(exc).__name__}: {exc}"
-        payload = {"exception": type(exc).__name__}
-
-    final = agent.store.update_execution_job(
-        assigned.id,
-        status=status,
-        error_summary=summary if status in {"failed", "blocked"} else "",
-        result_summary=summary if status == "succeeded" else "",
-    )
-    agent.store.complete_execution_job_for_worker(worker.worker_id, failed=status != "succeeded", latency_ms=(time.monotonic() - started_at) * 1000)
-    finish_event = _record_runtime_audit(
-        distributed_runtime.audit_event(
-            worker_id=worker.worker_id,
-            job_id=assigned.id,
-            event_type="job.finished",
-            status="ok" if status == "succeeded" else "error" if status == "failed" else "warning",
-            detail=summary,
-            metadata={"status": status, "payload": payload},
-        )
-    )
-    events.append(finish_event)
-    if final.task_id and not (final.kind == "validation" and status == "failed"):
-        next_task_status = "completed" if status == "succeeded" else "failed" if status == "failed" else "blocked"
-        _task_transition_or_event(
-            final.task_id,
-            next_task_status,
-            title="Distributed job finished",
-            detail=summary,
-            error_summary=summary if next_task_status in {"failed", "blocked"} else "",
-            final_summary=summary if next_task_status == "completed" else "",
-            payload={"job_id": final.id, "worker_id": worker.worker_id, "status": status, "result": payload},
-        )
-    return final, events
+    return _distributed_runtime_service().execute_job(job, worker, allow_commands=allow_commands)
 
 
 def _telemetry_snapshot_recommendations(snapshot: TelemetrySnapshot | None) -> list[str]:
@@ -1138,6 +822,11 @@ async def _chat_stream_events(request: AgentRequest) -> AsyncIterator[str]:
             "stream_mode": stream_mode,
             "workspace_root": _chat_stream_workspace_root(request),
             "mode": request.mode or "auto",
+            "provider_id": request.selected_provider_id,
+            "provider_label": request.selected_provider_label,
+            "provider_api": request.selected_provider_api,
+            "endpoint": request.selected_provider_endpoint,
+            "model": request.selected_provider_model,
         },
     )
     try:
@@ -1288,303 +977,601 @@ def _enrich_snapshot_with_adapter_health(root: Path, snapshot: TelemetrySnapshot
     return snapshot
 
 
-def _core_result_data(result: CoreBridgeResult | None) -> dict[str, Any]:
-    return result.data if result is not None and isinstance(result.data, dict) else {}
+def _record_core_fallback(workflow: str, result: CoreDelegationResult) -> None:
+    record_core_fallback(core_runtime_client, workflow, result)
 
 
-def _core_contract_version(result: CoreBridgeResult | None) -> str:
-    envelope = result.envelope if result is not None else None
-    return str(envelope.get("contract_version") or "") if isinstance(envelope, dict) else ""
-
-
-def _core_route_status(result: CoreBridgeResult | None) -> str:
-    if result is not None and result.ok:
-        return "connected"
-    if result is not None and result.reachable:
-        return "degraded"
-    return "unavailable"
-
-
-def _core_route_message(result: CoreBridgeResult | None, route_group: str) -> str:
-    if result is not None and result.ok:
-        return f"Aegis Core {route_group} adapter is connected."
-    if result is not None and result.error:
-        return f"Aegis Core {route_group} adapter is unavailable; Website /api is using local fallback behavior. {result.error}"
-    return f"Aegis Core {route_group} adapter is unavailable; Website /api is using local fallback behavior."
-
-
-def _core_status_from_results(results: dict[str, CoreBridgeResult]) -> tuple[bool, str, str, str]:
-    primary = results.get("health") or next(iter(results.values()), None)
-    reachable = any(result.reachable for result in results.values())
-    connected = bool(primary and primary.ok)
-    status = "connected" if connected else "degraded" if reachable else "unavailable"
-    contract_version = next((_core_contract_version(result) for result in results.values() if _core_contract_version(result)), "")
-    message = _core_route_message(primary, "runtime")
-    return reachable, status, contract_version, message
-
-
-def _core_models_from_result(result: CoreBridgeResult | None) -> tuple[set[str], str, bool]:
-    data = _core_result_data(result)
-    installed = {
-        str(name).strip()
-        for name in data.get("installed_models", [])
-        if str(name).strip()
-    } if isinstance(data.get("installed_models"), list) else set()
-    selected = str(data.get("selected_model") or "").strip()
-    reachable = bool(data.get("reachable", False))
-    return installed, selected, reachable
-
-
-def _core_model_capabilities(name: str) -> ModelCapabilities:
-    lowered = name.lower()
-    return ModelCapabilities(
-        code=any(marker in lowered for marker in ("code", "coder", "devstral", "starcoder")),
-        debug=any(marker in lowered for marker in ("code", "coder", "devstral", "starcoder")),
-        refactor=any(marker in lowered for marker in ("code", "coder", "devstral", "starcoder")),
-        reasoning=any(marker in lowered for marker in ("reason", "qwen3", "deepseek-r1")),
-        structured_json=any(marker in lowered for marker in ("code", "coder", "qwen", "granite", "llama", "mistral")),
+def _settings_service() -> SettingsService:
+    return SettingsService(
+        settings_factory=lambda: settings,
+        agent_factory=lambda: agent,
+        core_bridge_factory=lambda: core_bridge,
+        core_runtime_client_factory=lambda: core_runtime_client,
+        workspace_manager_factory=lambda: workspace_manager,
+        workspace_resolver=_resolve_workspace_or_400,
+        config_workspace_resolver=_resolve_workspace_path_for_config,
+        database_path_resolver=_resolve_database_path,
+        update_env=update_env,
+        refresh_runtime=refresh_runtime,
+        has_env_file=has_env_file,
+        core_result_data=_core_result_data,
+        core_route_message=_core_route_message,
+        core_route_status=_core_route_status,
+        core_contract_version=_core_contract_version,
+        core_delegation_data=_core_delegation_data,
+        record_core_fallback=_record_core_fallback,
+        mode_options=MODE_OPTIONS,
     )
 
 
-async def _sync_website_settings_to_core(default_workspace: str) -> CoreBridgeResult:
-    workspace = _resolve_workspace_path_for_config(default_workspace)
-    core_updates: dict[str, Any] = {
-        "default_model": settings.aegis_model_name.strip(),
-        "max_context_chars": settings.max_context_chars,
-    }
-    if settings.aegis_model_api.strip().lower() == "ollama":
-        core_updates["ollama_url"] = settings.aegis_model_endpoint.strip().rstrip("/")
-    try:
-        return await core_bridge.update_settings(workspace, core_updates)
-    except Exception as exc:
-        return CoreBridgeResult(
-            reachable=False,
-            ok=False,
-            status_code=None,
-            kind="settings.updated",
-            data=None,
-            error=f"Aegis Core settings sync failed after Website config save: {exc}",
-        )
+def _runtime_health_service() -> RuntimeHealthService:
+    return RuntimeHealthService(
+        app_title=app.title,
+        app_version=app.version,
+        project_root_factory=lambda: PROJECT_ROOT,
+        settings_factory=lambda: settings,
+        agent_factory=lambda: agent,
+        core_bridge_factory=lambda: core_bridge,
+        model_registry_factory=lambda: model_registry,
+        workspace_resolver=_resolve_workspace_path_for_config,
+        database_path_resolver=_resolve_database_path,
+        has_env_file=has_env_file,
+    )
+
+
+def _model_inventory_service() -> ModelInventoryService:
+    return ModelInventoryService(
+        settings_factory=lambda: settings,
+        agent_factory=lambda: agent,
+        model_registry_factory=lambda: model_registry,
+        core_bridge_factory=lambda: core_bridge,
+        workspace_resolver=_resolve_workspace_path_for_config,
+        core_route_status=_core_route_status,
+        core_contract_version=_core_contract_version,
+        core_route_message=_core_route_message,
+    )
+
+
+def _distributed_runtime_service() -> DistributedRuntimeService:
+    return DistributedRuntimeService(
+        settings_factory=lambda: settings,
+        agent_factory=lambda: agent,
+        workspace_manager_factory=lambda: workspace_manager,
+        distributed_runtime_factory=lambda: distributed_runtime,
+        model_registry_factory=lambda: model_registry,
+        model_benchmarks_factory=lambda: model_benchmarks,
+        workspace_resolver=_resolve_workspace_or_400,
+        runtime_payload_dumper=_dump_runtime_payload,
+        project_intelligence_builder=_build_project_intelligence,
+        task_transition_or_event=_task_transition_or_event,
+    )
+
+
+def _project_builder_service() -> ProjectBuilderService:
+    return ProjectBuilderService(
+        scaffolder_factory=project_scaffolder,
+        plan_cache=_project_plan_cache,
+        invalidate_workspace_caches=lambda root: _invalidate_workspace_caches(root),
+    )
 
 
 async def config_snapshot() -> AppConfig:
-    default_mode = settings.default_mode.strip().lower()
-    if default_mode not in {"build", "develop", "review", "chat"}:
-        default_mode = "build"
-
-    model_status = await agent.model_status()
-    default_workspace = _resolve_workspace_path_for_config(None)
-    core_settings = await core_bridge.settings_status(default_workspace)
-    core_settings_data = _core_result_data(core_settings)
-    engine_message = "The local Aegis backend is ready. No external AI provider is required."
-    model_message = model_status.message
-    core_default_model = str(core_settings_data.get("default_model") or "").strip()
-    core_ollama_url = str(core_settings_data.get("ollama_url") or "").strip().rstrip("/")
-    if core_settings.ok:
-        if core_default_model and core_default_model != settings.aegis_model_name:
-            model_message = f"{model_message} Shared Core default model: {core_default_model}."
-        if core_ollama_url and core_ollama_url != settings.aegis_model_endpoint.strip().rstrip("/"):
-            engine_message = f"{engine_message} Shared Core Ollama URL: {core_ollama_url}."
-    else:
-        engine_message = _core_route_message(core_settings, "settings")
-
-    return AppConfig(
-        assistant_name=settings.aegis_assistant_name,
-        assistant_mission=settings.aegis_assistant_mission,
-        default_mode=default_mode,  # type: ignore[arg-type]
-        modes=[ModeOption(id=mode, label=label, description=description) for mode, label, description in MODE_OPTIONS],
-        default_workspace=str(default_workspace),
-        engine=f"Aegis Core / {settings.aegis_model_name}",
-        engine_ready=True,
-        engine_message=engine_message,
-        model_name=settings.aegis_model_name,
-        model_endpoint=settings.aegis_model_endpoint,
-        model_api=settings.aegis_model_api,
-        model_ready=model_status.ready,
-        model_message=model_message,
-        database_path=str(_resolve_database_path(settings.aegis_database_path)),
-        command_allowlist=settings.aegis_command_allowlist,
-        command_timeout_seconds=settings.aegis_command_timeout_seconds,
-        auto_run_validation=settings.aegis_auto_run_validation,
-        router_execution_enabled=settings.aegis_router_execution_enabled,
-        shared_workspace_mode=settings.aegis_shared_workspace_mode,
-        feedback_capture_excerpts=settings.aegis_feedback_capture_excerpts,
-        feedback_redaction_enabled=settings.aegis_feedback_redaction_enabled,
-        feedback_max_excerpt_chars=max(0, min(2000, settings.aegis_feedback_max_excerpt_chars)),
-        feedback_hash_content=settings.aegis_feedback_hash_content,
-        env_exists=has_env_file(),
-        core_runtime_reachable=core_settings.reachable,
-        core_runtime_status=_core_route_status(core_settings),
-        core_contract_version=_core_contract_version(core_settings),
-        core_runtime_message=_core_route_message(core_settings, "settings"),
-    )
+    return await _settings_service().config_snapshot()
 
 
 async def runtime_health_snapshot() -> RuntimeHealthResponse:
-    model_status = await agent.model_status()
-    default_workspace = _resolve_workspace_path_for_config(None)
-    core_results = await core_bridge.low_risk_runtime_status(default_workspace)
-    core_reachable, core_status, core_contract, core_message = _core_status_from_results(core_results)
-    core_models = core_results.get("models")
-    _, core_selected_model, core_models_reachable = _core_models_from_result(core_models)
-    registry = model_registry.snapshot()
-    provider_count = len(registry.providers)
-    configured_provider_count = sum(1 for provider in registry.providers if provider.configured)
-    enabled_provider_count = sum(1 for provider in registry.providers if provider.enabled)
-    recommendations: list[str] = []
-    if not model_status.ready:
-        recommendations.append(model_status.message or "The active model provider is not reporting ready.")
-    if configured_provider_count == 0:
-        recommendations.append("No configured model providers are registered; configure at least one local or cloud provider.")
-    if not registry.router_enabled:
-        recommendations.append("Model routing is disabled; enable routing when fallback and role-based selection should be active.")
-    if not settings.aegis_router_execution_enabled:
-        recommendations.append("Router execution is disabled in settings; routed prompts will not execute provider chains.")
-    if core_status != "connected":
-        recommendations.append("Aegis Core shared runtime is unavailable; Website /api is running in local fallback mode.")
-    elif core_selected_model and core_selected_model != settings.aegis_model_name:
-        recommendations.append(
-            f"Aegis Core selected shared model {core_selected_model}; Website /api remains configured for {settings.aegis_model_name} during adapter migration."
+    return await _runtime_health_service().snapshot()
+
+
+register_runtime_routes(
+    app,
+    settings_factory=lambda: settings,
+    core_bridge_factory=lambda: core_bridge,
+    core_runtime_client_factory=lambda: core_runtime_client,
+    workspace_resolver=_resolve_workspace_path_for_config,
+    runtime_health_factory=runtime_health_snapshot,
+    core_data_extractor=_core_delegation_data,
+)
+
+
+async def onboarding_status(workspace_root: str | None = Query(default=None)) -> dict[str, Any]:
+    return await _settings_service().onboarding_status(workspace_root)
+
+
+async def update_onboarding(request: dict[str, Any]) -> dict[str, Any]:
+    return await _settings_service().update_onboarding(request)
+
+
+async def run_onboarding_first_workflow(request: dict[str, Any]) -> dict[str, Any]:
+    return await _settings_service().run_onboarding_first_workflow(request)
+
+
+async def export_runtime_settings(workspace_root: str | None = Query(default=None)) -> dict[str, Any]:
+    return await _settings_service().export_runtime_settings(workspace_root)
+
+
+async def import_runtime_settings(request: dict[str, Any]) -> dict[str, Any]:
+    return await _settings_service().import_runtime_settings(request)
+
+
+register_onboarding_settings_routes(
+    app,
+    onboarding_status=lambda workspace_root: onboarding_status(workspace_root),
+    update_onboarding=lambda request: update_onboarding(request),
+    run_onboarding_first_workflow=lambda request: run_onboarding_first_workflow(request),
+    export_runtime_settings=lambda workspace_root: export_runtime_settings(workspace_root),
+    import_runtime_settings=lambda request: import_runtime_settings(request),
+)
+
+
+def _delegated_dict(result: CoreDelegationResult | None) -> dict[str, Any]:
+    if result is not None and result.delegated and isinstance(result.data, dict):
+        return result.data
+    return {}
+
+
+def _delegated_list(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, dict)]
+
+
+def _workflow_id(value: dict[str, Any] | None) -> str:
+    if not isinstance(value, dict):
+        return ""
+    return str(value.get("id") or value.get("workflow_id") or "").strip()
+
+
+def _workflow_task_counts(workflow: dict[str, Any] | None) -> dict[str, int]:
+    counts = {
+        "queued": 0,
+        "completed": 0,
+        "failed": 0,
+        "paused": 0,
+        "waiting_input": 0,
+        "approval_requests": 0,
+    }
+    tasks = workflow.get("tasks", []) if isinstance(workflow, dict) else []
+    for task in tasks if isinstance(tasks, list) else []:
+        if not isinstance(task, dict):
+            continue
+        status = str(task.get("status") or "unknown")
+        if status in counts:
+            counts[status] += 1
+        if task.get("approval_required") or task.get("approval_gates") or status == "waiting_input":
+            counts["approval_requests"] += 1
+    return counts
+
+
+def _first_core_error(*results: CoreDelegationResult | None) -> str:
+    return next((str(result.error) for result in results if result is not None and result.error), "")
+
+
+def _supervision_events_url(workflow_id: str, root: Path) -> str:
+    if not workflow_id:
+        return ""
+    return f"/api/agent-supervision/workflows/{workflow_id}/events?{urlencode({'workspace_root': str(root)})}"
+
+
+async def agent_supervision_status(
+    workspace_root: str | None = Query(default=None),
+    workflow_id: str | None = Query(default=None),
+    limit: int = Query(default=30, ge=1, le=200),
+) -> dict[str, Any]:
+    root = _resolve_workspace_or_400(workspace_root)
+    runtime_result = await core_runtime_client.agent_runtime(root)
+    workflows_result = await core_runtime_client.list_workflows(root, include_completed=False, limit=limit)
+    runtime_data = _delegated_dict(runtime_result)
+    workflows_data = _delegated_dict(workflows_result)
+    workflows = _delegated_list(workflows_data.get("workflows"))
+    active_workflows = _delegated_list(workflows_data.get("active_workflows"))
+
+    requested_workflow_id = (workflow_id or "").strip()
+    if not requested_workflow_id:
+        requested_workflow_id = _workflow_id(active_workflows[0] if active_workflows else None) or _workflow_id(
+            workflows[0] if workflows else None
         )
 
-    model_message = model_status.message
-    if core_models is not None and core_models.ok and core_models_reachable:
-        model_message = f"{model_message} Aegis Core model inventory is connected."
-    elif core_models is not None and core_models.error:
-        model_message = f"{model_message} Aegis Core model inventory is unavailable; using Website model adapter fallback."
+    dashboard_result: CoreDelegationResult | None = None
+    coordination_result: CoreDelegationResult | None = None
+    dashboard_data: dict[str, Any] = {}
+    coordination_data: dict[str, Any] = {}
+    active_workflow: dict[str, Any] | None = None
+    if requested_workflow_id:
+        dashboard_result = await core_runtime_client.workflow_dashboard(root, requested_workflow_id)
+        coordination_result = await core_runtime_client.workflow_agent_coordination(root, requested_workflow_id)
+        dashboard_data = _delegated_dict(dashboard_result)
+        coordination_data = _delegated_dict(coordination_result)
+        active_workflow = dashboard_data.get("workflow") if isinstance(dashboard_data.get("workflow"), dict) else None
+        if active_workflow is None:
+            active_workflow = next((item for item in workflows if _workflow_id(item) == requested_workflow_id), None)
+    elif active_workflows:
+        active_workflow = active_workflows[0]
 
-    return RuntimeHealthResponse(
-        ok=True,
-        ready=True,
-        status="ready" if model_status.ready and core_status == "connected" else "degraded",
-        app=app.title,
-        version=app.version,
-        engine=f"Aegis Core / {settings.aegis_model_name}",
-        engine_ready=True,
-        engine_message="The Aegis backend process is ready." if core_status == "connected" else core_message,
-        model_name=settings.aegis_model_name,
-        model_api=settings.aegis_model_api,
-        model_endpoint=settings.aegis_model_endpoint,
-        model_ready=model_status.ready,
-        model_message=model_message,
-        project_root=str(PROJECT_ROOT),
-        workspace_root=str(default_workspace),
-        database_path=str(_resolve_database_path(settings.aegis_database_path)),
-        env_exists=has_env_file(),
-        router_execution_enabled=settings.aegis_router_execution_enabled,
-        router_enabled=registry.router_enabled,
-        fallback_supported=registry.fallback_supported,
-        provider_count=provider_count,
-        configured_provider_count=configured_provider_count,
-        enabled_provider_count=enabled_provider_count,
-        role_count=len(registry.roles),
-        recommendations=recommendations,
-        core_runtime_reachable=core_reachable,
-        core_runtime_status=core_status,
-        core_contract_version=core_contract,
-        core_runtime_message=core_message,
+    if not coordination_data and isinstance(dashboard_data.get("agent_coordination"), dict):
+        coordination_data = dashboard_data["agent_coordination"]
+
+    timeline = []
+    if isinstance(coordination_data.get("execution_timeline"), list):
+        timeline = coordination_data["execution_timeline"]
+    elif isinstance(dashboard_data.get("timeline"), list):
+        timeline = dashboard_data["timeline"]
+
+    runtime_status = await core_runtime_client.runtime_status(root)
+    if hasattr(core_runtime_client, "security_status"):
+        security_result = await core_runtime_client.security_status(root)
+    else:
+        security_result = CoreDelegationResult(
+            delegated=False,
+            ok=False,
+            reachable=False,
+            status_code=None,
+            kind="security.status",
+            error="",
+        )
+    security_data = _core_delegation_data(security_result, "security.status") if security_result.delegated else {}
+    core_connected = any(
+        result is not None and result.delegated
+        for result in (runtime_result, workflows_result, dashboard_result, coordination_result, security_result)
     )
+    last_error = _first_core_error(security_result, coordination_result, dashboard_result, workflows_result, runtime_result)
+    fallback_mode = not core_connected or bool(runtime_status.get("fallback_mode_active"))
+    selected_workflow_id = _workflow_id(active_workflow) or requested_workflow_id
+    return {
+        "workspace_root": str(root),
+        "core_connected": core_connected,
+        "delegated_workflows_enabled": core_runtime_client.delegated_workflows_enabled,
+        "fallback_mode_active": fallback_mode,
+        "last_core_error": last_error or runtime_status.get("last_core_error", ""),
+        "runtime_status": runtime_status,
+        "security_status": trust_status(settings, core_status=security_data),
+        "runtime": runtime_data,
+        "workflows": workflows,
+        "active_workflows": active_workflows,
+        "active_workflow": active_workflow,
+        "coordination": coordination_data,
+        "timeline": timeline,
+        "task_counts": _workflow_task_counts(active_workflow),
+        "safety": coordination_data.get("safety", runtime_data.get("safety_controls", {})),
+        "events_url": _supervision_events_url(selected_workflow_id, root),
+    }
 
 
-def _auth_response(session) -> AuthSessionResponse:
-    return AuthSessionResponse(token=session.token, user=session.user, expires_at=session.expires_at)
+async def agent_supervision_workflow_agents(
+    workflow_id: str,
+    workspace_root: str | None = Query(default=None),
+) -> dict[str, Any]:
+    root = _resolve_workspace_or_400(workspace_root)
+    result = await core_runtime_client.workflow_agent_coordination(root, workflow_id)
+    if not result.delegated:
+        return {
+            "ok": False,
+            "delegated": False,
+            "core_connected": result.reachable,
+            "workflow_id": workflow_id,
+            "workspace_root": str(root),
+            "error": result.error or "Aegis Core agent coordination is unavailable.",
+            "coordination": {},
+        }
+    return {
+        "ok": True,
+        "delegated": True,
+        "core_connected": True,
+        "workflow_id": workflow_id,
+        "workspace_root": str(root),
+        "coordination": _core_delegation_data(result, "agent.coordination"),
+    }
 
 
-def _extract_bearer_token(authorization: str | None) -> str:
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Authentication required.")
-    scheme, _, token = authorization.partition(" ")
-    if scheme.lower() != "bearer" or not token.strip():
-        raise HTTPException(status_code=401, detail="Authentication required.")
-    return token.strip()
+async def agent_supervision_workflow_step(
+    workflow_id: str,
+    request: dict[str, Any],
+) -> dict[str, Any]:
+    root = _resolve_workspace_or_400(request.get("workspace_root") or request.get("workspace"))
+    result = await core_runtime_client.step_workflow(
+        root,
+        workflow_id,
+        action=str(request.get("action") or "advance"),
+        task_id=str(request.get("task_id") or "").strip() or None,
+        approval=bool(request.get("approval", False)),
+        summary=str(request.get("summary") or "").strip() or None,
+        payload=request.get("payload") if isinstance(request.get("payload"), dict) else {},
+    )
+    if not result.delegated:
+        _record_core_fallback("workflow.step", result)
+        return {
+            "ok": False,
+            "delegated": False,
+            "core_connected": result.reachable,
+            "workflow_id": workflow_id,
+            "workspace_root": str(root),
+            "error": result.error or "Aegis Core workflow control is unavailable.",
+        }
+    return {"ok": True, "delegated": True, **_core_delegation_data(result, "workflow.step")}
 
 
-def _session_from_authorization(authorization: str | None) -> tuple[Any, str]:
-    token = _extract_bearer_token(authorization)
-    session = account_store.user_for_token(token)
-    if session is None:
-        raise HTTPException(status_code=401, detail="Session expired or invalid.")
-    return session
+async def agent_supervision_delegate_agent(
+    workflow_id: str,
+    request: dict[str, Any],
+) -> dict[str, Any]:
+    root = _resolve_workspace_or_400(request.get("workspace_root") or request.get("workspace"))
+    result = await core_runtime_client.delegate_agent_task(
+        root,
+        workflow_id,
+        task_id=str(request.get("task_id") or "").strip(),
+        agent_id=str(request.get("agent_id") or "").strip(),
+        approval=bool(request.get("approval", False)),
+        reason=str(request.get("reason") or "").strip(),
+        metadata=request.get("metadata") if isinstance(request.get("metadata"), dict) else {},
+    )
+    if not result.delegated:
+        _record_core_fallback("agent.delegation", result)
+        return {
+            "ok": False,
+            "delegated": False,
+            "core_connected": result.reachable,
+            "workflow_id": workflow_id,
+            "workspace_root": str(root),
+            "error": result.error or "Aegis Core agent delegation is unavailable.",
+        }
+    return {"ok": True, "delegated": True, **_core_delegation_data(result, "agent.delegation")}
 
 
-@app.post("/api/auth/register", response_model=AuthSessionResponse)
-async def register_account(request: AuthRegisterRequest) -> AuthSessionResponse:
-    if request.password != request.confirm_password:
-        raise HTTPException(status_code=400, detail="Passwords do not match.")
+async def agent_supervision_workflow_events(
+    workflow_id: str,
+    workspace_root: str | None = Query(default=None),
+    since: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, ge=1, le=500),
+    follow: bool = Query(default=True),
+    max_seconds: int = Query(default=30, ge=1, le=120),
+) -> StreamingResponse:
+    root = _resolve_workspace_or_400(workspace_root)
+    url = f"{core_runtime_client.base_url}/v1/workflows/{workflow_id}/events"
+    params = {
+        "workspace": str(root),
+        "since": since,
+        "limit": limit,
+        "follow": follow,
+        "max_seconds": max_seconds,
+    }
 
-    try:
-        user = account_store.create_account(name=request.name, email=request.email, password=request.password)
-        session = account_store.create_session(user, remember_me=True)
-        return _auth_response(session)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    async def stream_core_events() -> AsyncIterator[str]:
+        if not core_runtime_client.delegated_workflows_enabled:
+            yield _sse_event(
+                "supervision_error",
+                {"type": "supervision_error", "message": "Aegis Core delegated workflows are disabled."},
+            )
+            return
+        try:
+            timeout = httpx.Timeout(connect=core_runtime_client.timeout_seconds, read=None, write=10.0, pool=10.0)
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                async with client.stream("GET", url, params=params) as response:
+                    response.raise_for_status()
+                    async for chunk in response.aiter_text():
+                        if chunk:
+                            yield chunk
+        except Exception as exc:
+            yield _sse_event(
+                "supervision_error",
+                {"type": "supervision_error", "message": f"Aegis Core workflow event stream unavailable: {exc}"},
+            )
+
+    return StreamingResponse(stream_core_events(), media_type="text/event-stream")
 
 
-@app.post("/api/auth/login", response_model=AuthSessionResponse)
-async def login_account(request: AuthLoginRequest) -> AuthSessionResponse:
-    try:
-        session = account_store.authenticate(
-            email=request.email,
-            password=request.password,
-            remember_me=request.remember_me,
+register_agent_supervision_routes(
+    app,
+    agent_supervision_status=lambda workspace_root, workflow_id, limit: agent_supervision_status(
+        workspace_root,
+        workflow_id,
+        limit,
+    ),
+    agent_supervision_workflow_agents=lambda workflow_id, workspace_root: agent_supervision_workflow_agents(
+        workflow_id,
+        workspace_root,
+    ),
+    agent_supervision_workflow_step=lambda workflow_id, request: agent_supervision_workflow_step(workflow_id, request),
+    agent_supervision_delegate_agent=lambda workflow_id, request: agent_supervision_delegate_agent(
+        workflow_id,
+        request,
+    ),
+    agent_supervision_workflow_events=lambda workflow_id, workspace_root, since, limit, follow, max_seconds: agent_supervision_workflow_events(
+        workflow_id,
+        workspace_root,
+        since,
+        limit,
+        follow,
+        max_seconds,
+    ),
+)
+
+
+def _quality_unavailable_payload(root: Path, result: CoreDelegationResult, *, kind: str, extra: dict[str, Any] | None = None) -> dict[str, Any]:
+    _record_core_fallback(kind, result)
+    return {
+        "ok": False,
+        "delegated": False,
+        "core_connected": result.reachable,
+        "workspace_root": str(root),
+        "error": result.error or "Aegis Core quality gates are unavailable.",
+        "fallback_mode_active": True,
+        **(extra or {}),
+    }
+
+
+async def quality_gates_status(
+    workspace_root: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+) -> dict[str, Any]:
+    root = _resolve_workspace_or_400(workspace_root)
+    result = await core_runtime_client.quality_gates(root, limit=limit)
+    if not result.delegated:
+        return _quality_unavailable_payload(
+            root,
+            result,
+            kind="quality.gates",
+            extra={
+                "latest": None,
+                "recent_runs": [],
+                "reports": [],
+                "benchmark_history": [],
+                "benchmark_suites": [],
+                "statistics": {},
+            },
         )
-        return _auth_response(session)
-    except (PermissionError, ValueError) as exc:
-        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    return {
+        "ok": True,
+        "delegated": True,
+        "core_connected": True,
+        "workspace_root": str(root),
+        **_core_delegation_data(result, "quality.gates"),
+    }
 
 
-@app.get("/api/auth/me", response_model=AuthSessionResponse)
-async def current_account(authorization: str | None = Header(default=None)) -> AuthSessionResponse:
-    user, expires_at = _session_from_authorization(authorization)
-    return AuthSessionResponse(token="", user=user, expires_at=expires_at)
+async def evaluate_quality_gates(request: dict[str, Any]) -> dict[str, Any]:
+    root = _resolve_workspace_or_400(request.get("workspace_root") or request.get("workspace"))
+    result = await core_runtime_client.evaluate_quality_gates(
+        root,
+        changes=request.get("changes") if isinstance(request.get("changes"), list) else [],
+        workflow_id=str(request.get("workflow_id") or "").strip() or None,
+        validation_id=str(request.get("validation_id") or "").strip() or None,
+        validation=request.get("validation") if isinstance(request.get("validation"), dict) else None,
+        approval=bool(request.get("approval", False)),
+        checkpoint_id=str(request.get("checkpoint_id") or "").strip() or None,
+        max_files_changed=int(request.get("max_files_changed") or 25),
+        restricted_paths=request.get("restricted_paths") if isinstance(request.get("restricted_paths"), list) else [],
+        validation_required=bool(request.get("validation_required", False)),
+        dry_run=bool(request.get("dry_run", True)),
+        persist=bool(request.get("persist", True)),
+        metadata=request.get("metadata") if isinstance(request.get("metadata"), dict) else {},
+    )
+    if not result.delegated:
+        return _quality_unavailable_payload(root, result, kind="quality.gates.evaluate")
+    return {
+        "ok": bool(result.ok),
+        "delegated": True,
+        "core_connected": True,
+        "workspace_root": str(root),
+        **_core_delegation_data(result, "quality.gates.evaluate"),
+    }
 
 
-@app.post("/api/auth/logout", response_model=AuthMessageResponse)
-async def logout_account(authorization: str | None = Header(default=None)) -> AuthMessageResponse:
-    token = _extract_bearer_token(authorization)
-    account_store.delete_session(token)
-    return AuthMessageResponse(message="Signed out.")
+async def workflow_quality_gates(
+    workflow_id: str,
+    workspace_root: str | None = Query(default=None),
+) -> dict[str, Any]:
+    root = _resolve_workspace_or_400(workspace_root)
+    result = await core_runtime_client.workflow_quality(root, workflow_id)
+    if not result.delegated:
+        return _quality_unavailable_payload(root, result, kind="workflow.quality", extra={"workflow_id": workflow_id})
+    return {
+        "ok": True,
+        "delegated": True,
+        "core_connected": True,
+        "workspace_root": str(root),
+        **_core_delegation_data(result, "workflow.quality"),
+    }
 
 
-@app.post("/api/auth/forgot-password", response_model=AuthMessageResponse)
-async def forgot_password(request: AuthForgotPasswordRequest) -> AuthMessageResponse:
-    # The local-first runtime has no outbound email channel yet, so this endpoint
-    # intentionally avoids revealing whether an account exists.
-    _ = request.email
-    return AuthMessageResponse(message="If an account exists, password recovery instructions will be sent when email is configured.")
+async def quality_benchmarks(
+    workspace_root: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+) -> dict[str, Any]:
+    root = _resolve_workspace_or_400(workspace_root)
+    result = await core_runtime_client.benchmarks(root, limit=limit)
+    if not result.delegated:
+        return _quality_unavailable_payload(root, result, kind="quality.benchmarks", extra={"suites": [], "history": [], "latest": None})
+    return {
+        "ok": True,
+        "delegated": True,
+        "core_connected": True,
+        "workspace_root": str(root),
+        **_core_delegation_data(result, "quality.benchmarks"),
+    }
 
 
-@app.get("/health", response_model=RuntimeHealthResponse, include_in_schema=False)
-@app.get("/api/health", response_model=RuntimeHealthResponse)
-async def health() -> RuntimeHealthResponse:
-    return await runtime_health_snapshot()
+async def run_quality_benchmark(request: dict[str, Any]) -> dict[str, Any]:
+    root = _resolve_workspace_or_400(request.get("workspace_root") or request.get("workspace"))
+    result = await core_runtime_client.run_benchmark(
+        root,
+        suite_ids=request.get("suite_ids") if isinstance(request.get("suite_ids"), list) else [],
+        workflow_id=str(request.get("workflow_id") or "").strip() or None,
+        metadata=request.get("metadata") if isinstance(request.get("metadata"), dict) else {},
+    )
+    if not result.delegated:
+        return _quality_unavailable_payload(root, result, kind="quality.benchmark.run")
+    return {
+        "ok": bool(result.ok),
+        "delegated": True,
+        "core_connected": True,
+        "workspace_root": str(root),
+        **_core_delegation_data(result, "quality.benchmark.run"),
+    }
 
 
-@app.get("/ready", response_model=RuntimeHealthResponse, include_in_schema=False)
-@app.get("/api/ready", response_model=RuntimeHealthResponse)
-async def ready() -> RuntimeHealthResponse:
-    return await runtime_health_snapshot()
+async def evaluation_reports(
+    workspace_root: str | None = Query(default=None),
+    workflow_id: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+) -> dict[str, Any]:
+    root = _resolve_workspace_or_400(workspace_root)
+    result = await core_runtime_client.evaluation_reports(root, workflow_id=workflow_id, limit=limit)
+    if not result.delegated:
+        return _quality_unavailable_payload(root, result, kind="quality.evaluation_reports", extra={"reports": [], "latest": None})
+    return {
+        "ok": True,
+        "delegated": True,
+        "core_connected": True,
+        "workspace_root": str(root),
+        **_core_delegation_data(result, "quality.evaluation_reports"),
+    }
 
 
-@app.get("/api/core-runtime")
-async def core_runtime_status(workspace_root: str | None = Query(default=None)) -> dict[str, Any]:
-    workspace = _resolve_workspace_path_for_config(workspace_root)
-    return await core_bridge.shared_runtime_status(workspace)
+async def create_evaluation_report(request: dict[str, Any]) -> dict[str, Any]:
+    root = _resolve_workspace_or_400(request.get("workspace_root") or request.get("workspace"))
+    result = await core_runtime_client.create_evaluation_report(
+        root,
+        workflow_id=str(request.get("workflow_id") or "").strip() or None,
+        quality_run_id=str(request.get("quality_run_id") or "").strip() or None,
+        title=str(request.get("title") or ""),
+        changes=request.get("changes") if isinstance(request.get("changes"), list) else [],
+        tests_run=request.get("tests_run") if isinstance(request.get("tests_run"), list) else [],
+        repairs_attempted=request.get("repairs_attempted") if isinstance(request.get("repairs_attempted"), list) else [],
+        metadata=request.get("metadata") if isinstance(request.get("metadata"), dict) else {},
+    )
+    if not result.delegated:
+        return _quality_unavailable_payload(root, result, kind="quality.evaluation_report")
+    return {
+        "ok": bool(result.ok),
+        "delegated": True,
+        "core_connected": True,
+        "workspace_root": str(root),
+        **_core_delegation_data(result, "quality.evaluation_report"),
+    }
 
 
-@app.get("/api/unified-runtime", response_model=UnifiedRuntimeSnapshot)
+register_quality_evaluation_routes(
+    app,
+    quality_gates_status=lambda workspace_root, limit: quality_gates_status(workspace_root, limit),
+    evaluate_quality_gates=lambda request: evaluate_quality_gates(request),
+    workflow_quality_gates=lambda workflow_id, workspace_root: workflow_quality_gates(workflow_id, workspace_root),
+    quality_benchmarks=lambda workspace_root, limit: quality_benchmarks(workspace_root, limit),
+    run_quality_benchmark=lambda request: run_quality_benchmark(request),
+    evaluation_reports=lambda workspace_root, workflow_id, limit: evaluation_reports(workspace_root, workflow_id, limit),
+    create_evaluation_report=lambda request: create_evaluation_report(request),
+)
+
+
 async def unified_runtime_status(workspace_root: str | None = Query(default=None)) -> UnifiedRuntimeSnapshot:
     root = _resolve_workspace_or_400(workspace_root)
     return _unified_runtime_snapshot(root)
 
 
-@app.get("/api/operating-environment", response_model=OperatingEnvironmentSnapshot)
 async def operating_environment_status(workspace_root: str | None = Query(default=None)) -> OperatingEnvironmentSnapshot:
     root = _resolve_workspace_or_400(workspace_root)
     return _operating_environment_snapshot(root)
 
 
-@app.post("/api/operating-environment/actions/preview", response_model=OperatingEnvironmentActionResponse)
 async def operating_environment_action_preview(
     request: OperatingEnvironmentActionRequest,
 ) -> OperatingEnvironmentActionResponse:
@@ -1593,26 +1580,22 @@ async def operating_environment_action_preview(
     return operating_environment.preview_action(request)
 
 
-@app.get("/api/unified-context", response_model=UnifiedContextSnapshot)
 async def unified_context_status(workspace_root: str | None = Query(default=None)) -> UnifiedContextSnapshot:
     root = _resolve_workspace_or_400(workspace_root)
     return _unified_context_snapshot(root)
 
 
-@app.post("/api/unified-context/search", response_model=UnifiedContextSearchResponse)
 async def unified_context_search(request: UnifiedContextSearchRequest) -> UnifiedContextSearchResponse:
     root = _resolve_workspace_or_400(request.workspace_root)
     snapshot = _unified_context_snapshot(root)
     return unified_context.search(snapshot, request.model_copy(update={"workspace_root": str(root)}))
 
 
-@app.post("/api/global-command/preview", response_model=GlobalCommandResponse)
 async def global_command_preview(request: GlobalCommandRequest) -> GlobalCommandResponse:
     root = _resolve_workspace_or_400(request.workspace_root)
     return _global_command_preview(root, request)
 
 
-@app.post("/api/global-command/submit", response_model=GlobalCommandResponse)
 async def global_command_submit(request: GlobalCommandRequest) -> GlobalCommandResponse:
     root = _resolve_workspace_or_400(request.workspace_root)
     response = _global_command_preview(root, request)
@@ -1649,830 +1632,392 @@ async def global_command_submit(request: GlobalCommandRequest) -> GlobalCommandR
     return response.model_copy(update={"task": agent.store.task(task_id), "event": event})
 
 
-@app.get("/api/continuity", response_model=AegisContinuitySnapshot)
 async def continuity_status(workspace_root: str | None = Query(default=None)) -> AegisContinuitySnapshot:
     root = _resolve_workspace_or_400(workspace_root)
     return _continuity_snapshot(root)
 
 
-@app.post("/api/continuity/timeline/search", response_model=TimelineSearchResponse)
 async def continuity_timeline_search(request: TimelineSearchRequest) -> TimelineSearchResponse:
     root = _resolve_workspace_or_400(request.workspace_root)
     snapshot = _continuity_snapshot(root)
     return continuity.search_timeline(snapshot, request.model_copy(update={"workspace_root": str(root)}))
 
 
-@app.get("/api/platform-discipline", response_model=PlatformDisciplineSnapshot)
 async def platform_discipline_status(workspace_root: str | None = Query(default=None)) -> PlatformDisciplineSnapshot:
     root = _resolve_workspace_or_400(workspace_root)
     return _platform_discipline_snapshot(root)
 
 
-@app.get("/api/config", response_model=AppConfig)
-async def config() -> AppConfig:
-    return await config_snapshot()
-
-
-@app.get("/api/models", response_model=ModelInventoryResponse)
 async def models() -> ModelInventoryResponse:
-    inventory = await agent.model_inventory()
-    registry = model_registry.snapshot()
-    default_workspace = _resolve_workspace_path_for_config(None)
-    core_models = await core_bridge.model_status(default_workspace)
-    core_installed, core_selected, core_reachable = _core_models_from_result(core_models)
-    seen_model_names: set[str] = set()
-    model_records: list[ModelInfo] = []
-    for item in inventory.models:
-        seen_model_names.add(item.name)
-        core_available = item.name in core_installed or item.id in core_installed
-        core_ready = core_reachable and bool(core_selected) and item.name == core_selected
-        message = item.message
-        if core_available and not item.available:
-            message = "Available via Aegis Core shared model inventory."
-        model_records.append(
-            ModelInfo(
-                id=item.id,
-                name=item.name,
-                provider=item.provider,
-                api=item.api,
-                endpoint=item.endpoint,
-                local=item.local,
-                configured=item.configured,
-                available=item.available or core_available,
-                ready=item.ready or core_ready,
-                message=message,
-                size=item.size,
-                modified_at=item.modified_at,
-                capabilities=ModelCapabilities(**(item.capabilities or {})),
-            )
-        )
+    return await _model_inventory_service().models()
 
-    if core_models.ok:
-        for model_name in sorted(name for name in core_installed if name not in seen_model_names):
-            model_records.append(
-                ModelInfo(
-                    id=f"aegis-core:{model_name}",
-                    name=model_name,
-                    provider="Aegis Core",
-                    api="ollama",
-                    endpoint=settings.aegis_model_endpoint,
-                    local=True,
-                    configured=model_name in {settings.aegis_model_name, core_selected},
-                    available=True,
-                    ready=core_reachable and model_name == core_selected,
-                    message="Detected by Aegis Core shared model inventory.",
-                    capabilities=_core_model_capabilities(model_name),
-                )
-            )
 
-    message = inventory.message
-    if core_models.ok:
-        message = f"{message} Aegis Core model inventory is connected."
-    elif core_models.error:
-        message = f"{message} Aegis Core model inventory is unavailable; using Website model adapter fallback."
+register_runtime_convergence_routes(
+    app,
+    unified_runtime_status=lambda workspace_root: unified_runtime_status(workspace_root),
+    operating_environment_status=lambda workspace_root: operating_environment_status(workspace_root),
+    operating_environment_action_preview=lambda request: operating_environment_action_preview(request),
+    unified_context_status=lambda workspace_root: unified_context_status(workspace_root),
+    unified_context_search=lambda request: unified_context_search(request),
+    global_command_preview=lambda request: global_command_preview(request),
+    global_command_submit=lambda request: global_command_submit(request),
+    continuity_status=lambda workspace_root: continuity_status(workspace_root),
+    continuity_timeline_search=lambda request: continuity_timeline_search(request),
+    platform_discipline_status=lambda workspace_root: platform_discipline_status(workspace_root),
+    models=lambda: models(),
+)
 
-    return ModelInventoryResponse(
-        active_model=inventory.active_model,
-        active_api=inventory.active_api,
-        active_endpoint=inventory.active_endpoint,
-        router_enabled=registry.router_enabled,
-        fallback_supported=registry.fallback_supported,
-        message=message,
-        models=model_records,
-        core_runtime_reachable=core_models.reachable,
-        core_runtime_status=_core_route_status(core_models),
-        core_contract_version=_core_contract_version(core_models),
-        core_runtime_message=_core_route_message(core_models, "models"),
+
+register_model_registry_routes(
+    app,
+    project_root=PROJECT_ROOT,
+    model_registry_factory=lambda: model_registry,
+    model_benchmarks_factory=lambda: model_benchmarks,
+    model_manager_factory=lambda: model_manager,
+    agent_factory=lambda: agent,
+    core_runtime_client_factory=lambda: core_runtime_client,
+    workspace_resolver=_resolve_workspace_or_400,
+    core_registry_merger=merge_core_model_registry,
+)
+
+
+register_provider_account_routes(
+    app,
+    provider_accounts_factory=lambda: provider_accounts,
+)
+
+
+async def _create_agent_bridge_checkpoint(root: Path, provider_label: str) -> CheckpointSummary:
+    summary = f"Before {provider_label} bridge execution"
+    core_result = await core_runtime_client.create_checkpoint(root, paths=[], summary=summary)
+    if core_result.delegated:
+        return checkpoint_summary_from_core(_core_delegation_data(core_result, "checkpoints.create"))
+    if not core_result.should_fallback:
+        raise _core_delegation_error(core_result, "checkpoints.create")
+    _record_core_fallback("checkpoints.create", core_result)
+    return workspace_manager.create_checkpoint(root, paths=[], summary=summary)
+
+
+def _agent_bridge_service() -> AgentBridgeService:
+    return AgentBridgeService(
+        settings_factory=lambda: settings,
+        workspace_manager_factory=lambda: workspace_manager,
+        workspace_operations_factory=lambda: workspace_operations,
+        agent_factory=lambda: agent,
+        provider_accounts_factory=lambda: provider_accounts,
+        agent_bridge_runner_factory=lambda: agent_bridge_runner,
+        workspace_resolver=_resolve_workspace_or_400,
+        checkpoint_creator=_create_agent_bridge_checkpoint,
+        runtime_payload_dumper=_dump_runtime_payload,
+        jobs_path=_agent_bridge_jobs_path,
+        jobs_lock=_agent_bridge_jobs_lock,
     )
 
 
-@app.get("/api/model-registry", response_model=ModelRegistryResponse)
-async def model_registry_snapshot() -> ModelRegistryResponse:
-    return model_registry.snapshot()
+def _agent_bridge_workspace_state(root: Path, *, max_files: int = 5000) -> dict[str, dict[str, Any]]:
+    return _agent_bridge_service().workspace_state(root, max_files=max_files)
 
 
-@app.get("/api/model-registry/audit", response_model=ModelRegistryAuditResponse)
-async def model_registry_audit(workspace_root: str | None = Query(default=None)) -> ModelRegistryAuditResponse:
-    root = _resolve_workspace_or_400(workspace_root)
-    return model_registry.audit(
-        model_attempts=agent.store.recent_model_attempts(project_root=root, limit=200),
-        route_health=agent.store.route_health_signals(project_root=root, limit=200),
+def _agent_bridge_workspace_changes(
+    before: dict[str, dict[str, Any]],
+    after: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    return _agent_bridge_service().workspace_changes(before, after)
+
+
+def _augment_agent_bridge_response(
+    response: AgentBridgeExecuteResponse,
+    *,
+    checkpoint: CheckpointSummary | None,
+    before_state: dict[str, dict[str, Any]],
+    after_state: dict[str, dict[str, Any]],
+) -> AgentBridgeExecuteResponse:
+    return _agent_bridge_service().augment_response(
+        response,
+        checkpoint=checkpoint,
+        before_state=before_state,
+        after_state=after_state,
     )
 
 
-@app.post("/api/model-registry/providers", response_model=ModelRegistryResponse)
-async def upsert_model_registry_provider(request: ModelRegistryProviderUpsertRequest) -> ModelRegistryResponse:
-    try:
-        return model_registry.upsert_provider(request)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-
-@app.delete("/api/model-registry/providers/{provider_id}", response_model=ModelRegistryResponse)
-async def delete_model_registry_provider(provider_id: str) -> ModelRegistryResponse:
-    try:
-        return model_registry.delete_provider(provider_id)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="model registry provider not found") from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-
-@app.post("/api/model-registry/apply-benchmark-winners", response_model=ModelRegistryResponse)
-async def apply_benchmark_winners_to_model_registry(
-    workspace_root: str | None = Query(default=None),
-) -> ModelRegistryResponse:
-    root = _resolve_workspace_or_400(workspace_root)
-    try:
-        route_health = agent.store.route_health_signals(project_root=root, limit=200)
-        return model_registry.apply_benchmark_winners(
-            model_benchmarks.snapshot().provider_scores,
-            route_health=route_health,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-
-@app.get("/api/model-registry/benchmark-winners-preview", response_model=ModelRegistryBenchmarkPreviewResponse)
-async def preview_benchmark_winners_for_model_registry(
-    workspace_root: str | None = Query(default=None),
-) -> ModelRegistryBenchmarkPreviewResponse:
-    root = _resolve_workspace_or_400(workspace_root)
-    route_health = agent.store.route_health_signals(project_root=root, limit=200)
-    return model_registry.preview_benchmark_winners(
-        model_benchmarks.snapshot().provider_scores,
-        route_health=route_health,
-    )
-
-
-@app.post("/api/model-registry/apply-policy-diff", response_model=ModelRegistryResponse)
-async def apply_route_policy_diff_to_model_registry(
-    workspace_root: str | None = Query(default=None),
-    limit: int = Query(default=200, ge=1, le=500),
-    min_attempts: int = Query(default=3, ge=1, le=50),
-    min_confidence: float = Query(default=0.55, ge=0.0, le=1.0),
-    allow_high_risk: bool = Query(default=False),
-) -> ModelRegistryResponse:
-    root = _resolve_workspace_or_400(workspace_root)
-    diff = agent.store.route_policy_diff(
-        project_root=root,
-        limit=limit,
-        use_snapshot=True,
-        stale_after_seconds=900,
-        min_attempts=min_attempts,
-    )
-    return model_registry.apply_policy_diff(
-        diff,
-        min_confidence=min_confidence,
-        allow_high_risk=allow_high_risk,
-    )
-
-
-@app.get("/api/model-registry/checkpoints", response_model=ModelRegistryCheckpointListResponse)
-async def model_registry_checkpoints(
-    limit: int = Query(default=20, ge=1, le=100),
-) -> ModelRegistryCheckpointListResponse:
-    return model_registry.checkpoints(limit=limit)
-
-
-@app.post("/api/model-registry/checkpoints", response_model=ModelRegistryCheckpointInfo)
-async def create_model_registry_checkpoint(
-    request: ModelRegistryCheckpointCreateRequest,
-) -> ModelRegistryCheckpointInfo:
-    try:
-        return model_registry.create_checkpoint(request.reason)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-
-@app.get("/api/model-registry/checkpoints/{checkpoint_id}/diff", response_model=ModelRegistryCheckpointDiffResponse)
-async def model_registry_checkpoint_diff(checkpoint_id: str) -> ModelRegistryCheckpointDiffResponse:
-    try:
-        return model_registry.checkpoint_diff(checkpoint_id)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="model registry checkpoint not found") from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-
-@app.post("/api/model-registry/checkpoints/{checkpoint_id}/restore", response_model=ModelRegistryResponse)
-async def restore_model_registry_checkpoint(checkpoint_id: str) -> ModelRegistryResponse:
-    try:
-        return model_registry.restore_checkpoint(checkpoint_id)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="model registry checkpoint not found") from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+def _agent_bridge_response_payload(response: AgentBridgeExecuteResponse) -> dict[str, Any]:
+    return _agent_bridge_service().response_payload(response)
 
 
-@app.get("/api/model-manager", response_model=ModelManagerResponse)
-async def model_manager_snapshot(
-    minimum_free_gb: float = Query(default=24.0, ge=0.0, le=500.0),
-) -> ModelManagerResponse:
-    return model_manager.snapshot(minimum_free_gb=minimum_free_gb)
+def _agent_bridge_job_terminal(status: str) -> bool:
+    return _agent_bridge_service().job_terminal(status)
 
 
-@app.post("/api/model-manager/pull", response_model=ModelOperationInfo)
-async def pull_model(request: ModelPullRequest) -> ModelOperationInfo:
-    try:
-        return model_manager.pull_model(request)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+def _trim_agent_bridge_output(value: str) -> str:
+    return _agent_bridge_service().trim_output(value)
 
 
-@app.post("/api/model-manager/delete", response_model=ModelOperationInfo)
-async def delete_local_model(request: ModelDeleteRequest) -> ModelOperationInfo:
-    try:
-        return model_manager.delete_model(request)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+def _agent_bridge_request_payload(request: AgentBridgeExecuteRequest) -> dict[str, Any]:
+    return _agent_bridge_service().request_payload(request)
 
 
-@app.get("/api/model-benchmarks", response_model=ModelBenchmarkSnapshot)
-async def model_benchmark_snapshot() -> ModelBenchmarkSnapshot:
-    return model_benchmarks.snapshot()
+def _agent_bridge_preflight_signature(request: AgentBridgeExecuteRequest, preflight: AgentBridgePreflightResponse) -> str:
+    return _agent_bridge_service().preflight_signature(request, preflight)
 
 
-@app.post("/api/model-benchmarks/run", response_model=ModelBenchmarkSnapshot)
-async def run_model_benchmarks(request: ModelBenchmarkRunRequest) -> ModelBenchmarkSnapshot:
-    try:
-        return await model_benchmarks.run(request)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except OSError as exc:
-        raise HTTPException(status_code=503, detail=f"Could not update model benchmark records: {exc}") from exc
+def _agent_bridge_preflight_response(
+    request: AgentBridgeExecuteRequest,
+    manifest: Any,
+    root: Path,
+) -> AgentBridgePreflightResponse:
+    return _agent_bridge_service().preflight_response(request, manifest, root)
 
 
-@app.get("/api/model-benchmarks/jobs", response_model=list[ModelBenchmarkJobInfo])
-async def model_benchmark_jobs() -> list[ModelBenchmarkJobInfo]:
-    return model_benchmarks.jobs()
+def _require_agent_bridge_preflight(
+    request: AgentBridgeExecuteRequest,
+    manifest: Any,
+    root: Path,
+) -> AgentBridgePreflightResponse:
+    return _agent_bridge_service().require_preflight(request, manifest, root)
 
 
-@app.post("/api/model-benchmarks/jobs", response_model=ModelBenchmarkJobInfo)
-async def start_model_benchmark_job(request: ModelBenchmarkRunRequest) -> ModelBenchmarkJobInfo:
-    try:
-        return model_benchmarks.start_job(request)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except OSError as exc:
-        raise HTTPException(status_code=503, detail=f"Could not update model benchmark records: {exc}") from exc
+def _load_agent_bridge_jobs() -> list[AgentBridgeJobInfo]:
+    return _agent_bridge_service().load_jobs()
 
 
-@app.post("/api/model-benchmarks/jobs/{job_id}/cancel", response_model=ModelBenchmarkJobInfo)
-async def cancel_model_benchmark_job(job_id: str) -> ModelBenchmarkJobInfo:
-    try:
-        return model_benchmarks.cancel_job(job_id)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except OSError as exc:
-        raise HTTPException(status_code=503, detail=f"Could not update model benchmark records: {exc}") from exc
+def _save_agent_bridge_jobs(jobs: list[AgentBridgeJobInfo]) -> None:
+    _agent_bridge_service().save_jobs(jobs)
 
 
-@app.get("/api/media/capabilities", response_model=MediaCapabilitiesResponse)
-async def media_capabilities() -> MediaCapabilitiesResponse:
-    return creative_media.capabilities()
+def _upsert_agent_bridge_job(job: AgentBridgeJobInfo) -> None:
+    _agent_bridge_service().upsert_job(job)
 
 
-@app.get("/api/creative-studio", response_model=MediaCapabilitiesResponse)
-async def creative_studio_capabilities() -> MediaCapabilitiesResponse:
-    return creative_media.capabilities()
+def _agent_bridge_jobs(limit: int = 25) -> list[AgentBridgeJobInfo]:
+    return _agent_bridge_service().jobs(limit)
 
 
-@app.get("/api/media/providers", response_model=list[MediaProviderInfo])
-async def media_providers() -> list[MediaProviderInfo]:
-    return creative_media.providers()
+def _agent_bridge_job_or_404(job_id: str) -> AgentBridgeJobInfo:
+    return _agent_bridge_service().job_or_404(job_id)
 
 
-@app.get("/api/creative-studio/providers", response_model=list[MediaProviderInfo])
-async def creative_studio_providers() -> list[MediaProviderInfo]:
-    return creative_media.providers()
+def _new_agent_bridge_job(request: AgentBridgeExecuteRequest, *, retry_of: str = "") -> AgentBridgeJobInfo:
+    return _agent_bridge_service().new_job(request, retry_of=retry_of)
 
 
-@app.get("/api/media/prompt-presets", response_model=list[MediaPromptPreset])
-async def media_prompt_presets() -> list[MediaPromptPreset]:
-    return creative_media.prompt_presets()
+def _agent_bridge_job_from_response(
+    job: AgentBridgeJobInfo,
+    response: AgentBridgeExecuteResponse,
+    *,
+    message: str = "",
+) -> AgentBridgeJobInfo:
+    return _agent_bridge_service().job_from_response(job, response, message=message)
 
 
-@app.get("/api/creative-studio/prompt-presets", response_model=list[MediaPromptPreset])
-async def creative_studio_prompt_presets() -> list[MediaPromptPreset]:
-    return creative_media.prompt_presets()
+async def _start_agent_bridge_job(request: AgentBridgeExecuteRequest, *, retry_of: str = "") -> AgentBridgeJobResponse:
+    return await _agent_bridge_service().start_job(request, retry_of=retry_of)
 
 
-@app.get("/api/media/jobs", response_model=list[MediaJobResponse])
-async def list_media_jobs(
-    limit: int = Query(default=50, ge=1, le=200),
-    kind: str = Query(default=""),
-) -> list[MediaJobResponse]:
-    return creative_media.list_jobs(limit=limit, kind=kind)
+async def _run_agent_bridge_job(job_id: str, request: AgentBridgeExecuteRequest, cancel_event: asyncio.Event) -> None:
+    await _agent_bridge_service().run_job(job_id, request, cancel_event)
 
 
-@app.get("/api/creative-studio/jobs", response_model=list[MediaJobResponse])
-async def list_creative_studio_jobs(
-    limit: int = Query(default=50, ge=1, le=200),
-    kind: str = Query(default=""),
-) -> list[MediaJobResponse]:
-    return creative_media.list_jobs(limit=limit, kind=kind)
+def _handle_agent_bridge_job_done(job_id: str, task: asyncio.Task[None]) -> None:
+    _agent_bridge_service().handle_job_done(job_id, task)
 
 
-@app.get("/api/media/jobs/{job_id}", response_model=MediaJobResponse)
-async def get_media_job(job_id: str) -> MediaJobResponse:
-    try:
-        return creative_media.get_job(job_id)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="media job not found") from exc
+async def _cancel_agent_bridge_job(job_id: str) -> AgentBridgeJobResponse:
+    return await _agent_bridge_service().cancel_job(job_id)
 
 
-@app.get("/api/creative-studio/jobs/{job_id}", response_model=MediaJobResponse)
-async def get_creative_studio_job(job_id: str) -> MediaJobResponse:
-    return await get_media_job(job_id)
+async def _retry_agent_bridge_job(job_id: str) -> AgentBridgeJobResponse:
+    return await _agent_bridge_service().retry_job(job_id)
 
+register_agent_bridge_job_routes(
+    app,
+    start_job=_start_agent_bridge_job,
+    list_jobs=_agent_bridge_jobs,
+    get_job=_agent_bridge_job_or_404,
+    cancel_job=_cancel_agent_bridge_job,
+    retry_job=_retry_agent_bridge_job,
+)
 
-@app.post("/api/media/jobs", response_model=MediaJobResponse)
-async def create_media_job(request: MediaCreativeRequest) -> MediaJobResponse:
-    try:
-        return creative_media.create_job(request)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+async def preflight_agent_bridge(request: AgentBridgeExecuteRequest) -> AgentBridgePreflightResponse:
+    return await _agent_bridge_service().preflight_agent_bridge(request)
 
-@app.post("/api/creative-studio/jobs", response_model=MediaJobResponse)
-async def create_creative_studio_job(request: MediaCreativeRequest) -> MediaJobResponse:
-    return await create_media_job(request)
 
+async def execute_agent_bridge(request: AgentBridgeExecuteRequest) -> AgentBridgeExecuteResponse:
+    return await _agent_bridge_service().execute_agent_bridge(request)
 
-@app.post("/api/media/jobs/{job_id}/cancel", response_model=MediaJobResponse)
-async def cancel_media_job(job_id: str) -> MediaJobResponse:
-    try:
-        return creative_media.cancel_job(job_id)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="media job not found") from exc
 
+register_agent_bridge_execution_routes(
+    app,
+    preflight_bridge=preflight_agent_bridge,
+    execute_bridge=execute_agent_bridge,
+)
 
-@app.post("/api/creative-studio/jobs/{job_id}/cancel", response_model=MediaJobResponse)
-async def cancel_creative_studio_job(job_id: str) -> MediaJobResponse:
-    return await cancel_media_job(job_id)
 
+async def _terminate_agent_bridge_process(process: asyncio.subprocess.Process) -> None:
+    await _agent_bridge_service().terminate_process(process)
 
-@app.get("/api/media/assets", response_model=MediaAssetLibraryResponse)
-async def media_asset_library(
-    limit: int = Query(default=100, ge=1, le=500),
-    kind: str = Query(default=""),
-    format: str = Query(default=""),
-) -> MediaAssetLibraryResponse:
-    return creative_media.asset_library(limit=limit, kind=kind, fmt=format)
 
+async def _read_agent_bridge_stream(
+    reader: asyncio.StreamReader | None,
+    stream_name: str,
+    queue: asyncio.Queue[tuple[str, str | None]],
+) -> None:
+    await _agent_bridge_service().read_stream(reader, stream_name, queue)
 
-@app.get("/api/creative-studio/assets", response_model=MediaAssetLibraryResponse)
-async def creative_studio_asset_library(
-    limit: int = Query(default=100, ge=1, le=500),
-    kind: str = Query(default=""),
-    format: str = Query(default=""),
-) -> MediaAssetLibraryResponse:
-    return creative_media.asset_library(limit=limit, kind=kind, fmt=format)
 
+async def _agent_bridge_stream_events(
+    request: AgentBridgeExecuteRequest,
+    root: Path,
+    manifest: Any,
+) -> AsyncIterator[str]:
+    async for event in _agent_bridge_service().stream_events(request, root, manifest):
+        yield event
 
-@app.get("/api/creative-studio/assets/file")
-async def creative_studio_asset_file(path: str = Query(min_length=1)) -> FileResponse:
-    requested = Path(path).resolve()
-    base = creative_media.base_dir.resolve()
-    try:
-        requested.relative_to(base)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail="asset path is outside the creative library") from exc
-    if not requested.exists() or not requested.is_file():
-        raise HTTPException(status_code=404, detail="asset not found")
-    return FileResponse(requested)
 
+async def stream_agent_bridge(request: AgentBridgeExecuteRequest) -> StreamingResponse:
+    return await _agent_bridge_service().stream_agent_bridge(request)
 
-@app.post("/api/media/jobs/{job_id}/export", response_model=MediaExportResponse)
-async def export_media_job(job_id: str, request: MediaExportRequest) -> MediaExportResponse:
-    try:
-        return creative_media.export_job(job_id, request)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="media job not found") from exc
 
+register_agent_bridge_streaming_routes(
+    app,
+    stream_bridge=stream_agent_bridge,
+)
 
-@app.post("/api/creative-studio/jobs/{job_id}/export", response_model=MediaExportResponse)
-async def export_creative_studio_job(job_id: str, request: MediaExportRequest) -> MediaExportResponse:
-    return await export_media_job(job_id, request)
 
+register_media_routes(
+    app,
+    creative_media_factory=lambda: creative_media,
+)
 
-@app.post("/api/config", response_model=AppConfig)
+
 async def save_config(request: ConfigUpdateRequest) -> AppConfig:
-    assistant_name = request.assistant_name if request.assistant_name is not None else settings.aegis_assistant_name
-    assistant_mission = (
-        request.assistant_mission if request.assistant_mission is not None else settings.aegis_assistant_mission
-    )
-    default_mode = request.default_mode if request.default_mode is not None else settings.default_mode
-    if default_mode not in {"build", "develop", "review", "chat"}:
-        default_mode = "build"
-    default_workspace = (
-        request.default_workspace if request.default_workspace is not None else settings.default_workspace
-    )
-    model_api = request.model_api if request.model_api is not None else settings.aegis_model_api
-    model_endpoint = request.model_endpoint if request.model_endpoint is not None else settings.aegis_model_endpoint
-    model_name = request.model_name if request.model_name is not None else settings.aegis_model_name
-    command_allowlist = (
-        request.command_allowlist if request.command_allowlist is not None else settings.aegis_command_allowlist
-    )
-    command_timeout_seconds = (
-        request.command_timeout_seconds
-        if request.command_timeout_seconds is not None
-        else settings.aegis_command_timeout_seconds
-    )
-    auto_run_validation = (
-        request.auto_run_validation
-        if request.auto_run_validation is not None
-        else settings.aegis_auto_run_validation
-    )
-    shared_workspace_mode = (
-        request.shared_workspace_mode
-        if request.shared_workspace_mode is not None
-        else settings.aegis_shared_workspace_mode
-    )
-    feedback_capture_excerpts = (
-        request.feedback_capture_excerpts
-        if request.feedback_capture_excerpts is not None
-        else settings.aegis_feedback_capture_excerpts
-    )
-    feedback_redaction_enabled = (
-        request.feedback_redaction_enabled
-        if request.feedback_redaction_enabled is not None
-        else settings.aegis_feedback_redaction_enabled
-    )
-    feedback_max_excerpt_chars = (
-        request.feedback_max_excerpt_chars
-        if request.feedback_max_excerpt_chars is not None
-        else settings.aegis_feedback_max_excerpt_chars
-    )
-    feedback_hash_content = (
-        request.feedback_hash_content
-        if request.feedback_hash_content is not None
-        else settings.aegis_feedback_hash_content
-    )
-    mission = " ".join(part.strip() for part in assistant_mission.splitlines() if part.strip())
-    update_env(
-        {
-            "AEGIS_ASSISTANT_NAME": assistant_name.strip(),
-            "AEGIS_ASSISTANT_MISSION": mission or assistant_mission.strip(),
-            "DEFAULT_MODE": default_mode,
-            "DEFAULT_WORKSPACE": default_workspace.strip(),
-            "AEGIS_MODEL_API": model_api.strip().lower(),
-            "AEGIS_MODEL_ENDPOINT": model_endpoint.strip().rstrip("/"),
-            "AEGIS_MODEL_NAME": model_name.strip(),
-            "AEGIS_COMMAND_ALLOWLIST": command_allowlist.strip(),
-            "AEGIS_COMMAND_TIMEOUT_SECONDS": str(command_timeout_seconds),
-            "AEGIS_AUTO_RUN_VALIDATION": "true" if auto_run_validation else "false",
-            "AEGIS_SHARED_WORKSPACE_MODE": "true" if shared_workspace_mode else "false",
-            "AEGIS_FEEDBACK_CAPTURE_EXCERPTS": "true" if feedback_capture_excerpts else "false",
-            "AEGIS_FEEDBACK_REDACTION_ENABLED": "true" if feedback_redaction_enabled else "false",
-            "AEGIS_FEEDBACK_MAX_EXCERPT_CHARS": str(feedback_max_excerpt_chars),
-            "AEGIS_FEEDBACK_HASH_CONTENT": "true" if feedback_hash_content else "false",
-        }
-    )
-    refresh_runtime()
-    await _sync_website_settings_to_core(default_workspace)
-    return await config_snapshot()
+    return await _settings_service().save_config(request, config_snapshot=config_snapshot)
 
 
-@app.get("/api/files")
-async def files(
-    workspace_root: str | None = Query(default=None),
-    max_files: int = Query(default=120, ge=1, le=5000),
-) -> dict:
-    root = _resolve_workspace_or_400(workspace_root)
-    return {"workspace_root": str(root), "files": workspace_manager.scan(root, max_files=max_files)}
+register_config_routes(
+    app,
+    config_snapshot=lambda: config_snapshot(),
+    save_config=lambda request: save_config(request),
+)
 
 
-@app.get("/api/file")
-async def file_content(
-    path: str = Query(min_length=1),
-    workspace_root: str | None = Query(default=None),
-) -> dict:
-    root = _resolve_workspace_or_400(workspace_root)
-    try:
-        content = workspace_manager.read_file(root, path)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"workspace_root": str(root), "path": path, "content": content}
+register_file_routes(
+    app,
+    workspace_resolver=_resolve_workspace_or_400,
+    workspace_manager_factory=lambda: workspace_manager,
+)
 
 
-@app.get("/api/file/slice")
-async def file_slice(
-    path: str = Query(min_length=1),
-    workspace_root: str | None = Query(default=None),
-    start_line: int = Query(default=1, ge=1),
-    max_lines: int = Query(default=400, ge=1, le=2000),
-) -> dict:
-    root = _resolve_workspace_or_400(workspace_root)
-    try:
-        payload = workspace_manager.read_file_slice(root, path, start_line=start_line, max_lines=max_lines)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"workspace_root": str(root), **payload}
-
-
-@app.get("/api/workspace/profile", response_model=WorkspaceProfileResponse)
 async def workspace_profile(workspace_root: str | None = Query(default=None)) -> WorkspaceProfileResponse:
-    root = _resolve_workspace_or_400(workspace_root)
-    snapshot = _workspace_status_snapshot(root)
-    manifest = snapshot.manifest
-    dependency_profile = snapshot.dependency_profile
-    instruction_status = snapshot.instruction_status
-    validation_plan = snapshot.validation_plan
-    readiness = snapshot.readiness
-    recommendations: list[str] = []
-    if manifest is None:
-        recommendations.append("No .aegis/project.json manifest was found for this workspace.")
-    else:
-        if manifest.schema_version != "aegis.project.v1":
-            recommendations.append("The project manifest schema is unknown; Aegis will treat it as advisory metadata.")
-        if not manifest.validation_command:
-            recommendations.append("The project manifest does not define a validation command.")
-        if not manifest.install_command:
-            recommendations.append("The project manifest does not define an install command.")
-    if not dependency_profile.config_files:
-        recommendations.append("No dependency or build manifest was detected, so validation planning will rely on file scanning and user guidance.")
-    if not dependency_profile.validation_commands and (manifest is None or not manifest.validation_command):
-        recommendations.append("No validation command was inferred for this workspace.")
-    if instruction_status.open_items:
-        recommendations.append(
-            f"Instruction checkpoint has {instruction_status.open_items} open tracked item(s); autopilot should continue from the saved recommendation."
-        )
-    elif instruction_status.total_items:
-        recommendations.append("Instruction checkpoint shows all tracked project items are currently complete.")
-    if validation_plan.steps:
-        recommendations.append(
-            f"Validation plan has {len(validation_plan.steps)} step(s); use it as the repair loop source of truth before adding new scope."
-        )
-        last_run = validation_plan.last_run if isinstance(validation_plan.last_run, dict) else {}
-        if str(last_run.get("status") or "").lower() in {"failed", "blocked", "needs_attention"}:
-            failed_step = str(last_run.get("failed_step") or "").strip()
-            failed_hint = f" step {failed_step}" if failed_step else ""
-            command = str(last_run.get("command") or validation_plan.validation_command or "").strip()
-            command_hint = f" ({command})" if command else ""
-            recommendations.append(f"Repair validation plan{failed_hint}{command_hint} before continuing autopilot expansion.")
-    elif validation_plan.validation_command:
-        recommendations.append("Validation plan has a command but no expanded steps; refresh project memory before long autopilot runs.")
-    if readiness.next_action:
-        recommendations.append(f"Readiness next action: {readiness.next_action}")
-    try:
-        _project_intelligence_snapshot(root)
-    except Exception:
-        recommendations.append("Project Intelligence indexing is not ready for this workspace yet.")
-
-    return WorkspaceProfileResponse(
-        workspace_root=str(root),
-        manifest=manifest,
-        has_manifest=manifest is not None,
-        dependency_profile=dependency_profile,
-        instruction_status=instruction_status,
-        has_instruction_status=bool(instruction_status.schema_version or instruction_status.files),
-        validation_plan=validation_plan,
-        has_validation_plan=bool(validation_plan.schema_version or validation_plan.validation_command or validation_plan.steps),
-        readiness=readiness,
-        recommendations=recommendations,
-    )
+    return await _workspace_intelligence_service().workspace_profile(workspace_root)
 
 
-@app.get("/api/project-intelligence", response_model=ProjectIntelligenceSnapshot)
-async def project_intelligence_snapshot(workspace_root: str | None = Query(default=None)) -> ProjectIntelligenceSnapshot:
-    root = _resolve_workspace_or_400(workspace_root)
-    return _project_intelligence_snapshot(root)
+register_workspace_profile_routes(
+    app,
+    workspace_profile=lambda workspace_root: workspace_profile(workspace_root),
+)
 
 
-@app.post("/api/project-intelligence/reindex", response_model=ProjectIntelligenceSnapshot)
+async def project_intelligence_snapshot(workspace_root: str | None = None) -> ProjectIntelligenceSnapshot:
+    return await _workspace_intelligence_service().project_intelligence_snapshot_route(workspace_root)
+
+
 async def reindex_project_intelligence(request: ProjectIntelligenceReindexRequest) -> ProjectIntelligenceSnapshot:
-    root = _resolve_workspace_or_400(request.workspace_root)
-    return _build_project_intelligence(
-        root,
-        clear_memory=request.clear_memory,
-        rebuild_memory=request.rebuild_memory,
-    )
+    return await _workspace_intelligence_service().reindex_project_intelligence(request)
 
 
-@app.post("/api/project-intelligence/context", response_model=ProjectContextSelectionResponse)
 async def project_intelligence_context(request: ProjectContextSelectionRequest) -> ProjectContextSelectionResponse:
-    root = _resolve_workspace_or_400(request.workspace_root)
-    snapshot = _project_intelligence_snapshot(root)
-    return project_intelligence.select_context(snapshot=snapshot, query=request.query, max_files=request.max_files)
+    return await _workspace_intelligence_service().project_intelligence_context(request)
 
 
-@app.get("/api/workspace-intelligence", response_model=WorkspaceOperationsSnapshot)
-async def workspace_intelligence_snapshot(workspace_root: str | None = Query(default=None)) -> WorkspaceOperationsSnapshot:
-    root = _resolve_workspace_or_400(workspace_root)
-    return _workspace_operations_snapshot(root)
+register_project_intelligence_routes(
+    app,
+    project_intelligence_snapshot=lambda workspace_root: project_intelligence_snapshot(workspace_root),
+    reindex_project_intelligence=lambda request: reindex_project_intelligence(request),
+    project_intelligence_context=lambda request: project_intelligence_context(request),
+)
 
 
-@app.post("/api/workspace-intelligence/scan", response_model=WorkspaceOperationsSnapshot)
+async def workspace_intelligence_snapshot(workspace_root: str | None = None) -> WorkspaceOperationsSnapshot:
+    return await _workspace_intelligence_service().workspace_intelligence_snapshot(workspace_root)
+
+
 async def scan_workspace_intelligence(request: WorkspaceOperationsScanRequest) -> WorkspaceOperationsSnapshot:
-    root = _resolve_workspace_or_400(request.workspace_root)
-    return _build_workspace_operations(
-        root,
-        refresh_project_intelligence=request.refresh_project_intelligence,
-        generate_recommendations=request.generate_recommendations,
-        include_git=request.include_git,
+    return await _workspace_intelligence_service().scan_workspace_intelligence(request)
+
+
+async def workspace_intelligence_events(
+    workspace_root: str | None = None,
+    limit: int = 80,
+) -> list[WorkspaceWatchEvent]:
+    return await _workspace_intelligence_service().workspace_intelligence_events(workspace_root, limit)
+
+
+async def workspace_intelligence_recommendations(
+    workspace_root: str | None = None,
+    include_dismissed: bool = False,
+    limit: int = 100,
+) -> list[WorkspaceRecommendation]:
+    return await _workspace_intelligence_service().workspace_intelligence_recommendations(
+        workspace_root,
+        include_dismissed,
+        limit,
     )
 
 
-@app.get("/api/workspace-intelligence/events", response_model=list[WorkspaceWatchEvent])
-async def workspace_intelligence_events(
-    workspace_root: str | None = Query(default=None),
-    limit: int = Query(default=80, ge=1, le=300),
-) -> list[WorkspaceWatchEvent]:
-    root = _resolve_workspace_or_400(workspace_root)
-    return agent.store.workspace_events(project_root=root, limit=limit)
-
-
-@app.get("/api/workspace-intelligence/recommendations", response_model=list[WorkspaceRecommendation])
-async def workspace_intelligence_recommendations(
-    workspace_root: str | None = Query(default=None),
-    include_dismissed: bool = Query(default=False),
-    limit: int = Query(default=100, ge=1, le=300),
-) -> list[WorkspaceRecommendation]:
-    root = _resolve_workspace_or_400(workspace_root)
-    return agent.store.workspace_recommendations(project_root=root, include_dismissed=include_dismissed, limit=limit)
-
-
-@app.post("/api/workspace-intelligence/recommendations/{recommendation_id}/dismiss", response_model=RecommendationFixResponse)
 async def dismiss_workspace_recommendation(
     recommendation_id: str,
     request: RecommendationActionRequest | None = None,
 ) -> RecommendationFixResponse:
-    try:
-        recommendation = agent.store.dismiss_workspace_recommendation(
-            recommendation_id,
-            reason=(request.reason if request else ""),
-        )
-        return RecommendationFixResponse(
-            recommendation=recommendation,
-            message="Recommendation dismissed.",
-        )
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail="recommendation not found") from exc
+    return await _workspace_intelligence_service().dismiss_workspace_recommendation(recommendation_id, request)
 
 
-@app.post("/api/workspace-intelligence/recommendations/{recommendation_id}/fix", response_model=RecommendationFixResponse)
 async def fix_workspace_recommendation(
     recommendation_id: str,
     request: RecommendationFixRequest | None = None,
 ) -> RecommendationFixResponse:
-    action = request or RecommendationFixRequest()
-    try:
-        recommendation = agent.store.workspace_recommendation(recommendation_id)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail="recommendation not found") from exc
-    if not action.create_task:
-        return RecommendationFixResponse(
-            recommendation=recommendation,
-            message="No task created; recommendation remains active.",
-        )
-    root = _resolve_workspace_or_400(recommendation.workspace_root)
-    user_goal = recommendation.fix_prompt or recommendation.detail or recommendation.title
-    task_id = agent.store.create_task(
-        mode="develop",
-        workspace_root=root,
-        message=user_goal,
-        title=f"Fix recommendation: {recommendation.title}",
-        user_goal=user_goal,
-        status="queued",
-        assigned_agent_role="planner",
-        related_files=recommendation.related_files,
-        validation_commands=[],
-    )
-    event = agent.store.record_event(
-        task_id,
-        kind="recommendation.fix_requested",
-        title="Recommendation fix task created",
-        status="warning",
-        detail=(
-            "Workspace Intelligence created a tracked task only. No autonomous file edits were applied; "
-            "normal approval, checkpoint, validation, and rollback rules still apply."
-        ),
-        payload={
-            "recommendation_id": recommendation.id,
-            "severity": recommendation.severity,
-            "reason": action.reason,
-            "related_files": recommendation.related_files,
-        },
-    )
-    recommendation = agent.store.link_recommendation_task(recommendation_id, task_id)
-    return RecommendationFixResponse(
-        recommendation=recommendation,
-        task=agent.store.task(task_id),
-        event=event,
-        message="Fix task created. No files were modified automatically.",
-    )
+    return await _workspace_intelligence_service().fix_workspace_recommendation(recommendation_id, request)
 
 
-@app.get("/api/workspace-intelligence/jobs", response_model=list[ScheduledIntelligenceJob])
-async def workspace_intelligence_jobs(workspace_root: str | None = Query(default=None)) -> list[ScheduledIntelligenceJob]:
-    root = _resolve_workspace_or_400(workspace_root)
-    return workspace_operations.scheduled_jobs(agent.store.scheduled_intelligence_jobs(project_root=root))
+async def workspace_intelligence_jobs(workspace_root: str | None = None) -> list[ScheduledIntelligenceJob]:
+    return await _workspace_intelligence_service().workspace_intelligence_jobs(workspace_root)
 
 
-@app.post("/api/workspace-intelligence/jobs/run", response_model=ScheduledJobRunResponse)
 async def run_workspace_intelligence_jobs(request: ScheduledJobRunRequest) -> ScheduledJobRunResponse:
-    root = _resolve_workspace_or_400(request.workspace_root)
-    return _run_scheduled_intelligence_jobs(root, request)
+    return await _workspace_intelligence_service().run_workspace_intelligence_jobs(request)
 
 
-@app.post("/api/workspace/setup", response_model=WorkspaceSetupResponse)
 async def workspace_setup(request: WorkspaceSetupRequest) -> WorkspaceSetupResponse:
-    root = _resolve_workspace_or_400(request.workspace_root)
-    dependency_profile = workspace_manager.inspect_dependency_profile(root)
-    validation_snapshot = agent.validation.profile_snapshot(root)
-    persisted_recipe = agent.validation.load_profile(root)
-    detected_recipe = validation_snapshot.profile
-    install_command = request.install_command.strip() or (
-        dependency_profile.install_commands[0] if dependency_profile.install_commands else ""
-    )
-    validation_command = request.validation_command.strip() or (
-        detected_recipe.command if detected_recipe is not None else ""
-    ) or (dependency_profile.validation_commands[0] if dependency_profile.validation_commands else "")
-    generated_manifest = workspace_setup_manifest(
-        root,
+    return await _workspace_intelligence_service().workspace_setup(request)
+
+
+register_workspace_intelligence_routes(
+    app,
+    workspace_intelligence_snapshot=lambda workspace_root: workspace_intelligence_snapshot(workspace_root),
+    scan_workspace_intelligence=lambda request: scan_workspace_intelligence(request),
+    workspace_intelligence_events=lambda workspace_root, limit: workspace_intelligence_events(workspace_root, limit),
+    workspace_intelligence_recommendations=(
+        lambda workspace_root, include_dismissed, limit: workspace_intelligence_recommendations(
+            workspace_root,
+            include_dismissed,
+            limit,
+        )
+    ),
+    dismiss_workspace_recommendation=lambda recommendation_id, request: dismiss_workspace_recommendation(
+        recommendation_id,
         request,
-        dependency_profile=dependency_profile,
-        install_command=install_command,
-        validation_command=validation_command,
-    )
-    existing_manifest = workspace_manager.load_project_manifest(root)
-    created_files: list[str] = []
-    updated_files: list[str] = []
-    warnings: list[str] = []
-    manifest_path = workspace_manager.PROJECT_MANIFEST_PATH
-
-    def save_manifest_safely(candidate: WorkspaceProjectManifest) -> tuple[WorkspaceProjectManifest, bool]:
-        try:
-            return workspace_manager.save_project_manifest(root, candidate), True
-        except OSError as exc:
-            warnings.append(f"Could not write {manifest_path}: {exc}")
-            return candidate, False
-
-    if existing_manifest is None:
-        manifest, saved = save_manifest_safely(generated_manifest)
-        if saved:
-            created_files.append(manifest_path)
-    elif request.overwrite_manifest:
-        manifest, saved = save_manifest_safely(generated_manifest)
-        if saved:
-            updated_files.append(manifest_path)
-    else:
-        manifest, changed = merge_missing_manifest_fields(existing_manifest, generated_manifest)
-        if changed:
-            manifest, saved = save_manifest_safely(manifest)
-            if saved:
-                updated_files.append(manifest_path)
-        else:
-            manifest = existing_manifest
-
-    saved_recipe = persisted_recipe
-    profile_path = agent.validation.PROFILE_PATH
-    if validation_command:
-        if persisted_recipe and persisted_recipe.source == "manual" and not request.validation_command.strip():
-            warnings.append("Existing manual validation recipe was kept.")
-        elif persisted_recipe and persisted_recipe.command == validation_command and not request.validation_command.strip():
-            saved_recipe = persisted_recipe
-        else:
-            profile_existed = (root / profile_path).exists()
-            try:
-                saved_recipe = agent.validation.save_profile(
-                    root,
-                    command=validation_command,
-                    label=(detected_recipe.label if detected_recipe and detected_recipe.command == validation_command else "")
-                    or "Workspace validation",
-                    source="workspace_setup",
-                    notes=request.notes.strip()
-                    or (detected_recipe.notes if detected_recipe and detected_recipe.command == validation_command else "")
-                    or "Saved by Aegis workspace setup from detected project files.",
-                )
-            except OSError as exc:
-                warnings.append(f"Could not write {profile_path}: {exc}")
-            else:
-                (updated_files if profile_existed else created_files).append(profile_path)
-    else:
-        warnings.append("No validation command was detected; manifest was created without a validation recipe.")
-
-    _invalidate_workspace_caches(root)
-    profile = await workspace_profile(str(root))
-    return WorkspaceSetupResponse(
-        workspace_root=str(root),
-        manifest=manifest,
-        validation_profile=saved_recipe,
-        profile=profile,
-        created_files=created_files,
-        updated_files=updated_files,
-        warnings=warnings,
-    )
+    ),
+    fix_workspace_recommendation=lambda recommendation_id, request: fix_workspace_recommendation(
+        recommendation_id,
+        request,
+    ),
+    workspace_intelligence_jobs=lambda workspace_root: workspace_intelligence_jobs(workspace_root),
+    run_workspace_intelligence_jobs=lambda request: run_workspace_intelligence_jobs(request),
+    workspace_setup=lambda request: workspace_setup(request),
+)
 
 
-@app.get("/api/workspace/autopilot-status", response_model=WorkspaceAutopilotStatusResponse)
-async def workspace_autopilot_status(workspace_root: str | None = Query(default=None)) -> WorkspaceAutopilotStatusResponse:
+async def workspace_autopilot_status(workspace_root: str | None = None) -> WorkspaceAutopilotStatusResponse:
     root = _resolve_workspace_or_400(workspace_root)
     snapshot = _workspace_status_snapshot(root)
     return build_workspace_autopilot_status(
@@ -2486,7 +2031,340 @@ async def workspace_autopilot_status(workspace_root: str | None = Query(default=
     )
 
 
-@app.post("/api/chat", response_model=AgentResponse)
+def _legacy_workspace_autopilot_payload(root: Path) -> dict[str, Any]:
+    snapshot = _workspace_status_snapshot(root)
+    status = build_workspace_autopilot_status(
+        workspace_root=str(root),
+        manifest=snapshot.manifest,
+        dependency_profile=snapshot.dependency_profile,
+        instruction_status=snapshot.instruction_status,
+        validation_plan=snapshot.validation_plan,
+        command_history=snapshot.command_history,
+        readiness=snapshot.readiness,
+    )
+    return _dump_runtime_payload(status)
+
+
+def _autopilot_gateway_response(result: CoreDelegationResult, *, fallback: dict[str, Any] | None = None) -> dict[str, Any]:
+    if result.delegated:
+        return {
+            "runtime": "core",
+            "fallback": False,
+            "core_connected": True,
+            "data": result.data or {},
+            "last_core_error": "",
+        }
+    return {
+        "runtime": "website_fallback",
+        "fallback": True,
+        "core_connected": bool(result.reachable),
+        "data": fallback or {},
+        "last_core_error": result.error or core_runtime_client.last_core_error,
+    }
+
+
+async def api_autopilot_modes() -> dict[str, Any]:
+    result = await core_runtime_client.autopilot_modes()
+    fallback = {
+        "modes": [
+            {"id": "suggest_only", "display_name": "Suggest Only"},
+            {"id": "semi_autonomous", "display_name": "Semi Autonomous"},
+            {"id": "validation_autopilot", "display_name": "Validation Autopilot"},
+        ],
+        "specializations": [
+            {"id": "feature_autopilot", "display_name": "Feature Autopilot"},
+            {"id": "repair_autopilot", "display_name": "Repair Autopilot"},
+            {"id": "refactor_autopilot", "display_name": "Refactor Autopilot"},
+            {"id": "deployment_autopilot", "display_name": "Deployment Autopilot"},
+            {"id": "workspace_intelligence_autopilot", "display_name": "Workspace Intelligence Autopilot"},
+        ],
+        "default_specialization": "feature_autopilot",
+        "safety_invariants": ["Core connection required for production Autopilot execution."],
+    }
+    return _autopilot_gateway_response(result, fallback=fallback)
+
+
+async def api_autopilot_supervision(
+    workspace_root: str | None = None,
+    autopilot_id: str | None = None,
+) -> dict[str, Any]:
+    root = _resolve_workspace_or_400(workspace_root)
+    result = await core_runtime_client.autopilot_supervision(root, autopilot_id=autopilot_id)
+    fallback = {
+        "active_run": None,
+        "pending_approvals": [],
+        "validation_status": "legacy_workspace_status",
+        "legacy_status": _legacy_workspace_autopilot_payload(root),
+    }
+    return _autopilot_gateway_response(result, fallback=fallback)
+
+
+async def api_start_autopilot(payload: dict[str, Any]) -> dict[str, Any]:
+    workspace_value = str(payload.get("workspace_root") or payload.get("workspace") or "").strip() or None
+    root = _resolve_workspace_or_400(workspace_value)
+    result = await core_runtime_client.start_autopilot(
+        root,
+        objective=str(payload.get("objective") or payload.get("goal") or "").strip(),
+        mode=str(payload.get("mode") or "semi_autonomous"),
+        workflow_type=str(payload.get("workflow_type") or payload.get("workflowType") or "generate_feature"),
+        roadmap=payload.get("roadmap") if isinstance(payload.get("roadmap"), list) else [],
+        target_files=payload.get("target_files") if isinstance(payload.get("target_files"), list) else payload.get("targetFiles") if isinstance(payload.get("targetFiles"), list) else [],
+        constraints=payload.get("constraints") if isinstance(payload.get("constraints"), list) else [],
+        validation_commands=payload.get("validation_commands") if isinstance(payload.get("validation_commands"), list) else [],
+        execution_plan=payload.get("execution_plan") if isinstance(payload.get("execution_plan"), dict) else {},
+        specialization=str(payload.get("specialization") or payload.get("autopilot_specialization") or payload.get("autopilotSpecialization") or "").strip() or None,
+        approval=bool(payload.get("approval")),
+        metadata=payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {},
+    )
+    if not result.delegated:
+        raise HTTPException(status_code=503, detail=result.error or "Aegis Core Autopilot is unavailable.")
+    return _autopilot_gateway_response(result)
+
+
+async def api_autopilot_action(autopilot_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    workspace_value = str(payload.get("workspace_root") or payload.get("workspace") or "").strip() or None
+    root = _resolve_workspace_or_400(workspace_value)
+    result = await core_runtime_client.autopilot_action(
+        root,
+        autopilot_id,
+        action=str(payload.get("action") or "advance"),
+        approval=bool(payload.get("approval")),
+        summary=str(payload.get("summary") or ""),
+        payload=payload.get("payload") if isinstance(payload.get("payload"), dict) else {},
+    )
+    if not result.delegated:
+        raise HTTPException(status_code=503, detail=result.error or "Aegis Core Autopilot action failed.")
+    return _autopilot_gateway_response(result)
+
+
+async def api_autopilot_replay(
+    autopilot_id: str,
+    workspace_root: str | None = None,
+) -> dict[str, Any]:
+    root = _resolve_workspace_or_400(workspace_root)
+    result = await core_runtime_client.autopilot_replay(root, autopilot_id)
+    if not result.delegated:
+        raise HTTPException(status_code=503, detail=result.error or "Aegis Core Autopilot replay is unavailable.")
+    return _autopilot_gateway_response(result)
+
+
+async def api_autopilot_observability(workspace_root: str | None = None) -> dict[str, Any]:
+    root = _resolve_workspace_or_400(workspace_root)
+    result = await core_runtime_client.autopilot_observability(root)
+    return _autopilot_gateway_response(result, fallback={"run_count": 0, "active_count": 0, "blocked_action_count": 0})
+
+
+async def api_autopilot_memory(workspace_root: str | None = None) -> dict[str, Any]:
+    root = _resolve_workspace_or_400(workspace_root)
+    result = await core_runtime_client.autopilot_memory(root)
+    return _autopilot_gateway_response(result, fallback={"memory": {}, "categories": [], "privacy": {"storage": "core_offline"}})
+
+
+register_autopilot_routes(
+    app,
+    workspace_autopilot_status=lambda workspace_root: workspace_autopilot_status(workspace_root),
+    api_autopilot_modes=lambda: api_autopilot_modes(),
+    api_autopilot_supervision=lambda workspace_root, autopilot_id: api_autopilot_supervision(
+        workspace_root,
+        autopilot_id,
+    ),
+    api_start_autopilot=lambda payload: api_start_autopilot(payload),
+    api_autopilot_action=lambda autopilot_id, payload: api_autopilot_action(autopilot_id, payload),
+    api_autopilot_replay=lambda autopilot_id, workspace_root: api_autopilot_replay(autopilot_id, workspace_root),
+    api_autopilot_observability=lambda workspace_root: api_autopilot_observability(workspace_root),
+    api_autopilot_memory=lambda workspace_root: api_autopilot_memory(workspace_root),
+)
+
+
+async def api_collaboration_dashboard(
+    workspace_root: str | None = None,
+    user_id: str | None = None,
+    role: str | None = None,
+    limit: int = 100,
+) -> dict[str, Any]:
+    root = _resolve_workspace_or_400(workspace_root)
+    result = await core_runtime_client.collaboration_dashboard(root, user_id=user_id, role=role, limit=limit)
+    fallback = {
+        "workspace": str(root),
+        "viewer": {"user_id": user_id or "local-owner", "role": role or "owner"},
+        "roles": [],
+        "members": [],
+        "shared_workflows": [],
+        "active_workflows": [],
+        "approval_queue": [],
+        "roadmap_board": {"lanes": {}, "milestones": {}, "blocked": []},
+        "repositories": [],
+        "runtime_visibility": {},
+        "observability": {"workflow_count": 0, "pending_approval_count": 0, "repository_count": 0},
+        "privacy_controls": {"local_first": True, "workspace_isolation": True},
+        "audit_events": [],
+    }
+    return _autopilot_gateway_response(result, fallback=fallback)
+
+
+async def api_register_collaboration_member(payload: dict[str, Any]) -> dict[str, Any]:
+    workspace_value = str(payload.get("workspace_root") or payload.get("workspace") or "").strip() or None
+    root = _resolve_workspace_or_400(workspace_value)
+    result = await core_runtime_client.register_collaboration_member(
+        root,
+        {key: value for key, value in payload.items() if key not in {"workspace", "workspace_root"}},
+    )
+    if not result.delegated:
+        raise HTTPException(status_code=503, detail=result.error or "Aegis Core collaboration member registry is unavailable.")
+    return _autopilot_gateway_response(result)
+
+
+async def api_register_collaboration_repository(payload: dict[str, Any]) -> dict[str, Any]:
+    workspace_value = str(payload.get("workspace_root") or payload.get("workspace") or "").strip() or None
+    root = _resolve_workspace_or_400(workspace_value)
+    result = await core_runtime_client.register_collaboration_repository(
+        root,
+        {key: value for key, value in payload.items() if key not in {"workspace", "workspace_root"}},
+    )
+    if not result.delegated:
+        raise HTTPException(status_code=503, detail=result.error or "Aegis Core collaboration repository registry is unavailable.")
+    return _autopilot_gateway_response(result)
+
+
+async def api_create_collaboration_workflow(payload: dict[str, Any]) -> dict[str, Any]:
+    workspace_value = str(payload.get("workspace_root") or payload.get("workspace") or "").strip() or None
+    root = _resolve_workspace_or_400(workspace_value)
+    result = await core_runtime_client.create_collaboration_workflow(
+        root,
+        {key: value for key, value in payload.items() if key not in {"workspace", "workspace_root"}},
+    )
+    if not result.delegated:
+        raise HTTPException(status_code=503, detail=result.error or "Aegis Core collaboration runtime is unavailable.")
+    return _autopilot_gateway_response(result)
+
+
+async def api_collaboration_workflow_action(workflow_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    workspace_value = str(payload.get("workspace_root") or payload.get("workspace") or "").strip() or None
+    root = _resolve_workspace_or_400(workspace_value)
+    result = await core_runtime_client.collaboration_workflow_action(
+        root,
+        workflow_id,
+        {key: value for key, value in payload.items() if key not in {"workspace", "workspace_root"}},
+    )
+    if not result.delegated:
+        raise HTTPException(status_code=503, detail=result.error or "Aegis Core collaboration workflow action is unavailable.")
+    return _autopilot_gateway_response(result)
+
+
+async def api_create_collaboration_approval(payload: dict[str, Any]) -> dict[str, Any]:
+    workspace_value = str(payload.get("workspace_root") or payload.get("workspace") or "").strip() or None
+    root = _resolve_workspace_or_400(workspace_value)
+    result = await core_runtime_client.create_collaboration_approval(
+        root,
+        {key: value for key, value in payload.items() if key not in {"workspace", "workspace_root"}},
+    )
+    if not result.delegated:
+        raise HTTPException(status_code=503, detail=result.error or "Aegis Core collaboration approval creation is unavailable.")
+    return _autopilot_gateway_response(result)
+
+
+async def api_decide_collaboration_approval(approval_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    workspace_value = str(payload.get("workspace_root") or payload.get("workspace") or "").strip() or None
+    root = _resolve_workspace_or_400(workspace_value)
+    result = await core_runtime_client.decide_collaboration_approval(
+        root,
+        approval_id,
+        {key: value for key, value in payload.items() if key not in {"workspace", "workspace_root"}},
+    )
+    if not result.delegated:
+        raise HTTPException(status_code=503, detail=result.error or "Aegis Core collaboration approval is unavailable.")
+    return _autopilot_gateway_response(result)
+
+
+async def api_assign_collaboration_roadmap_item(payload: dict[str, Any]) -> dict[str, Any]:
+    workspace_value = str(payload.get("workspace_root") or payload.get("workspace") or "").strip() or None
+    root = _resolve_workspace_or_400(workspace_value)
+    result = await core_runtime_client.assign_collaboration_roadmap_item(
+        root,
+        {key: value for key, value in payload.items() if key not in {"workspace", "workspace_root"}},
+    )
+    if not result.delegated:
+        raise HTTPException(status_code=503, detail=result.error or "Aegis Core collaborative roadmap is unavailable.")
+    return _autopilot_gateway_response(result)
+
+
+register_collaboration_routes(
+    app,
+    api_collaboration_dashboard=lambda workspace_root, user_id, role, limit: api_collaboration_dashboard(
+        workspace_root,
+        user_id,
+        role,
+        limit,
+    ),
+    api_register_collaboration_member=lambda payload: api_register_collaboration_member(payload),
+    api_register_collaboration_repository=lambda payload: api_register_collaboration_repository(payload),
+    api_create_collaboration_workflow=lambda payload: api_create_collaboration_workflow(payload),
+    api_collaboration_workflow_action=lambda workflow_id, payload: api_collaboration_workflow_action(workflow_id, payload),
+    api_create_collaboration_approval=lambda payload: api_create_collaboration_approval(payload),
+    api_decide_collaboration_approval=lambda approval_id, payload: api_decide_collaboration_approval(approval_id, payload),
+    api_assign_collaboration_roadmap_item=lambda payload: api_assign_collaboration_roadmap_item(payload),
+)
+
+
+async def api_governance_dashboard(
+    workspace_root: str | None = None,
+    include_audit: bool = True,
+    limit: int = 100,
+) -> dict[str, Any]:
+    root = _resolve_workspace_or_400(workspace_root)
+    result = await core_runtime_client.governance_dashboard(root, include_audit=include_audit, limit=limit)
+    fallback = {
+        "workspace": str(root),
+        "policies": [],
+        "policy_violations": [],
+        "runtime_trust_levels": [],
+        "plugin_governance": {"status": "core_offline", "high_risk_plugins": []},
+        "runtime_node_governance": {"status": "core_offline", "restricted_nodes": []},
+        "deployment_governance": {"status": "core_offline", "production_workflows": []},
+        "approval_governance": {"status": "core_offline", "approval_queue": []},
+        "compliance": {"audit_ready": False, "local_first": True},
+        "ui_summary": {"status": "core_offline", "policy_violations": 0},
+        "audit_events": [],
+    }
+    return _autopilot_gateway_response(result, fallback=fallback)
+
+
+async def api_governance_evaluate(payload: dict[str, Any]) -> dict[str, Any]:
+    workspace_value = str(payload.get("workspace_root") or payload.get("workspace") or "").strip() or None
+    root = _resolve_workspace_or_400(workspace_value)
+    result = await core_runtime_client.evaluate_governance_policy(
+        root,
+        {key: value for key, value in payload.items() if key not in {"workspace", "workspace_root"}},
+    )
+    if not result.delegated:
+        raise HTTPException(status_code=503, detail=result.error or "Aegis Core governance runtime is unavailable.")
+    return _autopilot_gateway_response(result)
+
+
+async def api_governance_compliance_export(payload: dict[str, Any]) -> dict[str, Any]:
+    workspace_value = str(payload.get("workspace_root") or payload.get("workspace") or "").strip() or None
+    root = _resolve_workspace_or_400(workspace_value)
+    result = await core_runtime_client.export_governance_compliance(
+        root,
+        {key: value for key, value in payload.items() if key not in {"workspace", "workspace_root"}},
+    )
+    if not result.delegated:
+        raise HTTPException(status_code=503, detail=result.error or "Aegis Core compliance export is unavailable.")
+    return _autopilot_gateway_response(result)
+
+
+register_governance_routes(
+    app,
+    api_governance_dashboard=lambda workspace_root, include_audit, limit: api_governance_dashboard(
+        workspace_root,
+        include_audit,
+        limit,
+    ),
+    api_governance_evaluate=lambda payload: api_governance_evaluate(payload),
+    api_governance_compliance_export=lambda payload: api_governance_compliance_export(payload),
+)
+
+
 async def chat(request: AgentRequest) -> AgentResponse:
     root = _resolve_workspace_or_400(request.workspace_root)
     response: AgentResponse | None = None
@@ -2499,12 +2377,10 @@ async def chat(request: AgentRequest) -> AgentResponse:
             _invalidate_workspace_caches(Path(response.workspace_root))
 
 
-@app.get("/api/chat/stream/contract", response_model=ChatStreamContractResponse)
 async def chat_stream_contract() -> ChatStreamContractResponse:
     return chat_stream_contract_response()
 
 
-@app.post("/api/chat/stream")
 async def chat_stream(request: AgentRequest) -> StreamingResponse:
     root = _resolve_workspace_or_400(request.workspace_root)
     stream_request = request.model_copy(update={"workspace_root": str(root)})
@@ -2519,17 +2395,50 @@ async def chat_stream(request: AgentRequest) -> StreamingResponse:
     )
 
 
-@app.post("/api/routing/preview", response_model=RoutePreviewResponse)
+register_chat_routes(
+    app,
+    chat=lambda request: chat(request),
+    chat_stream_contract=lambda: chat_stream_contract(),
+    chat_stream=lambda request: chat_stream(request),
+)
+
+
 async def preview_route(request: RoutePreviewRequest) -> RoutePreviewResponse:
     try:
-        return await agent.preview_route(request)
+        preview = await agent.preview_route(request)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    root = _resolve_workspace_or_400(preview.workspace_root)
+    core_result = await core_runtime_client.route_model(
+        root,
+        **_core_route_request_kwargs(request, preview),
+    )
+    if core_result.delegated and isinstance(core_result.data, dict):
+        return _route_preview_from_core(preview, core_result.data)
+    if not core_result.should_fallback:
+        raise _core_delegation_error(core_result, "model.route")
+    _record_core_fallback("model.route", core_result)
+    return preview
 
-@app.post("/api/apply", response_model=ApplyResponse)
+
 async def apply_changes(request: ApplyRequest) -> ApplyResponse:
     root = _resolve_workspace_or_400(request.workspace_root)
+    if request.changes:
+        core_result = await core_runtime_client.apply_changes(root, request.changes)
+        if core_result.delegated:
+            _invalidate_workspace_caches(root)
+            return _apply_response_from_core(
+                root,
+                core_result,
+                workspace_files=workspace_manager.scan(root, max_files=120),
+            )
+        if not core_result.should_fallback:
+            raise _core_delegation_error(core_result, "changes.apply")
+        _record_core_fallback("changes.apply", core_result)
+    else:
+        core_runtime_client.record_local_only("changes.apply", "No changes were provided.")
+
     result = workspace_manager.apply_changes(root, request.changes)
     _invalidate_workspace_caches(root)
     return ApplyResponse(
@@ -2541,52 +2450,77 @@ async def apply_changes(request: ApplyRequest) -> ApplyResponse:
     )
 
 
-@app.get("/api/project-builder/presets", response_model=list[ProjectScaffoldPreset])
-async def project_builder_presets() -> list[ProjectScaffoldPreset]:
-    return ProjectScaffolder.presets()
+register_routing_apply_routes(
+    app,
+    preview_route=lambda request: preview_route(request),
+    apply_changes=lambda request: apply_changes(request),
+)
 
 
-@app.post("/api/project-builder/plan", response_model=ProjectScaffoldPlanResponse)
-async def plan_project_scaffold(request: ProjectScaffoldPlanRequest) -> ProjectScaffoldPlanResponse:
-    try:
-        return _cached_project_plan(request)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+register_project_builder_routes(
+    app,
+    project_builder_presets=lambda: _project_builder_service().presets(),
+    plan_project_scaffold=lambda request: _project_builder_service().plan(request),
+    preview_project_scaffold=lambda request: _project_builder_service().preview(request),
+    scaffold_project=lambda request: _project_builder_service().scaffold(request),
+)
 
 
-@app.post("/api/project-builder/preview", response_model=ProjectScaffoldResponse)
-async def preview_project_scaffold(request: ProjectScaffoldRequest) -> ProjectScaffoldResponse:
-    try:
-        return project_scaffolder().preview(request)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-
-@app.post("/api/project-builder/scaffold", response_model=ProjectScaffoldResponse)
-async def scaffold_project(request: ProjectScaffoldRequest) -> ProjectScaffoldResponse:
-    try:
-        result = project_scaffolder().scaffold(request)
-        _invalidate_workspace_caches(Path(result.target_path))
-        return result
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-
-@app.get("/api/checkpoints", response_model=CheckpointListResponse)
 async def list_checkpoints(
-    workspace_root: str | None = Query(default=None),
-    limit: int = Query(default=50, ge=1, le=200),
+    workspace_root: str | None = None,
+    limit: int = 50,
 ) -> CheckpointListResponse:
     root = _resolve_workspace_or_400(workspace_root)
+    core_result = await core_runtime_client.list_checkpoints(root, limit=limit)
+    if core_result.delegated:
+        return _checkpoint_list_response_from_core(root, core_result)
+    if not core_result.should_fallback:
+        raise _core_delegation_error(core_result, "checkpoints.list")
+    _record_core_fallback("checkpoints.list", core_result)
     return CheckpointListResponse(
         workspace_root=str(root),
         checkpoints=workspace_manager.list_checkpoints(root, limit=limit),
     )
 
 
-@app.post("/api/restore-checkpoint", response_model=RestoreCheckpointResponse)
+async def create_checkpoint(request: CheckpointCreateRequest) -> CheckpointSummary:
+    root = _resolve_workspace_or_400(request.workspace_root)
+    core_result = await core_runtime_client.create_checkpoint(
+        root,
+        paths=request.paths,
+        summary=request.summary or "Website checkpoint",
+    )
+    if core_result.delegated:
+        data = _core_delegation_data(core_result, "checkpoints.create")
+        return checkpoint_summary_from_core(data)
+    if not core_result.should_fallback:
+        raise _core_delegation_error(core_result, "checkpoints.create")
+    _record_core_fallback("checkpoints.create", core_result)
+    try:
+        return workspace_manager.create_checkpoint(
+            root,
+            paths=request.paths,
+            summary=request.summary or "Website checkpoint",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except OSError as exc:
+        raise HTTPException(status_code=503, detail=f"checkpoint could not be created: {exc}") from exc
+
+
 async def restore_checkpoint(request: RestoreCheckpointRequest) -> RestoreCheckpointResponse:
     root = _resolve_workspace_or_400(request.workspace_root)
+    core_result = await core_runtime_client.restore_checkpoint(root, request.checkpoint)
+    if core_result.delegated:
+        _invalidate_workspace_caches(root)
+        return _restore_response_from_core(
+            root,
+            core_result,
+            workspace_files=workspace_manager.scan(root, max_files=120),
+        )
+    if not core_result.should_fallback:
+        raise _core_delegation_error(core_result, "checkpoints.restore")
+    _record_core_fallback("checkpoints.restore", core_result)
     try:
         restored = workspace_manager.restore_checkpoint(root, request.checkpoint)
     except FileNotFoundError as exc:
@@ -2601,16 +2535,42 @@ async def restore_checkpoint(request: RestoreCheckpointRequest) -> RestoreCheckp
     )
 
 
-@app.post("/api/validate", response_model=ValidateResponse)
+register_checkpoint_routes(
+    app,
+    list_checkpoints=lambda workspace_root, limit: list_checkpoints(workspace_root, limit),
+    create_checkpoint=lambda request: create_checkpoint(request),
+    restore_checkpoint=lambda request: restore_checkpoint(request),
+)
+
+
 async def validate_workspace(request: ValidateRequest) -> ValidateResponse:
     root = _resolve_workspace_or_400(request.workspace_root)
+    profile_snapshot = agent.validation.profile_snapshot(root)
+    core_result = await core_runtime_client.run_validation(
+        root,
+        command=profile_snapshot.profile.command if profile_snapshot.profile else None,
+        timeout_seconds=settings.aegis_command_timeout_seconds,
+    )
+    if core_result.delegated:
+        try:
+            return await _validate_response_from_core(
+                root,
+                core_result,
+                validation_profile=profile_snapshot.profile,
+                create_repair_workflow=core_runtime_client.create_repair_workflow,
+                record_fallback=_record_core_fallback,
+            )
+        finally:
+            _invalidate_workspace_caches(root)
+    if not core_result.should_fallback:
+        raise _core_delegation_error(core_result, "validation.run")
+    _record_core_fallback("validation.run", core_result)
     try:
         return await agent.validate_workspace(str(root))
     finally:
         _invalidate_workspace_caches(root)
 
 
-@app.post("/api/verify", response_model=VerificationResponse)
 async def verify_workspace(request: VerificationRequest) -> VerificationResponse:
     root = _resolve_workspace_or_400(request.workspace_root)
     try:
@@ -2619,16 +2579,14 @@ async def verify_workspace(request: VerificationRequest) -> VerificationResponse
         _invalidate_workspace_caches(root)
 
 
-@app.get("/api/validation/profile", response_model=ValidationProfileResponse)
-async def validation_profile(workspace_root: str | None = Query(default=None)) -> ValidationProfileResponse:
+async def validation_profile(workspace_root: str | None = None) -> ValidationProfileResponse:
     root = _resolve_workspace_or_400(workspace_root)
     return agent.validation.profile_snapshot(root)
 
 
-@app.put("/api/validation/profile", response_model=ValidationProfileResponse)
 async def update_validation_profile(
     request: ValidationProfileUpdateRequest,
-    workspace_root: str | None = Query(default=None),
+    workspace_root: str | None = None,
 ) -> ValidationProfileResponse:
     root = _resolve_workspace_or_400(workspace_root)
 
@@ -2653,7 +2611,15 @@ async def update_validation_profile(
     return agent.validation.profile_snapshot(root)
 
 
-@app.get("/api/history", response_model=HistoryResponse)
+register_validation_routes(
+    app,
+    validate_workspace=lambda request: validate_workspace(request),
+    verify_workspace=lambda request: verify_workspace(request),
+    validation_profile=lambda workspace_root: validation_profile(workspace_root),
+    update_validation_profile=lambda request, workspace_root: update_validation_profile(request, workspace_root),
+)
+
+
 async def history(
     workspace_root: str | None = Query(default=None),
     limit: int = Query(default=8, ge=1, le=25),
@@ -2667,7 +2633,6 @@ async def history(
     )
 
 
-@app.get("/api/tasks", response_model=TaskListResponse)
 async def list_tasks(
     workspace_root: str | None = Query(default=None),
     status: str | None = Query(default=None),
@@ -2686,7 +2651,6 @@ async def list_tasks(
     )
 
 
-@app.post("/api/tasks", response_model=TaskDetailResponse)
 async def create_task(request: TaskCreateRequest) -> TaskDetailResponse:
     root = _resolve_workspace_or_400(request.workspace_root)
     task_id = agent.store.create_task(
@@ -2711,7 +2675,6 @@ async def create_task(request: TaskCreateRequest) -> TaskDetailResponse:
     return TaskDetailResponse(task=agent.store.task(task_id), subtasks=agent.store.subtasks(task_id))
 
 
-@app.get("/api/tasks/{task_id}", response_model=TaskDetailResponse)
 async def read_task(task_id: str) -> TaskDetailResponse:
     try:
         return TaskDetailResponse(task=agent.store.task(task_id), subtasks=agent.store.subtasks(task_id))
@@ -2719,7 +2682,6 @@ async def read_task(task_id: str) -> TaskDetailResponse:
         raise HTTPException(status_code=404, detail="task not found") from exc
 
 
-@app.post("/api/tasks/{task_id}/cancel", response_model=TaskActionResponse)
 async def cancel_task(task_id: str, request: TaskActionRequest | None = None) -> TaskActionResponse:
     try:
         event = agent.store.cancel_task(task_id, reason=(request.reason if request else ""))
@@ -2730,7 +2692,6 @@ async def cancel_task(task_id: str, request: TaskActionRequest | None = None) ->
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@app.post("/api/tasks/{task_id}/approve", response_model=TaskActionResponse)
 async def approve_task_action(task_id: str, request: TaskActionRequest) -> TaskActionResponse:
     try:
         event = agent.store.approve_task_action(task_id, reason=request.reason, approved=request.approved)
@@ -2739,7 +2700,6 @@ async def approve_task_action(task_id: str, request: TaskActionRequest) -> TaskA
         raise HTTPException(status_code=404, detail="task not found") from exc
 
 
-@app.post("/api/tasks/{task_id}/retry", response_model=TaskActionResponse)
 async def retry_task(task_id: str, request: TaskActionRequest | None = None) -> TaskActionResponse:
     try:
         event = agent.store.retry_task(task_id, reason=(request.reason if request else ""))
@@ -2750,7 +2710,6 @@ async def retry_task(task_id: str, request: TaskActionRequest | None = None) -> 
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@app.get("/api/tasks/{task_id}/timeline", response_model=TaskTimelineResponse)
 async def task_timeline(task_id: str) -> TaskTimelineResponse:
     try:
         agent.store.task(task_id)
@@ -2759,7 +2718,6 @@ async def task_timeline(task_id: str) -> TaskTimelineResponse:
         raise HTTPException(status_code=404, detail="task not found") from exc
 
 
-@app.get("/api/tasks/{task_id}/artifacts", response_model=TaskArtifactsResponse)
 async def task_artifacts(task_id: str) -> TaskArtifactsResponse:
     try:
         return agent.store.task_artifacts(task_id)
@@ -2767,267 +2725,447 @@ async def task_artifacts(task_id: str) -> TaskArtifactsResponse:
         raise HTTPException(status_code=404, detail="task not found") from exc
 
 
-@app.get("/api/distributed-runtime", response_model=DistributedRuntimeSnapshot)
+register_history_task_routes(
+    app,
+    history=lambda workspace_root, limit: history(workspace_root, limit),
+    list_tasks=lambda workspace_root, status, include_subtasks, limit: list_tasks(
+        workspace_root,
+        status,
+        include_subtasks,
+        limit,
+    ),
+    create_task=lambda request: create_task(request),
+    read_task=lambda task_id: read_task(task_id),
+    cancel_task=lambda task_id, request=None: cancel_task(task_id, request),
+    approve_task_action=lambda task_id, request: approve_task_action(task_id, request),
+    retry_task=lambda task_id, request=None: retry_task(task_id, request),
+    task_timeline=lambda task_id: task_timeline(task_id),
+    task_artifacts=lambda task_id: task_artifacts(task_id),
+)
+
+
 async def distributed_runtime_snapshot(workspace_root: str | None = Query(default=None)) -> DistributedRuntimeSnapshot:
     root = _resolve_workspace_or_400(workspace_root)
+    core_result = await core_runtime_client.distributed_runtime(root, include_audit=True, limit=120)
+    core_snapshot = _runtime_snapshot_from_core(root, core_result)
+    if core_snapshot is not None:
+        return core_snapshot
+    core_runtime_client.record_fallback("distributed.runtime", core_result.error or "Core distributed runtime unavailable.")
     return _runtime_snapshot(root)
 
 
-@app.get("/api/distributed-runtime/observability", response_model=RuntimeObservabilitySnapshot)
 async def distributed_runtime_observability(workspace_root: str | None = Query(default=None)) -> RuntimeObservabilitySnapshot:
+    return (await distributed_runtime_snapshot(workspace_root)).observability
+
+
+def _runtime_interaction_unavailable(root: Path, result: CoreDelegationResult) -> dict[str, Any]:
+    _record_core_fallback("runtime.interaction", result)
+    return {
+        "ok": False,
+        "delegated": False,
+        "core_connected": result.reachable,
+        "workspace_root": str(root),
+        "terminals": [],
+        "jobs": [],
+        "active_jobs": [],
+        "recent_events": [],
+        "processes": [],
+        "sessions": [],
+        "voice": {},
+        "observability": {},
+        "safety_controls": {},
+        "fallback_mode_active": True,
+        "error": result.error or "Aegis Core runtime interaction is unavailable.",
+        "stream_url": "",
+    }
+
+
+def _runtime_interaction_payload(root: Path, result: CoreDelegationResult) -> dict[str, Any]:
+    data = _core_delegation_data(result, result.kind or "runtime.interaction")
+    return {
+        "ok": True,
+        "delegated": True,
+        "core_connected": True,
+        "workspace_root": str(root),
+        "terminals": data.get("terminals", []),
+        "jobs": data.get("jobs", []),
+        "active_jobs": data.get("active_jobs", []),
+        "recent_events": data.get("recent_events", []),
+        "processes": data.get("processes", []),
+        "sessions": data.get("sessions", []),
+        "voice": data.get("voice", {}),
+        "observability": data.get("observability", {}),
+        "safety_controls": data.get("safety_controls", {}),
+        "fallback_mode_active": False,
+        "error": "",
+        "stream_url": f"/api/runtime-interaction/events?{urlencode({'workspace_root': str(root)})}",
+    }
+
+
+async def runtime_interaction_status(
+    workspace_root: str | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=300),
+) -> dict[str, Any]:
     root = _resolve_workspace_or_400(workspace_root)
-    return _runtime_snapshot(root).observability
+    result = await core_runtime_client.runtime_interaction(root, limit=limit)
+    if result.delegated:
+        return _runtime_interaction_payload(root, result)
+    if not result.should_fallback:
+        raise _core_delegation_error(result, "runtime.interaction")
+    return _runtime_interaction_unavailable(root, result)
 
 
-@app.get("/api/distributed-runtime/workers", response_model=list[WorkerRuntimeInfo])
+async def runtime_interaction_jobs(
+    workspace_root: str | None = Query(default=None),
+    status: str | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=300),
+) -> dict[str, Any]:
+    root = _resolve_workspace_or_400(workspace_root)
+    result = await core_runtime_client.runtime_jobs(root, status=status, limit=limit)
+    if result.delegated:
+        return {"workspace_root": str(root), "delegated": True, **_core_delegation_data(result, "runtime.jobs")}
+    if not result.should_fallback:
+        raise _core_delegation_error(result, "runtime.jobs")
+    _record_core_fallback("runtime.jobs", result)
+    return {"workspace_root": str(root), "delegated": False, "jobs": [], "observability": {}, "error": result.error}
+
+
+async def launch_runtime_interaction_job(request: dict) -> dict[str, Any]:
+    root = _resolve_workspace_or_400(request.get("workspace_root") or request.get("workspace"))
+    result = await core_runtime_client.launch_runtime_job(
+        root,
+        command=request.get("command") or [],
+        cwd=request.get("cwd"),
+        workflow_id=request.get("workflow_id"),
+        task_id=request.get("task_id"),
+        terminal_id=request.get("terminal_id"),
+        title=str(request.get("title") or ""),
+        timeout_seconds=int(request.get("timeout_seconds") or 120),
+        approval=bool(request.get("approval", False)),
+        dry_run=bool(request.get("dry_run", False)),
+        wait=bool(request.get("wait", True)),
+        metadata=request.get("metadata") if isinstance(request.get("metadata"), dict) else {},
+    )
+    if result.delegated:
+        return {"delegated": True, **_core_delegation_data(result, "runtime.job.mutation")}
+    if result.should_fallback:
+        _record_core_fallback("runtime.job.mutation", result)
+        raise HTTPException(status_code=503, detail=result.error or "Aegis Core terminal orchestration is unavailable.")
+    raise _core_delegation_error(result, "runtime.job.mutation")
+
+
+async def runtime_interaction_job(job_id: str, workspace_root: str | None = Query(default=None)) -> dict[str, Any]:
+    root = _resolve_workspace_or_400(workspace_root)
+    result = await core_runtime_client.runtime_job(root, job_id)
+    if result.delegated:
+        return {"delegated": True, **_core_delegation_data(result, "runtime.job")}
+    if result.should_fallback:
+        _record_core_fallback("runtime.job", result)
+        raise HTTPException(status_code=503, detail=result.error or "Aegis Core runtime job lookup is unavailable.")
+    raise _core_delegation_error(result, "runtime.job")
+
+
+async def cancel_runtime_interaction_job(job_id: str, request: dict) -> dict[str, Any]:
+    root = _resolve_workspace_or_400(request.get("workspace_root") or request.get("workspace"))
+    result = await core_runtime_client.cancel_runtime_job(root, job_id, reason=str(request.get("reason") or "Website cancel request"))
+    if result.delegated:
+        return {"delegated": True, **_core_delegation_data(result, "runtime.job.mutation")}
+    if result.should_fallback:
+        _record_core_fallback("runtime.job.mutation", result)
+        raise HTTPException(status_code=503, detail=result.error or "Aegis Core runtime cancellation is unavailable.")
+    raise _core_delegation_error(result, "runtime.job.mutation")
+
+
+async def retry_runtime_interaction_job(job_id: str, request: dict) -> dict[str, Any]:
+    root = _resolve_workspace_or_400(request.get("workspace_root") or request.get("workspace"))
+    result = await core_runtime_client.retry_runtime_job(
+        root,
+        job_id,
+        approval=request.get("approval") if request.get("approval") is not None else None,
+        wait=bool(request.get("wait", True)),
+        timeout_seconds=int(request["timeout_seconds"]) if request.get("timeout_seconds") is not None else None,
+        reason=str(request.get("reason") or "Website retry request"),
+    )
+    if result.delegated:
+        return {"delegated": True, **_core_delegation_data(result, "runtime.job.mutation")}
+    if result.should_fallback:
+        _record_core_fallback("runtime.job.mutation", result)
+        raise HTTPException(status_code=503, detail=result.error or "Aegis Core runtime retry is unavailable.")
+    raise _core_delegation_error(result, "runtime.job.mutation")
+
+
+async def runtime_interaction_streams(
+    workspace_root: str | None = Query(default=None),
+    job_id: str | None = Query(default=None),
+    workflow_id: str | None = Query(default=None),
+    since: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, ge=1, le=500),
+) -> dict[str, Any]:
+    root = _resolve_workspace_or_400(workspace_root)
+    result = await core_runtime_client.runtime_streams(root, job_id=job_id, workflow_id=workflow_id, since=since, limit=limit)
+    if result.delegated:
+        return {"delegated": True, **_core_delegation_data(result, "runtime.streams")}
+    if result.should_fallback:
+        _record_core_fallback("runtime.streams", result)
+        return {"workspace": str(root), "delegated": False, "events": [], "next_since": since, "error": result.error}
+    raise _core_delegation_error(result, "runtime.streams")
+
+
+async def runtime_interaction_events(
+    workspace_root: str | None = Query(default=None),
+    job_id: str | None = Query(default=None),
+    workflow_id: str | None = Query(default=None),
+    since: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, ge=1, le=500),
+    follow: bool = Query(default=True),
+    max_seconds: int = Query(default=30, ge=1, le=120),
+) -> StreamingResponse:
+    root = _resolve_workspace_or_400(workspace_root)
+    url = f"{core_runtime_client.base_url}/v1/runtime/streams"
+    params = {
+        "workspace": str(root),
+        "job_id": job_id,
+        "workflow_id": workflow_id,
+        "since": since,
+        "limit": limit,
+        "follow": follow,
+        "max_seconds": max_seconds,
+        "as_sse": True,
+    }
+
+    async def stream_core_events() -> AsyncIterator[str]:
+        if not core_runtime_client.delegated_workflows_enabled:
+            yield _sse_event("runtime_error", {"type": "runtime_error", "message": "Aegis Core delegated workflows are disabled."})
+            return
+        try:
+            timeout = httpx.Timeout(connect=core_runtime_client.timeout_seconds, read=None, write=10.0, pool=10.0)
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                async with client.stream("GET", url, params=params) as response:
+                    response.raise_for_status()
+                    async for chunk in response.aiter_text():
+                        if chunk:
+                            yield chunk
+        except Exception as exc:
+            yield _sse_event("runtime_error", {"type": "runtime_error", "message": f"Aegis Core runtime event stream unavailable: {exc}"})
+
+    return StreamingResponse(stream_core_events(), media_type="text/event-stream")
+
+
+async def runtime_interaction_sessions(workspace_root: str | None = Query(default=None)) -> dict[str, Any]:
+    root = _resolve_workspace_or_400(workspace_root)
+    result = await core_runtime_client.runtime_sessions(root)
+    if result.delegated:
+        return {"delegated": True, **_core_delegation_data(result, "runtime.sessions")}
+    if result.should_fallback:
+        _record_core_fallback("runtime.sessions", result)
+        return {"workspace": str(root), "delegated": False, "sessions": [], "active_sessions": [], "recent_events": [], "error": result.error}
+    raise _core_delegation_error(result, "runtime.sessions")
+
+
+async def create_runtime_interaction_session(request: dict) -> dict[str, Any]:
+    root = _resolve_workspace_or_400(request.get("workspace_root") or request.get("workspace"))
+    result = await core_runtime_client.create_runtime_session(
+        root,
+        workflow_id=str(request.get("workflow_id") or ""),
+        title=str(request.get("title") or ""),
+        owner_client_id=str(request.get("owner_client_id") or "website-backend"),
+        participants=request.get("participants") if isinstance(request.get("participants"), list) else [],
+        spectators=request.get("spectators") if isinstance(request.get("spectators"), list) else [],
+        approval_delegates=request.get("approval_delegates") if isinstance(request.get("approval_delegates"), list) else [],
+        metadata=request.get("metadata") if isinstance(request.get("metadata"), dict) else {},
+    )
+    if result.delegated:
+        return {"delegated": True, **_core_delegation_data(result, "runtime.session.mutation")}
+    if result.should_fallback:
+        _record_core_fallback("runtime.session.mutation", result)
+        raise HTTPException(status_code=503, detail=result.error or "Aegis Core runtime sessions are unavailable.")
+    raise _core_delegation_error(result, "runtime.session.mutation")
+
+
+async def sync_runtime_interaction_session(session_id: str, request: dict) -> dict[str, Any]:
+    root = _resolve_workspace_or_400(request.get("workspace_root") or request.get("workspace"))
+    result = await core_runtime_client.sync_runtime_session(
+        root,
+        session_id,
+        participants=request.get("participants") if isinstance(request.get("participants"), list) else None,
+        spectators=request.get("spectators") if isinstance(request.get("spectators"), list) else None,
+        approval_delegates=request.get("approval_delegates") if isinstance(request.get("approval_delegates"), list) else None,
+        status=request.get("status"),
+        message=str(request.get("message") or ""),
+    )
+    if result.delegated:
+        return {"delegated": True, **_core_delegation_data(result, "runtime.session.mutation")}
+    if result.should_fallback:
+        _record_core_fallback("runtime.session.mutation", result)
+        raise HTTPException(status_code=503, detail=result.error or "Aegis Core runtime session sync is unavailable.")
+    raise _core_delegation_error(result, "runtime.session.mutation")
+
+
+async def runtime_interaction_voice(workspace_root: str | None = Query(default=None)) -> dict[str, Any]:
+    root = _resolve_workspace_or_400(workspace_root)
+    result = await core_runtime_client.runtime_voice(root)
+    if result.delegated:
+        return {"delegated": True, **_core_delegation_data(result, "runtime.voice")}
+    if result.should_fallback:
+        _record_core_fallback("runtime.voice", result)
+        return {"workspace": str(root), "delegated": False, "status": "core_unavailable", "warnings": [result.error]}
+    raise _core_delegation_error(result, "runtime.voice")
+
+
+async def runtime_interaction_voice_command(request: dict) -> dict[str, Any]:
+    root = _resolve_workspace_or_400(request.get("workspace_root") or request.get("workspace"))
+    result = await core_runtime_client.route_voice_command(
+        root,
+        transcript=str(request.get("transcript") or ""),
+        workflow_id=str(request.get("workflow_id") or ""),
+        client_id=str(request.get("client_id") or "website-backend"),
+        dry_run=bool(request.get("dry_run", True)),
+    )
+    if result.delegated:
+        return {"delegated": True, **_core_delegation_data(result, "runtime.voice.command")}
+    if result.should_fallback:
+        _record_core_fallback("runtime.voice.command", result)
+        raise HTTPException(status_code=503, detail=result.error or "Aegis Core voice routing is unavailable.")
+    raise _core_delegation_error(result, "runtime.voice.command")
+
+
+async def runtime_interaction_replay(
+    workspace_root: str | None = Query(default=None),
+    workflow_id: str | None = Query(default=None),
+    job_id: str | None = Query(default=None),
+    limit: int = Query(default=200, ge=1, le=500),
+) -> dict[str, Any]:
+    root = _resolve_workspace_or_400(workspace_root)
+    result = await core_runtime_client.runtime_replay(root, workflow_id=workflow_id, job_id=job_id, limit=limit)
+    if result.delegated:
+        return {"delegated": True, **_core_delegation_data(result, "runtime.replay")}
+    if result.should_fallback:
+        _record_core_fallback("runtime.replay", result)
+        return {"workspace": str(root), "delegated": False, "timeline": [], "terminal_output": [], "repair_chain": [], "approval_history": [], "sessions": [], "error": result.error}
+    raise _core_delegation_error(result, "runtime.replay")
+
+
 async def list_runtime_workers(workspace_root: str | None = Query(default=None)) -> list[WorkerRuntimeInfo]:
-    root = _resolve_workspace_or_400(workspace_root)
-    return _runtime_workers(root)
+    return await _distributed_runtime_service().list_runtime_workers(workspace_root)
 
 
-@app.post("/api/distributed-runtime/workers/register", response_model=WorkerRuntimeInfo)
 async def register_runtime_worker(request: WorkerRegistrationRequest) -> WorkerRuntimeInfo:
-    worker = distributed_runtime.register_worker(request)
-    agent.store.upsert_runtime_worker(worker)
-    _record_runtime_audit(
-        distributed_runtime.audit_event(
-            worker_id=worker.worker_id,
-            event_type="worker.registered",
-            status="ok" if worker.trust_state == "trusted" else "warning",
-            detail=f"Worker {worker.name} registered as {worker.trust_state}.",
-            metadata={
-                "kind": worker.kind,
-                "trust_scope": worker.trust_scope,
-                "permission_scopes": worker.permission_scopes,
-                "encrypted_transport_required": worker.metadata.get("encrypted_transport_required", False),
-            },
-        )
-    )
-    return worker
+    return await _distributed_runtime_service().register_runtime_worker(request)
 
 
-@app.post("/api/distributed-runtime/workers/{worker_id}/heartbeat", response_model=WorkerRuntimeInfo)
 async def heartbeat_runtime_worker(worker_id: str, request: WorkerHeartbeatRequest) -> WorkerRuntimeInfo:
-    capabilities_json = json.dumps(request.capabilities.model_dump(mode="json"), ensure_ascii=True) if request.capabilities else None
-    try:
-        worker = agent.store.heartbeat_runtime_worker(
-            worker_id,
-            status=request.status,
-            current_jobs=request.current_jobs,
-            capabilities_json=capabilities_json,
-            metadata=request.metadata,
-        )
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail="worker not found") from exc
-    _record_runtime_audit(
-        distributed_runtime.audit_event(
-            worker_id=worker.worker_id,
-            event_type="worker.heartbeat",
-            detail=f"Worker {worker.name} reported {worker.status}.",
-            metadata={"current_jobs": worker.current_jobs},
-        )
-    )
-    return worker
+    return await _distributed_runtime_service().heartbeat_runtime_worker(worker_id, request)
 
 
-@app.post("/api/distributed-runtime/workers/{worker_id}/revoke", response_model=WorkerRuntimeInfo)
 async def revoke_runtime_worker(worker_id: str, request: WorkerActionRequest | None = None) -> WorkerRuntimeInfo:
-    try:
-        current = agent.store.runtime_worker(worker_id)
-        if current.kind == "local":
-            raise HTTPException(status_code=400, detail="the local runtime worker cannot be revoked")
-        worker = agent.store.revoke_runtime_worker(worker_id, reason=(request.reason if request else ""))
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail="worker not found") from exc
-    _record_runtime_audit(
-        distributed_runtime.audit_event(
-            worker_id=worker.worker_id,
-            event_type="worker.revoked",
-            status="warning",
-            detail=f"Worker {worker.name} trust was revoked.",
-            metadata={"reason": request.reason if request else ""},
-        )
-    )
-    return worker
+    return await _distributed_runtime_service().revoke_runtime_worker(worker_id, request)
 
 
-@app.get("/api/distributed-runtime/queue", response_model=list[ExecutionQueueItem])
 async def list_execution_queue(
     workspace_root: str | None = Query(default=None),
     status: str | None = Query(default=None),
     limit: int = Query(default=100, ge=1, le=500),
 ) -> list[ExecutionQueueItem]:
-    root = _resolve_workspace_or_400(workspace_root)
-    _runtime_workers(root)
-    return _runtime_jobs(root, status=status, limit=limit)
+    return await _distributed_runtime_service().list_execution_queue(workspace_root, status=status, limit=limit)
 
 
-@app.post("/api/distributed-runtime/queue", response_model=ExecutionQueueItem)
 async def create_execution_queue_item(request: ExecutionQueueCreateRequest) -> ExecutionQueueItem:
-    root = _resolve_workspace_or_400(request.workspace_root)
-    _runtime_workers(root)
-    item = distributed_runtime.create_queue_item(request, root)
-    created = agent.store.create_execution_job(item)
-    _record_runtime_audit(
-        distributed_runtime.audit_event(
-            job_id=created.id,
-            event_type="queue.created",
-            detail=f"{created.kind.title()} job {created.id} queued.",
-            metadata={"workspace_root": str(root), "task_id": created.task_id, "permission_scope": created.permission_scope},
-        )
-    )
-    return created
+    return await _distributed_runtime_service().create_execution_queue_item(request)
 
 
-@app.get("/api/distributed-runtime/queue/{job_id}", response_model=ExecutionQueueItem)
 async def read_execution_queue_item(job_id: str) -> ExecutionQueueItem:
-    try:
-        return agent.store.execution_job(job_id)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail="execution job not found") from exc
+    return await _distributed_runtime_service().read_execution_queue_item(job_id)
 
 
-@app.post("/api/distributed-runtime/queue/{job_id}/cancel", response_model=ExecutionQueueItem)
 async def cancel_execution_queue_item(job_id: str, request: ExecutionQueueActionRequest | None = None) -> ExecutionQueueItem:
-    try:
-        job = agent.store.cancel_execution_job(job_id, reason=(request.reason if request else ""))
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail="execution job not found") from exc
-    _record_runtime_audit(
-        distributed_runtime.audit_event(
-            job_id=job.id,
-            event_type="queue.canceled",
-            status="warning",
-            detail=request.reason if request and request.reason else "Execution job was canceled.",
-            metadata={"task_id": job.task_id},
-        )
-    )
-    if job.task_id:
-        _task_transition_or_event(job.task_id, "canceled", title="Distributed job canceled", detail=job.error_summary or "Execution job was canceled.")
-    return job
+    return await _distributed_runtime_service().cancel_execution_queue_item(job_id, request)
 
 
-@app.post("/api/distributed-runtime/queue/{job_id}/retry", response_model=ExecutionQueueItem)
 async def retry_execution_queue_item(job_id: str, request: ExecutionQueueActionRequest | None = None) -> ExecutionQueueItem:
-    try:
-        job = agent.store.retry_execution_job(job_id, reason=(request.reason if request else ""))
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail="execution job not found") from exc
-    _record_runtime_audit(
-        distributed_runtime.audit_event(
-            job_id=job.id,
-            event_type="queue.retry",
-            detail=request.reason if request and request.reason else "Execution job was queued for retry.",
-            metadata={"task_id": job.task_id, "attempts": job.attempts},
-        )
-    )
-    if job.task_id:
-        _task_transition_or_event(job.task_id, "queued", title="Distributed job retry queued", detail=job.error_summary or "Execution job was queued for retry.")
-    return job
+    return await _distributed_runtime_service().retry_execution_queue_item(job_id, request)
 
 
-@app.post("/api/distributed-runtime/dispatch", response_model=ExecutionDispatchResponse)
 async def dispatch_execution_queue(request: ExecutionDispatchRequest) -> ExecutionDispatchResponse:
-    root = _resolve_workspace_or_400(request.workspace_root)
-    workers = _runtime_workers(root)
-    jobs = _runtime_jobs(root, limit=300)
-    runnable = distributed_runtime.select_runnable_jobs(jobs, limit=request.limit)
-    events: list[WorkerAuditEvent] = []
-    dispatched: list[ExecutionQueueItem] = []
-    warnings: list[str] = []
-    if not runnable:
-        warnings.append("No queued execution jobs are runnable yet.")
-
-    for job in runnable:
-        worker = distributed_runtime.select_worker(
-            workers,
-            job,
-            requested_worker_id=request.worker_id,
-            allow_remote=request.allow_remote,
-        )
-        if worker is None:
-            warnings.append(f"No eligible worker is available for job {job.id}.")
-            continue
-        if worker.kind in {"lan", "remote"}:
-            assigned = agent.store.update_execution_job(
-                job.id,
-                status="assigned",
-                assigned_worker_id=worker.worker_id,
-                attempts=job.attempts + 1,
-            )
-            agent.store.heartbeat_runtime_worker(worker.worker_id, status="busy", current_jobs=worker.current_jobs + 1)
-            event = _record_runtime_audit(
-                distributed_runtime.audit_event(
-                    worker_id=worker.worker_id,
-                    job_id=job.id,
-                    event_type="job.assigned.remote",
-                    detail=f"Job {job.id} was assigned to remote worker {worker.name}.",
-                    metadata={"allow_remote": request.allow_remote, "endpoint": worker.endpoint},
-                )
-            )
-            events.append(event)
-            dispatched.append(assigned)
-            if assigned.task_id:
-                _task_transition_or_event(
-                    assigned.task_id,
-                    "running",
-                    title="Remote worker assigned",
-                    detail=f"Job {assigned.id} was assigned to {worker.name}.",
-                    payload={"worker_id": worker.worker_id, "job_id": assigned.id},
-                )
-            continue
-        result, job_events = _execute_runtime_job(job, worker, allow_commands=request.allow_commands)
-        events.extend(job_events)
-        dispatched.append(result)
-        workers = _runtime_workers(root)
-
-    return ExecutionDispatchResponse(jobs=dispatched, workers=_runtime_workers(root), events=events, warnings=warnings)
+    return await _distributed_runtime_service().dispatch_execution_queue(request)
 
 
-@app.post("/api/distributed-runtime/route", response_model=HybridRouteDecision)
 async def route_distributed_model(request: HybridRouteRequest) -> HybridRouteDecision:
-    root = _resolve_workspace_or_400(request.workspace_root)
-    decision = distributed_runtime.route_models(
-        request,
-        workers=_runtime_workers(root),
-        registry=model_registry.snapshot(),
-    )
-    _record_runtime_audit(
-        distributed_runtime.audit_event(
-            event_type="model.route.selected",
-            status="ok" if decision.selected else "warning",
-            detail=decision.summary,
-            metadata={"fallback_order": decision.fallback_order, "privacy_mode": decision.privacy_mode},
-        )
-    )
-    return decision
+    return await _distributed_runtime_service().route_distributed_model(request)
 
 
-@app.get("/api/distributed-runtime/audit", response_model=list[WorkerAuditEvent])
 async def distributed_runtime_audit(
     worker_id: str = Query(default=""),
     job_id: str = Query(default=""),
     limit: int = Query(default=100, ge=1, le=500),
 ) -> list[WorkerAuditEvent]:
-    return _runtime_audit_events(worker_id=worker_id, job_id=job_id, limit=limit)
+    return await _distributed_runtime_service().distributed_runtime_audit(worker_id=worker_id, job_id=job_id, limit=limit)
 
 
-@app.get("/api/distributed-runtime/sync/manifests", response_model=list[RemoteWorkspaceSyncManifest])
 async def list_remote_sync_manifests(
     workspace_root: str | None = Query(default=None),
     limit: int = Query(default=20, ge=1, le=100),
 ) -> list[RemoteWorkspaceSyncManifest]:
-    root = _resolve_workspace_or_400(workspace_root)
-    return agent.store.workspace_sync_manifests(project_root=root, limit=limit)
+    return await _distributed_runtime_service().list_remote_sync_manifests(workspace_root, limit=limit)
 
 
-@app.post("/api/distributed-runtime/sync/export", response_model=RemoteWorkspaceSyncManifest)
 async def create_remote_sync_manifest(request: RemoteWorkspaceSyncRequest) -> RemoteWorkspaceSyncManifest:
-    root = _resolve_workspace_or_400(request.workspace_root)
-    return _save_remote_sync_manifest(root, request)
+    return await _distributed_runtime_service().create_remote_sync_manifest(request)
 
 
-@app.get("/api/telemetry", response_model=TelemetryResponse)
+register_distributed_runtime_routes(
+    app,
+    distributed_runtime_snapshot=lambda workspace_root: distributed_runtime_snapshot(workspace_root),
+    distributed_runtime_observability=lambda workspace_root: distributed_runtime_observability(workspace_root),
+    runtime_interaction_status=lambda workspace_root, limit: runtime_interaction_status(workspace_root, limit),
+    runtime_interaction_jobs=lambda workspace_root, status, limit: runtime_interaction_jobs(workspace_root, status, limit),
+    launch_runtime_interaction_job=lambda request: launch_runtime_interaction_job(request),
+    runtime_interaction_job=lambda job_id, workspace_root: runtime_interaction_job(job_id, workspace_root),
+    cancel_runtime_interaction_job=lambda job_id, request: cancel_runtime_interaction_job(job_id, request),
+    retry_runtime_interaction_job=lambda job_id, request: retry_runtime_interaction_job(job_id, request),
+    runtime_interaction_streams=lambda workspace_root, job_id, workflow_id, since, limit: runtime_interaction_streams(
+        workspace_root,
+        job_id,
+        workflow_id,
+        since,
+        limit,
+    ),
+    runtime_interaction_events=lambda workspace_root, job_id, workflow_id, since, limit, follow, max_seconds: runtime_interaction_events(
+        workspace_root,
+        job_id,
+        workflow_id,
+        since,
+        limit,
+        follow,
+        max_seconds,
+    ),
+    runtime_interaction_sessions=lambda workspace_root: runtime_interaction_sessions(workspace_root),
+    create_runtime_interaction_session=lambda request: create_runtime_interaction_session(request),
+    sync_runtime_interaction_session=lambda session_id, request: sync_runtime_interaction_session(session_id, request),
+    runtime_interaction_voice=lambda workspace_root: runtime_interaction_voice(workspace_root),
+    runtime_interaction_voice_command=lambda request: runtime_interaction_voice_command(request),
+    runtime_interaction_replay=lambda workspace_root, workflow_id, job_id, limit: runtime_interaction_replay(
+        workspace_root,
+        workflow_id,
+        job_id,
+        limit,
+    ),
+    list_runtime_workers=lambda workspace_root: list_runtime_workers(workspace_root),
+    register_runtime_worker=lambda request: register_runtime_worker(request),
+    heartbeat_runtime_worker=lambda worker_id, request: heartbeat_runtime_worker(worker_id, request),
+    revoke_runtime_worker=lambda worker_id, request=None: revoke_runtime_worker(worker_id, request),
+    list_execution_queue=lambda workspace_root, status, limit: list_execution_queue(workspace_root, status, limit),
+    create_execution_queue_item=lambda request: create_execution_queue_item(request),
+    read_execution_queue_item=lambda job_id: read_execution_queue_item(job_id),
+    cancel_execution_queue_item=lambda job_id, request=None: cancel_execution_queue_item(job_id, request),
+    retry_execution_queue_item=lambda job_id, request=None: retry_execution_queue_item(job_id, request),
+    dispatch_execution_queue=lambda request: dispatch_execution_queue(request),
+    route_distributed_model=lambda request: route_distributed_model(request),
+    distributed_runtime_audit=lambda worker_id, job_id, limit: distributed_runtime_audit(worker_id, job_id, limit),
+    list_remote_sync_manifests=lambda workspace_root, limit: list_remote_sync_manifests(workspace_root, limit),
+    create_remote_sync_manifest=lambda request: create_remote_sync_manifest(request),
+)
+
+
 async def telemetry(
     workspace_root: str | None = Query(default=None),
     limit: int = Query(default=20, ge=1, le=100),
@@ -3041,7 +3179,6 @@ async def telemetry(
     )
 
 
-@app.get("/api/telemetry/route-quality", response_model=RouteQualityResponse)
 async def route_quality(
     workspace_root: str | None = Query(default=None),
     limit: int = Query(default=200, ge=1, le=500),
@@ -3050,7 +3187,6 @@ async def route_quality(
     return agent.store.route_quality(project_root=root, limit=limit)
 
 
-@app.get("/api/telemetry/route-health", response_model=list[ModelRouteHealthInfo])
 async def route_health(
     workspace_root: str | None = Query(default=None),
     limit: int = Query(default=200, ge=1, le=1000),
@@ -3059,7 +3195,6 @@ async def route_health(
     return agent.store.route_health_signals(project_root=root, limit=limit)
 
 
-@app.get("/api/telemetry/fallback-inspector", response_model=FallbackInspectorResponse)
 async def fallback_inspector(
     workspace_root: str | None = Query(default=None),
     limit: int = Query(default=20, ge=1, le=100),
@@ -3072,7 +3207,6 @@ async def fallback_inspector(
     )
 
 
-@app.get("/api/telemetry/feedback", response_model=FeedbackTelemetryResponse)
 async def feedback_telemetry(
     workspace_root: str | None = Query(default=None),
     limit: int = Query(default=100, ge=1, le=500),
@@ -3081,7 +3215,6 @@ async def feedback_telemetry(
     return agent.store.feedback_telemetry(project_root=root, limit=limit)
 
 
-@app.get("/api/telemetry/snapshot", response_model=TelemetrySnapshotResponse)
 async def telemetry_snapshot(
     workspace_root: str | None = Query(default=None),
     route_quality_limit: int = Query(default=200, ge=1, le=500),
@@ -3150,7 +3283,6 @@ async def telemetry_snapshot(
     )
 
 
-@app.post("/api/telemetry/snapshot/refresh", response_model=TelemetrySnapshotResponse)
 async def refresh_telemetry_snapshot(
     workspace_root: str | None = Query(default=None),
     route_quality_limit: int = Query(default=200, ge=1, le=500),
@@ -3190,7 +3322,6 @@ async def refresh_telemetry_snapshot(
     )
 
 
-@app.get("/api/telemetry/policy-diff", response_model=RoutePolicyDiffResponse)
 async def route_policy_diff(
     workspace_root: str | None = Query(default=None),
     limit: int = Query(default=200, ge=1, le=500),
@@ -3208,7 +3339,44 @@ async def route_policy_diff(
     )
 
 
-@app.get("/api/adaptive-intelligence", response_model=AdaptiveIntelligenceSnapshot)
+register_telemetry_routes(
+    app,
+    telemetry=lambda workspace_root, limit: telemetry(workspace_root, limit),
+    route_quality=lambda workspace_root, limit: route_quality(workspace_root, limit),
+    route_health=lambda workspace_root, limit: route_health(workspace_root, limit),
+    fallback_inspector=lambda workspace_root, limit: fallback_inspector(workspace_root, limit),
+    feedback_telemetry=lambda workspace_root, limit: feedback_telemetry(workspace_root, limit),
+    telemetry_snapshot=lambda workspace_root, route_quality_limit, fallback_limit, feedback_limit, stale_after_seconds, refresh, prune, max_snapshots, retention_days: telemetry_snapshot(
+        workspace_root,
+        route_quality_limit,
+        fallback_limit,
+        feedback_limit,
+        stale_after_seconds,
+        refresh,
+        prune,
+        max_snapshots,
+        retention_days,
+    ),
+    refresh_telemetry_snapshot=lambda workspace_root, route_quality_limit, fallback_limit, feedback_limit, stale_after_seconds, prune, max_snapshots, retention_days: refresh_telemetry_snapshot(
+        workspace_root,
+        route_quality_limit,
+        fallback_limit,
+        feedback_limit,
+        stale_after_seconds,
+        prune,
+        max_snapshots,
+        retention_days,
+    ),
+    route_policy_diff=lambda workspace_root, limit, use_snapshot, stale_after_seconds, min_attempts: route_policy_diff(
+        workspace_root,
+        limit,
+        use_snapshot,
+        stale_after_seconds,
+        min_attempts,
+    ),
+)
+
+
 async def get_adaptive_intelligence(
     workspace_root: str | None = Query(default=None),
     limit: int = Query(default=200, ge=1, le=1000),
@@ -3223,7 +3391,6 @@ async def get_adaptive_intelligence(
     )
 
 
-@app.post("/api/adaptive-intelligence/refresh", response_model=AdaptiveIntelligenceSnapshot)
 async def refresh_adaptive_intelligence(
     request: AdaptiveIntelligenceRefreshRequest,
 ) -> AdaptiveIntelligenceSnapshot:
@@ -3236,7 +3403,6 @@ async def refresh_adaptive_intelligence(
     )
 
 
-@app.get("/api/adaptive-intelligence/outcomes", response_model=list[TaskOutcomeRecord])
 async def adaptive_task_outcomes(
     workspace_root: str | None = Query(default=None),
     limit: int = Query(default=200, ge=1, le=1000),
@@ -3248,19 +3414,16 @@ async def adaptive_task_outcomes(
     return agent.store.adaptive_task_outcomes(project_root=root, limit=limit)
 
 
-@app.get("/api/adaptive-intelligence/policies", response_model=list[IntelligencePolicyProfile])
 async def adaptive_policy_profiles() -> list[IntelligencePolicyProfile]:
     return adaptive_intelligence.ensure_profiles(agent.store)
 
 
-@app.post("/api/adaptive-intelligence/policies", response_model=IntelligencePolicyProfile)
 async def upsert_adaptive_policy_profile(
     request: AdaptivePolicyProfileUpdateRequest,
 ) -> IntelligencePolicyProfile:
     return adaptive_intelligence.upsert_profile(agent.store, request)
 
 
-@app.post("/api/adaptive-intelligence/policies/{profile_id}/activate", response_model=AdaptiveIntelligenceSnapshot)
 async def activate_adaptive_policy_profile(
     profile_id: str,
     request: TaskActionRequest | None = None,
@@ -3272,7 +3435,6 @@ async def activate_adaptive_policy_profile(
     return adaptive_intelligence.snapshot(agent.store, project_root=root, refresh_outcomes=False)
 
 
-@app.post("/api/adaptive-intelligence/policies/rollback", response_model=AdaptiveIntelligenceSnapshot)
 async def rollback_adaptive_policy_profile(
     request: AdaptivePolicyRollbackRequest,
 ) -> AdaptiveIntelligenceSnapshot:
@@ -3285,7 +3447,6 @@ async def rollback_adaptive_policy_profile(
     return adaptive_intelligence.snapshot(agent.store, project_root=root, refresh_outcomes=False)
 
 
-@app.post("/api/adaptive-intelligence/benchmarks/run", response_model=list[AdaptiveBenchmarkReport])
 async def run_adaptive_benchmarks(
     request: AdaptiveBenchmarkRunRequest,
 ) -> list[AdaptiveBenchmarkReport]:
@@ -3298,7 +3459,6 @@ async def run_adaptive_benchmarks(
     )
 
 
-@app.get("/api/adaptive-intelligence/benchmarks", response_model=list[AdaptiveBenchmarkReport])
 async def list_adaptive_benchmarks(
     workspace_root: str | None = Query(default=None),
     limit: int = Query(default=20, ge=1, le=100),
@@ -3307,7 +3467,6 @@ async def list_adaptive_benchmarks(
     return agent.store.adaptive_benchmark_reports(project_root=root, limit=limit)
 
 
-@app.post("/api/adaptive-intelligence/replay", response_model=list[EvaluationReplayResult])
 async def replay_adaptive_tasks(
     request: AdaptiveReplayRequest,
 ) -> list[EvaluationReplayResult]:
@@ -3315,7 +3474,6 @@ async def replay_adaptive_tasks(
     return adaptive_intelligence.replay(agent.store, project_root=root, request=request)
 
 
-@app.get("/api/adaptive-intelligence/replay", response_model=list[EvaluationReplayResult])
 async def list_adaptive_replay_results(
     workspace_root: str | None = Query(default=None),
     limit: int = Query(default=20, ge=1, le=100),
@@ -3324,7 +3482,34 @@ async def list_adaptive_replay_results(
     return agent.store.adaptive_replay_results(project_root=root, limit=limit)
 
 
-@app.get("/api/productization", response_model=ProductizationSnapshot)
+register_adaptive_intelligence_routes(
+    app,
+    get_adaptive_intelligence=lambda workspace_root, limit, refresh: get_adaptive_intelligence(
+        workspace_root,
+        limit,
+        refresh,
+    ),
+    refresh_adaptive_intelligence=lambda request: refresh_adaptive_intelligence(request),
+    adaptive_task_outcomes=lambda workspace_root, limit, refresh: adaptive_task_outcomes(
+        workspace_root,
+        limit,
+        refresh,
+    ),
+    adaptive_policy_profiles=lambda: adaptive_policy_profiles(),
+    upsert_adaptive_policy_profile=lambda request: upsert_adaptive_policy_profile(request),
+    activate_adaptive_policy_profile=lambda profile_id, request=None, workspace_root=None: activate_adaptive_policy_profile(
+        profile_id,
+        request,
+        workspace_root,
+    ),
+    rollback_adaptive_policy_profile=lambda request: rollback_adaptive_policy_profile(request),
+    run_adaptive_benchmarks=lambda request: run_adaptive_benchmarks(request),
+    list_adaptive_benchmarks=lambda workspace_root, limit: list_adaptive_benchmarks(workspace_root, limit),
+    replay_adaptive_tasks=lambda request: replay_adaptive_tasks(request),
+    list_adaptive_replay_results=lambda workspace_root, limit: list_adaptive_replay_results(workspace_root, limit),
+)
+
+
 async def productization_snapshot(
     workspace_root: str | None = Query(default=None),
     refresh_metrics: bool = Query(default=False),
@@ -3333,35 +3518,29 @@ async def productization_snapshot(
     return _productization_snapshot(root, refresh_metrics=refresh_metrics)
 
 
-@app.post("/api/productization/refresh", response_model=ProductizationSnapshot)
 async def refresh_productization_snapshot(request: ProductizationRefreshRequest) -> ProductizationSnapshot:
     root = _resolve_workspace_or_400(request.workspace_root)
     return _productization_snapshot(root, refresh_metrics=request.refresh_metrics)
 
 
-@app.get("/api/productization/stable-apis", response_model=list[StableApiContract])
 async def productization_stable_apis() -> list[StableApiContract]:
     return productization.stable_api_contracts()
 
 
-@app.get("/api/productization/recovery", response_model=RuntimeRecoverySnapshot)
 async def productization_recovery(workspace_root: str | None = Query(default=None)) -> RuntimeRecoverySnapshot:
     root = _resolve_workspace_or_400(workspace_root)
     return _productization_snapshot(root, refresh_metrics=False).recovery
 
 
-@app.get("/api/productization/reliability", response_model=list[ReliabilityMetric])
 async def productization_reliability(workspace_root: str | None = Query(default=None)) -> list[ReliabilityMetric]:
     root = _resolve_workspace_or_400(workspace_root)
     return _productization_snapshot(root, refresh_metrics=False).metrics
 
 
-@app.get("/api/productization/plugins", response_model=list[PluginManifest])
 async def list_productization_plugins(include_disabled: bool = Query(default=True)) -> list[PluginManifest]:
     return agent.store.plugin_manifests(include_disabled=include_disabled)
 
 
-@app.post("/api/productization/plugins/validate", response_model=PluginValidationResult)
 async def validate_productization_plugin(request: PluginValidationRequest) -> PluginValidationResult:
     return productization.validate_plugin(
         request,
@@ -3369,7 +3548,6 @@ async def validate_productization_plugin(request: PluginValidationRequest) -> Pl
     )
 
 
-@app.post("/api/productization/plugins/register", response_model=PluginManifest)
 async def register_productization_plugin(request: PluginRegistrationRequest) -> PluginManifest:
     candidate = request.manifest.model_copy(update={"enabled": request.enable, "trusted": request.trust})
     validation = productization.validate_plugin(
@@ -3394,7 +3572,6 @@ async def register_productization_plugin(request: PluginRegistrationRequest) -> 
     return saved
 
 
-@app.post("/api/productization/plugins/{plugin_id}/enable", response_model=PluginManifest)
 async def enable_productization_plugin(plugin_id: str, request: PluginActionRequest | None = None) -> PluginManifest:
     try:
         current = agent.store.plugin_manifest(plugin_id)
@@ -3418,7 +3595,6 @@ async def enable_productization_plugin(plugin_id: str, request: PluginActionRequ
     return saved
 
 
-@app.post("/api/productization/plugins/{plugin_id}/disable", response_model=PluginManifest)
 async def disable_productization_plugin(plugin_id: str, request: PluginActionRequest | None = None) -> PluginManifest:
     try:
         saved = agent.store.update_plugin_state(plugin_id, enabled=False, reason=request.reason if request else "")
@@ -3435,7 +3611,6 @@ async def disable_productization_plugin(plugin_id: str, request: PluginActionReq
     return saved
 
 
-@app.post("/api/productization/plugins/{plugin_id}/trust", response_model=PluginManifest)
 async def trust_productization_plugin(plugin_id: str, request: PluginActionRequest | None = None) -> PluginManifest:
     try:
         current = agent.store.plugin_manifest(plugin_id)
@@ -3459,12 +3634,149 @@ async def trust_productization_plugin(plugin_id: str, request: PluginActionReque
     return saved
 
 
-@app.get("/api/productization/enterprise-policy", response_model=EnterprisePolicyProfile)
+def _plugin_manifest_snapshot(manifest: PluginManifest) -> dict[str, Any]:
+    payload = manifest.model_dump(mode="json")
+    metadata = dict(payload.get("metadata") or {})
+    metadata.pop("previous_manifest", None)
+    payload["metadata"] = metadata
+    return payload
+
+
+async def update_productization_plugin(plugin_id: str, request: PluginLifecycleActionRequest) -> PluginLifecycleActionResponse:
+    if request.manifest is None:
+        raise HTTPException(status_code=400, detail="plugin update requires a replacement manifest")
+    try:
+        current = agent.store.plugin_manifest(plugin_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="plugin not found") from exc
+    if request.manifest.id != current.id:
+        raise HTTPException(status_code=400, detail="replacement plugin manifest id must match the installed plugin")
+    metadata = dict(request.manifest.metadata or {})
+    metadata.update(
+        {
+            "previous_manifest": _plugin_manifest_snapshot(current),
+            "lifecycle_status": "updated",
+            "lifecycle_updated_at": utc_now(),
+            "latest_lifecycle_reason": request.reason,
+        }
+    )
+    candidate = request.manifest.model_copy(
+        update={
+            "created_at": current.created_at,
+            "enabled": current.enabled if request.enable is None else bool(request.enable),
+            "trusted": current.trusted if request.trust is None else bool(request.trust),
+            "metadata": metadata,
+        }
+    )
+    validation = productization.validate_plugin(
+        candidate,
+        policy=productization.ensure_enterprise_policy(agent.store),
+    )
+    if not validation.valid or validation.normalized_manifest is None:
+        raise HTTPException(status_code=400, detail="; ".join(validation.errors) or "plugin manifest update is invalid")
+    saved = agent.store.upsert_plugin_manifest(validation.normalized_manifest)
+    audit = agent.store.record_worker_audit_event(
+        distributed_runtime.audit_event(
+            event_type="plugin.updated",
+            detail=f"Plugin {saved.id} updated from {current.version} to {saved.version}.",
+            metadata={"plugin_id": saved.id, "from_version": current.version, "to_version": saved.version, "reason": request.reason},
+        )
+    )
+    return PluginLifecycleActionResponse(
+        action="update",
+        status="updated",
+        plugin=saved,
+        previous_manifest=current,
+        audit_event_id=audit.id,
+        notes=["Previous manifest was stored for rollback before the update was saved."],
+    )
+
+
+async def rollback_productization_plugin(plugin_id: str, request: PluginLifecycleActionRequest | None = None) -> PluginLifecycleActionResponse:
+    reason = request.reason if request else ""
+    try:
+        current = agent.store.plugin_manifest(plugin_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="plugin not found") from exc
+    previous_payload = dict(current.metadata or {}).get("previous_manifest")
+    if not isinstance(previous_payload, dict):
+        raise HTTPException(status_code=400, detail="plugin rollback requires a stored previous manifest")
+    previous = PluginManifest.model_validate(previous_payload)
+    metadata = dict(previous.metadata or {})
+    metadata.update(
+        {
+            "previous_manifest": _plugin_manifest_snapshot(current),
+            "lifecycle_status": "rolled_back",
+            "lifecycle_updated_at": utc_now(),
+            "latest_lifecycle_reason": reason,
+        }
+    )
+    candidate = previous.model_copy(update={"enabled": current.enabled, "trusted": current.trusted, "metadata": metadata})
+    validation = productization.validate_plugin(
+        candidate,
+        policy=productization.ensure_enterprise_policy(agent.store),
+    )
+    if not validation.valid or validation.normalized_manifest is None:
+        raise HTTPException(status_code=400, detail="; ".join(validation.errors) or "stored rollback manifest is invalid")
+    saved = agent.store.upsert_plugin_manifest(validation.normalized_manifest)
+    audit = agent.store.record_worker_audit_event(
+        distributed_runtime.audit_event(
+            event_type="plugin.rolled_back",
+            status="warning",
+            detail=f"Plugin {saved.id} rolled back from {current.version} to {saved.version}.",
+            metadata={"plugin_id": saved.id, "from_version": current.version, "to_version": saved.version, "reason": reason},
+        )
+    )
+    return PluginLifecycleActionResponse(
+        action="rollback",
+        status="rolled_back",
+        plugin=saved,
+        previous_manifest=current,
+        audit_event_id=audit.id,
+        notes=["Rollback restored the stored previous manifest and kept current trust/enable state."],
+    )
+
+
+async def uninstall_productization_plugin(plugin_id: str, request: PluginLifecycleActionRequest | None = None) -> PluginLifecycleActionResponse:
+    reason = request.reason if request else ""
+    try:
+        current = agent.store.plugin_manifest(plugin_id)
+        saved = agent.store.update_plugin_state(
+            plugin_id,
+            enabled=False,
+            reason=reason,
+            metadata_updates={
+                "previous_manifest": _plugin_manifest_snapshot(current),
+                "lifecycle_status": "uninstalled",
+                "uninstall_mode": "safe_disable",
+                "uninstalled_at": utc_now(),
+                "latest_lifecycle_reason": reason,
+            },
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="plugin not found") from exc
+    audit = agent.store.record_worker_audit_event(
+        distributed_runtime.audit_event(
+            event_type="plugin.uninstalled",
+            status="warning",
+            detail=f"Plugin {saved.id} safe-uninstalled by disabling runtime visibility.",
+            metadata={"plugin_id": saved.id, "reason": reason, "uninstall_mode": "safe_disable"},
+        )
+    )
+    return PluginLifecycleActionResponse(
+        action="uninstall",
+        status="uninstalled",
+        plugin=saved,
+        previous_manifest=current,
+        audit_event_id=audit.id,
+        notes=["Safe uninstall disables the plugin and keeps the manifest for rollback/audit review."],
+    )
+
+
 async def get_enterprise_policy() -> EnterprisePolicyProfile:
     return productization.ensure_enterprise_policy(agent.store)
 
 
-@app.put("/api/productization/enterprise-policy", response_model=EnterprisePolicyProfile)
 async def update_enterprise_policy(request: EnterprisePolicyUpdateRequest) -> EnterprisePolicyProfile:
     saved = agent.store.save_enterprise_policy(request.profile)
     agent.store.record_worker_audit_event(
@@ -3482,6 +3794,30 @@ async def update_enterprise_policy(request: EnterprisePolicyUpdateRequest) -> En
     return saved
 
 
+register_productization_routes(
+    app,
+    productization_snapshot=lambda workspace_root, refresh_metrics: productization_snapshot(
+        workspace_root,
+        refresh_metrics,
+    ),
+    refresh_productization_snapshot=lambda request: refresh_productization_snapshot(request),
+    productization_stable_apis=lambda: productization_stable_apis(),
+    productization_recovery=lambda workspace_root: productization_recovery(workspace_root),
+    productization_reliability=lambda workspace_root: productization_reliability(workspace_root),
+    list_productization_plugins=lambda include_disabled: list_productization_plugins(include_disabled),
+    validate_productization_plugin=lambda request: validate_productization_plugin(request),
+    register_productization_plugin=lambda request: register_productization_plugin(request),
+    enable_productization_plugin=lambda plugin_id, request=None: enable_productization_plugin(plugin_id, request),
+    disable_productization_plugin=lambda plugin_id, request=None: disable_productization_plugin(plugin_id, request),
+    trust_productization_plugin=lambda plugin_id, request=None: trust_productization_plugin(plugin_id, request),
+    update_productization_plugin=lambda plugin_id, request: update_productization_plugin(plugin_id, request),
+    rollback_productization_plugin=lambda plugin_id, request=None: rollback_productization_plugin(plugin_id, request),
+    uninstall_productization_plugin=lambda plugin_id, request=None: uninstall_productization_plugin(plugin_id, request),
+    get_enterprise_policy=lambda: get_enterprise_policy(),
+    update_enterprise_policy=lambda request: update_enterprise_policy(request),
+)
+
+
 def _record_ecosystem_audit(action: str, subject_id: str, detail: str, *, status: str = "ok", metadata: dict[str, Any] | None = None) -> EcosystemAuditEvent:
     return agent.store.record_ecosystem_audit_event(
         EcosystemAuditEvent(
@@ -3496,7 +3832,6 @@ def _record_ecosystem_audit(action: str, subject_id: str, detail: str, *, status
     )
 
 
-@app.get("/api/ecosystem", response_model=EcosystemSnapshot)
 async def ecosystem_snapshot(
     workspace_root: str | None = Query(default=None),
     rebuild_graph: bool = Query(default=False),
@@ -3506,23 +3841,19 @@ async def ecosystem_snapshot(
     return _ecosystem_snapshot(root, rebuild_graph=rebuild_graph, include_search_query=query)
 
 
-@app.post("/api/ecosystem/refresh", response_model=EcosystemSnapshot)
 async def refresh_ecosystem_snapshot(request: EcosystemRefreshRequest) -> EcosystemSnapshot:
     root = _resolve_workspace_or_400(request.workspace_root)
     return _ecosystem_snapshot(root, rebuild_graph=request.rebuild_graph, include_search_query=request.include_search_query)
 
 
-@app.get("/api/ecosystem/marketplace", response_model=list[EcosystemPackageManifest])
 async def ecosystem_marketplace_catalog() -> list[EcosystemPackageManifest]:
     return ecosystem.marketplace_catalog()
 
 
-@app.get("/api/ecosystem/packages", response_model=list[EcosystemPackageManifest])
 async def list_ecosystem_packages(include_disabled: bool = Query(default=True)) -> list[EcosystemPackageManifest]:
     return agent.store.ecosystem_packages(include_disabled=include_disabled)
 
 
-@app.post("/api/ecosystem/packages/validate", response_model=EcosystemPackageValidationResult)
 async def validate_ecosystem_package(request: EcosystemPackageValidationRequest) -> EcosystemPackageValidationResult:
     return ecosystem.validate_package(
         request,
@@ -3530,7 +3861,6 @@ async def validate_ecosystem_package(request: EcosystemPackageValidationRequest)
     )
 
 
-@app.post("/api/ecosystem/packages/register", response_model=EcosystemPackageManifest)
 async def register_ecosystem_package(request: EcosystemPackageRegistrationRequest) -> EcosystemPackageManifest:
     trust_level = request.trust_level or request.manifest.trust_level
     candidate = request.manifest.model_copy(update={"enabled": request.enable, "trust_level": trust_level})
@@ -3550,7 +3880,6 @@ async def register_ecosystem_package(request: EcosystemPackageRegistrationReques
     return saved
 
 
-@app.post("/api/ecosystem/packages/{package_id}/enable", response_model=EcosystemPackageManifest)
 async def enable_ecosystem_package(package_id: str, request: EcosystemPackageActionRequest | None = None) -> EcosystemPackageManifest:
     try:
         current = agent.store.ecosystem_package(package_id)
@@ -3568,7 +3897,6 @@ async def enable_ecosystem_package(package_id: str, request: EcosystemPackageAct
     return saved
 
 
-@app.post("/api/ecosystem/packages/{package_id}/disable", response_model=EcosystemPackageManifest)
 async def disable_ecosystem_package(package_id: str, request: EcosystemPackageActionRequest | None = None) -> EcosystemPackageManifest:
     try:
         saved = agent.store.update_ecosystem_package_state(package_id, enabled=False, reason=request.reason if request else "")
@@ -3584,7 +3912,6 @@ async def disable_ecosystem_package(package_id: str, request: EcosystemPackageAc
     return saved
 
 
-@app.post("/api/ecosystem/packages/{package_id}/trust", response_model=EcosystemPackageManifest)
 async def trust_ecosystem_package(package_id: str, request: EcosystemPackageActionRequest | None = None) -> EcosystemPackageManifest:
     try:
         current = agent.store.ecosystem_package(package_id)
@@ -3608,13 +3935,149 @@ async def trust_ecosystem_package(package_id: str, request: EcosystemPackageActi
     return saved
 
 
-@app.get("/api/ecosystem/workflows", response_model=list[EcosystemWorkflowDefinition])
+def _ecosystem_package_snapshot(manifest: EcosystemPackageManifest) -> dict[str, Any]:
+    payload = manifest.model_dump(mode="json")
+    metadata = dict(payload.get("metadata") or {})
+    metadata.pop("previous_manifest", None)
+    payload["metadata"] = metadata
+    return payload
+
+
+async def update_ecosystem_package(package_id: str, request: EcosystemPackageLifecycleRequest) -> EcosystemPackageLifecycleResponse:
+    if request.manifest is None:
+        raise HTTPException(status_code=400, detail="ecosystem package update requires a replacement manifest")
+    try:
+        current = agent.store.ecosystem_package(package_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="ecosystem package not found") from exc
+    if request.manifest.id != current.id:
+        raise HTTPException(status_code=400, detail="replacement package manifest id must match the installed package")
+    trust_level = request.trust_level or current.trust_level
+    metadata = dict(request.manifest.metadata or {})
+    metadata.update(
+        {
+            "previous_manifest": _ecosystem_package_snapshot(current),
+            "lifecycle_status": "updated",
+            "lifecycle_updated_at": utc_now(),
+            "latest_lifecycle_reason": request.reason,
+        }
+    )
+    candidate = request.manifest.model_copy(
+        update={
+            "enabled": current.enabled if request.enable is None else bool(request.enable),
+            "trust_level": trust_level,
+            "installed": True,
+            "installed_at": current.installed_at,
+            "metadata": metadata,
+        }
+    )
+    validation = ecosystem.validate_package(
+        candidate,
+        policy=agent.store.active_organization_policy() or ecosystem.default_organization_policy(),
+    )
+    if not validation.valid or validation.normalized_manifest is None:
+        raise HTTPException(status_code=400, detail="; ".join(validation.errors) or "ecosystem package update is invalid")
+    saved = agent.store.upsert_ecosystem_package(validation.normalized_manifest)
+    audit = _record_ecosystem_audit(
+        "package.updated",
+        saved.id,
+        f"Ecosystem package {saved.id} updated from {current.version} to {saved.version}.",
+        metadata={"from_version": current.version, "to_version": saved.version, "reason": request.reason},
+    )
+    return EcosystemPackageLifecycleResponse(
+        action="update",
+        status="updated",
+        package=saved,
+        previous_manifest=current,
+        audit_event_id=audit.id,
+        notes=["Previous package manifest was stored for rollback before the update was saved."],
+    )
+
+
+async def rollback_ecosystem_package(package_id: str, request: EcosystemPackageLifecycleRequest | None = None) -> EcosystemPackageLifecycleResponse:
+    reason = request.reason if request else ""
+    try:
+        current = agent.store.ecosystem_package(package_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="ecosystem package not found") from exc
+    previous_payload = dict(current.metadata or {}).get("previous_manifest")
+    if not isinstance(previous_payload, dict):
+        raise HTTPException(status_code=400, detail="ecosystem package rollback requires a stored previous manifest")
+    previous = EcosystemPackageManifest.model_validate(previous_payload)
+    metadata = dict(previous.metadata or {})
+    metadata.update(
+        {
+            "previous_manifest": _ecosystem_package_snapshot(current),
+            "lifecycle_status": "rolled_back",
+            "lifecycle_updated_at": utc_now(),
+            "latest_lifecycle_reason": reason,
+        }
+    )
+    candidate = previous.model_copy(update={"enabled": current.enabled, "trust_level": current.trust_level, "metadata": metadata})
+    validation = ecosystem.validate_package(
+        candidate,
+        policy=agent.store.active_organization_policy() or ecosystem.default_organization_policy(),
+    )
+    if not validation.valid or validation.normalized_manifest is None:
+        raise HTTPException(status_code=400, detail="; ".join(validation.errors) or "stored rollback package manifest is invalid")
+    saved = agent.store.upsert_ecosystem_package(validation.normalized_manifest)
+    audit = _record_ecosystem_audit(
+        "package.rolled_back",
+        saved.id,
+        f"Ecosystem package {saved.id} rolled back from {current.version} to {saved.version}.",
+        status="warning",
+        metadata={"from_version": current.version, "to_version": saved.version, "reason": reason},
+    )
+    return EcosystemPackageLifecycleResponse(
+        action="rollback",
+        status="rolled_back",
+        package=saved,
+        previous_manifest=current,
+        audit_event_id=audit.id,
+        notes=["Rollback restored the stored previous manifest and kept current trust/enable state."],
+    )
+
+
+async def uninstall_ecosystem_package(package_id: str, request: EcosystemPackageLifecycleRequest | None = None) -> EcosystemPackageLifecycleResponse:
+    reason = request.reason if request else ""
+    try:
+        current = agent.store.ecosystem_package(package_id)
+        saved = agent.store.update_ecosystem_package_state(
+            package_id,
+            enabled=False,
+            reason=reason,
+            metadata_updates={
+                "previous_manifest": _ecosystem_package_snapshot(current),
+                "lifecycle_status": "uninstalled",
+                "uninstall_mode": "safe_disable",
+                "uninstalled_at": utc_now(),
+                "latest_lifecycle_reason": reason,
+            },
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="ecosystem package not found") from exc
+    audit = _record_ecosystem_audit(
+        "package.uninstalled",
+        saved.id,
+        f"Ecosystem package {saved.id} safe-uninstalled by disabling runtime visibility.",
+        status="warning",
+        metadata={"reason": reason, "uninstall_mode": "safe_disable"},
+    )
+    return EcosystemPackageLifecycleResponse(
+        action="uninstall",
+        status="uninstalled",
+        package=saved,
+        previous_manifest=current,
+        audit_event_id=audit.id,
+        notes=["Safe uninstall disables the package and keeps the manifest for rollback/audit review."],
+    )
+
+
 async def list_ecosystem_workflows(include_disabled: bool = Query(default=True)) -> list[EcosystemWorkflowDefinition]:
     ecosystem.ensure_baseline(agent.store)
     return agent.store.ecosystem_workflows(include_disabled=include_disabled)
 
 
-@app.post("/api/ecosystem/workflows/register", response_model=EcosystemWorkflowDefinition)
 async def register_ecosystem_workflow(workflow: EcosystemWorkflowDefinition) -> EcosystemWorkflowDefinition:
     if workflow.api_version != ECOSYSTEM_API_VERSION:
         raise HTTPException(status_code=400, detail="workflow API version is not compatible with this Aegis runtime")
@@ -3623,7 +4086,6 @@ async def register_ecosystem_workflow(workflow: EcosystemWorkflowDefinition) -> 
     return saved
 
 
-@app.post("/api/ecosystem/workflows/{workflow_id}/run", response_model=WorkflowRunResponse)
 async def run_ecosystem_workflow(workflow_id: str, request: WorkflowRunRequest) -> WorkflowRunResponse:
     root = _resolve_workspace_or_400(request.workspace_root)
     ecosystem.ensure_baseline(agent.store)
@@ -3637,7 +4099,6 @@ async def run_ecosystem_workflow(workflow_id: str, request: WorkflowRunRequest) 
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@app.get("/api/ecosystem/shared-profiles", response_model=list[SharedIntelligenceProfile])
 async def list_shared_intelligence_profiles(
     kind: str | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
@@ -3645,7 +4106,6 @@ async def list_shared_intelligence_profiles(
     return agent.store.shared_intelligence_profiles(kind=kind, limit=limit)
 
 
-@app.post("/api/ecosystem/shared-profiles/import", response_model=SharedIntelligenceProfile)
 async def import_shared_intelligence_profile(request: SharedIntelligenceProfileImportRequest) -> SharedIntelligenceProfile:
     saved = agent.store.upsert_shared_intelligence_profile(request.profile)
     _record_ecosystem_audit(
@@ -3657,7 +4117,6 @@ async def import_shared_intelligence_profile(request: SharedIntelligenceProfileI
     return saved
 
 
-@app.get("/api/ecosystem/shared-profiles/{profile_id}/export", response_model=SharedIntelligenceProfileExportResponse)
 async def export_shared_intelligence_profile(profile_id: str) -> SharedIntelligenceProfileExportResponse:
     try:
         profile = agent.store.shared_intelligence_profile(profile_id)
@@ -3666,7 +4125,6 @@ async def export_shared_intelligence_profile(profile_id: str) -> SharedIntellige
     return SharedIntelligenceProfileExportResponse(profile=profile, checksum=profile.checksum)
 
 
-@app.post("/api/ecosystem/shared-profiles/export-current", response_model=SharedIntelligenceProfileExportResponse)
 async def export_current_project_intelligence(workspace_root: str | None = Query(default=None)) -> SharedIntelligenceProfileExportResponse:
     root = _resolve_workspace_or_400(workspace_root)
     profile = ecosystem.shared_profile_from_project(project_root=root, project_intelligence=_project_intelligence_snapshot(root))
@@ -3675,13 +4133,11 @@ async def export_current_project_intelligence(workspace_root: str | None = Query
     return SharedIntelligenceProfileExportResponse(profile=saved, checksum=saved.checksum)
 
 
-@app.get("/api/ecosystem/org-policy", response_model=OrganizationPolicyProfile)
 async def get_organization_policy() -> OrganizationPolicyProfile:
     ecosystem.ensure_baseline(agent.store)
     return agent.store.active_organization_policy() or ecosystem.default_organization_policy()
 
 
-@app.put("/api/ecosystem/org-policy", response_model=OrganizationPolicyProfile)
 async def update_organization_policy(request: OrganizationPolicyUpdateRequest) -> OrganizationPolicyProfile:
     saved = agent.store.save_organization_policy(request.profile)
     _record_ecosystem_audit(
@@ -3693,7 +4149,6 @@ async def update_organization_policy(request: OrganizationPolicyUpdateRequest) -
     return saved
 
 
-@app.get("/api/ecosystem/knowledge-graph", response_model=KnowledgeGraphSnapshot)
 async def ecosystem_knowledge_graph(
     workspace_root: str | None = Query(default=None),
     rebuild: bool = Query(default=False),
@@ -3706,7 +4161,6 @@ async def ecosystem_knowledge_graph(
     return _ecosystem_snapshot(root, rebuild_graph=rebuild).knowledge_graph
 
 
-@app.post("/api/ecosystem/search", response_model=EcosystemSearchResponse)
 async def ecosystem_search(request: EcosystemSearchRequest) -> EcosystemSearchResponse:
     root = _resolve_workspace_or_400(request.workspace_root)
     graph = agent.store.knowledge_graph_snapshot(project_root=root)
@@ -3715,7 +4169,6 @@ async def ecosystem_search(request: EcosystemSearchRequest) -> EcosystemSearchRe
     return ecosystem.search(request, store=agent.store, project_root=root, graph=graph)
 
 
-@app.post("/api/ecosystem/reproducibility", response_model=ReproducibilityRecord)
 async def create_reproducibility_record(request: ReproducibilityRequest) -> ReproducibilityRecord:
     root = _resolve_workspace_or_400(request.workspace_root)
     record = ecosystem.create_reproducibility_record(
@@ -3733,7 +4186,6 @@ async def create_reproducibility_record(request: ReproducibilityRequest) -> Repr
     return record
 
 
-@app.get("/api/ecosystem/reproducibility", response_model=list[ReproducibilityRecord])
 async def list_reproducibility_records(
     workspace_root: str | None = Query(default=None),
     limit: int = Query(default=20, ge=1, le=100),
@@ -3742,18 +4194,50 @@ async def list_reproducibility_records(
     return agent.store.reproducibility_records(project_root=root, limit=limit)
 
 
-@app.get("/api/ecosystem/audit", response_model=list[EcosystemAuditEvent])
 async def list_ecosystem_audit_events(limit: int = Query(default=50, ge=1, le=200)) -> list[EcosystemAuditEvent]:
     return agent.store.ecosystem_audit_events(limit=limit)
 
 
-@app.get("/api/autonomous-engineering", response_model=AutonomousEngineeringSnapshot)
+register_ecosystem_routes(
+    app,
+    ecosystem_snapshot=lambda workspace_root, rebuild_graph, query: ecosystem_snapshot(
+        workspace_root,
+        rebuild_graph,
+        query,
+    ),
+    refresh_ecosystem_snapshot=lambda request: refresh_ecosystem_snapshot(request),
+    ecosystem_marketplace_catalog=lambda: ecosystem_marketplace_catalog(),
+    list_ecosystem_packages=lambda include_disabled: list_ecosystem_packages(include_disabled),
+    validate_ecosystem_package=lambda request: validate_ecosystem_package(request),
+    register_ecosystem_package=lambda request: register_ecosystem_package(request),
+    enable_ecosystem_package=lambda package_id, request=None: enable_ecosystem_package(package_id, request),
+    disable_ecosystem_package=lambda package_id, request=None: disable_ecosystem_package(package_id, request),
+    trust_ecosystem_package=lambda package_id, request=None: trust_ecosystem_package(package_id, request),
+    update_ecosystem_package=lambda package_id, request: update_ecosystem_package(package_id, request),
+    rollback_ecosystem_package=lambda package_id, request=None: rollback_ecosystem_package(package_id, request),
+    uninstall_ecosystem_package=lambda package_id, request=None: uninstall_ecosystem_package(package_id, request),
+    list_ecosystem_workflows=lambda include_disabled: list_ecosystem_workflows(include_disabled),
+    register_ecosystem_workflow=lambda workflow: register_ecosystem_workflow(workflow),
+    run_ecosystem_workflow=lambda workflow_id, request: run_ecosystem_workflow(workflow_id, request),
+    list_shared_intelligence_profiles=lambda kind, limit: list_shared_intelligence_profiles(kind, limit),
+    import_shared_intelligence_profile=lambda request: import_shared_intelligence_profile(request),
+    export_shared_intelligence_profile=lambda profile_id: export_shared_intelligence_profile(profile_id),
+    export_current_project_intelligence=lambda workspace_root: export_current_project_intelligence(workspace_root),
+    get_organization_policy=lambda: get_organization_policy(),
+    update_organization_policy=lambda request: update_organization_policy(request),
+    ecosystem_knowledge_graph=lambda workspace_root, rebuild: ecosystem_knowledge_graph(workspace_root, rebuild),
+    ecosystem_search=lambda request: ecosystem_search(request),
+    create_reproducibility_record=lambda request: create_reproducibility_record(request),
+    list_reproducibility_records=lambda workspace_root, limit: list_reproducibility_records(workspace_root, limit),
+    list_ecosystem_audit_events=lambda limit: list_ecosystem_audit_events(limit),
+)
+
+
 async def autonomous_engineering_snapshot(workspace_root: str | None = Query(default=None)) -> AutonomousEngineeringSnapshot:
     root = _resolve_workspace_or_400(workspace_root)
     return _autonomous_snapshot(root)
 
 
-@app.get("/api/autonomous-engineering/objectives", response_model=list[AutonomousObjective])
 async def list_autonomous_objectives(
     workspace_root: str | None = Query(default=None),
     include_completed: bool = Query(default=True),
@@ -3763,7 +4247,6 @@ async def list_autonomous_objectives(
     return agent.store.autonomous_objectives(project_root=root, include_completed=include_completed, limit=limit)
 
 
-@app.post("/api/autonomous-engineering/objectives", response_model=AutonomousObjectiveDetail)
 async def create_autonomous_objective(request: AutonomousObjectiveCreateRequest) -> AutonomousObjectiveDetail:
     root = _resolve_workspace_or_400(request.workspace_root)
     detail = autonomous_engineering.create_objective(
@@ -3778,10 +4261,44 @@ async def create_autonomous_objective(request: AutonomousObjectiveCreateRequest)
         f"Autonomous objective {detail.objective.title} created.",
         metadata={"dry_run": request.dry_run, "phase_count": len(detail.phases), "gate_count": len(detail.approval_gates)},
     )
+    core_result = await core_runtime_client.create_engineering_execution(
+        root,
+        goal=request.user_goal,
+        mode="safe_assisted",
+        constraints=[
+            "Preserve Website autonomous-engineering API compatibility.",
+            "Use Core checkpoints, validation, repair journals, and approval gates before file mutation.",
+        ],
+        max_repair_attempts=request.max_iterations,
+        metadata={
+            "website_objective_id": detail.objective.id,
+            "website_objective_title": detail.objective.title,
+            "priority": request.priority,
+            "dry_run": request.dry_run,
+        },
+    )
+    if core_result.delegated and isinstance(core_result.data, dict):
+        execution = core_result.data.get("execution") if isinstance(core_result.data.get("execution"), dict) else {}
+        metadata = {
+            **detail.objective.metadata,
+            "core_engineering_execution_id": execution.get("id", ""),
+            "core_workflow_id": execution.get("workflow_id", ""),
+            "core_runtime_owner": "aegis-core",
+        }
+        objective = detail.objective.model_copy(update={"metadata": metadata})
+        agent.store.upsert_autonomous_objective(objective)
+        detail = agent.store.autonomous_objective_detail(objective.id)
+        _record_ecosystem_audit(
+            "autonomous.objective.core_execution",
+            detail.objective.id,
+            "Website autonomous objective linked to Core engineering execution.",
+            metadata={"core_engineering_execution_id": execution.get("id", ""), "core_workflow_id": execution.get("workflow_id", "")},
+        )
+    elif core_result.should_fallback:
+        core_runtime_client.record_fallback("engineering.execution", core_result.error or "Core engineering execution unavailable.")
     return detail
 
 
-@app.get("/api/autonomous-engineering/objectives/{objective_id}", response_model=AutonomousObjectiveDetail)
 async def get_autonomous_objective(objective_id: str) -> AutonomousObjectiveDetail:
     try:
         return agent.store.autonomous_objective_detail(objective_id)
@@ -3789,7 +4306,6 @@ async def get_autonomous_objective(objective_id: str) -> AutonomousObjectiveDeta
         raise HTTPException(status_code=404, detail="autonomous objective not found") from exc
 
 
-@app.post("/api/autonomous-engineering/objectives/{objective_id}/simulate", response_model=AutonomousSimulationEstimate)
 async def simulate_autonomous_objective(objective_id: str) -> AutonomousSimulationEstimate:
     try:
         objective = agent.store.autonomous_objective(objective_id)
@@ -3803,7 +4319,6 @@ async def simulate_autonomous_objective(objective_id: str) -> AutonomousSimulati
     )
 
 
-@app.post("/api/autonomous-engineering/objectives/{objective_id}/start", response_model=AutonomousObjectiveDetail)
 async def start_autonomous_objective(
     objective_id: str,
     request: AutonomousObjectiveActionRequest | None = None,
@@ -3816,7 +4331,6 @@ async def start_autonomous_objective(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@app.post("/api/autonomous-engineering/objectives/{objective_id}/pause", response_model=AutonomousObjectiveDetail)
 async def pause_autonomous_objective(
     objective_id: str,
     request: AutonomousObjectiveActionRequest | None = None,
@@ -3827,7 +4341,6 @@ async def pause_autonomous_objective(
         raise HTTPException(status_code=404, detail="autonomous objective not found") from exc
 
 
-@app.post("/api/autonomous-engineering/objectives/{objective_id}/cancel", response_model=AutonomousObjectiveDetail)
 async def cancel_autonomous_objective(
     objective_id: str,
     request: AutonomousObjectiveActionRequest | None = None,
@@ -3838,7 +4351,6 @@ async def cancel_autonomous_objective(
         raise HTTPException(status_code=404, detail="autonomous objective not found") from exc
 
 
-@app.post("/api/autonomous-engineering/objectives/{objective_id}/iterate", response_model=AutonomousObjectiveDetail)
 async def iterate_autonomous_objective(
     objective_id: str,
     request: AutonomousObjectiveIterationRequest | None = None,
@@ -3851,7 +4363,6 @@ async def iterate_autonomous_objective(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@app.get("/api/autonomous-engineering/approval-gates", response_model=list[AutonomousApprovalGate])
 async def list_autonomous_approval_gates(
     workspace_root: str | None = Query(default=None),
     limit: int = Query(default=100, ge=1, le=300),
@@ -3860,7 +4371,6 @@ async def list_autonomous_approval_gates(
     return agent.store.autonomous_approval_gates(project_root=root, limit=limit)
 
 
-@app.post("/api/autonomous-engineering/approval-gates/{gate_id}/approve", response_model=AutonomousObjectiveDetail)
 async def approve_autonomous_gate(
     gate_id: str,
     request: AutonomousApprovalActionRequest | None = None,
@@ -3871,7 +4381,6 @@ async def approve_autonomous_gate(
         raise HTTPException(status_code=404, detail="autonomous approval gate not found") from exc
 
 
-@app.post("/api/autonomous-engineering/approval-gates/{gate_id}/reject", response_model=AutonomousObjectiveDetail)
 async def reject_autonomous_gate(
     gate_id: str,
     request: AutonomousApprovalActionRequest | None = None,
@@ -3882,417 +4391,69 @@ async def reject_autonomous_gate(
         raise HTTPException(status_code=404, detail="autonomous approval gate not found") from exc
 
 
-@app.get("/")
-async def root() -> dict:
-    return {"message": "Auralith OS API is running on Aegis Core.", "ui": "http://127.0.0.1:5173"}
+register_autonomous_engineering_routes(
+    app,
+    autonomous_engineering_snapshot=lambda workspace_root: autonomous_engineering_snapshot(workspace_root),
+    list_autonomous_objectives=lambda workspace_root, include_completed, limit: list_autonomous_objectives(
+        workspace_root,
+        include_completed,
+        limit,
+    ),
+    create_autonomous_objective=lambda request: create_autonomous_objective(request),
+    get_autonomous_objective=lambda objective_id: get_autonomous_objective(objective_id),
+    simulate_autonomous_objective=lambda objective_id: simulate_autonomous_objective(objective_id),
+    start_autonomous_objective=lambda objective_id, request=None: start_autonomous_objective(objective_id, request),
+    pause_autonomous_objective=lambda objective_id, request=None: pause_autonomous_objective(objective_id, request),
+    cancel_autonomous_objective=lambda objective_id, request=None: cancel_autonomous_objective(objective_id, request),
+    iterate_autonomous_objective=lambda objective_id, request=None: iterate_autonomous_objective(objective_id, request),
+    list_autonomous_approval_gates=lambda workspace_root, limit: list_autonomous_approval_gates(workspace_root, limit),
+    approve_autonomous_gate=lambda gate_id, request=None: approve_autonomous_gate(gate_id, request),
+    reject_autonomous_gate=lambda gate_id, request=None: reject_autonomous_gate(gate_id, request),
+)
 
 
-# Memory Management Endpoints
-@app.get("/api/memory")
-async def get_memory_notes(
-    workspace_root: str | None = Query(default=None),
-    category: str | None = Query(default=None),
-) -> dict:
-    """Get memory notes, optionally filtered by category."""
-    root = _resolve_workspace_or_400(workspace_root)
-    from .memory_manager import MemoryManager
-
-    memory = MemoryManager(root)
-
-    if category:
-        notes = memory.get_notes_by_category(category)
-    else:
-        notes = list(memory.notes.values())
-
-    return {
-        "workspace_root": str(root),
-        "warnings": [memory.storage_warning] if memory.storage_warning else [],
-        "notes": [
-            {
-                "id": n.id,
-                "title": n.title,
-                "content": n.content,
-                "category": n.category,
-                "created_at": n.created_at,
-                "updated_at": n.updated_at,
-                "pinned": n.pinned,
-                "tags": n.tags,
-                "related_files": n.related_files,
-                "confidence": n.confidence
-            }
-            for n in sorted(notes, key=lambda x: x.pinned, reverse=True)
-        ]
-    }
-
-
-@app.post("/api/memory")
-async def create_memory_note(request: dict, workspace_root: str | None = Query(default=None)) -> dict:
-    """Create a new memory note."""
-    root = _resolve_workspace_or_400(workspace_root)
-    from .memory_manager import MemoryManager
-
-    memory = MemoryManager(root)
-    try:
-        note = memory.create_note(
-            title=request.get("title", "Untitled"),
-            content=request.get("content", ""),
-            category=request.get("category", "insight"),
-            tags=request.get("tags", []),
-            related_files=request.get("related_files", [])
-        )
-        note = memory.update_note(
-            note.id,
-            pinned=bool(request.get("pinned", False)),
-            confidence=request.get("confidence", note.confidence),
-        ) or note
-    except OSError as exc:
-        raise HTTPException(status_code=503, detail=f"Could not update memory notes: {exc}") from exc
-    _invalidate_workspace_caches(root)
-
-    return {
-        "id": note.id,
-        "title": note.title,
-        "content": note.content,
-        "category": note.category,
-        "created_at": note.created_at,
-        "updated_at": note.updated_at,
-        "pinned": note.pinned,
-        "tags": note.tags,
-        "related_files": note.related_files,
-        "confidence": note.confidence
-    }
-
-
-def _redact_feedback_text(content: str) -> tuple[str, int]:
-    redacted = content
-    redaction_count = 0
-    for pattern, replacement in _FEEDBACK_REDACTION_PATTERNS:
-        redacted, count = pattern.subn(replacement, redacted)
-        redaction_count += count
-    return redacted, redaction_count
-
-
-def _feedback_privacy_policy() -> dict[str, bool | int]:
-    shared_workspace = bool(settings.aegis_shared_workspace_mode)
-    capture_excerpts = bool(settings.aegis_feedback_capture_excerpts) and not shared_workspace
-    redact_excerpts = bool(settings.aegis_feedback_redaction_enabled)
-    max_excerpt_chars = max(0, min(2000, int(settings.aegis_feedback_max_excerpt_chars or 0)))
-    hash_content = bool(settings.aegis_feedback_hash_content) and not shared_workspace
-    return {
-        "shared_workspace": shared_workspace,
-        "capture_excerpts": capture_excerpts,
-        "redact_excerpts": redact_excerpts,
-        "max_excerpt_chars": max_excerpt_chars,
-        "hash_content": hash_content,
-    }
-
-
-def _feedback_memory_excerpt(content: str, policy: dict[str, bool | int]) -> tuple[str, int]:
-    if not content or not policy["capture_excerpts"] or int(policy["max_excerpt_chars"]) <= 0:
-        return "", 0
-    if bool(policy["redact_excerpts"]):
-        redacted, count = _redact_feedback_text(content)
-        return redacted[: int(policy["max_excerpt_chars"])], count
-    return content[: int(policy["max_excerpt_chars"])], 0
-
-
-@app.post("/api/feedback", response_model=FeedbackRecordResponse)
-async def record_feedback(
-    request: FeedbackRecordRequest,
-    workspace_root: str | None = Query(default=None),
-) -> FeedbackRecordResponse:
-    """Record structured user feedback for route quality, evals, and preference learning."""
-    root = _resolve_workspace_or_400(workspace_root)
-    privacy_policy = _feedback_privacy_policy()
-    content = request.content.strip()
-    excerpt, redaction_count = _feedback_memory_excerpt(content, privacy_policy)
-    feedback_metadata = dict(request.metadata or {})
-    feedback_metadata.update(
-        {
-            "feedback_privacy_shared_workspace": bool(privacy_policy["shared_workspace"]),
-            "feedback_privacy_capture_excerpts": bool(privacy_policy["capture_excerpts"]),
-            "feedback_privacy_redaction_enabled": bool(privacy_policy["redact_excerpts"]),
-            "feedback_privacy_hash_content": bool(privacy_policy["hash_content"]),
-            "feedback_privacy_max_excerpt_chars": int(privacy_policy["max_excerpt_chars"]),
-            "feedback_privacy_redaction_count": redaction_count,
-            "feedback_original_content_length": len(request.content or ""),
-        }
+def _utility_service() -> UtilityService:
+    return UtilityService(
+        settings=settings,
+        agent=agent,
+        core_runtime_client=core_runtime_client,
+        workspace_manager=workspace_manager,
+        resolve_workspace=_resolve_workspace_or_400,
+        invalidate_workspace_caches=_invalidate_workspace_caches,
+        refresh_runtime=refresh_runtime,
+        update_env=update_env,
+        core_delegation_data=_core_delegation_data,
+        core_delegation_error=_core_delegation_error,
+        record_core_fallback=_record_core_fallback,
     )
-    telemetry_request = request.model_copy(
-        update={
-            "content": request.content if bool(privacy_policy["hash_content"]) else "",
-            "metadata": feedback_metadata,
-        }
-    )
-    event = agent.store.record_feedback(project_root=root, request=telemetry_request)
-    title = f"User {request.sentiment} {request.target or 'Aegis output'}"
-    detail_parts = [
-        f"Sentiment: {request.sentiment}",
-        f"Action: {request.action}",
-        f"Target: {request.target or 'assistant_response'}",
-        f"Task: {request.task_id or 'unknown'}",
-        f"Model: {request.model_label or 'unknown'}",
-        f"Context: {request.context or 'assistant_message'}",
-        f"Content hash: {event.content_hash or 'empty'}",
-        f"Excerpt capture: {'enabled' if privacy_policy['capture_excerpts'] else 'disabled'}",
-        f"Redaction: {'enabled' if privacy_policy['redact_excerpts'] else 'disabled'}",
-        f"Shared workspace: {'yes' if privacy_policy['shared_workspace'] else 'no'}",
-    ]
-    if excerpt:
-        detail_parts.extend(["Redacted excerpt:" if redaction_count else "Excerpt:", excerpt])
-    elif content:
-        detail_parts.append("Excerpt: [disabled by feedback privacy policy]")
-    agent.store.remember_project_note(
-        project_root=root,
-        category="feedback",
-        title=title[:160],
-        detail="\n".join(detail_parts),
-        source="desktop_feedback",
-        confidence=0.86 if request.sentiment in {"liked", "disliked", "accepted", "rejected"} else 0.68,
-    )
-    _invalidate_workspace_caches(root)
-    return FeedbackRecordResponse(ok=True, workspace_root=str(root), event=event)
 
 
-@app.put("/api/memory/{note_id}")
-async def update_memory_note(
-    note_id: str,
-    request: dict,
-    workspace_root: str | None = Query(default=None)
-) -> dict:
-    """Update a memory note."""
-    root = _resolve_workspace_or_400(workspace_root)
-    from .memory_manager import MemoryManager
-
-    memory = MemoryManager(root)
-    try:
-        note = memory.update_note(note_id, **request)
-    except OSError as exc:
-        raise HTTPException(status_code=503, detail=f"Could not update memory notes: {exc}") from exc
-
-    if not note:
-        if memory.storage_warning:
-            raise HTTPException(status_code=503, detail=f"Could not read memory notes: {memory.storage_warning}")
-        raise HTTPException(status_code=404, detail="Note not found")
-
-    _invalidate_workspace_caches(root)
-    return {
-        "id": note.id,
-        "title": note.title,
-        "content": note.content,
-        "category": note.category,
-        "created_at": note.created_at,
-        "updated_at": note.updated_at,
-        "pinned": note.pinned,
-        "tags": note.tags,
-        "related_files": note.related_files,
-        "confidence": note.confidence,
-    }
-
-
-@app.delete("/api/memory/{note_id}")
-async def delete_memory_note(note_id: str, workspace_root: str | None = Query(default=None)) -> dict:
-    """Delete a memory note."""
-    root = _resolve_workspace_or_400(workspace_root)
-    from .memory_manager import MemoryManager
-
-    memory = MemoryManager(root)
-    try:
-        deleted = memory.delete_note(note_id)
-    except OSError as exc:
-        raise HTTPException(status_code=503, detail=f"Could not update memory notes: {exc}") from exc
-    if not deleted:
-        if memory.storage_warning:
-            raise HTTPException(status_code=503, detail=f"Could not read memory notes: {memory.storage_warning}")
-        raise HTTPException(status_code=404, detail="Note not found")
-
-    _invalidate_workspace_caches(root)
-    return {"deleted": note_id}
-
-
-# Approval & Sandbox Endpoints
-@app.get("/api/approval/settings")
-async def get_approval_settings(workspace_root: str | None = Query(default=None)) -> dict:
-    """Get current approval and sandbox settings."""
-    _resolve_workspace_or_400(workspace_root)
-    from .approval_sandbox import ApprovalManager, SandboxProfileManager
-
-    manager = ApprovalManager(settings.approval_tier, settings.sandbox_profile)
-
-    return {
-        "approval_tier": manager.tier.value,
-        "sandbox_profile": manager.sandbox,
-        "available_tiers": ["manual", "prompt", "guided", "autonomous"],
-        "available_profiles": list(SandboxProfileManager.PROFILES.keys())
-    }
-
-
-@app.put("/api/approval/settings")
-async def update_approval_settings(
-    request: dict,
-    workspace_root: str | None = Query(default=None)
-) -> dict:
-    """Update approval and sandbox settings."""
-    _resolve_workspace_or_400(workspace_root)
-    from .approval_sandbox import ApprovalManager
-
-    try:
-        manager = ApprovalManager(
-            request.get("approval_tier", settings.approval_tier),
-            request.get("sandbox_profile", settings.sandbox_profile),
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    update_env(
-        {
-            "APPROVAL_TIER": manager.tier.value,
-            "SANDBOX_PROFILE": manager.sandbox,
-        }
-    )
-    refresh_runtime()
-
-    return {
-        "approval_tier": manager.tier.value,
-        "sandbox_profile": manager.sandbox
-    }
-
-
-# Project Indexing Endpoints
-@app.post("/api/index/rebuild")
-async def rebuild_index(workspace_root: str | None = Query(default=None)) -> dict:
-    """Rebuild project file index."""
-    root = _resolve_workspace_or_400(workspace_root)
-    from .project_indexer import ProjectIndexer
-
-    indexer = ProjectIndexer()
-
-    files = workspace_manager.scan(root, max_files=500)
-    indexer.build_from_workspace(root, files)
-
-    return {
-        "indexed": len(indexer.index),
-        "files": list(indexer.index.keys())[:10],
-        "workspace": str(root)
-    }
-
-
-@app.post("/api/index/search")
-async def search_index(
-    request: dict,
-    workspace_root: str | None = Query(default=None)
-) -> dict:
-    """Search project index for relevant files."""
-    root = _resolve_workspace_or_400(workspace_root)
-    from .project_indexer import ProjectIndexer
-
-    indexer = ProjectIndexer()
-    query = request.get("query", "")
-    top_k = request.get("top_k", 5)
-
-    if not query:
-        return {"results": [], "query": query}
-
-    files = workspace_manager.scan(root, max_files=500)
-    indexer.build_from_workspace(root, files)
-    files = indexer.find_relevant_files(query, max_results=top_k)
-
-    return {
-        "query": query,
-        "indexed": len(indexer.index),
-        "results": [
-            {
-                "path": str(f.path),
-                "kind": f.kind,
-                "size": f.size,
-                "relevance": f.relevance_score
-            }
-            for f in files
-        ],
-        "workspace": str(root)
-    }
-
-
-# Diff Engine Endpoints
-@app.post("/api/diff/compare")
-async def compare_files(
-    request: dict,
-    workspace_root: str | None = Query(default=None)
-) -> dict:
-    """Compare two files and generate unified diff."""
-    from .diff_engine import DiffEngine
-
-    old_content = request.get("old_content")
-    new_content = request.get("new_content")
-    path = request.get("path", "file")
-    action = request.get("action", "update")
-
-    if action == "create":
-        if new_content is None:
-            raise HTTPException(status_code=400, detail="new_content required for create diffs")
-    elif action == "delete":
-        if old_content is None:
-            raise HTTPException(status_code=400, detail="old_content required for delete diffs")
-    elif old_content is None or new_content is None:
-        raise HTTPException(status_code=400, detail="old_content and new_content required")
-
-    diff = DiffEngine.compare_files(old_content, new_content, path, action)
-
-    return {
-        "path": diff.path,
-        "action": diff.action,
-        "patch": diff.get_patch(),
-        "added_lines": diff.added_lines,
-        "removed_lines": diff.removed_lines,
-        "modified_lines": diff.modified_lines
-    }
-
-
-@app.post("/api/diff/apply")
-async def apply_patch(
-    request: dict,
-    workspace_root: str | None = Query(default=None)
-) -> dict:
-    """Apply a unified patch to file content."""
-    from .diff_engine import DiffEngine
-
-    original_content = request.get("original_content")
-    patch_content = request.get("patch_content")
-
-    if original_content is None or patch_content is None:
-        raise HTTPException(status_code=400, detail="original_content and patch_content required")
-
-    try:
-        patched = DiffEngine.apply_patch(original_content, patch_content)
-        if patched is None:
-            raise HTTPException(status_code=400, detail="Failed to apply patch")
-        return {
-            "applied": True,
-            "patched_content": patched
-        }
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Failed to apply patch: {str(e)}")
-
-
-@app.post("/api/diff/summarize")
-async def summarize_diff(request: dict) -> dict:
-    """Generate human-readable summary of a diff."""
-    from .diff_engine import DiffEngine, FileDiff
-
-    # Expect either a FileDiff object or the raw components
-    path = request.get("path", "file")
-    action = request.get("action", "update")
-    old_content = request.get("old_content")
-    new_content = request.get("new_content")
-
-    if not all([path, action, new_content is not None]):
-        raise HTTPException(status_code=400, detail="path, action, and new_content required")
-
-    # Create a FileDiff object
-    diff = DiffEngine.compare_files(old_content, new_content, path, action)
-    summary = DiffEngine.summarize_diff(diff)
-
-    return {
-        "summary": summary,
-        "path": path
-    }
+register_utility_routes(
+    app,
+    root=lambda: _utility_service().root(),
+    get_memory_notes=lambda workspace_root, category: _utility_service().get_memory_notes(workspace_root, category),
+    get_memory_governance=lambda workspace_root: _utility_service().get_memory_governance(workspace_root),
+    export_memory_notes=lambda request, workspace_root: _utility_service().export_memory_notes(request, workspace_root),
+    update_memory_governance_controls=lambda request, workspace_root: _utility_service().update_memory_governance_controls(
+        request,
+        workspace_root,
+    ),
+    create_memory_note=lambda request, workspace_root: _utility_service().create_memory_note(request, workspace_root),
+    record_feedback=lambda request, workspace_root: _utility_service().record_feedback(request, workspace_root),
+    update_memory_note=lambda note_id, request, workspace_root: _utility_service().update_memory_note(
+        note_id,
+        request,
+        workspace_root,
+    ),
+    delete_memory_note=lambda note_id, workspace_root: _utility_service().delete_memory_note(note_id, workspace_root),
+    get_approval_settings=lambda workspace_root: _utility_service().get_approval_settings(workspace_root),
+    update_approval_settings=lambda request, workspace_root: _utility_service().update_approval_settings(
+        request,
+        workspace_root,
+    ),
+    rebuild_index=lambda workspace_root: _utility_service().rebuild_index(workspace_root),
+    search_index=lambda request, workspace_root: _utility_service().search_index(request, workspace_root),
+    compare_files=lambda request, workspace_root: _utility_service().compare_files(request, workspace_root),
+    apply_patch=lambda request, workspace_root: _utility_service().apply_patch(request, workspace_root),
+    summarize_diff=lambda request: _utility_service().summarize_diff(request),
+)

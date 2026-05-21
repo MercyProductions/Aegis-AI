@@ -82,14 +82,19 @@ class AegisCoreBridge:
         *,
         timeout_seconds: float = 2.5,
         transport: httpx.AsyncBaseTransport | None = None,
+        local_auth_token: str = "",
     ) -> None:
         self.base_url = normalize_core_base_url(base_url)
         self.timeout_seconds = max(0.1, timeout_seconds)
         self.transport = transport
+        self.local_auth_token = str(local_auth_token or "").strip()
 
     @classmethod
     def from_settings(cls, settings: Any) -> "AegisCoreBridge":
-        return cls(getattr(settings, "aegis_core_api_url", DEFAULT_CORE_API_URL))
+        return cls(
+            getattr(settings, "aegis_core_api_url", DEFAULT_CORE_API_URL),
+            local_auth_token=getattr(settings, "aegis_core_local_token", "") or getattr(settings, "aegis_local_api_token", ""),
+        )
 
     async def get(
         self,
@@ -211,7 +216,7 @@ class AegisCoreBridge:
     ) -> CoreBridgeResult:
         try:
             async with httpx.AsyncClient(timeout=self.timeout_seconds, transport=self.transport) as client:
-                response = await client.request(method, self._url(path), params=params, json=json)
+                response = await client.request(method, self._url(path), params=params, json=json, headers=self._headers())
             status_code = response.status_code
             response.raise_for_status()
             try:
@@ -267,6 +272,13 @@ class AegisCoreBridge:
                 data=None,
                 error=_redact_core_error_text(str(exc)),
             )
+
+    def _headers(self) -> dict[str, str]:
+        headers = {"Accept": "application/json"}
+        if self.local_auth_token:
+            headers["Authorization"] = f"Bearer {self.local_auth_token}"
+            headers["X-Aegis-Local-Token"] = self.local_auth_token
+        return headers
 
 
 def _core_envelope_contract_error(envelope: dict[str, Any], expected_kind: str | None) -> str:

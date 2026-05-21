@@ -34,6 +34,7 @@ import {
 } from 'lucide-react';
 import {
   activateAdaptivePolicyProfile,
+  agentSupervisionEventsUrl,
   approveAutonomousGate,
   applyFileChanges,
   cancelAutonomousObjective,
@@ -41,6 +42,7 @@ import {
   compareDiff,
   createAutonomousObjective,
   createCreativeJob,
+  delegateAgentWorkflowTask,
   getCurrentAccount,
   getConfig,
   getCheckpoints,
@@ -54,12 +56,17 @@ import {
   getDistributedRuntime,
   getOperatingEnvironment,
   getPlatformDiscipline,
+  getProviderAccounts,
   getUnifiedContext,
   getUnifiedRuntime,
   getHealth,
   getModelManager,
   getModelRegistry,
   getModels,
+  getAgentSupervision,
+  getAutopilotSupervision,
+  getCollaborationDashboard,
+  getGovernanceDashboard,
   getValidationProfile,
   getWorkspaceHistory,
   getWorkspaceIntelligence,
@@ -68,6 +75,9 @@ import {
   cancelTask,
   createMemoryNote,
   getProjectIntelligence,
+  getQualityBenchmarks,
+  getQualityGates,
+  getRuntimeInteraction,
   getTaskArtifacts,
   getTaskTimeline,
   listCreativeJobs,
@@ -93,6 +103,9 @@ import {
   enablePlugin,
   exportCurrentProjectIntelligence,
   exportCreativeJob,
+  exportRuntimeSettings,
+  getOnboardingStatus,
+  importRuntimeSettings,
   runAdaptiveBenchmarks,
   runEcosystemWorkflow,
   runWorkspaceValidation,
@@ -102,6 +115,9 @@ import {
   scanWorkspaceIntelligence,
   searchEcosystem,
   setupWorkspace,
+  runOnboardingFirstWorkflow,
+  stepAgentWorkflow,
+  streamAgentBridge,
   streamAgentMessage,
   requestPasswordReset,
   refreshAdaptiveIntelligence,
@@ -109,6 +125,7 @@ import {
   refreshProductization,
   getEcosystem,
   getProductization,
+  runtimeInteractionEventsUrl,
   trustEcosystemPackage,
   trustPlugin,
   iterateAutonomousObjective,
@@ -119,6 +136,7 @@ import {
   startAutonomousObjective,
   validateEcosystemPackage,
   validatePlugin,
+  updateOnboarding,
   updateValidationProfile
 } from './api';
 import { brandAssets } from './brandAssets';
@@ -133,6 +151,9 @@ import {
   PublicSite,
   TaskStatusSummary
 } from './components/lazySurfaces';
+import { AgentProviderDock } from './components/agent-workspace/AgentProviderDock';
+import { AppHeader } from './components/app-shell/AppHeader';
+import { ProviderAccountsPanel } from './components/provider-accounts/ProviderAccountsPanel';
 import { getPalette, styles, type Palette } from './styles/appStyles';
 import {
   connectionStateDetail,
@@ -225,6 +246,7 @@ import {
   routeToSidebarSection,
   saveStoredAuthSession,
   sidebarSectionToRoute,
+  withAppBase,
   type SidebarSection
 } from './utils/appRouting';
 import {
@@ -285,6 +307,12 @@ import {
   mediaJobImageAsset,
   type PreviewableMediaJob
 } from './utils/creativeAssets';
+import {
+  buildBridgeProviderSummary,
+  isLocalBridgeProvider,
+  providerIdForModelRuntime,
+  runtimeTargetForBridgeProvider
+} from './utils/agentBridgeProviders';
 import { filterWorkspaceFiles } from './utils/workspaceFiles';
 import {
   combinedApplyValidationStatus,
@@ -314,7 +342,12 @@ import type {
   AdaptiveQualityScore,
   AdaptiveRouteRecommendation,
   AegisContinuitySnapshot,
+  AgentBridgeExecuteResponse,
   AgentResponse,
+  AgentSupervisionAgent,
+  AgentSupervisionSnapshot,
+  AgentSupervisionTask,
+  AgentSupervisionWorkflow,
   AppConfig,
   AuthLoginRequest,
   AuthRegisterRequest,
@@ -329,6 +362,7 @@ import type {
   EcosystemPackageManifest,
   EcosystemSearchResponse,
   EcosystemSnapshot,
+  EventStatus,
   FileChange,
   FixMemoryEntry,
   HealthResponse,
@@ -343,12 +377,18 @@ import type {
   ModelRegistryResponse,
   Mode,
   OperatingEnvironmentSnapshot,
+  OnboardingFirstWorkflowResponse,
+  OnboardingStatusResponse,
   PlatformDisciplineSnapshot,
   PluginManifest,
   ProductizationSnapshot,
   ProjectIntelligenceSnapshot,
+  ProviderAccountStatus,
+  QualityBenchmarkDashboard,
+  QualityGateSnapshot,
   ProjectMemoryEntry,
   RepairAttempt,
+  RuntimeInteractionSnapshot,
   WorkspaceOperationsSnapshot,
   WorkspaceRecommendation,
   TaskArtifactsResponse,
@@ -379,6 +419,104 @@ type GeneratedReviewSource = {
   restored: boolean;
 };
 
+const workflowStageOrder = [
+  'intake',
+  'planning',
+  'coding',
+  'validation',
+  'repair',
+  'approval',
+  'apply',
+  'checkpoint',
+  'completion'
+];
+
+function bridgeWorkspaceChangesText(response: AgentBridgeExecuteResponse): string {
+  const changes = response.metadata.workspace_changes;
+  if (!changes || typeof changes !== 'object') return '';
+
+  const record = changes as Record<string, unknown>;
+  const lines = [
+    bridgeWorkspaceChangeLine('Created', record.created_count, record.created),
+    bridgeWorkspaceChangeLine('Updated', record.updated_count, record.updated),
+    bridgeWorkspaceChangeLine('Deleted', record.deleted_count, record.deleted)
+  ].filter(Boolean);
+
+  if (!lines.length) return '';
+  const truncated = record.truncated === true ? '\n- Additional files changed; showing the first 100 per group.' : '';
+  return `\nWorkspace changes:\n${lines.join('\n')}${truncated}`;
+}
+
+function bridgeWorkspaceChangeLine(label: string, countValue: unknown, pathsValue: unknown): string {
+  const paths = Array.isArray(pathsValue)
+    ? pathsValue.filter((path): path is string => typeof path === 'string' && path.trim().length > 0).slice(0, 8)
+    : [];
+  const count = typeof countValue === 'number' ? countValue : paths.length;
+  if (count <= 0) return '';
+  const suffix = paths.length ? `: ${paths.join(', ')}${count > paths.length ? `, +${count - paths.length} more` : ''}` : '';
+  return `- ${label}: ${count}${suffix}`;
+}
+
+function recordString(value: unknown, keys: string[], fallback = ''): string {
+  if (!value || typeof value !== 'object') return fallback;
+  const record = value as Record<string, unknown>;
+  for (const key of keys) {
+    const item = record[key];
+    if (typeof item === 'string' && item.trim()) return item;
+    if (typeof item === 'number' || typeof item === 'boolean') return String(item);
+  }
+  return fallback;
+}
+
+function recordNumber(value: unknown, keys: string[]): number | null {
+  if (!value || typeof value !== 'object') return null;
+  const record = value as Record<string, unknown>;
+  for (const key of keys) {
+    const item = record[key];
+    if (typeof item === 'number' && Number.isFinite(item)) return item;
+  }
+  return null;
+}
+
+function recordStrings(value: unknown, keys: string[]): string[] {
+  if (!value || typeof value !== 'object') return [];
+  const record = value as Record<string, unknown>;
+  for (const key of keys) {
+    const item = record[key];
+    if (Array.isArray(item)) {
+      return item
+        .map((entry) => (typeof entry === 'string' ? entry : recordString(entry, ['path', 'file', 'name', 'id'])))
+        .filter(Boolean);
+    }
+  }
+  return [];
+}
+
+function workflowIdOf(workflow: AgentSupervisionWorkflow | null | undefined): string {
+  return recordString(workflow, ['id', 'workflow_id']);
+}
+
+function taskIdOf(task: AgentSupervisionTask | null | undefined): string {
+  return recordString(task, ['id', 'task_id']);
+}
+
+function agentIdOf(agent: AgentSupervisionAgent | null | undefined): string {
+  return recordString(agent, ['id', 'agent_id']);
+}
+
+function workflowStatusTone(status: string): ToolEvent['status'] {
+  const normalized = status.toLowerCase();
+  if (['failed', 'cancelled', 'error'].includes(normalized)) return 'error';
+  if (['paused', 'waiting_input', 'validating', 'repairing', 'pending', 'queued', 'running'].includes(normalized)) {
+    return 'warning';
+  }
+  return 'ok';
+}
+
+function supervisionTaskFiles(task: AgentSupervisionTask | null | undefined): string[] {
+  return recordStrings(task, ['target_files', 'files', 'affected_files', 'projected_file_changes']);
+}
+
 function App() {
   const [routePath, setRoutePath] = useState(() => currentBrowserRoute());
   const [authSession, setAuthSession] = useState<AuthSessionResponse | null>(() => loadStoredAuthSession());
@@ -406,6 +544,7 @@ function App() {
   const [modelApi, setModelApi] = useState('ollama');
   const [modelEndpoint, setModelEndpoint] = useState('http://127.0.0.1:11434');
   const [modelName, setModelName] = useState('qwen2.5-coder:7b');
+  const [selectedBridgeProvider, setSelectedBridgeProvider] = useState('ollama');
   const [commandAllowlist, setCommandAllowlist] = useState('');
   const [commandTimeout, setCommandTimeout] = useState(120);
   const [autoRunValidation, setAutoRunValidation] = useState(false);
@@ -466,6 +605,7 @@ function App() {
   const [globalCommandPreview, setGlobalCommandPreview] = useState<GlobalCommandResponse | null>(null);
   const [operatingEnvironment, setOperatingEnvironment] = useState<OperatingEnvironmentSnapshot | null>(null);
   const [distributedRuntime, setDistributedRuntime] = useState<DistributedRuntimeSnapshot | null>(null);
+  const [runtimeInteraction, setRuntimeInteraction] = useState<RuntimeInteractionSnapshot | null>(null);
   const [distributedRuntimeStatus, setDistributedRuntimeStatus] = useState('');
   const [distributedRuntimeLoading, setDistributedRuntimeLoading] = useState(false);
   const [distributedRuntimeAction, setDistributedRuntimeAction] = useState('');
@@ -490,6 +630,20 @@ function App() {
   const [autonomousStatus, setAutonomousStatus] = useState('');
   const [autonomousLoading, setAutonomousLoading] = useState(false);
   const [autonomousAction, setAutonomousAction] = useState('');
+  const [agentSupervision, setAgentSupervision] = useState<AgentSupervisionSnapshot | null>(null);
+  const [agentSupervisionStatus, setAgentSupervisionStatus] = useState('');
+  const [agentSupervisionLoading, setAgentSupervisionLoading] = useState(false);
+  const [agentSupervisionAction, setAgentSupervisionAction] = useState('');
+  const [qualityGates, setQualityGates] = useState<QualityGateSnapshot | null>(null);
+  const [qualityBenchmarks, setQualityBenchmarks] = useState<QualityBenchmarkDashboard | null>(null);
+  const [qualityGateStatus, setQualityGateStatus] = useState('');
+  const [qualityGateLoading, setQualityGateLoading] = useState(false);
+  const [agentSupervisionWorkflowFilter, setAgentSupervisionWorkflowFilter] = useState('all');
+  const [agentSupervisionAgentFilter, setAgentSupervisionAgentFilter] = useState('all');
+  const [agentSupervisionStatusFilter, setAgentSupervisionStatusFilter] = useState('all');
+  const [agentSupervisionRiskFilter, setAgentSupervisionRiskFilter] = useState('all');
+  const [agentSupervisionFileFilter, setAgentSupervisionFileFilter] = useState('');
+  const [agentSupervisionValidationFilter, setAgentSupervisionValidationFilter] = useState('all');
   const [creativeCapabilities, setCreativeCapabilities] = useState<MediaCapabilitiesResponse | null>(null);
   const [creativeLibrary, setCreativeLibrary] = useState<MediaAssetLibraryResponse | null>(null);
   const [creativeJobs, setCreativeJobs] = useState<MediaJobResponse[]>([]);
@@ -501,6 +655,11 @@ function App() {
   const [creativeStatus, setCreativeStatus] = useState('');
   const [creativeLoading, setCreativeLoading] = useState(false);
   const [creativeAction, setCreativeAction] = useState('');
+  const [onboardingStatus, setOnboardingStatus] = useState<OnboardingStatusResponse | null>(null);
+  const [onboardingMessage, setOnboardingMessage] = useState('');
+  const [onboardingLoading, setOnboardingLoading] = useState(false);
+  const [onboardingAction, setOnboardingAction] = useState('');
+  const [onboardingLatestWorkflow, setOnboardingLatestWorkflow] = useState<OnboardingFirstWorkflowResponse | null>(null);
   const [workspaceSetupLoading, setWorkspaceSetupLoading] = useState(false);
   const [checkpoints, setCheckpoints] = useState<CheckpointSummary[]>([]);
   const [checkpointStatus, setCheckpointStatus] = useState('');
@@ -556,11 +715,12 @@ function App() {
 
   function navigateTo(path: string, replace = false) {
     const nextRoute = normalizeRoutePath(path);
-    if (typeof window !== 'undefined' && window.location.pathname !== nextRoute) {
+    const browserRoute = withAppBase(nextRoute);
+    if (typeof window !== 'undefined' && window.location.pathname !== browserRoute) {
       if (replace) {
-        window.history.replaceState({}, '', nextRoute);
+        window.history.replaceState({}, '', browserRoute);
       } else {
-        window.history.pushState({}, '', nextRoute);
+        window.history.pushState({}, '', browserRoute);
       }
     }
     setRoutePath(nextRoute);
@@ -697,6 +857,9 @@ function App() {
 
     if (nextSection === 'intelligence') {
       void refreshProjectIntelligence();
+    } else if (nextSection === 'onboarding') {
+      void refreshOnboarding();
+      void refreshModelCatalog();
     } else if (nextSection === 'workspace-intelligence') {
       void refreshWorkspaceOperations();
     } else if (nextSection === 'tasks') {
@@ -717,6 +880,11 @@ function App() {
       void refreshModelCatalog();
     }
   }, [routePath, authSession?.token]);
+
+  useEffect(() => {
+    if (!authSession || !isProtectedAppRoute(routePath) || !workspaceRoot.trim()) return;
+    void refreshOnboarding(workspaceRoot);
+  }, [authSession?.token, workspaceRoot]);
 
   useEffect(() => {
     if (!authSession) return;
@@ -1156,6 +1324,143 @@ function App() {
         .includes(term)
     );
   }, [agentSearch, customAgents]);
+  const activeSupervisionWorkflow = useMemo(() => {
+    if (!agentSupervision) return null;
+    if (agentSupervisionWorkflowFilter !== 'all') {
+      return (
+        agentSupervision.workflows.find((workflow) => workflowIdOf(workflow) === agentSupervisionWorkflowFilter) ??
+        agentSupervision.active_workflow
+      );
+    }
+    return agentSupervision.active_workflow ?? agentSupervision.active_workflows[0] ?? agentSupervision.workflows[0] ?? null;
+  }, [agentSupervision, agentSupervisionWorkflowFilter]);
+  const activeSupervisionWorkflowId = workflowIdOf(activeSupervisionWorkflow);
+  const supervisionTasks = useMemo(
+    () => (activeSupervisionWorkflow?.tasks ?? []).filter((task): task is AgentSupervisionTask => Boolean(task)),
+    [activeSupervisionWorkflow]
+  );
+  const supervisionAgents = useMemo(() => {
+    const source = agentSupervision?.coordination?.agents ?? agentSupervision?.coordination?.active_agents ?? [];
+    return source.filter((agent): agent is AgentSupervisionAgent => Boolean(agent));
+  }, [agentSupervision]);
+  const filteredSupervisionTasks = useMemo(() => {
+    const agentFilter = agentSupervisionAgentFilter.toLowerCase();
+    const statusFilter = agentSupervisionStatusFilter.toLowerCase();
+    const riskFilter = agentSupervisionRiskFilter.toLowerCase();
+    const fileFilter = agentSupervisionFileFilter.trim().toLowerCase();
+    const validationFilter = agentSupervisionValidationFilter.toLowerCase();
+    return supervisionTasks.filter((task) => {
+      const taskAgent = recordString(task, ['agent_id', 'agent_role']).toLowerCase();
+      const taskStatus = recordString(task, ['status'], 'unknown').toLowerCase();
+      const taskRisk = recordString(task, ['risk_level', 'risk', 'estimated_risk'], 'unknown').toLowerCase();
+      const taskFiles = supervisionTaskFiles(task).join(' ').toLowerCase();
+      const executionMode = recordString(task, ['execution_mode', 'stage', 'kind']).toLowerCase();
+      const validationState = recordString(task.result, ['status', 'validation_state'], taskStatus).toLowerCase();
+      return (
+        (agentFilter === 'all' || taskAgent.includes(agentFilter)) &&
+        (statusFilter === 'all' || taskStatus === statusFilter) &&
+        (riskFilter === 'all' || taskRisk === riskFilter) &&
+        (!fileFilter || taskFiles.includes(fileFilter)) &&
+        (validationFilter === 'all' || executionMode.includes('validation') || validationState === validationFilter)
+      );
+    });
+  }, [
+    agentSupervisionAgentFilter,
+    agentSupervisionFileFilter,
+    agentSupervisionRiskFilter,
+    agentSupervisionStatusFilter,
+    agentSupervisionValidationFilter,
+    supervisionTasks
+  ]);
+  const supervisionApprovalTasks = useMemo(
+    () =>
+      supervisionTasks.filter(
+        (task) =>
+          recordString(task, ['status']).toLowerCase() === 'waiting_input' ||
+          Boolean(task.approval_required) ||
+          Boolean(task.approval_gates?.length)
+      ),
+    [supervisionTasks]
+  );
+  const latestSupervisionValidation = useMemo(
+    () =>
+      [...supervisionTasks]
+        .reverse()
+        .find((task) => recordString(task, ['execution_mode', 'stage', 'kind']).toLowerCase().includes('validation')) ?? null,
+    [supervisionTasks]
+  );
+  useEffect(() => {
+    if (!authSession || activeSection !== 'agents' || !workspaceRoot.trim()) return;
+
+    void refreshAgentSupervision();
+    void refreshQualityGatePanel();
+    const timer = window.setInterval(() => {
+      void refreshAgentSupervision(undefined, activeSupervisionWorkflowId);
+      void refreshQualityGatePanel();
+    }, 15000);
+
+    return () => window.clearInterval(timer);
+  }, [activeSection, authSession, activeSupervisionWorkflowId, workspaceRoot]);
+
+  useEffect(() => {
+    if (
+      activeSection !== 'agents' ||
+      !workspaceRoot.trim() ||
+      !activeSupervisionWorkflowId ||
+      typeof EventSource === 'undefined'
+    ) {
+      return;
+    }
+
+    const source = new EventSource(agentSupervisionEventsUrl(activeSupervisionWorkflowId, workspaceRoot));
+    source.onmessage = () => {
+      void refreshAgentSupervision(undefined, activeSupervisionWorkflowId);
+    };
+    source.addEventListener('workflow_event', () => {
+      void refreshAgentSupervision(undefined, activeSupervisionWorkflowId);
+    });
+    source.addEventListener('workflow_log', () => {
+      void refreshAgentSupervision(undefined, activeSupervisionWorkflowId);
+    });
+    source.addEventListener('supervision_error', (event) => {
+      const message = event instanceof MessageEvent ? String(event.data || '') : '';
+      setAgentSupervisionStatus(message || 'Aegis Core event stream is unavailable.');
+    });
+
+    return () => source.close();
+  }, [activeSection, activeSupervisionWorkflowId, workspaceRoot]);
+
+  useEffect(() => {
+    if (activeSection !== 'runtime' || !workspaceRoot.trim() || typeof EventSource === 'undefined') {
+      return;
+    }
+
+    const source = new EventSource(runtimeInteractionEventsUrl(workspaceRoot, { limit: 100, maxSeconds: 45 }));
+    source.onmessage = () => {
+      void refreshDistributedRuntime();
+    };
+    source.addEventListener('runtime.terminal.stdout', () => {
+      void refreshDistributedRuntime();
+    });
+    source.addEventListener('runtime.terminal.stderr', () => {
+      void refreshDistributedRuntime();
+    });
+    source.addEventListener('runtime.job.started', () => {
+      void refreshDistributedRuntime();
+    });
+    source.addEventListener('runtime.job.completed', () => {
+      void refreshDistributedRuntime();
+    });
+    source.addEventListener('runtime.job.failed', () => {
+      void refreshDistributedRuntime();
+    });
+    source.addEventListener('runtime_error', (event) => {
+      const message = event instanceof MessageEvent ? String(event.data || '') : '';
+      setDistributedRuntimeStatus(message || 'Aegis Core runtime stream is unavailable.');
+    });
+
+    return () => source.close();
+  }, [activeSection, workspaceRoot]);
   const projectRoots = useMemo<ProjectRootSummary[]>(() => {
     return buildProjectRootSummaries(savedThreads, workspaceRoot);
   }, [savedThreads, workspaceRoot]);
@@ -1272,6 +1577,11 @@ function App() {
     setModelApi(nextConfig.model_api);
     setModelEndpoint(nextConfig.model_endpoint);
     setModelName(nextConfig.model_name);
+    setSelectedBridgeProvider((current) =>
+      isLocalBridgeProvider(current)
+        ? providerIdForModelRuntime(nextConfig.model_api, nextConfig.model_endpoint)
+        : current
+    );
     setCommandAllowlist(nextConfig.command_allowlist);
     setCommandTimeout(nextConfig.command_timeout_seconds);
     setAutoRunValidation(nextConfig.auto_run_validation);
@@ -1300,6 +1610,113 @@ function App() {
       setModelReady(false);
       setConnectionState('offline');
       setSaveStatus(error instanceof Error ? error.message : 'Could not refresh runtime diagnostics');
+    }
+  }
+
+  async function refreshOnboarding(rootOverride?: string) {
+    const targetRoot = (rootOverride ?? workspaceRoot).trim();
+    setOnboardingLoading(true);
+    try {
+      const result = await getOnboardingStatus(targetRoot || undefined);
+      setOnboardingStatus(result);
+      if (result.workspace && (!targetRoot || workspaceRequestIsCurrent(result.workspace))) {
+        setActiveWorkspaceRoot(result.workspace);
+      }
+      setOnboardingMessage(
+        result.delegated === false
+          ? result.last_core_error || 'Core onboarding is unavailable; fallback diagnostics are active.'
+          : result.completed
+            ? 'First-run setup is complete.'
+            : 'First-run setup is ready to continue.'
+      );
+    } catch (error) {
+      setOnboardingMessage(error instanceof Error ? error.message : 'Could not load onboarding status');
+    } finally {
+      setOnboardingLoading(false);
+    }
+  }
+
+  async function markOnboardingStep(stepId: string) {
+    if (!workspaceRoot.trim() || onboardingAction) return;
+    const completed = new Set(onboardingStatus?.steps.filter((step) => step.status === 'complete').map((step) => step.id) ?? []);
+    completed.add(stepId);
+    setOnboardingAction(`step:${stepId}`);
+    try {
+      const result = await updateOnboarding({
+        workspace_root: workspaceRoot,
+        completed_steps: Array.from(completed),
+        current_step: onboardingStatus?.steps.find((step) => !completed.has(step.id))?.id ?? 'finish'
+      });
+      setOnboardingStatus(result);
+      setOnboardingMessage(`${formatStatusLabel(stepId)} marked complete.`);
+    } catch (error) {
+      setOnboardingMessage(error instanceof Error ? error.message : 'Could not update setup progress');
+    } finally {
+      setOnboardingAction('');
+    }
+  }
+
+  async function runFirstWorkflowStep(action: string, dryRun = true) {
+    if (!workspaceRoot.trim() || onboardingAction) return;
+    setOnboardingAction(action);
+    setOnboardingMessage(`Running ${formatStatusLabel(action)}...`);
+    try {
+      const result = await runOnboardingFirstWorkflow({ workspace_root: workspaceRoot, action, dry_run: dryRun });
+      setOnboardingLatestWorkflow(result);
+      setOnboardingMessage(result.error || result.next_actions?.[0] || `${formatStatusLabel(action)} finished.`);
+      await refreshOnboarding(result.workspace || workspaceRoot);
+      if (action === 'scan_project') {
+        await refreshFiles();
+      } else if (action === 'generate_roadmap' || action === 'explain_architecture') {
+        await refreshProjectIntelligence(workspaceRoot);
+      } else if (action === 'validate_only') {
+        await refreshRuntimeDiagnostics();
+      } else if (action === 'checkpoint_rollback_demo') {
+        await refreshCheckpoints(workspaceRoot);
+      }
+    } catch (error) {
+      setOnboardingMessage(error instanceof Error ? error.message : `Could not run ${formatStatusLabel(action)}`);
+    } finally {
+      setOnboardingAction('');
+    }
+  }
+
+  async function exportOnboardingSettings() {
+    if (onboardingAction) return;
+    setOnboardingAction('settings-export');
+    try {
+      const result = await exportRuntimeSettings(workspaceRoot || undefined);
+      setOnboardingMessage(`Settings export prepared with ${Object.keys(result.settings ?? {}).length} setting(s); provider secrets were excluded.`);
+    } catch (error) {
+      setOnboardingMessage(error instanceof Error ? error.message : 'Could not export runtime settings');
+    } finally {
+      setOnboardingAction('');
+    }
+  }
+
+  async function previewOnboardingSettingsImport() {
+    if (onboardingAction) return;
+    setOnboardingAction('settings-import');
+    try {
+      const result = await importRuntimeSettings({
+        workspace_root: workspaceRoot,
+        dry_run: true,
+        settings: {
+          settings: {
+            model_routing_mode: modelApi === 'ollama' ? 'local_only' : 'hybrid',
+            default_model: modelName,
+            ollama_url: modelEndpoint
+          },
+          ui_preferences: { theme: isDarkMode ? 'dark' : 'light' }
+        }
+      });
+      setOnboardingMessage(
+        `Import preview: ${result.imported_keys.length} setting(s), ${result.ignored_keys.length} ignored.`
+      );
+    } catch (error) {
+      setOnboardingMessage(error instanceof Error ? error.message : 'Could not preview runtime settings import');
+    } finally {
+      setOnboardingAction('');
     }
   }
 
@@ -1400,6 +1817,32 @@ function App() {
     setModelApi(target.api || 'ollama');
     setModelEndpoint(target.endpoint || 'http://127.0.0.1:11434');
     setModelName(target.name);
+    setSelectedBridgeProvider(providerIdForModelRuntime(target.api, target.endpoint));
+  }
+
+  function selectAgentProvider(providerId: string) {
+    setSelectedBridgeProvider(providerId);
+    if (!isLocalBridgeProvider(providerId)) return;
+
+    const nextTarget = runtimeTargetForBridgeProvider(providerId, selectableModelOptions);
+    if (nextTarget) {
+      selectModelDraft(nextTarget);
+      setModelCatalogStatus(
+        `${providerId === 'ollama' ? 'Ollama' : 'Local endpoint'} selected. Save active model to route through ${
+          nextTarget.name || nextTarget.label || 'that local target'
+        }.`
+      );
+      return;
+    }
+
+    if (providerId === 'ollama') {
+      setModelApi('ollama');
+      setModelEndpoint('http://127.0.0.1:11434');
+      setModelCatalogStatus('Ollama selected. Choose or pull a local model before routing through it.');
+      return;
+    }
+
+    setModelCatalogStatus('Local endpoint selected. Configure LM Studio or another OpenAI-compatible local endpoint in Models.');
   }
 
   async function pullManagedModel(target: ManagedModelInfo) {
@@ -1780,8 +2223,17 @@ function App() {
 
     setDistributedRuntimeLoading(true);
     try {
-      const [runtimeResult, unifiedResult, contextResult, continuityResult, disciplineResult, operatingResult] = await Promise.all([
+      const [
+        runtimeResult,
+        runtimeInteractionResult,
+        unifiedResult,
+        contextResult,
+        continuityResult,
+        disciplineResult,
+        operatingResult
+      ] = await Promise.all([
         getDistributedRuntime(targetRoot),
+        getRuntimeInteraction(targetRoot),
         getUnifiedRuntime(targetRoot),
         getUnifiedContext(targetRoot),
         getContinuity(targetRoot),
@@ -1789,6 +2241,7 @@ function App() {
         getOperatingEnvironment(targetRoot)
       ]);
       setDistributedRuntime(runtimeResult);
+      setRuntimeInteraction(runtimeInteractionResult);
       setUnifiedRuntime(unifiedResult);
       setUnifiedContext(contextResult);
       setContinuity(continuityResult);
@@ -2305,6 +2758,143 @@ function App() {
     } finally {
       setAutonomousAction('');
     }
+  }
+
+  async function refreshAgentSupervision(rootOverride?: string, workflowOverride?: string) {
+    const targetRoot = (rootOverride ?? workspaceRoot).trim();
+    if (!targetRoot) return;
+
+    setAgentSupervisionLoading(true);
+    try {
+      const [snapshot, autopilotGateway, collaborationGateway, governanceGateway] = await Promise.all([
+        getAgentSupervision(
+          targetRoot,
+          workflowOverride && workflowOverride !== 'all' ? workflowOverride : undefined
+        ),
+        getAutopilotSupervision(targetRoot).catch((error) => ({
+          data: null,
+          last_core_error: error instanceof Error ? error.message : 'Autopilot supervision unavailable'
+        })),
+        getCollaborationDashboard(targetRoot, { limit: 50 }).catch((error) => ({
+          data: null,
+          last_core_error: error instanceof Error ? error.message : 'Collaboration runtime unavailable'
+        })),
+        getGovernanceDashboard(targetRoot, { includeAudit: true, limit: 50 }).catch((error) => ({
+          data: null,
+          last_core_error: error instanceof Error ? error.message : 'Governance runtime unavailable'
+        }))
+      ]);
+      if (!workspaceRequestIsCurrent(snapshot.workspace_root)) return;
+      const autopilotData =
+        autopilotGateway && typeof autopilotGateway === 'object' && 'data' in autopilotGateway
+          ? ((autopilotGateway as { data?: unknown }).data as Record<string, unknown> | null)
+          : (autopilotGateway as Record<string, unknown> | null);
+      const collaborationData =
+        collaborationGateway && typeof collaborationGateway === 'object' && 'data' in collaborationGateway
+          ? ((collaborationGateway as { data?: unknown }).data as Record<string, unknown> | null)
+          : (collaborationGateway as Record<string, unknown> | null);
+      const governanceData =
+        governanceGateway && typeof governanceGateway === 'object' && 'data' in governanceGateway
+          ? ((governanceGateway as { data?: unknown }).data as Record<string, unknown> | null)
+          : (governanceGateway as Record<string, unknown> | null);
+      setAgentSupervision({
+        ...snapshot,
+        autopilot: autopilotData ?? undefined,
+        collaboration: collaborationData ?? undefined,
+        governance: governanceData ?? undefined
+      });
+      if (snapshot.last_core_error && !snapshot.core_connected) {
+        setAgentSupervisionStatus(snapshot.last_core_error);
+      } else {
+        setAgentSupervisionStatus('');
+      }
+    } catch (error) {
+      setAgentSupervisionStatus(error instanceof Error ? error.message : 'Could not load agent supervision');
+    } finally {
+      setAgentSupervisionLoading(false);
+    }
+  }
+
+  async function refreshQualityGatePanel(rootOverride?: string) {
+    const targetRoot = (rootOverride ?? workspaceRoot).trim();
+    if (!targetRoot) return;
+
+    setQualityGateLoading(true);
+    try {
+      const [gates, benchmarks] = await Promise.all([
+        getQualityGates(targetRoot, 20),
+        getQualityBenchmarks(targetRoot, 20)
+      ]);
+      if (!workspaceRequestIsCurrent(gates.workspace_root || targetRoot)) return;
+      setQualityGates(gates);
+      setQualityBenchmarks(benchmarks);
+      setQualityGateStatus(gates.error || '');
+    } catch (error) {
+      setQualityGateStatus(error instanceof Error ? error.message : 'Could not load quality gates');
+    } finally {
+      setQualityGateLoading(false);
+    }
+  }
+
+  async function runAgentSupervisionAction(
+    action: string,
+    options: { task?: AgentSupervisionTask | null; approval?: boolean; summary?: string; payload?: Record<string, unknown> } = {}
+  ) {
+    if (!activeSupervisionWorkflowId || agentSupervisionAction) return;
+    const taskId = taskIdOf(options.task);
+    setAgentSupervisionAction(`${action}:${taskId || activeSupervisionWorkflowId}`);
+    setAgentSupervisionStatus(`${formatStatusLabel(action)} workflow...`);
+    try {
+      const result = await stepAgentWorkflow(activeSupervisionWorkflowId, {
+        workspace_root: workspaceRoot,
+        action,
+        task_id: taskId || undefined,
+        approval: Boolean(options.approval),
+        summary: options.summary ?? `Website supervision requested ${action}.`,
+        payload: options.payload ?? {}
+      });
+      if (!result.ok) {
+        setAgentSupervisionStatus(result.error || 'Aegis Core could not complete that workflow control action.');
+      } else {
+        setAgentSupervisionStatus(`${formatStatusLabel(action)} recorded.`);
+      }
+      await refreshAgentSupervision(workspaceRoot, activeSupervisionWorkflowId);
+    } catch (error) {
+      setAgentSupervisionStatus(error instanceof Error ? error.message : `Could not ${action} workflow`);
+    } finally {
+      setAgentSupervisionAction('');
+    }
+  }
+
+  async function delegateSelectedTask(task: AgentSupervisionTask, agentId: string) {
+    if (!activeSupervisionWorkflowId || agentSupervisionAction) return;
+    const taskId = taskIdOf(task);
+    if (!taskId || !agentId) return;
+    setAgentSupervisionAction(`delegate:${taskId}`);
+    setAgentSupervisionStatus('Delegating task...');
+    try {
+      const result = await delegateAgentWorkflowTask(activeSupervisionWorkflowId, {
+        workspace_root: workspaceRoot,
+        task_id: taskId,
+        agent_id: agentId,
+        approval: true,
+        reason: 'Delegated from Website supervision.'
+      });
+      setAgentSupervisionStatus(result.ok ? 'Task delegation recorded.' : result.error || 'Delegation failed.');
+      await refreshAgentSupervision(workspaceRoot, activeSupervisionWorkflowId);
+    } catch (error) {
+      setAgentSupervisionStatus(error instanceof Error ? error.message : 'Could not delegate task');
+    } finally {
+      setAgentSupervisionAction('');
+    }
+  }
+
+  async function openRollbackControls() {
+    setAgentSupervisionStatus('Loading rollback checkpoints...');
+    await refreshCheckpoints(workspaceRoot);
+    setShowDetailsPanel(true);
+    openAppSection('chat');
+    setCheckpointStatus('Review an available checkpoint before restoring.');
   }
 
   async function refreshCreativeStudio() {
@@ -3142,6 +3732,160 @@ function App() {
     setActiveThreadId(threadIdForSubmit);
     persistConversation(threadIdForSubmit, nextHistory, requestWorkspaceRoot);
 
+    const runExternalBridge = async (): Promise<void> => {
+      let streamedBridgeOutput = '';
+      try {
+        setStatus(`Checking ${selectedBridgeLabel} bridge readiness...`);
+        let providerReadiness: ProviderAccountStatus | null = null;
+        try {
+          const providerSnapshot = await getProviderAccounts();
+          providerReadiness = providerSnapshot.providers.find((provider) => provider.manifest.id === selectedBridgeProvider) ?? null;
+        } catch {
+          providerReadiness = null;
+        }
+        if (providerReadiness && !providerReadiness.execution_ready) {
+          const setupAction = providerReadiness.setup_actions[0] || '';
+          const blockedContent = [
+            `${selectedBridgeLabel} is not ready to run from Aegis yet.`,
+            providerReadiness.readiness_detail || `${providerReadiness.manifest.label} needs account or CLI setup before delegation.`,
+            setupAction ? `Next step: ${setupAction}` : '',
+            providerReadiness.model_limit_summary ? `Quota/Auth: ${providerReadiness.model_limit_summary}` : ''
+          ]
+            .filter(Boolean)
+            .join('\n\n');
+          const blockedHistory: ChatMessage[] = [
+            ...nextHistory,
+            {
+              role: 'assistant',
+              content: blockedContent
+            }
+          ];
+          setHistory(blockedHistory);
+          persistConversation(threadIdForSubmit, blockedHistory, requestWorkspaceRoot);
+          setConnectionState('connected');
+          setStatus(`${selectedBridgeLabel} is not ready: ${providerReadiness.readiness_label || providerReadiness.connection_status}.`);
+          return;
+        }
+        setStatus(
+          `Running ${selectedBridgeLabel} bridge${
+            providerReadiness?.readiness_label ? ` (${providerReadiness.readiness_label})` : ''
+          }...`
+        );
+        const response = await streamAgentBridge(
+          {
+            provider_id: selectedBridgeProvider,
+            message: content,
+            workspace_root: requestWorkspaceRoot,
+            mode: queuedMessage?.mode ?? submitOptions.mode ?? mode,
+            model: selectedBridgeModel,
+            allow_edits: queuedMessage?.applyChanges ?? submitOptions.applyChanges ?? applyChanges,
+            context_paths: activeContextPaths,
+            timeout_seconds: 300
+          },
+          {
+            signal: abortController.signal,
+            onMeta: (payload) => {
+              const streamMode = payload.stream_mode ? ` (${payload.stream_mode})` : '';
+              setStatus(`${selectedBridgeLabel} bridge streaming started${streamMode}.`);
+            },
+            onStatus: (payload) => {
+              setStatus(payload.message || payload.stage || `${selectedBridgeLabel} bridge is working...`);
+            },
+            onDelta: (payload) => {
+              if (!payload.delta) return;
+              streamedBridgeOutput += payload.delta;
+              setStatus(
+                payload.stream === 'stderr'
+                  ? `Receiving ${selectedBridgeLabel} diagnostics...`
+                  : `Receiving live output from ${selectedBridgeLabel}...`
+              );
+              setHistory([
+                ...nextHistory,
+                {
+                  role: 'assistant',
+                  content: streamedBridgeOutput
+                }
+              ]);
+            },
+            onFinal: () => {
+              setStatus(`Final ${selectedBridgeLabel} bridge response received.`);
+            }
+          }
+        );
+        const detail = `${response.provider_label} ${response.status}${typeof response.exit_code === 'number' ? ` (${response.exit_code})` : ''}`;
+        const bridgeContent = [
+          response.reply || streamedBridgeOutput.trim() || 'The bridge completed without returning text.',
+          response.warnings.length ? `\nWarnings:\n${response.warnings.map((warning) => `- ${warning}`).join('\n')}` : '',
+          bridgeWorkspaceChangesText(response),
+          response.checkpoint ? `\nCheckpoint:\n${response.checkpoint}` : '',
+          response.command ? `\nCommand:\n\`${response.command}\`` : ''
+        ].join('').trim();
+        const finalHistory: ChatMessage[] = [
+          ...nextHistory,
+          {
+            role: 'assistant',
+            content: bridgeContent
+          }
+        ];
+        setManualEvents([
+          {
+            kind: 'agent_bridge',
+            title: `${selectedBridgeLabel} bridge`,
+            status: response.ok ? 'ok' : response.status === 'not_configured' ? 'warning' : 'error',
+            detail,
+            payload: {
+              provider_id: response.provider_id,
+              command: response.command,
+              cwd: response.cwd,
+              duration_ms: response.duration_ms,
+              checkpoint: response.checkpoint,
+              workspace_changes: response.metadata.workspace_changes
+            },
+            created_at: response.completed_at
+          }
+        ]);
+        setHistory(finalHistory);
+        setConnectionState('connected');
+        setActiveWorkspaceRoot(response.cwd || requestWorkspaceRoot);
+        persistConversation(threadIdForSubmit, finalHistory, response.cwd || requestWorkspaceRoot);
+        setStatus(response.ok ? `${selectedBridgeLabel} bridge completed.` : `${selectedBridgeLabel} bridge needs attention: ${response.status}.`);
+
+        try {
+          const fileSnapshot = await listFiles(response.cwd || requestWorkspaceRoot, 5000);
+          setFiles(fileSnapshot.files);
+        } catch {
+          // File refresh is best-effort for external CLIs because auth failures can still produce useful output.
+        }
+        await refreshWorkspaceHistory(response.cwd || requestWorkspaceRoot);
+        await refreshTasks(response.cwd || requestWorkspaceRoot);
+        await refreshWorkspaceProfile(response.cwd || requestWorkspaceRoot);
+        await refreshProjectIntelligence(response.cwd || requestWorkspaceRoot);
+        await refreshWorkspaceOperations(response.cwd || requestWorkspaceRoot);
+        await refreshValidationRecipe(response.cwd || requestWorkspaceRoot);
+        await refreshCheckpoints(response.cwd || requestWorkspaceRoot);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : `${selectedBridgeLabel} bridge could not complete the request`;
+        if (isAbortError(error) || abortController.signal.aborted) {
+          const stoppedHistory: ChatMessage[] = streamedBridgeOutput.trim()
+            ? [
+                ...nextHistory,
+                {
+                  role: 'assistant',
+                  content: `${streamedBridgeOutput.trim()}\n\n[Stopped by user]`
+                }
+              ]
+            : nextHistory;
+          setHistory(stoppedHistory);
+          persistConversation(threadIdForSubmit, stoppedHistory, requestWorkspaceRoot);
+          setStatus(`${selectedBridgeLabel} bridge stopped.`);
+          return;
+        }
+        setHistory(nextHistory);
+        persistConversation(threadIdForSubmit, nextHistory, requestWorkspaceRoot);
+        setStatus(`${selectedBridgeLabel} bridge failed: ${errorMessage}`);
+      }
+    };
+
     const attemptSubmit = async (attempt: number): Promise<void> => {
       let streamedAssistant = '';
       let previewSegmentStart = -1;
@@ -3157,6 +3901,11 @@ function App() {
           ),
           workspace_root: requestWorkspaceRoot,
           mode: queuedMessage?.mode ?? submitOptions.mode ?? mode,
+          selected_provider_id: selectedBridgeProvider,
+          selected_provider_label: selectedBridgeLabel,
+          selected_provider_api: modelApi,
+          selected_provider_endpoint: modelEndpoint,
+          selected_provider_model: selectedBridgeModel || modelName,
           apply_changes: queuedMessage?.applyChanges ?? submitOptions.applyChanges ?? applyChanges,
           run_validation: queuedMessage?.runValidation ?? submitOptions.runValidation ?? runValidation,
           context_paths: activeContextPaths,
@@ -3165,7 +3914,8 @@ function App() {
           signal: abortController.signal,
           onMeta: (payload) => {
             const streamMode = payload.stream_mode ? ` (${payload.stream_mode})` : '';
-            setStatus(`Streaming response started${streamMode}.`);
+            const providerLabel = [payload.provider_label, payload.model].filter(Boolean).join(' / ');
+            setStatus(`Streaming response started${providerLabel ? ` via ${providerLabel}` : ''}${streamMode}.`);
           },
           onStatus: (payload) => {
             setStatus(payload.message || payload.stage || `${assistantIdentity} is working...`);
@@ -3331,7 +4081,11 @@ function App() {
     };
 
     try {
-      await attemptSubmit(0);
+      if (selectedExternalBridge) {
+        await runExternalBridge();
+      } else {
+        await attemptSubmit(0);
+      }
     } finally {
       if (activeChatAbortController.current === abortController) {
         activeChatAbortController.current = null;
@@ -3751,6 +4505,15 @@ function App() {
 
   const palette = getPalette(isDarkMode);
   const modeChoices = config?.modes?.length ? config.modes : fallbackModeOptions;
+  const selectedBridgeSummary = buildBridgeProviderSummary({
+    providerId: selectedBridgeProvider,
+    modelApi,
+    modelName
+  });
+  const selectedExternalBridge = selectedBridgeSummary.external;
+  const selectedBridgeModel = selectedBridgeSummary.model;
+  const selectedBridgeLabel = selectedBridgeSummary.label;
+  const selectedBridgeRuntimeLabel = selectedBridgeSummary.runtimeLabel;
 
   function renderChatMessage(item: ChatMessage, index: number) {
     const isUser = item.role === 'user';
@@ -4058,6 +4821,789 @@ function App() {
     );
   }
 
+  function renderSupervisionFilters() {
+    const workflowOptions = agentSupervision?.workflows ?? [];
+    const agentOptions = supervisionAgents;
+    return (
+      <section style={styles.settingsSection(palette)}>
+        <div style={styles.sectionHeaderInline}>
+          <h3 style={styles.settingsHeading(palette)}>Filters</h3>
+          <button
+            type="button"
+            style={styles.iconTextButton(palette)}
+            onClick={() => {
+              setAgentSupervisionWorkflowFilter('all');
+              setAgentSupervisionAgentFilter('all');
+              setAgentSupervisionStatusFilter('all');
+              setAgentSupervisionRiskFilter('all');
+              setAgentSupervisionValidationFilter('all');
+              setAgentSupervisionFileFilter('');
+            }}
+          >
+            <X size={14} />
+            Clear
+          </button>
+        </div>
+        <div style={styles.formGridTwo}>
+          <label style={styles.fieldLabel(palette)}>
+            <span>Workflow</span>
+            <select
+              value={agentSupervisionWorkflowFilter}
+              onChange={(event) => setAgentSupervisionWorkflowFilter(event.target.value)}
+              style={styles.fieldInput(palette)}
+            >
+              <option value="all">Active workflow</option>
+              {workflowOptions.map((workflow) => {
+                const id = workflowIdOf(workflow);
+                return (
+                  <option key={id || recordString(workflow, ['title', 'objective'])} value={id}>
+                    {recordString(workflow, ['title', 'objective', 'workflow_type'], id || 'workflow')}
+                  </option>
+                );
+              })}
+            </select>
+          </label>
+          <label style={styles.fieldLabel(palette)}>
+            <span>Agent</span>
+            <select
+              value={agentSupervisionAgentFilter}
+              onChange={(event) => setAgentSupervisionAgentFilter(event.target.value)}
+              style={styles.fieldInput(palette)}
+            >
+              <option value="all">All agents</option>
+              {agentOptions.map((agent) => {
+                const id = agentIdOf(agent);
+                const role = recordString(agent, ['role', 'label', 'name'], id);
+                return (
+                  <option key={id || role} value={id || role}>
+                    {formatStatusLabel(role)}
+                  </option>
+                );
+              })}
+            </select>
+          </label>
+          <label style={styles.fieldLabel(palette)}>
+            <span>Status</span>
+            <select
+              value={agentSupervisionStatusFilter}
+              onChange={(event) => setAgentSupervisionStatusFilter(event.target.value)}
+              style={styles.fieldInput(palette)}
+            >
+              {['all', 'pending', 'queued', 'running', 'waiting_input', 'validating', 'repairing', 'completed', 'failed', 'cancelled', 'paused'].map(
+                (item) => (
+                  <option key={item} value={item}>
+                    {formatStatusLabel(item)}
+                  </option>
+                )
+              )}
+            </select>
+          </label>
+          <label style={styles.fieldLabel(palette)}>
+            <span>Risk</span>
+            <select
+              value={agentSupervisionRiskFilter}
+              onChange={(event) => setAgentSupervisionRiskFilter(event.target.value)}
+              style={styles.fieldInput(palette)}
+            >
+              {['all', 'low', 'medium', 'high', 'very_high', 'unknown'].map((item) => (
+                <option key={item} value={item}>
+                  {formatStatusLabel(item)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label style={styles.fieldLabel(palette)}>
+            <span>Validation</span>
+            <select
+              value={agentSupervisionValidationFilter}
+              onChange={(event) => setAgentSupervisionValidationFilter(event.target.value)}
+              style={styles.fieldInput(palette)}
+            >
+              {['all', 'passed', 'failed', 'running', 'pending'].map((item) => (
+                <option key={item} value={item}>
+                  {formatStatusLabel(item)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label style={styles.fieldLabel(palette)}>
+            <span>File</span>
+            <input
+              value={agentSupervisionFileFilter}
+              onChange={(event) => setAgentSupervisionFileFilter(event.target.value)}
+              placeholder="Filter by path"
+              style={styles.fieldInput(palette)}
+            />
+          </label>
+        </div>
+      </section>
+    );
+  }
+
+  function renderWorkflowTimeline() {
+    const taskByStage = new Map<string, AgentSupervisionTask>();
+    for (const task of supervisionTasks) {
+      const stage = recordString(task, ['stage', 'execution_mode', 'kind']).toLowerCase();
+      const matched = workflowStageOrder.find((item) => stage.includes(item));
+      if (matched && !taskByStage.has(matched)) taskByStage.set(matched, task);
+    }
+    const timeline = agentSupervision?.timeline ?? agentSupervision?.coordination?.execution_timeline ?? [];
+    return (
+      <section style={styles.settingsSection(palette)}>
+        <div style={styles.sectionHeaderInline}>
+          <h3 style={styles.settingsHeading(palette)}>Workflow Timeline</h3>
+          <span style={styles.contextTag(palette)}>{timeline.length} events</span>
+        </div>
+        <div style={styles.eventList}>
+          {workflowStageOrder.map((stage) => {
+            const task = taskByStage.get(stage);
+            const status = recordString(task, ['status'], task ? 'pending' : 'queued');
+            return (
+              <div key={stage} style={styles.eventRow(palette, workflowStatusTone(status))}>
+                <div>
+                  <strong style={styles.eventTitle(palette)}>{formatStatusLabel(stage)}</strong>
+                  <div style={styles.eventDetail(palette)}>
+                    {task ? recordString(task, ['title', 'summary', 'id'], formatStatusLabel(stage)) : 'Awaiting workflow activity'}
+                  </div>
+                </div>
+                <span style={styles.eventTime(palette)}>{formatStatusLabel(status)}</span>
+              </div>
+            );
+          })}
+        </div>
+        {timeline.length ? (
+          <div style={{ ...styles.eventList, marginTop: 10 }}>
+            {timeline.slice(0, 5).map((event, index) => (
+              <div key={`${event.created_at ?? index}-${event.title ?? index}`} style={styles.eventRow(palette, event.status ?? 'ok')}>
+                <div>
+                  <strong style={styles.eventTitle(palette)}>{event.title || event.kind || 'Workflow event'}</strong>
+                  <div style={styles.eventDetail(palette)}>{event.detail || recordString(event.payload, ['summary', 'message'])}</div>
+                </div>
+                <span style={styles.eventTime(palette)}>{formatEventTime(event.created_at)}</span>
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </section>
+    );
+  }
+
+  function renderAgentCards() {
+    const agents = supervisionAgents.length ? supervisionAgents : ((agentSupervision?.runtime?.agents as AgentSupervisionAgent[] | undefined) ?? []);
+    return (
+      <section style={styles.settingsSection(palette)}>
+        <div style={styles.sectionHeaderInline}>
+          <h3 style={styles.settingsHeading(palette)}>Active Agents</h3>
+          <span style={styles.contextTag(palette)}>{agents.length} registered</span>
+        </div>
+        <div style={styles.modelList}>
+          {agents.slice(0, 8).map((agent) => {
+            const id = agentIdOf(agent);
+            const role = recordString(agent, ['role', 'label', 'name'], id || 'agent');
+            const status = recordString(agent, ['status'], 'idle');
+            const modelProfile = agent.model_profile ?? {};
+            const model = recordString(modelProfile, ['model', 'model_id', 'primary_model'], recordString(agent, ['model', 'provider'], 'model pending'));
+            const assignedTask = recordString(agent, ['assigned_task_title', 'assigned_task', 'assigned_task_id'], 'No assigned task');
+            const confidence = recordNumber(agent, ['confidence']);
+            const risk = recordString(agent, ['risk_level', 'risk'], 'unknown');
+            const logs = Array.isArray(agent.logs) ? agent.logs : [];
+            const lastLog = logs.length ? logs[logs.length - 1] : null;
+            const lastAction = recordString(agent, ['last_action'], recordString(lastLog, ['summary', 'message', 'type'], 'No recent action'));
+            return (
+              <div key={id || role} style={styles.modelRow(palette, status === 'active' || status === 'running')}>
+                <div style={styles.modelRowMain}>
+                  <div style={styles.modelRowTop}>
+                    <div style={styles.cardTitle(palette)}>{formatStatusLabel(role)}</div>
+                    <span style={styles.contextTag(palette)}>{formatStatusLabel(status)}</span>
+                  </div>
+                  <div style={styles.eventDetail(palette)}>{assignedTask}</div>
+                  <div style={styles.tagWrap}>
+                    <span style={styles.contextTag(palette)}>{model}</span>
+                    <span style={styles.contextTag(palette)}>Risk {formatStatusLabel(risk)}</span>
+                    <span style={styles.contextTag(palette)}>
+                      {confidence === null ? 'Confidence pending' : `Confidence ${Math.round(confidence * 100)}%`}
+                    </span>
+                    <span style={styles.contextTag(palette)}>
+                      {Array.isArray(agent.handoff_history) ? agent.handoff_history.length : 0} handoff(s)
+                    </span>
+                  </div>
+                  <div style={styles.eventDetail(palette)}>{lastAction}</div>
+                </div>
+              </div>
+            );
+          })}
+          {!agents.length ? <div style={styles.emptyPanel(palette)}>No Core agent runtime data is available yet.</div> : null}
+        </div>
+      </section>
+    );
+  }
+
+  function renderApprovalControls() {
+    const pendingTask = supervisionApprovalTasks[0] ?? supervisionTasks.find((task) => recordString(task, ['status']) === 'waiting_input') ?? null;
+    const resumeMode = recordString(activeSupervisionWorkflow, ['status']).toLowerCase() === 'paused';
+    return (
+      <section style={styles.settingsSection(palette)}>
+        <div style={styles.sectionHeaderInline}>
+          <h3 style={styles.settingsHeading(palette)}>Approval Queue</h3>
+          <span style={styles.contextTag(palette)}>{supervisionApprovalTasks.length} request(s)</span>
+        </div>
+        {pendingTask ? (
+          <div style={styles.eventRow(palette, 'warning')}>
+            <div>
+              <strong style={styles.eventTitle(palette)}>
+                {recordString(pendingTask, ['title', 'summary', 'id'], 'Pending approval')}
+              </strong>
+              <div style={styles.eventDetail(palette)}>{recordString(pendingTask, ['reason', 'summary'], 'Awaiting supervised action.')}</div>
+            </div>
+            <span style={styles.eventTime(palette)}>{recordString(pendingTask, ['status'], 'waiting_input')}</span>
+          </div>
+        ) : (
+          <div style={styles.emptyPanel(palette)}>No approval requests are currently queued.</div>
+        )}
+        <div style={{ ...styles.rowActions, justifyContent: 'flex-start', marginTop: 12 }}>
+          <button
+            type="button"
+            style={styles.primaryButton(palette)}
+            onClick={() => void runAgentSupervisionAction('advance', { task: pendingTask, approval: true, summary: 'Approved from Agent Activity Center.' })}
+            disabled={!activeSupervisionWorkflowId || Boolean(agentSupervisionAction)}
+          >
+            <CheckCircle2 size={16} />
+            Approve step
+          </button>
+          <button
+            type="button"
+            style={styles.secondaryButton(palette)}
+            onClick={() => void runAgentSupervisionAction('fail_task', { task: pendingTask, summary: 'Rejected from Agent Activity Center.' })}
+            disabled={!pendingTask || Boolean(agentSupervisionAction)}
+          >
+            <X size={16} />
+            Reject step
+          </button>
+          <button
+            type="button"
+            style={styles.secondaryButton(palette)}
+            onClick={() =>
+              void runAgentSupervisionAction('advance', {
+                task: pendingTask,
+                approval: true,
+                summary: 'Approved all safe proposed changes from Agent Activity Center.',
+                payload: { approval_scope: 'safe_changes' }
+              })
+            }
+            disabled={!activeSupervisionWorkflowId || Boolean(agentSupervisionAction)}
+          >
+            <CheckCircle2 size={16} />
+            Approve safe
+          </button>
+          <button
+            type="button"
+            style={styles.secondaryButton(palette)}
+            onClick={() => void runAgentSupervisionAction(resumeMode ? 'resume' : 'pause')}
+            disabled={!activeSupervisionWorkflowId || Boolean(agentSupervisionAction)}
+          >
+            {resumeMode ? <Play size={16} /> : <Pause size={16} />}
+            {resumeMode ? 'Resume' : 'Pause'}
+          </button>
+          <button
+            type="button"
+            style={styles.secondaryButton(palette)}
+            onClick={() => void runAgentSupervisionAction('cancel')}
+            disabled={!activeSupervisionWorkflowId || Boolean(agentSupervisionAction)}
+          >
+            <Square size={16} />
+            Cancel
+          </button>
+          <button
+            type="button"
+            style={styles.secondaryButton(palette)}
+            onClick={() => void runAgentSupervisionAction('record_log', { summary: 'Revision requested from Agent Activity Center.' })}
+            disabled={!activeSupervisionWorkflowId || Boolean(agentSupervisionAction)}
+          >
+            <MessageSquarePlus size={16} />
+            Request revision
+          </button>
+          <button type="button" style={styles.secondaryButton(palette)} onClick={() => void openRollbackControls()}>
+            <Wrench size={16} />
+            Rollback
+          </button>
+        </div>
+      </section>
+    );
+  }
+
+  function renderDiffRiskReviewPanel() {
+    const taskFiles = filteredSupervisionTasks.flatMap(supervisionTaskFiles);
+    const filesChanged = pendingChanges.length ? pendingChanges.map((change) => change.path) : Array.from(new Set(taskFiles)).slice(0, 12);
+    const riskTask = filteredSupervisionTasks.find((task) => recordString(task, ['risk_level', 'risk', 'estimated_risk'])) ?? null;
+    const risk = recordString(
+      riskTask,
+      ['risk_level', 'risk', 'estimated_risk'],
+      generatedChangeSummary.total > 8 || generatedDiffStats.added + generatedDiffStats.removed > 600 ? 'high' : pendingChanges.length ? 'medium' : 'unknown'
+    );
+    const validationRequirements = filteredSupervisionTasks.flatMap((task) => recordStrings(task, ['validation_requirements', 'validation_targets']));
+    const impactedDependencies = filteredSupervisionTasks.flatMap((task) => recordStrings(task, ['impacted_dependencies', 'dependencies']));
+    const checkpoint = activeReviewSource?.checkpoint ?? checkpoints[0]?.id ?? recordString(riskTask, ['checkpoint_id']);
+    return (
+      <section style={styles.settingsSection(palette)}>
+        <div style={styles.sectionHeaderInline}>
+          <h3 style={styles.settingsHeading(palette)}>Diff And Risk Review</h3>
+          <span style={styles.contextTag(palette)}>{pendingChanges.length ? 'Proposed changes' : 'Workflow scope'}</span>
+        </div>
+        <div style={styles.workspaceMeta(palette)}>
+          <strong>Apply state</strong>
+          <span>{pendingChanges.length ? `${appliedChanges.length}/${pendingChanges.length} applied` : 'No file changes applied here'}</span>
+          <strong>Risk</strong>
+          <span>{formatStatusLabel(risk || 'unknown')}</span>
+          <strong>Checkpoint</strong>
+          <span>{checkpoint || 'No checkpoint loaded'}</span>
+          <strong>Rollback</strong>
+          <span>{checkpoint || checkpoints.length ? 'Available after checkpoint review' : 'Unavailable'}</span>
+        </div>
+        <div style={styles.sectionBlock}>
+          <div style={styles.sectionLabel(palette)}>Files</div>
+          <div style={styles.tagWrap}>
+            {filesChanged.slice(0, 12).map((path) => (
+              <span key={`supervision-file-${path}`} style={styles.contextTag(palette)}>
+                {path}
+              </span>
+            ))}
+            {!filesChanged.length ? <span style={styles.previewMeta(palette)}>No file scope reported yet.</span> : null}
+          </div>
+        </div>
+        <div style={styles.sectionBlock}>
+          <div style={styles.sectionLabel(palette)}>Validation</div>
+          <div style={styles.tagWrap}>
+            {(validationRequirements.length ? validationRequirements : [recordString(latestSupervisionValidation, ['title', 'summary'], 'Validation pending')]).slice(0, 8).map(
+              (item) => (
+                <span key={`supervision-validation-${item}`} style={styles.contextTag(palette)}>
+                  {item}
+                </span>
+              )
+            )}
+          </div>
+        </div>
+        <div style={styles.sectionBlock}>
+          <div style={styles.sectionLabel(palette)}>Impact</div>
+          <div style={styles.tagWrap}>
+            {impactedDependencies.slice(0, 8).map((item) => (
+              <span key={`supervision-impact-${item}`} style={styles.contextTag(palette)}>
+                {item}
+              </span>
+            ))}
+            {!impactedDependencies.length ? <span style={styles.previewMeta(palette)}>No dependency impact reported yet.</span> : null}
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  function renderQualityGatePanel() {
+    const latest = qualityGates?.latest ?? null;
+    const gates = latest?.gates ?? [];
+    const scorecard = latest?.scorecard ?? {};
+    const blocked = latest?.blockers ?? [];
+    const warnings = latest?.warnings ?? [];
+    const benchmarkLatest = qualityBenchmarks?.latest ?? qualityGates?.benchmark_history?.[0] ?? null;
+    const confidence = Number(scorecard.confidence_score ?? 0);
+    const risk = Number(scorecard.risk_score ?? 0);
+    const validation = Number(scorecard.validation_score ?? 0);
+    return (
+      <section style={styles.settingsSection(palette)}>
+        <div style={styles.sectionHeaderInline}>
+          <h3 style={styles.settingsHeading(palette)}>Quality Gates</h3>
+          <div style={styles.tagWrap}>
+            <span style={latest?.apply_allowed ? styles.goodTag(palette) : styles.warningTag(palette)}>
+              {latest ? (latest.apply_allowed ? 'Apply allowed' : 'Apply blocked') : 'No gate run'}
+            </span>
+            <button
+              type="button"
+              style={styles.secondaryButton(palette)}
+              onClick={() => void refreshQualityGatePanel()}
+              disabled={qualityGateLoading}
+            >
+              {qualityGateLoading ? <Loader2 size={16} className="spin" /> : <Search size={16} />}
+              Refresh
+            </button>
+          </div>
+        </div>
+        <div style={styles.metricGrid}>
+          <div style={styles.metricCard(palette)}>
+            <span style={styles.metricLabel(palette)}>Confidence</span>
+            <strong style={styles.metricValue(palette)}>{confidence ? `${confidence}%` : 'n/a'}</strong>
+          </div>
+          <div style={styles.metricCard(palette)}>
+            <span style={styles.metricLabel(palette)}>Validation</span>
+            <strong style={styles.metricValue(palette)}>{validation ? `${validation}%` : 'n/a'}</strong>
+          </div>
+          <div style={styles.metricCard(palette)}>
+            <span style={styles.metricLabel(palette)}>Risk</span>
+            <strong style={styles.metricValue(palette)}>{risk ? `${risk}` : 'n/a'}</strong>
+          </div>
+          <div style={styles.metricCard(palette)}>
+            <span style={styles.metricLabel(palette)}>Blockers</span>
+            <strong style={styles.metricValue(palette)}>{blocked.length}</strong>
+          </div>
+        </div>
+        {qualityGateStatus ? <div style={styles.inlineStatus(palette)}>{qualityGateStatus}</div> : null}
+        <div style={styles.eventList}>
+          {gates.slice(0, 10).map((gate) => (
+            <div key={gate.id} style={styles.eventRow(palette, gate.status === 'passed' ? 'ok' : gate.status === 'failed' ? 'error' : 'warning')}>
+              <div>
+                <strong style={styles.eventTitle(palette)}>{gate.label || formatStatusLabel(gate.id)}</strong>
+                <div style={styles.eventDetail(palette)}>{gate.summary || 'No gate detail recorded.'}</div>
+              </div>
+              <span style={styles.eventTime(palette)}>{formatStatusLabel(gate.status)}</span>
+            </div>
+          ))}
+          {!gates.length ? <div style={styles.emptyPanel(palette)}>No Core quality gate run has been recorded yet.</div> : null}
+        </div>
+        {blocked.length || warnings.length ? (
+          <div style={styles.sectionBlock}>
+            <div style={styles.sectionLabel(palette)}>Approval Blockers And Risk Warnings</div>
+            <div style={styles.tagWrap}>
+              {blocked.slice(0, 6).map((item, index) => (
+                <span key={`quality-blocker-${index}`} style={styles.warningTag(palette)}>
+                  {String(item.reason ?? item.label ?? 'Blocked gate')}
+                </span>
+              ))}
+              {warnings.slice(0, 6).map((item) => (
+                <span key={`quality-warning-${item}`} style={styles.contextTag(palette)}>
+                  {item}
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : null}
+        <div style={styles.workspaceMeta(palette)}>
+          <strong>Benchmark</strong>
+          <span>{String(benchmarkLatest?.status ?? 'not run')}</span>
+          <strong>Benchmark score</strong>
+          <span>{String(benchmarkLatest?.score ?? 'n/a')}</span>
+          <strong>Reports</strong>
+          <span>{qualityGates?.reports?.length ?? 0}</span>
+          <strong>Validation log</strong>
+          <span>{String(latest?.validation?.latest_command ?? 'No latest validation')}</span>
+        </div>
+      </section>
+    );
+  }
+
+  function renderSupervisionTaskList() {
+    return (
+      <section style={styles.settingsSection(palette)}>
+        <div style={styles.sectionHeaderInline}>
+          <h3 style={styles.settingsHeading(palette)}>Task Queue</h3>
+          <span style={styles.contextTag(palette)}>{filteredSupervisionTasks.length}/{supervisionTasks.length}</span>
+        </div>
+        <div style={styles.modelList}>
+          {filteredSupervisionTasks.slice(0, 12).map((task) => {
+            const id = taskIdOf(task);
+            const status = recordString(task, ['status'], 'pending');
+            const agentId = recordString(task, ['agent_id', 'agent_role'], 'unassigned');
+            const risk = recordString(task, ['risk_level', 'risk', 'estimated_risk'], 'unknown');
+            const nextAgent = supervisionAgents.find((agent) => agentIdOf(agent) !== agentId);
+            return (
+              <div key={id || recordString(task, ['title'])} style={styles.modelRow(palette, status === 'running' || status === 'waiting_input')}>
+                <div style={styles.modelRowMain}>
+                  <div style={styles.modelRowTop}>
+                    <div style={styles.cardTitle(palette)}>{recordString(task, ['title', 'summary', 'id'], 'Workflow task')}</div>
+                    <span style={styles.contextTag(palette)}>{formatStatusLabel(status)}</span>
+                  </div>
+                  <div style={styles.eventDetail(palette)}>{recordString(task, ['reason', 'summary'], 'Task details are stored in Core.')}</div>
+                  <div style={styles.tagWrap}>
+                    <span style={styles.contextTag(palette)}>{formatStatusLabel(agentId)}</span>
+                    <span style={styles.contextTag(palette)}>Risk {formatStatusLabel(risk)}</span>
+                    {supervisionTaskFiles(task).slice(0, 3).map((path) => (
+                      <span key={`${id}-${path}`} style={styles.contextTag(palette)}>
+                        {path}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <div style={styles.rowActions}>
+                  <button
+                    type="button"
+                    style={styles.iconTextButton(palette)}
+                    onClick={() => void runAgentSupervisionAction('retry_task', { task, summary: 'Retry requested from Agent Activity Center.' })}
+                    disabled={Boolean(agentSupervisionAction)}
+                  >
+                    <Play size={14} />
+                    Retry
+                  </button>
+                  {nextAgent ? (
+                    <button
+                      type="button"
+                      style={styles.iconTextButton(palette)}
+                      onClick={() => void delegateSelectedTask(task, agentIdOf(nextAgent))}
+                      disabled={Boolean(agentSupervisionAction)}
+                    >
+                      <Bot size={14} />
+                      Handoff
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            );
+          })}
+          {!filteredSupervisionTasks.length ? <div style={styles.emptyPanel(palette)}>No workflow tasks match the current filters.</div> : null}
+        </div>
+      </section>
+    );
+  }
+
+  function renderAgentActivityCenter() {
+    const workflow = activeSupervisionWorkflow;
+    const status = recordString(workflow, ['status'], agentSupervision?.core_connected ? 'idle' : 'offline');
+    const counts = agentSupervision?.task_counts ?? {};
+    const count = (key: string) => Number(counts[key] ?? 0);
+    const releaseStatus = recordString(agentSupervision?.runtime_status, ['release_status'], 'not checked');
+    const releaseCompatible = Boolean((agentSupervision?.runtime_status as { release_compatible?: unknown } | undefined)?.release_compatible);
+    const trustStatus = agentSupervision?.security_status ?? {};
+    const trustPrivacy = (trustStatus.privacy as Record<string, unknown> | undefined) ?? {};
+    const trustWebsite = (trustStatus.website as Record<string, unknown> | undefined) ?? {};
+    const trustCore = (trustStatus.core as Record<string, unknown> | undefined) ?? {};
+    const trustCoreLocalApi = (trustCore.local_api as Record<string, unknown> | undefined) ?? {};
+    const trustCredentials = (trustStatus.credentials as Record<string, unknown> | undefined) ?? {};
+    const privacyMode = typeof trustPrivacy.mode === 'string' ? trustPrivacy.mode : 'local_first';
+    const tokenEnforced = trustCoreLocalApi.token_enforced === true || trustWebsite.local_api_token_configured === true;
+    const cloudDisabled = trustPrivacy.cloud_disabled === true;
+    const autopilotTrust = (agentSupervision?.autopilot ?? {}) as Record<string, unknown>;
+    const autopilotRun = (autopilotTrust.active_run as Record<string, unknown> | undefined) ?? {};
+    const autopilotScorecard = (autopilotTrust.trust_scorecard as Record<string, unknown> | undefined) ?? {};
+    const autopilotConfidence = Number(autopilotTrust.confidence_score ?? autopilotRun.confidence_score ?? autopilotScorecard.confidence_score ?? 0);
+    const autopilotValidationConfidence = Number(autopilotTrust.validation_confidence ?? autopilotRun.validation_confidence ?? autopilotScorecard.validation_confidence ?? 0);
+    const autopilotRegressionRisk = Number(autopilotTrust.regression_risk ?? autopilotRun.regression_risk ?? autopilotScorecard.regression_risk ?? 0);
+    const autopilotRollbackReadiness = Number(autopilotTrust.rollback_readiness ?? autopilotRun.rollback_readiness ?? autopilotScorecard.rollback_readiness ?? 0);
+    const autopilotRiskLevel = String(autopilotTrust.execution_risk_level ?? autopilotRun.execution_risk_level ?? autopilotScorecard.execution_risk_level ?? 'unknown');
+    const autopilotSpecialization = String(autopilotTrust.specialization ?? autopilotRun.specialization ?? 'none');
+    const autopilotExecutionStrategy =
+      (autopilotTrust.execution_strategy as Record<string, unknown> | undefined) ??
+      (autopilotRun.execution_strategy as Record<string, unknown> | undefined) ??
+      {};
+    const autopilotValidationStrategy =
+      (autopilotTrust.validation_strategy as Record<string, unknown> | undefined) ??
+      (autopilotRun.validation_strategy as Record<string, unknown> | undefined) ??
+      {};
+    const autopilotRepairStrategy =
+      (autopilotTrust.repair_strategy as Record<string, unknown> | undefined) ??
+      (autopilotRun.repair_strategy as Record<string, unknown> | undefined) ??
+      {};
+    const collaboration = (agentSupervision?.collaboration ?? {}) as Record<string, unknown>;
+    const collaborationObservability = (collaboration.observability as Record<string, unknown> | undefined) ?? {};
+    const collaborationApprovals = Array.isArray(collaboration.approval_queue)
+      ? (collaboration.approval_queue as Array<Record<string, unknown>>)
+      : [];
+    const collaborationWorkflows = Array.isArray(collaboration.active_workflows)
+      ? (collaboration.active_workflows as Array<Record<string, unknown>>)
+      : [];
+    const collaborationViewer = (collaboration.viewer as Record<string, unknown> | undefined) ?? {};
+    const governance = (agentSupervision?.governance ?? {}) as Record<string, unknown>;
+    const governanceSummary = (governance.ui_summary as Record<string, unknown> | undefined) ?? {};
+    const governanceCompliance = (governance.compliance as Record<string, unknown> | undefined) ?? {};
+    const governanceViolations = Array.isArray(governance.policy_violations)
+      ? (governance.policy_violations as Array<Record<string, unknown>>)
+      : [];
+    return (
+      <>
+        <div style={styles.metricGrid}>
+          <div style={styles.metricCard(palette)}>
+            <span style={styles.metricLabel(palette)}>Core</span>
+            <strong style={styles.metricValue(palette)}>{agentSupervision?.core_connected ? 'Connected' : 'Disconnected'}</strong>
+          </div>
+          <div style={styles.metricCard(palette)}>
+            <span style={styles.metricLabel(palette)}>Workflow</span>
+            <strong style={styles.metricValue(palette)}>{formatStatusLabel(status)}</strong>
+          </div>
+          <div style={styles.metricCard(palette)}>
+            <span style={styles.metricLabel(palette)}>Agents</span>
+            <strong style={styles.metricValue(palette)}>{supervisionAgents.length}</strong>
+          </div>
+          <div style={styles.metricCard(palette)}>
+            <span style={styles.metricLabel(palette)}>Approval</span>
+            <strong style={styles.metricValue(palette)}>{supervisionApprovalTasks.length || count('approval_requests')}</strong>
+          </div>
+          <div style={styles.metricCard(palette)}>
+            <span style={styles.metricLabel(palette)}>Completed</span>
+            <strong style={styles.metricValue(palette)}>{count('completed')}</strong>
+          </div>
+          <div style={styles.metricCard(palette)}>
+            <span style={styles.metricLabel(palette)}>Failed</span>
+            <strong style={styles.metricValue(palette)}>{count('failed')}</strong>
+          </div>
+          <div style={styles.metricCard(palette)}>
+            <span style={styles.metricLabel(palette)}>Release</span>
+            <strong style={styles.metricValue(palette)}>{releaseCompatible ? 'Compatible' : formatStatusLabel(releaseStatus)}</strong>
+          </div>
+          <div style={styles.metricCard(palette)}>
+            <span style={styles.metricLabel(palette)}>Trust</span>
+            <strong style={styles.metricValue(palette)}>{cloudDisabled ? 'Local Only' : formatStatusLabel(privacyMode)}</strong>
+          </div>
+          <div style={styles.metricCard(palette)}>
+            <span style={styles.metricLabel(palette)}>Autopilot Type</span>
+            <strong style={styles.metricValue(palette)}>{formatStatusLabel(autopilotSpecialization)}</strong>
+          </div>
+          <div style={styles.metricCard(palette)}>
+            <span style={styles.metricLabel(palette)}>Autopilot Confidence</span>
+            <strong style={styles.metricValue(palette)}>{autopilotConfidence ? `${autopilotConfidence}%` : 'n/a'}</strong>
+          </div>
+          <div style={styles.metricCard(palette)}>
+            <span style={styles.metricLabel(palette)}>Regression Risk</span>
+            <strong style={styles.metricValue(palette)}>{autopilotRegressionRisk ? `${autopilotRegressionRisk}` : formatStatusLabel(autopilotRiskLevel)}</strong>
+          </div>
+          <div style={styles.metricCard(palette)}>
+            <span style={styles.metricLabel(palette)}>Rollback Ready</span>
+            <strong style={styles.metricValue(palette)}>{autopilotRollbackReadiness ? `${autopilotRollbackReadiness}%` : 'n/a'}</strong>
+          </div>
+          <div style={styles.metricCard(palette)}>
+            <span style={styles.metricLabel(palette)}>Team Approvals</span>
+            <strong style={styles.metricValue(palette)}>{collaborationApprovals.length || Number(collaborationObservability.pending_approval_count ?? 0)}</strong>
+          </div>
+          <div style={styles.metricCard(palette)}>
+            <span style={styles.metricLabel(palette)}>Shared Workflows</span>
+            <strong style={styles.metricValue(palette)}>{collaborationWorkflows.length || Number(collaborationObservability.active_workflow_count ?? 0)}</strong>
+          </div>
+          <div style={styles.metricCard(palette)}>
+            <span style={styles.metricLabel(palette)}>Policy</span>
+            <strong style={styles.metricValue(palette)}>{formatStatusLabel(recordString(governanceSummary, ['status'], 'unknown'))}</strong>
+          </div>
+          <div style={styles.metricCard(palette)}>
+            <span style={styles.metricLabel(palette)}>Violations</span>
+            <strong style={styles.metricValue(palette)}>{governanceViolations.length || Number(governanceSummary.policy_violations ?? 0)}</strong>
+          </div>
+        </div>
+
+        <section style={styles.settingsSection(palette)}>
+          <div style={styles.sectionHeaderInline}>
+            <h3 style={styles.settingsHeading(palette)}>Agent Activity Center</h3>
+            <div style={styles.tagWrap}>
+              <span style={agentSupervision?.fallback_mode_active ? styles.warningTag(palette) : styles.goodTag(palette)}>
+                {agentSupervision?.fallback_mode_active ? 'Fallback visible' : 'Core live'}
+              </span>
+              <button
+                type="button"
+                style={styles.secondaryButton(palette)}
+                onClick={() => void refreshAgentSupervision()}
+                disabled={agentSupervisionLoading}
+              >
+                {agentSupervisionLoading ? <Loader2 size={16} className="spin" /> : <Search size={16} />}
+                Refresh
+              </button>
+            </div>
+          </div>
+          <div style={styles.workspaceMeta(palette)}>
+            <strong>Active workflow</strong>
+            <span>{recordString(workflow, ['title', 'objective', 'workflow_type'], activeSupervisionWorkflowId || 'none')}</span>
+            <strong>Current task</strong>
+            <span>
+              {recordString(
+                supervisionTasks.find((task) => taskIdOf(task) === recordString(workflow, ['active_task_id'])),
+                ['title', 'summary', 'id'],
+                'No active task'
+              )}
+            </span>
+            <strong>Validation</strong>
+            <span>{recordString(latestSupervisionValidation, ['status', 'summary', 'title'], 'No validation task reported')}</span>
+            <strong>Autopilot trust</strong>
+            <span>
+              {autopilotConfidence
+                ? `${autopilotConfidence}% confidence / ${autopilotValidationConfidence || 0}% validation / ${formatStatusLabel(autopilotRiskLevel)} risk`
+                : 'No active Autopilot trust score'}
+            </span>
+            <strong>Autopilot strategy</strong>
+            <span>
+              {formatStatusLabel(autopilotSpecialization)} / {recordString(autopilotExecutionStrategy, ['name'], 'standard')} /{' '}
+              {recordString(autopilotValidationStrategy, ['name'], 'default validation')}
+            </span>
+            <strong>Repair strategy</strong>
+            <span>{recordString(autopilotRepairStrategy, ['name', 'depth'], 'No specialized repair strategy reported')}</span>
+            <strong>Collaboration</strong>
+            <span>
+              {recordString(collaborationViewer, ['role'], 'owner')} view / {collaborationApprovals.length || Number(collaborationObservability.pending_approval_count ?? 0)} pending approval(s)
+            </span>
+            <strong>Governance</strong>
+            <span>
+              {formatStatusLabel(recordString(governanceSummary, ['status'], 'unknown'))} / {Number(governanceCompliance.enabled_policy_count ?? 0)} active policy rule(s)
+            </span>
+            <strong>Repair</strong>
+            <span>{count('repairing') || supervisionTasks.filter((task) => recordString(task, ['agent_role', 'execution_mode']).includes('repair')).length} attempt(s)</span>
+            <strong>Safety</strong>
+            <span>{pendingChanges.length ? 'Changes are proposed until applied with checkpoint protection' : 'No proposed writes visible in this session'}</span>
+            <strong>Release</strong>
+            <span>{releaseCompatible ? `Compatible (${releaseStatus})` : formatStatusLabel(releaseStatus)}</span>
+            <strong>Privacy</strong>
+            <span>{formatStatusLabel(privacyMode)}</span>
+            <strong>Local API</strong>
+            <span>{tokenEnforced ? 'Token configured' : 'Compatibility mode'}</span>
+            <strong>Secrets</strong>
+            <span>{trustCredentials.logs_redacted === true ? 'Redacted in logs' : 'Redaction status unknown'}</span>
+          </div>
+          {collaborationApprovals.length ? (
+            <div style={styles.eventList}>
+              {collaborationApprovals.slice(0, 3).map((approval, index) => (
+                <div key={recordString(approval, ['approval_id', 'id'], `approval-${index}`)} style={styles.eventRow(palette, 'warning')}>
+                  <div>
+                    <strong style={styles.eventTitle(palette)}>
+                      {formatStatusLabel(recordString(approval, ['approval_type', 'stage'], 'approval'))}
+                    </strong>
+                    <div style={styles.eventDetail(palette)}>
+                      {recordString(approval, ['reason'], 'Collaborative approval is waiting for signoff.')}
+                    </div>
+                    <div style={styles.tagWrap}>
+                      {(Array.isArray(approval.required_roles) ? approval.required_roles : []).slice(0, 4).map((role) => (
+                        <span key={`${recordString(approval, ['approval_id', 'id'], 'approval')}-${String(role)}`} style={styles.contextTag(palette)}>
+                          {formatStatusLabel(String(role))}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {governanceViolations.length ? (
+            <div style={styles.eventList}>
+              {governanceViolations.slice(0, 3).map((violation, index) => (
+                <div key={recordString(violation, ['event_id', 'evaluation_id'], `policy-${index}`)} style={styles.eventRow(palette, 'warning')}>
+                  <div>
+                    <strong style={styles.eventTitle(palette)}>
+                      {formatStatusLabel(recordString(violation, ['event_type', 'policy_id'], 'policy violation'))}
+                    </strong>
+                    <div style={styles.eventDetail(palette)}>
+                      {recordString(violation, ['detail', 'message', 'explanation'], 'A governance policy requires review before execution continues.')}
+                    </div>
+                  </div>
+                  <span style={styles.eventTime(palette)}>{formatStatusLabel(recordString(violation, ['status'], 'review'))}</span>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {agentSupervisionStatus ? <div style={styles.inlineStatus(palette)}>{agentSupervisionStatus}</div> : null}
+          {agentSupervision?.last_core_error && agentSupervision.fallback_mode_active ? (
+            <div style={styles.eventRow(palette, 'warning')}>
+              <div>
+                <strong style={styles.eventTitle(palette)}>Runtime fallback</strong>
+                <div style={styles.eventDetail(palette)}>{agentSupervision.last_core_error}</div>
+              </div>
+              <span style={styles.eventTime(palette)}>visible</span>
+            </div>
+          ) : null}
+        </section>
+
+        {renderSupervisionFilters()}
+        <div style={styles.surfaceColumns}>
+          {renderWorkflowTimeline()}
+          {renderAgentCards()}
+        </div>
+        {renderApprovalControls()}
+        {renderQualityGatePanel()}
+        <div style={styles.surfaceColumns}>
+          {renderDiffRiskReviewPanel()}
+          {renderSupervisionTaskList()}
+        </div>
+      </>
+    );
+  }
+
   function renderProductizationRoute() {
     return (
       <LazyPanelBoundary
@@ -4124,6 +5670,7 @@ function App() {
   }
 
   function renderWorkspaceSurface() {
+    if (activeSection === 'onboarding') return renderOnboardingSurface();
     if (activeSection === 'projects') return renderProjectsSurface();
     if (activeSection === 'intelligence') return renderProjectIntelligenceSurface();
     if (activeSection === 'workspace-intelligence') return renderWorkspaceIntelligenceSurface();
@@ -4154,6 +5701,239 @@ function App() {
           </div>
         </div>
         {actions ? <div style={styles.surfaceActions}>{actions}</div> : null}
+      </div>
+    );
+  }
+
+  function onboardingEventStatus(status: string): EventStatus {
+    const lowered = status.toLowerCase();
+    if (['complete', 'pass', 'ready', 'ok'].includes(lowered)) return 'ok';
+    if (['blocked', 'fail', 'failed', 'error'].includes(lowered)) return 'error';
+    return 'warning';
+  }
+
+  function renderOnboardingSurface() {
+    const diagnostics = onboardingStatus?.diagnostics.checks ?? [];
+    const activeRecovery = (onboardingStatus?.recovery ?? []).filter((card) => card.active);
+    const firstWorkflowSteps = onboardingStatus?.first_workflow.steps ?? [];
+    const privacyMode = recordString(onboardingStatus?.privacy, ['mode'], 'local-first');
+    const routingMode = recordString(onboardingStatus?.privacy, ['model_routing_mode'], 'local_only');
+    const latestSummary = recordString(onboardingStatus?.first_workflow.latest_result, ['summary'], '');
+
+    return (
+      <div style={styles.surfacePage}>
+        {renderSurfaceHeader(
+          <Sparkles size={22} />,
+          'First-Run Setup',
+          'Connect runtime pieces, choose privacy defaults, scan a workspace, and start with validate-only work.',
+          <div style={styles.tagWrap}>
+            <button
+              type="button"
+              style={styles.primaryButton(palette)}
+              onClick={() => void refreshOnboarding()}
+              disabled={onboardingLoading}
+            >
+              {onboardingLoading ? <Loader2 size={16} className="spin" /> : <Zap size={16} />}
+              Refresh
+            </button>
+            <button type="button" style={styles.secondaryButton(palette)} onClick={() => openSettings('models')}>
+              <Brain size={16} />
+              Models
+            </button>
+            <button type="button" style={styles.secondaryButton(palette)} onClick={() => openSettings('workspace')}>
+              <FolderOpen size={16} />
+              Workspace
+            </button>
+          </div>
+        )}
+
+        <div style={styles.metricGrid}>
+          <div style={styles.metricCard(palette)}>
+            <span style={styles.metricLabel(palette)}>Setup</span>
+            <strong style={styles.metricValue(palette)}>{onboardingStatus?.completed ? 'Complete' : 'In progress'}</strong>
+          </div>
+          <div style={styles.metricCard(palette)}>
+            <span style={styles.metricLabel(palette)}>Core</span>
+            <strong style={styles.metricValue(palette)}>
+              {onboardingStatus?.core_connected === false ? 'Fallback' : 'Connected'}
+            </strong>
+          </div>
+          <div style={styles.metricCard(palette)}>
+            <span style={styles.metricLabel(palette)}>Privacy</span>
+            <strong style={styles.metricValue(palette)}>{formatStatusLabel(privacyMode)}</strong>
+          </div>
+          <div style={styles.metricCard(palette)}>
+            <span style={styles.metricLabel(palette)}>Route</span>
+            <strong style={styles.metricValue(palette)}>{formatStatusLabel(routingMode)}</strong>
+          </div>
+        </div>
+
+        {onboardingMessage ? <div style={styles.inlineStatus(palette)}>{onboardingMessage}</div> : null}
+        {onboardingStatus?.fallback_mode_active ? (
+          <div style={styles.eventRow(palette, 'warning')}>
+            <div>
+              <strong style={styles.eventTitle(palette)}>Fallback Mode Active</strong>
+              <div style={styles.eventDetail(palette)}>
+                {onboardingStatus.last_core_error || 'Website fallback diagnostics are visible until Core reconnects.'}
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        <div style={styles.surfaceColumns}>
+          <section style={styles.settingsSection(palette)}>
+            <div style={styles.sectionHeaderInline}>
+              <h3 style={styles.settingsHeading(palette)}>Setup Wizard</h3>
+              <span style={styles.diagnosticChip(palette, onboardingStatus?.completed ? 'ok' : 'warning')}>
+                {onboardingStatus?.current_step ? formatStatusLabel(onboardingStatus.current_step) : 'Loading'}
+              </span>
+            </div>
+            <div style={styles.eventList}>
+              {(onboardingStatus?.steps ?? []).map((step) => (
+                <div key={step.id} style={styles.eventRow(palette, onboardingEventStatus(step.status))}>
+                  <div>
+                    <strong style={styles.eventTitle(palette)}>{step.label}</strong>
+                    <div style={styles.eventDetail(palette)}>{step.detail || step.summary || formatStatusLabel(step.status)}</div>
+                  </div>
+                  <div style={styles.rowActions}>
+                    <span style={styles.diagnosticChip(palette, onboardingEventStatus(step.status))}>
+                      {formatStatusLabel(step.status)}
+                    </span>
+                    {step.status !== 'complete' && step.id !== 'first_workflow' ? (
+                      <button
+                        type="button"
+                        style={styles.iconTextButton(palette)}
+                        onClick={() => void markOnboardingStep(step.id)}
+                        disabled={!workspaceRoot.trim() || Boolean(onboardingAction)}
+                      >
+                        {onboardingAction === `step:${step.id}` ? <Loader2 size={14} className="spin" /> : <CheckCircle2 size={14} />}
+                        Done
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              ))}
+              {!onboardingStatus ? <div style={styles.emptyPanel(palette)}>Load first-run status to start setup.</div> : null}
+            </div>
+          </section>
+
+          <section style={styles.settingsSection(palette)}>
+            <div style={styles.sectionHeaderInline}>
+              <h3 style={styles.settingsHeading(palette)}>Environment Diagnostics</h3>
+              <span style={styles.contextTag(palette)}>
+                {onboardingStatus?.diagnostics.summary?.pass_count ?? 0} pass / {onboardingStatus?.diagnostics.summary?.warning_count ?? 0} warn
+              </span>
+            </div>
+            <div style={styles.eventList}>
+              {diagnostics.slice(0, 12).map((check) => (
+                <div key={check.id} style={styles.eventRow(palette, onboardingEventStatus(check.status))}>
+                  <div>
+                    <strong style={styles.eventTitle(palette)}>{check.label}</strong>
+                    <div style={styles.eventDetail(palette)}>{check.detail}</div>
+                  </div>
+                  <span style={styles.diagnosticChip(palette, onboardingEventStatus(check.status))}>
+                    {formatStatusLabel(check.status)}
+                  </span>
+                </div>
+              ))}
+              {!diagnostics.length ? <div style={styles.emptyPanel(palette)}>Diagnostics will appear after refresh.</div> : null}
+            </div>
+          </section>
+        </div>
+
+        <section style={styles.settingsSection(palette)}>
+          <div style={styles.sectionHeaderInline}>
+            <h3 style={styles.settingsHeading(palette)}>Guided First Workflow</h3>
+            <span style={styles.contextTag(palette)}>Validate-only by default</span>
+          </div>
+          <div style={styles.modelList}>
+            {firstWorkflowSteps.map((step) => (
+              <div key={step.id} style={styles.compactCard(palette)}>
+                <div>
+                  <div style={styles.cardTitle(palette)}>{step.label}</div>
+                  <div style={styles.eventDetail(palette)}>{step.summary || formatStatusLabel(step.status)}</div>
+                </div>
+                <button
+                  type="button"
+                  style={styles.iconTextButton(palette)}
+                  onClick={() => void runFirstWorkflowStep(step.id, true)}
+                  disabled={!workspaceRoot.trim() || Boolean(onboardingAction)}
+                >
+                  {onboardingAction === step.id ? <Loader2 size={14} className="spin" /> : <Play size={14} />}
+                  Run
+                </button>
+              </div>
+            ))}
+            {!firstWorkflowSteps.length ? <div style={styles.emptyPanel(palette)}>First workflow steps load from Core onboarding status.</div> : null}
+          </div>
+          {latestSummary || onboardingLatestWorkflow ? (
+            <div style={styles.inlineStatus(palette)}>
+              {latestSummary || recordString(onboardingLatestWorkflow?.result, ['summary'], onboardingLatestWorkflow?.action ?? '')}
+            </div>
+          ) : null}
+        </section>
+
+        <div style={styles.surfaceColumns}>
+          <section style={styles.settingsSection(palette)}>
+            <h3 style={styles.settingsHeading(palette)}>Recovery</h3>
+            <div style={styles.eventList}>
+              {(activeRecovery.length ? activeRecovery : onboardingStatus?.recovery ?? []).slice(0, 7).map((card) => (
+                <div key={card.id} style={styles.eventRow(palette, card.active ? 'warning' : 'ok')}>
+                  <div>
+                    <strong style={styles.eventTitle(palette)}>{card.title}</strong>
+                    <div style={styles.eventDetail(palette)}>{card.summary}</div>
+                    {card.actions?.length ? (
+                      <div style={{ ...styles.tagWrap, marginTop: 8 }}>
+                        {card.actions.slice(0, 3).map((action) => (
+                          <span key={`${card.id}-${action}`} style={styles.contextTag(palette)}>
+                            {action}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              ))}
+              {!onboardingStatus?.recovery.length ? <div style={styles.emptyPanel(palette)}>No recovery cards are active.</div> : null}
+            </div>
+          </section>
+
+          <section style={styles.settingsSection(palette)}>
+            <h3 style={styles.settingsHeading(palette)}>Settings Portability</h3>
+            <div style={styles.workspaceMeta(palette)}>
+              <strong>Workspace</strong>
+              <span>{onboardingStatus?.workspace || workspaceRoot || 'No workspace selected'}</span>
+              <strong>State</strong>
+              <span>{onboardingStatus?.state_path || 'Core state path pending'}</span>
+              <strong>Apply</strong>
+              <span>{recordString(onboardingStatus?.recommended_defaults, ['auto_apply'], 'false') === 'true' ? 'automatic' : 'approval-first'}</span>
+            </div>
+            <div style={styles.tagWrap}>
+              <button
+                type="button"
+                style={styles.secondaryButton(palette)}
+                onClick={() => void exportOnboardingSettings()}
+                disabled={Boolean(onboardingAction)}
+              >
+                {onboardingAction === 'settings-export' ? <Loader2 size={16} className="spin" /> : <Download size={16} />}
+                Export
+              </button>
+              <button
+                type="button"
+                style={styles.secondaryButton(palette)}
+                onClick={() => void previewOnboardingSettingsImport()}
+                disabled={Boolean(onboardingAction) || !workspaceRoot.trim()}
+              >
+                {onboardingAction === 'settings-import' ? <Loader2 size={16} className="spin" /> : <Search size={16} />}
+                Import Preview
+              </button>
+              <button type="button" style={styles.secondaryButton(palette)} onClick={() => openSettings('advanced')}>
+                <Wrench size={16} />
+                Safety
+              </button>
+            </div>
+          </section>
+        </div>
       </div>
     );
   }
@@ -5482,10 +7262,17 @@ function App() {
     const discipline = platformDiscipline;
     const operating = operatingEnvironment;
     const runtime = distributedRuntime;
+    const liveRuntime = runtimeInteraction;
     const observability = runtime?.observability;
     const workers = runtime?.workers ?? [];
     const queue = runtime?.queue ?? [];
     const auditEvents = runtime?.audit_events ?? [];
+    const liveObservability = liveRuntime?.observability;
+    const liveTerminals = liveRuntime?.terminals ?? [];
+    const liveJobs = liveRuntime?.jobs ?? [];
+    const liveEvents = liveRuntime?.recent_events ?? [];
+    const liveSessions = liveRuntime?.sessions ?? [];
+    const liveVoiceStatus = recordString(liveRuntime?.voice, ['status'], liveRuntime?.core_connected ? 'contract_ready' : 'offline');
     const syncManifests = runtime?.sync_manifests ?? [];
     const activeJobs = queue.filter((item) => ['queued', 'retrying', 'assigned', 'running'].includes(item.status));
     const failedJobs = queue.filter((item) => ['failed', 'blocked'].includes(item.status));
@@ -5507,7 +7294,11 @@ function App() {
       { label: 'Workers', value: observability?.workers_total ?? workers.length },
       { label: 'Available', value: observability?.workers_available ?? workers.filter((item) => item.status === 'available').length },
       { label: 'Queued', value: observability?.queued_jobs ?? activeJobs.length },
-      { label: 'Failed', value: observability?.failed_jobs ?? failedJobs.length }
+      { label: 'Failed', value: observability?.failed_jobs ?? failedJobs.length },
+      { label: 'Terminals', value: liveObservability?.terminal_count ?? liveTerminals.length },
+      { label: 'Live Jobs', value: liveObservability?.active_jobs ?? liveRuntime?.active_jobs.length ?? 0 },
+      { label: 'Live Events', value: liveObservability?.event_count ?? liveEvents.length },
+      { label: 'Sessions', value: liveObservability?.session_count ?? liveSessions.length }
     ];
 
     return (
@@ -5564,6 +7355,130 @@ function App() {
             </div>
           </div>
         ) : null}
+
+        <section style={styles.settingsSection(palette)}>
+          <div style={styles.sectionHeaderInline}>
+            <h3 style={styles.settingsHeading(palette)}>Live Engineering Interaction</h3>
+            <span style={styles.contextTag(palette)}>
+              {liveRuntime?.core_connected ? 'Core stream ready' : liveRuntime?.fallback_mode_active ? 'Core unavailable' : 'not loaded'}
+            </span>
+          </div>
+          {liveRuntime?.error ? (
+            <div style={styles.eventRow(palette, 'warning')}>
+              <div>
+                <strong style={styles.eventTitle(palette)}>Live Runtime Fallback</strong>
+                <div style={styles.eventDetail(palette)}>{liveRuntime.error}</div>
+              </div>
+            </div>
+          ) : null}
+          <div style={styles.surfaceColumns}>
+            <div style={styles.eventList}>
+              {(liveTerminals.length ? liveTerminals : []).slice(0, 4).map((terminal) => (
+                <div
+                  key={terminal.terminal_id}
+                  style={styles.eventRow(palette, terminal.status === 'running' ? 'ok' : terminal.status === 'attention' ? 'warning' : 'ok')}
+                >
+                  <div>
+                    <div style={styles.sectionHeaderInline}>
+                      <strong style={styles.eventTitle(palette)}>{terminal.title || terminal.terminal_id}</strong>
+                      <span style={styles.contextTag(palette)}>{formatStatusLabel(terminal.status)}</span>
+                    </div>
+                    <div style={styles.eventDetail(palette)}>
+                      {terminal.latest_output || `${terminal.job_count} job(s) recorded for this terminal.`}
+                    </div>
+                    <div style={styles.tagWrap}>
+                      <span style={styles.contextTag(palette)}>{terminal.job_count} job(s)</span>
+                      {terminal.active_job_ids.slice(0, 3).map((jobId) => (
+                        <span key={`${terminal.terminal_id}-${jobId}`} style={styles.contextTag(palette)}>
+                          active: {jobId}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  <span style={styles.eventTime(palette)}>{terminal.updated_at ? formatEventTime(terminal.updated_at) : 'idle'}</span>
+                </div>
+              ))}
+              {!liveTerminals.length ? <div style={styles.emptyPanel(palette)}>No terminal jobs have been recorded for this workspace.</div> : null}
+            </div>
+            <div style={styles.eventList}>
+              {(liveJobs.length ? liveJobs : []).slice(0, 4).map((job) => (
+                <div
+                  key={job.job_id}
+                  style={styles.eventRow(
+                    palette,
+                    job.status === 'completed' ? 'ok' : ['failed', 'timed_out', 'blocked'].includes(job.status) ? 'error' : 'warning'
+                  )}
+                >
+                  <div>
+                    <div style={styles.sectionHeaderInline}>
+                      <strong style={styles.eventTitle(palette)}>{job.title || job.job_id}</strong>
+                      <span style={styles.contextTag(palette)}>{formatStatusLabel(job.status)}</span>
+                    </div>
+                    <div style={styles.eventDetail(palette)}>{job.command_text || job.command.join(' ')}</div>
+                    <div style={styles.tagWrap}>
+                      <span style={styles.contextTag(palette)}>{job.dry_run ? 'dry run' : 'tracked process'}</span>
+                      <span style={styles.contextTag(palette)}>{job.approval_required ? 'approval required' : 'safe validation command'}</span>
+                      {job.workflow_id ? <span style={styles.contextTag(palette)}>workflow: {job.workflow_id}</span> : null}
+                    </div>
+                  </div>
+                  <span style={styles.eventTime(palette)}>{job.updated_at ? formatEventTime(job.updated_at) : 'queued'}</span>
+                </div>
+              ))}
+              {!liveJobs.length ? <div style={styles.emptyPanel(palette)}>Live terminal jobs will appear here during workflow execution.</div> : null}
+            </div>
+          </div>
+          <div style={styles.surfaceColumns}>
+            <div style={styles.eventList}>
+              {(liveEvents.length ? liveEvents : []).slice(0, 6).map((event) => (
+                <div
+                  key={event.event_id}
+                  style={styles.eventRow(
+                    palette,
+                    event.severity === 'error' ? 'error' : event.severity === 'warning' ? 'warning' : 'ok'
+                  )}
+                >
+                  <div>
+                    <strong style={styles.eventTitle(palette)}>{formatStatusLabel(event.event_type)}</strong>
+                    <div style={styles.eventDetail(palette)}>{event.message || event.chunk || 'Runtime event recorded.'}</div>
+                  </div>
+                  <span style={styles.eventTime(palette)}>{formatEventTime(event.created_at)}</span>
+                </div>
+              ))}
+              {!liveEvents.length ? <div style={styles.emptyPanel(palette)}>Runtime stream events will appear after Core emits terminal or workflow activity.</div> : null}
+            </div>
+            <div style={styles.eventList}>
+              <div style={styles.eventRow(palette, liveVoiceStatus === 'contract_ready' ? 'ok' : 'warning')}>
+                <div>
+                  <strong style={styles.eventTitle(palette)}>Voice Command Foundation</strong>
+                  <div style={styles.eventDetail(palette)}>
+                    {recordString(liveRuntime?.voice?.push_to_talk, ['hotkey'], 'client-defined')} / {formatStatusLabel(liveVoiceStatus)}
+                  </div>
+                  <div style={styles.tagWrap}>
+                    {(Array.isArray(liveRuntime?.voice?.voice_commands) ? liveRuntime?.voice?.voice_commands : [])
+                      .slice(0, 4)
+                      .map((command) => (
+                        <span key={`voice-${command}`} style={styles.contextTag(palette)}>
+                          {formatStatusLabel(String(command))}
+                        </span>
+                      ))}
+                  </div>
+                </div>
+              </div>
+              {(liveSessions.length ? liveSessions : []).slice(0, 4).map((session) => (
+                <div key={session.session_id} style={styles.eventRow(palette, session.status === 'active' ? 'ok' : 'warning')}>
+                  <div>
+                    <strong style={styles.eventTitle(palette)}>{session.title || session.session_id}</strong>
+                    <div style={styles.eventDetail(palette)}>
+                      {session.participants.length} participant(s), {session.spectators.length} spectator(s), {session.approval_delegates.length} delegate(s)
+                    </div>
+                  </div>
+                  <span style={styles.eventTime(palette)}>{formatStatusLabel(session.status)}</span>
+                </div>
+              ))}
+              {!liveSessions.length ? <div style={styles.emptyPanel(palette)}>No shared workflow sessions are active.</div> : null}
+            </div>
+          </div>
+        </section>
 
         <section style={styles.settingsSection(palette)}>
           <div style={styles.sectionHeaderInline}>
@@ -6923,6 +8838,8 @@ function App() {
           </button>
         )}
 
+        {renderAgentActivityCenter()}
+
         <div style={styles.surfaceColumns}>
           <section style={styles.settingsSection(palette)}>
             <h3 style={styles.settingsHeading(palette)}>Current Agent</h3>
@@ -7512,6 +9429,35 @@ function App() {
           </label>
         </section>
 
+        <section style={styles.settingsSection(palette)}>
+          <div style={styles.sectionHeaderInline}>
+            <h4 style={styles.settingsHeading(palette)}>First-Run Setup</h4>
+            <span style={styles.diagnosticChip(palette, onboardingStatus?.completed ? 'ok' : 'warning')}>
+              {onboardingStatus?.completed ? 'Complete' : 'Needs review'}
+            </span>
+          </div>
+          <div style={styles.eventDetail(palette)}>
+            {onboardingMessage || 'Review runtime setup, privacy mode, models, workspace access, and the guided first workflow.'}
+          </div>
+          <div style={styles.tagWrap}>
+            <button
+              type="button"
+              style={styles.secondaryButton(palette)}
+              onClick={() => {
+                openAppSection('onboarding');
+                void refreshOnboarding();
+              }}
+            >
+              <Sparkles size={16} />
+              Open setup
+            </button>
+            <button type="button" style={styles.secondaryButton(palette)} onClick={() => void refreshOnboarding()}>
+              {onboardingLoading ? <Loader2 size={16} className="spin" /> : <Zap size={16} />}
+              Refresh
+            </button>
+          </div>
+        </section>
+
         {config ? (
           <section style={styles.settingsSection(palette)}>
             <h4 style={styles.settingsHeading(palette)}>Runtime Diagnostics</h4>
@@ -7610,7 +9556,15 @@ function App() {
           <div style={styles.formGridTwo}>
             <label style={styles.fieldLabel(palette)}>
               <span>API Type</span>
-              <select value={modelApi} onChange={(event) => setModelApi(event.target.value)} style={styles.fieldInput(palette)}>
+              <select
+                value={modelApi}
+                onChange={(event) => {
+                  const nextApi = event.target.value;
+                  setModelApi(nextApi);
+                  setSelectedBridgeProvider(providerIdForModelRuntime(nextApi, modelEndpoint));
+                }}
+                style={styles.fieldInput(palette)}
+              >
                 <option value="ollama">Ollama (Local)</option>
                 <option value="openai">OpenAI Compatible</option>
                 <option value="lmstudio">LM Studio</option>
@@ -7624,7 +9578,15 @@ function App() {
           </div>
           <label style={styles.fieldLabel(palette)}>
             <span>Endpoint</span>
-            <input value={modelEndpoint} onChange={(event) => setModelEndpoint(event.target.value)} style={styles.fieldInput(palette)} />
+            <input
+              value={modelEndpoint}
+              onChange={(event) => {
+                const nextEndpoint = event.target.value;
+                setModelEndpoint(nextEndpoint);
+                setSelectedBridgeProvider(providerIdForModelRuntime(modelApi, nextEndpoint));
+              }}
+              style={styles.fieldInput(palette)}
+            />
           </label>
           <div style={styles.tagWrap}>
             <span style={styles.contextTag(palette)}>{modelInventory?.models.length ?? 0} discovered</span>
@@ -7632,6 +9594,10 @@ function App() {
             <span style={styles.contextTag(palette)}>{modelManager?.pullable_total ?? 0} pullable</span>
             {modelManager?.disk ? <span style={styles.contextTag(palette)}>{formatBytes(modelManager.disk.free_bytes)} free</span> : null}
           </div>
+        </section>
+
+        <section style={styles.settingsSection(palette)}>
+          <ProviderAccountsPanel palette={palette} workspaceRoot={workspaceRoot} />
         </section>
 
         <section style={styles.settingsSection(palette)}>
@@ -7880,68 +9846,25 @@ function App() {
     <div style={styles.appShell(palette)}>
       <div style={styles.backdrop(palette)} />
       <div style={styles.frame(compactLayout)}>
-        <header style={styles.header(palette, compactLayout, narrowLayout)}>
-          <div style={styles.topSearch(palette, compactLayout)} className="aegis-search-surface">
-            <Search size={17} />
-            <input
-              value={chatSearch}
-              onChange={(event) => setChatSearch(event.target.value)}
-              placeholder={`Search ${productName}... (Ctrl + K)`}
-              aria-label={`Search ${productName}`}
-              style={styles.searchInput(palette)}
-            />
-          </div>
-
-          <div style={styles.headerActions(narrowLayout)}>
-            <span style={styles.topStatusPill(palette, connectionState === 'connected')}>
-              <span style={styles.statusDot(palette, connectionState === 'connected')} />
-              {connectionStateLabel(connectionState)}
-            </span>
-            {renderHeaderModelSwitcher()}
-            <button
-              type="button"
-              style={styles.iconButton(palette)}
-              onClick={() => setIsDarkMode((current) => !current)}
-              title={isDarkMode ? 'Switch to light mode' : 'Switch to dark mode'}
-            >
-              {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
-            </button>
-            <button
-              type="button"
-              style={styles.iconButton(palette)}
-              onClick={() => setShowMemoryEditor(true)}
-              title="Memory Editor"
-            >
-              <Brain size={18} />
-            </button>
-            <button
-              type="button"
-              style={styles.iconButton(palette)}
-              onClick={() => setShowApprovalSettings(true)}
-              title="Approval Settings"
-            >
-              <Wrench size={18} />
-            </button>
-            <button
-              type="button"
-              style={styles.iconButton(palette)}
-              onClick={() => openSettings('general')}
-              title="Settings"
-            >
-              <Settings size={18} />
-            </button>
-            <button
-              type="button"
-              style={styles.accountPill(palette)}
-              onClick={handleLogout}
-              title="Sign out"
-            >
-              <User size={16} />
-              <span>{accountName}</span>
-              <small style={styles.accountPlanText(palette)}>{accountPlan}</small>
-            </button>
-          </div>
-        </header>
+        <AppHeader
+          palette={palette}
+          compactLayout={compactLayout}
+          narrowLayout={narrowLayout}
+          productName={productName}
+          searchValue={chatSearch}
+          onSearchChange={setChatSearch}
+          connectionLabel={connectionStateLabel(connectionState)}
+          connectionConnected={connectionState === 'connected'}
+          modelSwitcher={renderHeaderModelSwitcher()}
+          isDarkMode={isDarkMode}
+          onToggleDarkMode={() => setIsDarkMode((current) => !current)}
+          onOpenMemory={() => setShowMemoryEditor(true)}
+          onOpenApprovals={() => setShowApprovalSettings(true)}
+          onOpenSettings={() => openSettings('general')}
+          accountName={accountName}
+          accountPlan={accountPlan}
+          onLogout={handleLogout}
+        />
 
         <div style={styles.utilityBar(palette, compactLayout)}>
           <div style={styles.sidebarBrand}>
@@ -7995,6 +9918,18 @@ function App() {
             >
               <FolderOpen size={16} />
               Home
+            </button>
+            <button
+              type="button"
+              style={styles.sidebarNavItem(palette, activeSection === 'onboarding', compactLayout)}
+              onClick={() => {
+                openAppSection('onboarding');
+                void refreshOnboarding();
+              }}
+              aria-label="First-run setup"
+            >
+              <Sparkles size={16} />
+              Setup
             </button>
             <button
               type="button"
@@ -8208,13 +10143,13 @@ function App() {
                 <>
               {history.length === 0 ? (
                 <div style={styles.emptyState}>
-                  <div style={styles.emptyLogo(palette)}>
-                    <img style={styles.emptyLogoImage} src={brandAssets.mark} alt="" aria-hidden="true" />
+                  <div style={styles.commandCrumbs(palette)}>
+                    <span>Home</span>
+                    <ChevronDown size={13} />
+                    <span>{modelApi.includes('ollama') || modelApi.includes('local') ? 'Local' : 'Cloud'}</span>
                   </div>
-                  <h2 style={styles.emptyTitle(palette)}>Welcome to {productName}</h2>
-                  <p style={styles.emptyText(palette)}>
-                    {assistantIdentity} is ready to code, automate, research, create, and orchestrate through one local-first workspace.
-                  </p>
+                  <h2 style={styles.emptyTitle(palette)}>Good morning, {accountName.split(/\s+/)[0] || 'Gabriel'}</h2>
+                  <p style={styles.emptyText(palette)}>{assistantName} is standing by on {modelName || 'the active model'}.</p>
 
                   <div style={styles.promptGrid}>
                     {starterPrompts.map((prompt) => (
@@ -8477,6 +10412,34 @@ function App() {
                 </div>
               ) : null}
 
+              <AgentProviderDock
+                palette={palette}
+                variant="compact"
+                autoProbe
+                selectedProviderId={selectedBridgeProvider}
+                onSelectProvider={selectAgentProvider}
+                onOpenAccounts={() => openSettings('models')}
+              />
+
+              <div style={styles.agentModeBar(palette)} aria-label="Agent mode">
+                <div style={styles.agentModeTabs(palette)}>
+                  {modeChoices.map((option) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      style={styles.agentModeTab(palette, mode === option.id)}
+                      onClick={() => setMode(option.id)}
+                      aria-pressed={mode === option.id}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+                <span style={styles.agentModeMeta(palette)}>
+                  {selectedBridgeLabel} / {selectedBridgeRuntimeLabel}
+                </span>
+              </div>
+
               <div style={styles.composerOptions(palette)}>
                 <div style={styles.optionGroup}>
                   <label style={styles.checkboxLabel(palette)}>
@@ -8528,8 +10491,8 @@ function App() {
                   onChange={(event) => setMessage(event.target.value)}
                   placeholder={
                     composerWillQueue
-                      ? `Message ${assistantIdentity}... next prompt will be queued`
-                      : `Message ${assistantIdentity}...`
+                      ? 'Plan, build, or continue... next prompt will be queued'
+                      : 'Plan, build, or continue...'
                   }
                   rows={2}
                   style={styles.composerInput(palette)}
@@ -8550,6 +10513,19 @@ function App() {
 
           {effectiveDetailsPanelVisible ? (
           <aside style={styles.sidebar} data-testid="details-panel">
+            <section style={styles.panelCard(palette)}>
+              <div style={styles.panelBody}>
+                <AgentProviderDock
+                  palette={palette}
+                  variant="panel"
+                  autoProbe
+                  selectedProviderId={selectedBridgeProvider}
+                  onSelectProvider={selectAgentProvider}
+                  onOpenAccounts={() => openSettings('models')}
+                />
+              </div>
+            </section>
+
             <section style={styles.panelCard(palette)}>
               <div style={styles.panelHeader(palette)}>
                 <div style={styles.panelTitleWrap}>

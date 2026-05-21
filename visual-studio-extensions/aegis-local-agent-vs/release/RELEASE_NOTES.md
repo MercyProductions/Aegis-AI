@@ -4,6 +4,11 @@ This dogfooding build keeps the 0.1.0 feature set frozen and focuses on real-use
 
 ## What Changed Since 0.1.0
 
+- Visual Studio is now a Core-first client for shared runtime workflows. Core handles client sync, workflow IDs, proposal records, Core apply, checkpoints, rollback, roadmap generation, workspace intelligence, validation records, and operation/job tracking when available.
+- The extension keeps Visual Studio-native fallback logic for solution/project awareness, startup project detection, selected-code flows, context menu commands, Error List parsing, MSBuild output, local previews, and local safe-edit backups.
+- The tool window now includes a Runtime Authority panel that shows Core connection, fallback mode, active workflow, pending proposal, latest checkpoint, latest validation result, and recent runtime operations.
+- Apply and rollback prefer Core-owned checkpoints and operation jobs. Local rollback remains available for local-only fallback applies.
+- Build validation keeps Visual Studio diagnostics, and records validation activity back to Core when Core is online.
 - Repackaged the VSIX as version `0.1.1`.
 - Disabled automatic scan on solution open by default for new installs, after dogfooding showed startup/open automation can be fragile on larger C++ and Unity-shaped solutions.
 - Fixed command-table packaging so the Aegis menu commands have an embedded `Menus.ctmenu` resource.
@@ -26,6 +31,23 @@ This dogfooding build keeps the 0.1.0 feature set frozen and focuses on real-use
 - Approval-based safe edit workflow with backups, validation, bounded repair attempts, and rollback.
 - Visual Studio settings page under **Tools > Options > Aegis Local Agent > General**.
 - Health check command for solution state, `.aegis` writes, Ollama/model availability, backup creation, build integration, and index writing.
+
+## External Alpha Status
+
+This VSIX is part of the conditional private external alpha candidate. Broad external alpha remains blocked until live smoke, signing, installer, and worktree commit grouping decisions are complete.
+
+Package evidence:
+
+- Root package path: `release/AegisLocalAgentVs.vsix`
+- SHA-256: `33bf11d7296e8d69415f1e9745a06c4f988668714c609a25e39b2d1cbc7f4529`
+- Size bytes: `216454`
+- Final release manifest: `.aegis/final-release-manifest/20260521-062851/final-release-manifest-summary.md`
+- Packaged alpha scenarios: `.aegis/packaged-alpha-scenarios/20260521-064232/packaged-alpha-scenarios-summary.md`
+- Cross-client parity: `.aegis/cross-client-parity/20260521-065519/cross-client-parity-summary.md`
+
+Checksums are required and must match `release/version-manifest.json`.
+
+This is an unsigned local build candidate. The unsigned local build limitation is accepted only for conditional private external alpha.
 
 ## Install
 
@@ -57,5 +79,20 @@ Aegis blocks `.env`, secret-looking files, private keys, `.vs/`, `bin/`, `obj/`,
 ## Known Limitations
 
 - Visual Studio UI workflows require manual validation inside the IDE.
+- Visual Studio experimental-instance smoke still needs a fresh runtime pass.
 - The proposal diff viewer is compact text output, not a full Visual Studio merge editor.
 - Build/Error List data depends on Visual Studio automation APIs and the active IDE state.
+
+## Update And Rollback
+
+Preview an update plan:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\aegis-update.ps1 -Component visual-studio-extension
+```
+
+Rollback:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\aegis-update.ps1 -Rollback
+```

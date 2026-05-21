@@ -1,0 +1,91 @@
+{
+  "manifest_version": 1,
+  "schema_version": "2026.05.12",
+  "release_channel": "local",
+  "generated_at": "",
+  "components": {
+    "aegis-core": {
+      "name": "Aegis Core",
+      "type": "python-service",
+      "version": "0.1.0",
+      "minimum_compatible_core": "0.1.0",
+      "minimum_compatible_schema": "2026.05.12",
+      "package": {
+        "artifact": "aegis-core-0.1.0.zip",
+        "path": "release/aegis-core-0.1.0.zip",
+        "sha256": "",
+        "size_bytes": 0
+      }
+    },
+    "website": {
+      "name": "Aegis Website",
+      "type": "web-app",
+      "version": "0.1.0",
+      "minimum_compatible_core": "0.1.0",
+      "minimum_compatible_schema": "2026.05.12",
+      "package": {
+        "artifact": "aegis-website-0.1.0.zip",
+        "path": "release/aegis-website-0.1.0.zip",
+        "sha256": "",
+        "size_bytes": 0
+      }
+    },
+    "desktop": {
+      "name": "Aegis Desktop",
+      "type": "native-desktop",
+      "version": "0.2.0",
+      "minimum_compatible_core": "0.1.0",
+      "minimum_compatible_schema": "2026.05.12",
+      "package": {
+        "artifact": "aegis-desktop-0.2.0-portable.zip",
+        "path": "release/aegis-desktop-0.2.0-portable.zip",
+        "sha256": "",
+        "size_bytes": 0
+      }
+    },
+    "vscode-extension": {
+      "name": "Aegis Local Agent for VS Code",
+      "type": "vscode-vsix",
+      "version": "0.1.8",
+      "minimum_compatible_core": "0.1.0",
+      "minimum_compatible_schema": "2026.05.12",
+      "package": {
+        "artifact": "aegis-local-autopilot-0.1.8.vsix",
+        "path": "release/aegis-local-autopilot-0.1.8.vsix",
+        "sha256": "",
+        "size_bytes": 0
+      }
+    },
+    "visual-studio-extension": {
+      "name": "Aegis Local Agent for Visual Studio",
+      "type": "visual-studio-vsix",
+      "version": "0.1.1",
+      "minimum_compatible_core": "0.1.0",
+      "minimum_compatible_schema": "2026.05.12",
+      "package": {
+        "artifact": "AegisLocalAgentVs.vsix",
+        "path": "release/AegisLocalAgentVs.vsix",
+        "sha256": "",
+        "size_bytes": 0
+      }
+    }
+  },
+  "compatibility": {
+    "core_api_version": "v1",
+    "core_contract_version": "2026.05.12",
+    "minimum_core_version": "0.1.0",
+    "minimum_clients": {
+      "website": "0.1.0",
+      "desktop": "0.2.0",
+      "vscode-extension": "0.1.8",
+      "visual-studio-extension": "0.1.1"
+    }
+  },
+  "update_policy": {
+    "requires_checksum": true,
+    "signature_optional_for_local_builds": true,
+    "backup_before_apply": true,
+    "rollback_on_failure": true,
+    "safe_mode_supported": true
+  }
+}

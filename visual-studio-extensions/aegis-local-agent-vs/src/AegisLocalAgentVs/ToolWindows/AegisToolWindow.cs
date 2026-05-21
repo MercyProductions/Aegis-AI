@@ -9,7 +9,7 @@ namespace Aegis.LocalAgent.VisualStudio.ToolWindows
     {
         public AegisToolWindow() : base(null)
         {
-            Caption = "Aegis Local Agent";
+            Caption = "Auralith OS";
             Content = new AegisToolWindowControl();
         }
     }

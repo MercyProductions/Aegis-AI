@@ -1,0 +1,199 @@
+{
+  "schema_version": "2026.05.21",
+  "name": "Phase 12 Quality Evidence Contract",
+  "evidence_root": ".aegis/quality-evidence",
+  "golden_workflows": [
+    {
+      "id": "chat_no_write",
+      "category": "chat",
+      "description": "A normal question must answer without creating file changes, checkpoints, or apply side effects.",
+      "metrics": ["changes_empty", "applied_empty", "checkpoint_absent"],
+      "required_evidence": {
+        "source_file": "website/backend/tests/test_golden_workflows.py",
+        "marker": "test_normal_question_does_not_generate_file_changes"
+      }
+    },
+    {
+      "id": "coding_diff_checkpoint",
+      "category": "coding",
+      "description": "A coding workflow must produce a visible diff, create a checkpoint, and keep rollback evidence.",
+      "metrics": ["diff_added_lines", "diff_removed_lines", "checkpoint_present"],
+      "required_evidence": {
+        "source_file": "website/backend/tests/test_golden_workflows.py",
+        "marker": "test_modify_existing_file_produces_diff_and_checkpoint_then_rollback_restores"
+      }
+    },
+    {
+      "id": "review_quality_gate",
+      "category": "review",
+      "description": "Review and apply paths must pass through Core quality gates before a change can be applied.",
+      "metrics": ["apply_allowed", "blocker_count", "confidence_score"],
+      "required_evidence": {
+        "source_file": "aegis-core/tests/test_quality_gates.py",
+        "marker": "test_quality_gate_evaluation_passes_low_risk_change"
+      }
+    },
+    {
+      "id": "scaffold_project",
+      "category": "scaffold",
+      "description": "Project scaffolding must generate expected files, roadmap artifacts, and a checkpoint.",
+      "metrics": ["expected_files_present", "checkpoint_present", "roadmap_present"],
+      "required_evidence": {
+        "source_file": "website/backend/tests/test_golden_workflows.py",
+        "marker": "test_create_vite_app_generates_expected_project_files"
+      }
+    },
+    {
+      "id": "validation_repair",
+      "category": "repair",
+      "description": "Validation repair attempts must persist outcome evidence and remain available across store instances.",
+      "metrics": ["repair_attempt_persisted", "outcome_recorded", "checkpoint_recorded"],
+      "required_evidence": {
+        "source_file": "website/backend/tests/test_golden_workflows.py",
+        "marker": "test_validation_failure_repair_attempt_and_project_memory_persist"
+      }
+    },
+    {
+      "id": "model_routing",
+      "category": "routing",
+      "description": "Route previews must select registry-backed primary models without requiring a model call.",
+      "metrics": ["route_role", "primary_attempt", "registry_metadata"],
+      "required_evidence": {
+        "source_file": "website/backend/tests/test_prompt_routing.py",
+        "marker": "test_route_preview_uses_registry_role_primary_without_model_call"
+      }
+    },
+    {
+      "id": "provider_fallback",
+      "category": "routing",
+      "description": "Provider execution planning must demote unhealthy primaries to configured fallback models.",
+      "metrics": ["fallback_selected", "primary_demoted", "attempt_order"],
+      "required_evidence": {
+        "source_file": "website/backend/tests/test_model_execution.py",
+        "marker": "test_unhealthy_registry_primary_is_demoted_to_fallback_model"
+      }
+    },
+    {
+      "id": "memory_continuation",
+      "category": "memory",
+      "description": "Project memory must persist and remain retrievable for later workflow continuation.",
+      "metrics": ["memory_persisted", "memory_reopened", "category_retained"],
+      "required_evidence": {
+        "source_file": "website/backend/tests/test_golden_workflows.py",
+        "marker": "test_validation_failure_repair_attempt_and_project_memory_persist"
+      }
+    },
+    {
+      "id": "apply_rollback",
+      "category": "rollback",
+      "description": "Applied file changes must be reversible through checkpoint restore.",
+      "metrics": ["checkpoint_present", "restore_event", "file_restored"],
+      "required_evidence": {
+        "source_file": "website/backend/tests/test_golden_workflows.py",
+        "marker": "restore_checkpoint"
+      }
+    },
+    {
+      "id": "extension_parity",
+      "category": "client",
+      "description": "VS Code and Visual Studio must both evaluate Core quality gates before apply.",
+      "metrics": ["vscode_endpoint_present", "visual_studio_endpoint_present", "schema_current"],
+      "required_evidence": {
+        "source_file": "scripts/test-editor-parity.ps1",
+        "marker": "Assert-EditorEndpointPair -Id \"quality-gates\""
+      }
+    }
+  ],
+  "observability_signals": [
+    {
+      "id": "route_quality",
+      "endpoint": "/api/telemetry/route-quality",
+      "source_file": "website/backend/aegis_ai/routes/telemetry.py",
+      "marker": "route-quality"
+    },
+    {
+      "id": "fallback_inspector",
+      "endpoint": "/api/telemetry/fallback-inspector",
+      "source_file": "website/backend/aegis_ai/routes/telemetry.py",
+      "marker": "fallback-inspector"
+    },
+    {
+      "id": "feedback",
+      "endpoint": "/api/telemetry/feedback",
+      "source_file": "website/backend/aegis_ai/routes/telemetry.py",
+      "marker": "feedback"
+    },
+    {
+      "id": "token_calibration",
+      "endpoint": "/api/telemetry/route-quality",
+      "source_file": "website/backend/aegis_ai/storage_quality.py",
+      "marker": "token_calibration_status"
+    },
+    {
+      "id": "structured_preview",
+      "endpoint": "/api/telemetry/route-quality",
+      "source_file": "website/backend/aegis_ai/storage_quality.py",
+      "marker": "structured_preview_status"
+    },
+    {
+      "id": "policy_diff",
+      "endpoint": "/api/telemetry/policy-diff",
+      "source_file": "website/backend/aegis_ai/routes/telemetry.py",
+      "marker": "policy-diff"
+    }
+  ],
+  "performance_budgets": [
+    {
+      "id": "workspace_scan",
+      "workflow": "scan",
+      "p95_seconds": 10,
+      "warning_seconds": 6,
+      "evidence": "Core workspace scan or ecosystem evidence log"
+    },
+    {
+      "id": "model_route_preview",
+      "workflow": "route",
+      "p95_seconds": 2,
+      "warning_seconds": 1,
+      "evidence": "Route preview and fallback inspector telemetry"
+    },
+    {
+      "id": "chat_first_token",
+      "workflow": "chat",
+      "p95_seconds": 5,
+      "warning_seconds": 3,
+      "evidence": "Streaming telemetry and model attempt metadata"
+    },
+    {
+      "id": "apply_quality_gate",
+      "workflow": "apply",
+      "p95_seconds": 3,
+      "warning_seconds": 2,
+      "evidence": "Core quality gate run"
+    },
+    {
+      "id": "validation_command",
+      "workflow": "validate",
+      "p95_seconds": 120,
+      "warning_seconds": 60,
+      "evidence": "Validation log or release evidence gate"
+    },
+    {
+      "id": "frontend_render",
+      "workflow": "frontend",
+      "p95_seconds": 4,
+      "warning_seconds": 2,
+      "evidence": "Frontend build/test or browser smoke timing"
+    }
+  ],
+  "required_contract_files": [
+    "docs/QUALITY_GATES.md",
+    "scripts/validate-ecosystem.ps1",
+    "aegis-core/aegis_core/quality_gates.py",
+    "aegis-core/tests/test_quality_gates.py",
+    "website/backend/tests/test_golden_workflows.py",
+    "website/backend/aegis_ai/routes/quality_evaluation.py",
+    "website/backend/aegis_ai/routes/telemetry.py",
+    "scripts/test-editor-parity.ps1"
+  ]
+}

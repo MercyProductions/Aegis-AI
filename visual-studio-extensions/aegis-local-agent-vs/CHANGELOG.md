@@ -2,6 +2,16 @@
 
 ## 0.1.1 - Visual Studio Dogfooding Hardening
 
+- Made the Visual Studio extension Core-first for runtime workflows while keeping local Visual Studio fallback behavior.
+- Expanded the Core client from health/register only to client sync, workflow creation/logging, workspace intelligence, roadmap generation, proposal recording, Core apply, checkpoint restore, validation run recording, and checkpoint listing.
+- Added Core workflow/proposal/job/checkpoint IDs to agent session state and proposal details so operations can be tracked across clients.
+- Added the Runtime Authority panel to show Core connection, fallback mode, active workflow, pending proposal, latest checkpoint, latest validation result, and recent runtime operations.
+- Routed approved apply through Core `/v1/changes/apply` when a Core proposal exists, with local safe-edit fallback only when Core is unavailable or the endpoint is unsupported.
+- Routed rollback through Core checkpoints first, with local `.aegis/backups` rollback as fallback when no Core checkpoint is available.
+- Routed roadmap generation and solution intelligence refresh through Core first, preserving local Ollama/scanner fallback.
+- Added Core workflow creation for build, validation, repair, feature, roadmap continuation, and proposal workflows.
+- Recorded Visual Studio build/validation results into Core validation/workflow activity when Core is available while preserving MSBuild/Error List parsing in the extension.
+- Added package validation guards that fail if Core-first runtime endpoint coverage, workflow hooks, session IDs, or runtime status UI drift out of the extension.
 - Repackaged the Visual Studio extension after dogfooding install/open smoke tests.
 - Replaced localhost VSIX MoreInfo metadata with the GitHub repository URL.
 - Removed internal dogfooding notes from the packaged VSIX archive.

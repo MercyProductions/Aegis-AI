@@ -1,12 +1,12 @@
 # Aegis ChatBot / Auralith OS System Architecture
 
-Last updated: 2026-05-09
+Last updated: 2026-05-11
 
 ## Purpose
 
 This repository contains the Aegis ChatBot / Auralith OS local-first AI ecosystem. It is not one chatbot process. It is a set of clients and runtimes that share workspace intelligence, local model status, memory, diagnostics, validation, tasks, and safe change workflows.
 
-The current stabilization target is to keep the mature Website backend stable while making Aegis Core the small shared runtime that every client can rely on.
+The current stabilization target is to keep the mature Website backend stable while making Aegis Core the shared runtime authority that every client can rely on.
 
 ## Runtime Layers
 
@@ -21,6 +21,7 @@ flowchart LR
   Bridge["Core Bridge\n/api/core-runtime"]
   Core["Aegis Core /v1\nFastAPI on 8788"]
   Creds["OS Credential Store\nprovider keys"]
+  Accounts["Provider Account Layer\nmanifests / sessions / CLI probes"]
   Ollama["Ollama\nLocal models on 11434"]
   Providers["Optional Cloud Providers\napproval required"]
   Workspace["Workspace files\n.aegis local memory"]
@@ -34,6 +35,8 @@ flowchart LR
   VSCode --> Core
   VS --> Core
   Api --> Ollama
+  Api --> Accounts
+  Accounts --> Creds
   Api --> Store
   Api --> Workspace
   Core --> Ollama
@@ -46,17 +49,19 @@ flowchart LR
 
 ### Website Backend `/api`
 
-The Website backend is the mature application runtime. It owns app-rich workflows that are still specific to Auralith OS and the Desktop client:
+The Website backend is the mature product gateway. It owns app-rich workflows that are still specific to Auralith OS and the Desktop client, and it preserves the stable `/api` shape consumed by the Website frontend and native clients:
 
-- Chat, streaming chat, routing preview, generated changes, apply, validate, verify, checkpoint restore.
+- Chat, streaming chat, routing preview, generated change display, verify, and compatibility wrappers for apply, validate, checkpoints, and restore.
+- Core-delegated runtime workflows for generated-change apply, checkpoint create/list/restore, validation run storage, and repair workflow creation when Core is available.
 - Project builder/scaffolding.
 - Model registry, model manager, model benchmarks, provider routing, telemetry, feedback.
+- Provider account foundation: provider manifests, secure API-key references, account/session metadata, and safe official-CLI bridge probing for account-based integrations.
 - Project intelligence, workspace intelligence, unified runtime/context, continuity, platform discipline.
 - Distributed runtime, adaptive intelligence, productization, ecosystem, autonomous engineering.
 - Creative Studio and media jobs.
 - Website auth/session APIs.
 - SQLite-backed application event/task/telemetry storage.
-- Optional Core adapter at `/api/core-runtime` plus low-risk adapter reads for `/api/health`, `/api/ready`, `/api/models`, and `/api/config`.
+- Optional Core adapters at `/api/core-runtime` and `/api/runtime/delegation` plus adapter reads for `/api/health`, `/api/ready`, `/api/models`, and `/api/config`.
 
 Default port: `http://127.0.0.1:8787`.
 
@@ -71,6 +76,8 @@ Aegis Core is the shared local runtime contract. It must stay small, stable, loc
 - Shared memory summaries and diagnostics.
 - Client registration and client listing.
 - Shared tasks, task status, and dashboard aggregation.
+- Core-owned editing runtime: proposed changes, patch previews, apply selected/all, pre-apply checkpoints, rollback/restore, validation result storage, operation jobs, and project activity.
+- Unified orchestration runtime: workflow graphs, task dependencies, pause/resume/cancel/retry, client sync, event streaming, agent-role execution records, safety controls, and observability.
 - Supervised autonomous task orchestration: goal planning, local queue state, specialized owner agents, approval gates, validation state, and memory updates.
 - Safe scheduled and trigger-based maintenance jobs for proactive scans, summaries, reports, roadmap refreshes, TODO review, documentation drift, and validation status.
 - Project quality intelligence: health scoring, trend snapshots, risk detection, daily/weekly quality reports, and Planner Agent guidance.
@@ -89,12 +96,23 @@ Hybrid routing is privacy-first:
 - Cloud providers require visible warnings, user approval, sanitized context metadata, and API keys in OS credential storage.
 - Core rejects secret-like, ignored, or outside-workspace files from cloud context.
 
+### Provider Account Layer
+
+The provider-account layer is Website-owned in this foundation slice and is designed to feed the shared router later. It lives under `website/backend/aegis_ai/providers/accounts/` and owns:
+
+- Provider manifests for OpenAI, Anthropic, Google Gemini, Ollama, OpenRouter, Azure OpenAI, Bedrock, and Vertex AI.
+- API-key linking through the OS credential vault; SQLite stores only credential references, hints, status, scopes, and session metadata.
+- CLI bridge detection for official local CLIs. Aegis runs short allowlisted version/status probes and does not import token files.
+- Future OAuth/device-code slots that require Aegis-owned provider app registrations before becoming active.
+
+Current supported mutations are provider API-key link/unlink and safe CLI probing. OAuth, direct CLI work delegation, and enterprise profile execution remain planned follow-up phases.
+
 Autonomous orchestration is supervised by design:
 
 - Core may create and advance a staged queue, but it does not blindly edit files.
 - Planner, Architect, Coder, Reviewer, Tester, Repair, and Documentation agents are local roles sharing `.aegis` memory.
 - File edits, deletion, package installs, build/test/lint commands, and cloud context all require explicit approval gates.
-- Clients own the approval UI, diff display, patch application, and rollback execution.
+- Clients own approval UI and diff display. Core owns the shared apply/checkpoint/rollback contract; Website currently acts as the compatibility gateway for clients still using `/api`.
 - Core records progress in `.aegis/orchestration-queue.json`, `.aegis/active-orchestration.json`, `roadmap.md`, `decisions.md`, `validation-log.md`, and `agent-history.json`.
 
 Workflow automation is safe by default:
@@ -209,30 +227,46 @@ The desired direction is:
 
 ## Stabilization Rule
 
-Do not move large workflows from Website `/api` into Core during stabilization. First make the boundary explicit, test it, and migrate one shared capability at a time only when all clients have a clear consumer contract.
+Do not remove Website `/api` compatibility during migration. Move one shared capability at a time, keep fallback clear, and require Core contract tests plus Website compatibility tests before clients are asked to call Core directly.
 
 ## Runtime Consolidation Phase 1
 
-Phase 1 adds a read-only Website-to-Core bridge instead of migrating workflows:
+Phase 1 added a read-only Website-to-Core bridge:
 
 - `GET /api/core-runtime` reads Core `/v1/health`, `/v1/models`, `/v1/settings`, `/v1/memory`, `/v1/diagnostics`, and `/v1/ecosystem/dashboard`.
 - `AEGIS_CORE_API_URL` controls the Core base URL for Website.
-- Existing Website `/api` chat, apply, validation, routing, project-builder, auth, and product surfaces remain unchanged.
+- Existing Website `/api` chat, routing, project-builder, auth, and product surfaces remain unchanged.
 - Core stays independent of Website imports and Website-specific storage.
 
 See `RUNTIME_CONSOLIDATION.md` for the subsystem ownership matrix and migration order.
 
+## Runtime Delegation Phase
+
+Phase 2 starts migrating workflow ownership behind stable Website routes:
+
+- `POST /api/apply` delegates to Core `POST /v1/changes/apply`.
+- `GET/POST /api/checkpoints` delegates to Core checkpoint list/create contracts.
+- `POST /api/restore-checkpoint` delegates to Core checkpoint restore.
+- `POST /api/validate` delegates to Core validation execution and validation result storage.
+- Failed delegated validation queues a Core `repair_project` workflow through `POST /v1/workflows`.
+- `GET /api/runtime/delegation` reports Core connected/disconnected, delegated workflow enablement, fallback mode, last Core error, and last workflow mode.
+- `AEGIS_CORE_DELEGATED_WORKFLOWS_ENABLED=false` forces Website local fallback where fallback exists.
+
+Fallback is intentionally narrow: offline Core, missing delegated endpoints, or transient server failures can fall back to Website logic. Core safety rejections such as unsafe paths remain authoritative and are returned to the caller.
+
 ## Website Runtime Adapter Phase
 
-The Website backend has started consuming Core through adapters while keeping frontend `/api` calls stable:
+The Website backend consumes Core through adapters while keeping frontend `/api` calls stable:
 
 - `GET /api/health` and `GET /api/ready` report Core adapter status and degrade cleanly when Core is offline.
 - `GET /api/models` overlays Core model inventory with Website provider inventory.
 - `GET /api/config` reports Core settings adapter status.
 - `POST /api/config` saves Website `.env` first, then best-effort syncs shared model settings to Core `/v1/settings`.
 - `GET /api/core-runtime` remains the full Core envelope bridge for health, models, settings, memory, diagnostics, and dashboard.
+- `GET /api/runtime/delegation` exposes runtime workflow delegation status.
+- Apply, checkpoint, restore, validation, and repair workflow job creation now prefer Core and fall back to Website local behavior only when Core is unavailable or unsupported.
 
-The Website still owns chat, streaming, generated changes, apply, checkpoint restore, validation/repair orchestration, project builder, auth/session, Creative Studio, and advanced product workflows.
+The Website still owns chat, streaming, generated-change presentation, verification, project builder, auth/session, Creative Studio, and advanced product workflows. Website also remains the compatibility gateway for clients not yet calling Core `/v1` directly.
 
 ## Unified Contract Phase
 
@@ -243,7 +277,7 @@ The current contract stabilization pass keeps every existing client URL intact a
 - Website bridge helpers adapt Core dashboard, task, and validation data into Website-friendly summaries for future `/api` shims.
 - `CLIENT_COMPATIBILITY_MATRIX.md` tracks which clients call which Core endpoints and whether each contract is stable, experimental, or schema-only.
 
-The next consolidation candidates are low-risk read or record-oriented flows: Website model status reads, Website task mirroring, IDE roadmap reads, and IDE validation reads. Chat, file apply, checkpoint restore, project builder, auth, Creative Studio, and advanced product workflows remain Website-owned.
+The next consolidation candidates are Website chat orchestration, verification pipeline metadata, distributed runtime queue mirroring, task graph mirroring, and direct Desktop/IDE adoption of Core editing and workflow contracts. Project builder, auth, Creative Studio, and advanced product workflows remain Website-owned.
 
 ## Post-Migration Cleanup Rule
 
@@ -260,7 +294,7 @@ Duplicate logic is now tracked in `DEPRECATION_PLAN.md`. Removal is allowed only
 The current daily dogfooding release candidate keeps the established runtime split:
 
 - Core owns shared `/v1` contracts for health, models, hybrid model routing, settings, workspace scan, roadmap, memory summary, diagnostics, clients, tasks, supervised orchestration, validation, and plan-only continue/repair.
-- Website `/api` owns rich product workflows, chat, generated changes, apply, checkpoint restore, Website memory CRUD, task UX, auth/session, and advanced product surfaces.
+- Website `/api` owns rich product workflows, chat, generated-change presentation, Website memory CRUD, task UX, auth/session, and advanced product surfaces; apply/checkpoint/validation routes delegate to Core when available.
 - Desktop and Website can continue using `/api` when Core is offline.
 - VS Code and Visual Studio keep local IDE-specific apply/rollback behavior while gradually reading shared state from Core.
 

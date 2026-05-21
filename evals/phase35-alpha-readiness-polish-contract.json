@@ -1,0 +1,100 @@
+{
+  "schema_version": "2026.05.21",
+  "name": "Phase 35 Alpha Readiness Polish Contract",
+  "phase": 35,
+  "evidence_root": ".aegis/alpha-readiness-polish",
+  "current_required_status": "ready",
+  "slice": "Tester-facing alpha labels, default handoff path, release-note limitations, first-run guidance, and broad-alpha blockers",
+  "core_runtime_source": "aegis-core/aegis_core/alpha.py",
+  "core_tests": "aegis-core/tests/test_alpha_readiness.py",
+  "required_feature_tiers": [
+    "stable_alpha",
+    "beta",
+    "experimental",
+    "internal_only"
+  ],
+  "required_default_alpha_path": [
+    "verify_checksums",
+    "launch_core",
+    "choose_workspace",
+    "provider_setup",
+    "local_model_setup",
+    "validate_only_first_workflow",
+    "checkpoint_rollback",
+    "diagnostics_export",
+    "feedback_capture"
+  ],
+  "required_handoff_markers": [
+    "alpha_handoff_summary",
+    "phase35_alpha_readiness_polish",
+    "default_alpha_path",
+    "hidden_by_default",
+    "broad_alpha_blockers",
+    "support_handoff",
+    "visible_with_label",
+    "opt_in"
+  ],
+  "required_docs": [
+    "docs/ALPHA_READINESS_POLISH_EVIDENCE.md",
+    "docs/CONTROLLED_EXTERNAL_ALPHA.md",
+    "docs/FIRST_RUN_ONBOARDING.md",
+    "docs/EXTERNAL_ALPHA_RELEASE_NOTES.md",
+    "KNOWN_UNSTABLE_SURFACES.md",
+    "docs/VALIDATION_MATRIX.md",
+    "docs/EVIDENCE_LEDGER.md"
+  ],
+  "required_doc_markers": [
+    "Phase 35",
+    "Stable Alpha",
+    "Beta",
+    "Experimental",
+    "Internal Only",
+    "validate-only",
+    "provider setup",
+    "local model setup",
+    "workspace selection",
+    "diagnostics export",
+    "rollback",
+    "broad alpha"
+  ],
+  "required_evidence_sources": [
+    {
+      "id": "alpha_contract",
+      "root": ".aegis/alpha-evidence",
+      "json": "alpha-contract.json",
+      "accepted_statuses": ["passed"]
+    },
+    {
+      "id": "release_notes_limitations",
+      "root": ".aegis/release-notes-limitations",
+      "json": "release-notes-limitations.json",
+      "accepted_statuses": ["ready"]
+    },
+    {
+      "id": "distribution_update",
+      "root": ".aegis/distribution-update",
+      "json": "distribution-update.json",
+      "accepted_statuses": ["ready"]
+    },
+    {
+      "id": "observability_ci",
+      "root": ".aegis/observability-ci",
+      "json": "observability-ci.json",
+      "accepted_statuses": ["ready"]
+    }
+  ],
+  "required_validation_gate_ids": [
+    "alpha-readiness-polish-contract"
+  ],
+  "required_contract_files": [
+    "evals/phase35-alpha-readiness-polish-contract.json",
+    "scripts/test-alpha-readiness-polish.ps1",
+    "docs/ALPHA_READINESS_POLISH_EVIDENCE.md",
+    "aegis-core/aegis_core/alpha.py",
+    "aegis-core/tests/test_alpha_readiness.py"
+  ],
+  "evidence_outputs": [
+    "alpha-readiness-polish.json",
+    "alpha-readiness-polish-summary.md"
+  ]
+}

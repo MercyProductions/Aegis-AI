@@ -10,9 +10,11 @@ Shared local-first runtime work now lives in:
 aegis-core/
 ```
 
-Aegis Core is the consolidation layer for the Desktop App, Website, VS Code extension, and Visual Studio extension. It provides reusable Ollama integration, workspace scanning, memory, roadmap generation, validation detection, diagnostics, predictive change simulation, engineering operations intelligence, adaptive personal engineering intelligence, and plan-only agent workflows through a Python service layer, local FastAPI API, and optional `aegis` CLI.
+Aegis Core is the consolidation layer for the Desktop App, Website, VS Code extension, and Visual Studio extension. It provides reusable Ollama integration, workspace scanning, memory, roadmap generation, validation detection/run storage, diagnostics, safe editing runtime contracts, workflow orchestration, predictive change simulation, engineering operations intelligence, adaptive personal engineering intelligence, and agent workflow records through a Python service layer, local FastAPI API, and optional `aegis` CLI.
 
-The current integration phase adds a shared `/v1` API for cross-client memory, tasks, diagnostics, model settings, client registration, and a desktop dashboard data source at `/v1/ecosystem/dashboard`.
+The current integration phase makes Core the preferred authority for Website apply/checkpoint/restore/validation workflows while preserving Website `/api` compatibility. The Website backend delegates to Core when available and falls back to its existing local implementation when Core is offline or missing a delegated route.
+
+The Website backend now includes the first provider-account foundation slice. It adds provider manifests, secure API-key linking through the OS credential vault, account/session metadata in SQLite without raw secrets, and safe official-CLI bridge probing for Codex, Gemini, and Claude-style local CLIs. Existing CLI logins are detected and reused by delegation only; Aegis does not read provider token files.
 
 Start with:
 
@@ -28,6 +30,16 @@ python -m aegis_core.cli personal --workspace .. --preference planning_depth=bal
 ```
 
 See `aegis-core/docs/SYSTEM_ARCHITECTURE.md` for the target ecosystem architecture.
+
+Core quality gate architecture, scoring, blockers, benchmark suites, and client responsibilities are documented in `docs/QUALITY_GATES.md`.
+
+Release packaging, ecosystem version manifests, compatibility checks, update flow, rollback, safe mode, and migration behavior are documented in `docs/RELEASE_PACKAGING_AND_UPDATES.md`.
+
+First-run setup, environment diagnostics, safe guided first workflow, settings import/export, and recovery guidance are documented in `docs/FIRST_RUN_ONBOARDING.md`.
+
+Plugin and tool ecosystem architecture, permission scopes, packaging format, extension hooks, and current sandbox limits are documented in `docs/PLUGIN_ECOSYSTEM.md`.
+
+The Auralith Memory and Personal Intelligence layer, including local-first memory lifecycle, privacy controls, Website/Desktop compatibility behavior, and orchestration usage, is documented in `docs/AURALITH_MEMORY_AND_PERSONAL_INTELLIGENCE.md`.
 
 Current stabilization notes live in `docs/ECOSYSTEM_STABILIZATION.md`.
 
@@ -95,7 +107,7 @@ From the repo root, launch it with:
 
 The desktop app is configured to use that embedded backend by default, so the repo can be restored from GitHub without depending on the old `Website\ChatBot` folder.
 
-For daily use, run Aegis Core on `8788` first, then run `website\launch.ps1`. The Website remains usable when Core is offline, but shared roadmap, memory, diagnostics, clients, and task state are degraded until Core comes back.
+For daily use, run Aegis Core on `8788` first, then run `website\launch.ps1`. The Website remains usable when Core is offline, but shared roadmap, memory, diagnostics, clients, workflow orchestration, Core-owned editing, checkpoint, validation, and repair workflow state are degraded until Core comes back.
 
 ## What It Supports
 

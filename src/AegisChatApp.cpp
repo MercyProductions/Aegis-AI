@@ -1,6 +1,7 @@
 #include "AegisChatApp.h"
 
 #include "Json.h"
+#include "desktop/RuntimeStatusPresenter.h"
 #include "imgui.h"
 
 #include <algorithm>
@@ -43,6 +44,17 @@ std::string BufferString(const char* buffer)
 ImVec4 StatusColor(bool ok)
 {
     return ok ? ImVec4(0.25f, 0.86f, 0.68f, 1.0f) : ImVec4(0.94f, 0.36f, 0.36f, 1.0f);
+}
+
+ImVec4 RuntimeStatusToneColor(RuntimeStatusTone tone)
+{
+    if (tone == RuntimeStatusTone::Error) {
+        return ImVec4(0.97f, 0.44f, 0.44f, 1.0f);
+    }
+    if (tone == RuntimeStatusTone::Warning) {
+        return ImVec4(0.80f, 0.60f, 0.32f, 1.0f);
+    }
+    return ImVec4(0.15f, 0.87f, 0.48f, 1.0f);
 }
 
 void TextMuted(const char* text)
@@ -4010,7 +4022,7 @@ void AegisChatApp::Tick()
             dashboard_ready_ = true;
             dashboard_reveal_time_ = static_cast<float>(ImGui::GetTime());
             next_health_check_ = now + std::chrono::seconds(10);
-            if (status_.empty() || status_ == "Preparing Aegis AI Chat...") {
+            if (status_.empty() || status_ == "Preparing Auralith OS...") {
                 status_ = busy_ ? "Dashboard ready. Backend is still finishing setup." : "Dashboard ready.";
             }
             if (!setup_check_auto_opened_) {
@@ -4599,8 +4611,8 @@ void AegisChatApp::AttemptLogin(bool demo_mode)
     dashboard_ready_ = false;
     setup_started_ = std::chrono::steady_clock::now();
     dashboard_reveal_time_ = 0.0f;
-    login_status_ = demo_mode ? "Demo desktop session accepted." : "Signed in. Preparing Aegis AI Chat.";
-    status_ = "Preparing Aegis AI Chat...";
+    login_status_ = demo_mode ? "Demo desktop session accepted." : "Signed in. Preparing Auralith OS.";
+    status_ = "Preparing Auralith OS...";
     RefreshRuntime(true);
 }
 
@@ -4646,8 +4658,11 @@ void AegisChatApp::RefreshRuntime(bool allow_backend_start)
             }
             ApplyRuntimeSnapshot(snapshot);
             connection_state_ = health_.engine_ready ? "connected" : "reconnecting";
-            connection_detail_ = health_.engine_ready ? "Backend connected." : "Backend responded but the engine is still warming up.";
-            status_ = "Backend connected.";
+            const bool core_only = runtime_status_.core_connected && !runtime_status_.website_connected;
+            connection_detail_ = core_only
+                ? "Aegis Core connected. Website fallback is offline."
+                : (health_.engine_ready ? "Backend connected." : "Backend responded but the engine is still warming up.");
+            status_ = core_only ? "Aegis Core connected." : "Backend connected.";
             QueueAgentActivity("connection", connection_detail_, health_.engine_ready ? "success" : "warning");
         };
     });
@@ -5002,7 +5017,7 @@ void AegisChatApp::ExportConversationMarkdown()
         if (Trim(message.content).empty()) {
             continue;
         }
-        const std::string role = message.role == "user" ? "You" : (config_.assistant_name.empty() ? "Aegis AI" : config_.assistant_name);
+        const std::string role = message.role == "user" ? "You" : (config_.assistant_name.empty() ? "Auralith Prime" : config_.assistant_name);
         file << "## " << role;
         if (!message.time_label.empty()) {
             file << " - " << message.time_label;
@@ -6974,7 +6989,7 @@ void AegisChatApp::SubmitMessage(const std::string& override_message, bool appen
             workspace_autopilot_status_ = autopilot_status;
             has_workspace_autopilot_status_snapshot_ = has_autopilot_status;
             workspace_autopilot_status_error_ = autopilot_status_error;
-            const std::string assistant_name = response.assistant_name.empty() ? "Aegis AI" : response.assistant_name;
+            const std::string assistant_name = response.assistant_name.empty() ? "Auralith Prime" : response.assistant_name;
             std::string model_label = response.engine;
             if (Trim(model_label).empty()) {
                 model_label = models_.active_model.empty() ? config_.model_name : models_.active_model;
@@ -7209,7 +7224,9 @@ void AegisChatApp::ApplyPendingChanges()
                 feedback_route);
         } catch (const std::exception&) {
         }
-        return [this, result = std::move(result)]() {
+        DesktopRuntimeStatus runtime_status = client.GetCachedRuntimeStatus();
+        return [this, result = std::move(result), runtime_status = std::move(runtime_status)]() {
+            runtime_status_ = runtime_status;
             if (!result.workspace_root.empty()) {
                 workspace_root_ = result.workspace_root;
                 SetBuffer(workspace_buffer_, workspace_root_);
@@ -7257,7 +7274,9 @@ void AegisChatApp::ApplySelectedChange()
                 feedback_route);
         } catch (const std::exception&) {
         }
-        return [this, result = std::move(result), path = change.path]() {
+        DesktopRuntimeStatus runtime_status = client.GetCachedRuntimeStatus();
+        return [this, result = std::move(result), path = change.path, runtime_status = std::move(runtime_status)]() {
+            runtime_status_ = runtime_status;
             if (!result.workspace_root.empty()) {
                 workspace_root_ = result.workspace_root;
                 SetBuffer(workspace_buffer_, workspace_root_);
@@ -7316,7 +7335,9 @@ void AegisChatApp::ApplySelectedHunk()
                 feedback_route);
         } catch (const std::exception&) {
         }
-        return [this, result = std::move(result), source_path, hunk_number]() {
+        DesktopRuntimeStatus runtime_status = client.GetCachedRuntimeStatus();
+        return [this, result = std::move(result), source_path, hunk_number, runtime_status = std::move(runtime_status)]() {
+            runtime_status_ = runtime_status;
             if (!result.workspace_root.empty()) {
                 workspace_root_ = result.workspace_root;
                 SetBuffer(workspace_buffer_, workspace_root_);
@@ -7360,7 +7381,9 @@ void AegisChatApp::RollbackLastApply()
                 feedback_route);
         } catch (const std::exception&) {
         }
-        return [this, result = std::move(result), checkpoint]() {
+        DesktopRuntimeStatus runtime_status = client.GetCachedRuntimeStatus();
+        return [this, result = std::move(result), checkpoint, runtime_status = std::move(runtime_status)]() {
+            runtime_status_ = runtime_status;
             if (!result.workspace_root.empty()) {
                 workspace_root_ = result.workspace_root;
                 SetBuffer(workspace_buffer_, workspace_root_);
@@ -7383,7 +7406,9 @@ void AegisChatApp::RefreshCheckpoints()
     const std::string workspace = Trim(workspace_root_.empty() ? BufferString(workspace_buffer_.data()) : workspace_root_);
     StartTask("Loading workspace checkpoints...", [this, client, workspace]() mutable {
         CheckpointListResult result = client.ListCheckpoints(workspace, 80);
-        return [this, result = std::move(result)]() mutable {
+        DesktopRuntimeStatus runtime_status = client.GetCachedRuntimeStatus();
+        return [this, result = std::move(result), runtime_status = std::move(runtime_status)]() mutable {
+            runtime_status_ = runtime_status;
             checkpoints_ = std::move(result);
             if (!checkpoints_.workspace_root.empty()) {
                 workspace_root_ = checkpoints_.workspace_root;
@@ -7439,7 +7464,9 @@ void AegisChatApp::RestoreCheckpointFromBrowser()
                 feedback_route);
         } catch (const std::exception&) {
         }
-        return [this, result = std::move(result), checkpoint]() {
+        DesktopRuntimeStatus runtime_status = client.GetCachedRuntimeStatus();
+        return [this, result = std::move(result), checkpoint, runtime_status = std::move(runtime_status)]() {
+            runtime_status_ = runtime_status;
             if (!result.workspace_root.empty()) {
                 workspace_root_ = result.workspace_root;
                 SetBuffer(workspace_buffer_, workspace_root_);
@@ -7467,7 +7494,9 @@ void AegisChatApp::ValidateWorkspace()
     const std::string workspace = workspace_root_;
     StartTask("Running workspace validation...", [this, client, workspace]() mutable {
         AgentResponse response = client.ValidateWorkspace(workspace);
-        return [this, response = std::move(response)]() {
+        DesktopRuntimeStatus runtime_status = client.GetCachedRuntimeStatus();
+        return [this, response = std::move(response), runtime_status = std::move(runtime_status)]() {
+            runtime_status_ = runtime_status;
             if (!has_response_) {
                 last_response_ = response;
                 has_response_ = true;
@@ -7648,6 +7677,20 @@ void AegisChatApp::RepairLastValidationFailure(bool continue_until_clean)
                 : verification_result_.first_failure.summary, 180),
             "running",
             verification_result_.first_failure.command);
+        {
+            const std::string workspace = workspace_root_.empty() ? BufferString(workspace_buffer_.data()) : workspace_root_;
+            const std::string workflow_id = client_.StartRepairWorkflow(
+                workspace,
+                verification_result_.first_failure.summary.empty()
+                    ? verification_result_.first_failure.reason
+                    : verification_result_.first_failure.summary,
+                verification_result_.first_failure.command,
+                verification_result_.task_id);
+            runtime_status_ = client_.GetCachedRuntimeStatus();
+            if (!workflow_id.empty()) {
+                TrackVerificationRepairActivity("Core repair workflow queued", Shorten(workflow_id, 42), "queued");
+            }
+        }
         SubmitMessage(BuildVerificationRepairPrompt(verification_result_), !autopilot_active_);
         return;
     }
@@ -7660,6 +7703,18 @@ void AegisChatApp::RepairLastValidationFailure(bool continue_until_clean)
     run_validation_ = true;
     max_repairs_ = std::max(1, max_repairs_);
     status_ = "Starting validation repair loop.";
+    {
+        const std::string workspace = workspace_root_.empty() ? BufferString(workspace_buffer_.data()) : workspace_root_;
+        const std::string workflow_id = client_.StartRepairWorkflow(
+            workspace,
+            last_response_.validation.summary.empty() ? last_response_.validation.reason : last_response_.validation.summary,
+            last_response_.validation.command,
+            last_response_.task_id);
+        runtime_status_ = client_.GetCachedRuntimeStatus();
+        if (!workflow_id.empty()) {
+            TrackVerificationRepairActivity("Core repair workflow queued", Shorten(workflow_id, 42), "queued");
+        }
+    }
     SubmitMessage(BuildValidationRepairPrompt(last_response_), !autopilot_active_);
 }
 
@@ -8034,6 +8089,7 @@ void AegisChatApp::RefreshCoreDashboard()
     const std::string workspace = Trim(workspace_root_.empty() ? BufferString(workspace_buffer_.data()) : workspace_root_);
     StartTask("Loading Aegis Core dashboard...", [this, client, workspace]() mutable {
         AegisCoreDashboardInfo dashboard;
+        DesktopRuntimeStatus runtime_status;
         std::string error_message;
         std::string registration_warning;
         bool loaded = false;
@@ -8050,22 +8106,141 @@ void AegisChatApp::RefreshCoreDashboard()
                 registration_warning = std::string("Aegis Core registration skipped: ") + error.what();
             }
             dashboard = client.GetCoreDashboard(workspace);
+            runtime_status = client.GetRuntimeStatus(workspace);
             loaded = true;
         } catch (const std::exception& error) {
             error_message = error.what();
+            runtime_status = client.GetCachedRuntimeStatus();
         }
         return [this,
                 dashboard = std::move(dashboard),
+                runtime_status = std::move(runtime_status),
                 error_message = std::move(error_message),
                 registration_warning = std::move(registration_warning),
                 loaded]() {
             core_dashboard_ = dashboard;
+            runtime_status_ = runtime_status;
             core_dashboard_loaded_ = loaded;
             core_dashboard_error_ = loaded ? registration_warning : error_message;
             if (loaded) {
                 status_ = registration_warning.empty() ? "Loaded Aegis ecosystem dashboard." : "Loaded Aegis ecosystem dashboard with degraded client registration.";
             } else {
                 status_ = "Aegis Core dashboard unavailable: " + error_message;
+            }
+        };
+    });
+}
+
+void AegisChatApp::RefreshAgentSupervision()
+{
+    AegisClient client = client_;
+    const std::string workspace = Trim(workspace_root_.empty() ? BufferString(workspace_buffer_.data()) : workspace_root_);
+    StartTask("Loading agent supervision...", [this, client, workspace]() mutable {
+        AgentSupervisionInfo supervision;
+        DesktopRuntimeStatus runtime_status;
+        std::string error_message;
+        bool loaded = false;
+        try {
+            supervision = client.GetAgentSupervision(workspace);
+            runtime_status = client.GetRuntimeStatus(workspace);
+            loaded = supervision.available;
+            if (!supervision.last_error.empty()) {
+                error_message = supervision.last_error;
+            }
+        } catch (const std::exception& error) {
+            error_message = error.what();
+            runtime_status = client.GetCachedRuntimeStatus();
+        }
+        return [this,
+                supervision = std::move(supervision),
+                runtime_status = std::move(runtime_status),
+                error_message = std::move(error_message),
+                loaded]() {
+            agent_supervision_ = supervision;
+            runtime_status_ = runtime_status;
+            agent_supervision_loaded_ = loaded;
+            agent_supervision_error_ = error_message;
+            if (loaded) {
+                status_ = agent_supervision_.workflow_id.empty()
+                    ? "Loaded Core agent runtime; no active workflow is queued."
+                    : "Loaded Core agent supervision for " + Shorten(agent_supervision_.workflow_id, 36) + ".";
+            } else {
+                status_ = "Agent supervision unavailable: " + error_message;
+            }
+        };
+    });
+}
+
+void AegisChatApp::RefreshQualityGates()
+{
+    AegisClient client = client_;
+    const std::string workspace = Trim(workspace_root_.empty() ? BufferString(workspace_buffer_.data()) : workspace_root_);
+    StartTask("Loading quality gates...", [this, client, workspace]() mutable {
+        QualityGateSnapshotInfo gates;
+        std::string error_message;
+        bool loaded = false;
+        try {
+            gates = client.GetQualityGates(workspace);
+            loaded = gates.available;
+            if (!gates.summary.empty() && !loaded) {
+                error_message = gates.summary;
+            }
+        } catch (const std::exception& error) {
+            error_message = error.what();
+        }
+        return [this, gates = std::move(gates), error_message = std::move(error_message), loaded]() {
+            quality_gates_ = gates;
+            quality_gates_loaded_ = loaded;
+            quality_gates_error_ = error_message;
+            if (loaded) {
+                status_ = quality_gates_.apply_allowed
+                    ? "Core quality gates allow apply."
+                    : "Core quality gates need review before apply.";
+            } else {
+                status_ = "Quality gates unavailable: " + error_message;
+            }
+        };
+    });
+}
+
+void AegisChatApp::StepAgentSupervisionWorkflow(const std::string& action, const std::string& task_id, bool approval)
+{
+    if (agent_supervision_.workflow_id.empty()) {
+        status_ = "No Core workflow is active for supervision.";
+        return;
+    }
+    AegisClient client = client_;
+    const std::string workspace = Trim(workspace_root_.empty() ? BufferString(workspace_buffer_.data()) : workspace_root_);
+    const std::string workflow_id = agent_supervision_.workflow_id;
+    StartTask("Updating Core workflow...", [this, client, workspace, workflow_id, action, task_id, approval]() mutable {
+        bool ok = false;
+        DesktopRuntimeStatus runtime_status;
+        std::string error_message;
+        try {
+            ok = client.StepCoreWorkflow(
+                workspace,
+                workflow_id,
+                action,
+                task_id,
+                approval,
+                "Desktop supervision requested " + action + ".");
+            runtime_status = client.GetRuntimeStatus(workspace);
+        } catch (const std::exception& error) {
+            error_message = error.what();
+            runtime_status = client.GetCachedRuntimeStatus();
+        }
+        return [this,
+                ok,
+                runtime_status = std::move(runtime_status),
+                error_message = std::move(error_message),
+                action]() {
+            runtime_status_ = runtime_status;
+            if (ok) {
+                status_ = "Core workflow action recorded: " + action + ".";
+                RefreshAgentSupervision();
+            } else {
+                status_ = error_message.empty() ? "Core workflow action could not be recorded." : error_message;
+                agent_supervision_error_ = status_;
             }
         };
     });
@@ -8527,7 +8702,7 @@ MediaGenerationOptions AegisChatApp::BuildMediaGenerationOptionsFromUi() const
 void AegisChatApp::CreateMediaJob(const std::string& kind, const std::string& prompt, const std::string& feedback)
 {
     const std::string final_prompt = Trim(prompt).empty()
-        ? "Create a premium Aegis AI creative asset with a polished futuristic product style."
+        ? "Create a premium Auralith OS creative asset with a polished futuristic product style."
         : Trim(prompt);
     const std::string final_feedback = Trim(feedback);
     const std::string previous = final_feedback.empty() ? "" : last_media_job_id_;
@@ -8668,6 +8843,7 @@ void AegisChatApp::ApplyRuntimeSnapshot(const RuntimeSnapshot& snapshot)
     health_ = snapshot.health;
     config_ = snapshot.config;
     models_ = snapshot.model_inventory;
+    runtime_status_ = snapshot.runtime_status;
     model_registry_ = snapshot.model_registry;
     model_manager_ = snapshot.model_manager;
     model_benchmarks_ = snapshot.model_benchmarks;
@@ -8760,7 +8936,7 @@ void AegisChatApp::RenderTopBar()
     draw->AddLine(ImVec2(top_origin.x + 24.0f, top_origin.y + top_size.y - 1.0f), ImVec2(top_origin.x + top_size.x - 24.0f, top_origin.y + top_size.y - 1.0f), Color(255, 255, 255, 0.055f), 1.0f);
 
     ImGui::SetCursorPos(ImVec2(32.0f, 19.0f));
-    TextColor("Aegis AI Chat", Rgba(246, 248, 251));
+    TextColor("Auralith OS", Rgba(246, 248, 251));
     ImGui::SameLine();
     ImGui::SetCursorPosY(ImGui::GetCursorPosY() - 1.0f);
     const ImVec2 badge_pos = ImGui::GetCursorScreenPos();
@@ -8937,7 +9113,7 @@ void AegisChatApp::RenderLogin()
     draw->AddRectFilled(brand_pos, ImVec2(brand_pos.x + 54.0f, brand_pos.y + 54.0f), Color(3, 18, 17), 15.0f);
     DrawBitmapIcon(draw, IconGlyph::Shield, ImVec2(brand_pos.x + 9.0f, brand_pos.y + 9.0f), 36.0f, Color(38, 221, 123));
     ImGui::SetCursorPos(ImVec2(116.0f, 48.0f));
-    TextColor("AEGIS AI CHAT", Rgba(246, 248, 251));
+    TextColor("AURALITH OS", Rgba(246, 248, 251));
     ImGui::SetCursorPos(ImVec2(116.0f, 74.0f));
     TextMuted("Secure Desktop Session");
 
@@ -8952,7 +9128,7 @@ void AegisChatApp::RenderLogin()
         ImGui::Dummy(ImVec2(0.0f, 10.0f));
         TextColor("WELCOME BACK", Rgba(38, 221, 123));
         ImGui::Dummy(ImVec2(0.0f, 4.0f));
-        TextColor("Sign in to Aegis AI Chat", Rgba(246, 248, 251));
+        TextColor("Sign in to Auralith OS", Rgba(246, 248, 251));
         ImGui::Dummy(ImVec2(0.0f, 6.0f));
         ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + card_w - 46.0f);
         TextMuted("Use your Aegis desktop account to open the native chat workspace. The backend, model status, memory, tools, and file panels load after sign-in.");
@@ -9125,7 +9301,7 @@ void AegisChatApp::RenderLeftPanel()
     draw->AddRectFilled(logo_pos, ImVec2(logo_pos.x + 44.0f, logo_pos.y + 44.0f), Color(26, 9, 12), 13.0f);
     DrawBitmapIcon(draw, IconGlyph::Shield, ImVec2(logo_pos.x + 7.0f, logo_pos.y + 7.0f), 30.0f, Color(248, 64, 82));
     ImGui::SetCursorPos(ImVec2(70.0f, 20.0f));
-    TextColor("Aegis AI", Rgba(246, 248, 251));
+    TextColor("Auralith Prime", Rgba(246, 248, 251));
     ImGui::SetCursorPos(ImVec2(70.0f, 43.0f));
     TextMuted("Your AI Assistant");
 
@@ -9403,7 +9579,7 @@ void AegisChatApp::RenderChatPanel()
     const float input_wrap_width = std::max(260.0f, panel_width - 128.0f);
     const std::string composer_text = std::string(message_buffer_.data());
     const float composer_text_height = ImGui::CalcTextSize(
-        composer_text.empty() ? "Message Aegis AI..." : composer_text.c_str(),
+        composer_text.empty() ? "Message Auralith Prime..." : composer_text.c_str(),
         nullptr,
         false,
         input_wrap_width).y;
@@ -9506,7 +9682,7 @@ void AegisChatApp::RenderChatPanel()
                 ImGuiInputTextFlags_CtrlEnterForNewLine);
         if (Trim(std::string(message_buffer_.data())).empty() && !ImGui::IsItemActive()) {
             const ImVec2 hint = ImGui::GetItemRectMin();
-            ImGui::GetWindowDrawList()->AddText(ImVec2(hint.x + 4.0f, hint.y + 6.0f), Color(132, 142, 155), "Message Aegis AI...");
+            ImGui::GetWindowDrawList()->AddText(ImVec2(hint.x + 4.0f, hint.y + 6.0f), Color(132, 142, 155), "Message Auralith Prime...");
         }
         ImGui::PopStyleVar();
         ImGui::PopStyleColor(2);
@@ -9725,7 +9901,7 @@ void AegisChatApp::RenderChatPanel()
 
     ImGui::SetCursorPosX(0.0f);
     ImGui::BeginChild("chat_footer", ImVec2(0, footer_height), false);
-    const char* warning = "Aegis AI can make mistakes. Consider checking important information.";
+    const char* warning = "Auralith Prime can make mistakes. Consider checking important information.";
     const float text_width = ImGui::CalcTextSize(warning).x;
     ImGui::SetCursorPosX(std::max(0.0f, (ImGui::GetWindowWidth() - text_width) * 0.5f));
     TextMuted(warning);
@@ -9839,6 +10015,341 @@ void AegisChatApp::RenderEcosystemDashboardCard()
     EndCard();
 }
 
+void AegisChatApp::RenderRuntimeStatusPanel()
+{
+    const bool core_online = runtime_status_.core_connected || core_dashboard_loaded_;
+    const bool website_online = runtime_status_.website_connected || health_.engine_ready || health_.ok;
+    const bool ollama_online = runtime_status_.ollama_connected || health_.model_ready;
+    if (BeginCard("runtime_status_card", ImVec2(0, 344.0f))) {
+        TextColor("Runtime Status", Rgba(246, 248, 251));
+        ImGui::SameLine(ImGui::GetWindowWidth() - 96.0f);
+        Pill(runtime_status_.fallback_mode ? "Fallback" : "Core first",
+             runtime_status_.fallback_mode ? Rgba(205, 154, 82) : Rgba(38, 221, 123));
+        ImGui::Separator();
+
+        ImGui::Columns(3, "runtime_status_services", false);
+        TextMuted("Core");
+        TextColor(RuntimeServiceLabel(core_online), RuntimeStatusToneColor(RuntimeServiceTone(core_online)));
+        ImGui::NextColumn();
+        TextMuted("Website");
+        TextColor(RuntimeServiceLabel(website_online), RuntimeStatusToneColor(RuntimeServiceTone(website_online)));
+        ImGui::NextColumn();
+        TextMuted("Ollama");
+        TextColor(RuntimeServiceLabel(ollama_online), RuntimeStatusToneColor(RuntimeServiceTone(ollama_online)));
+        ImGui::Columns(1);
+
+        ImGui::Dummy(ImVec2(0.0f, 6.0f));
+        TextMuted("Client: " + Shorten(runtime_status_.registered_client_id.empty() ? "aegis-desktop-native" : runtime_status_.registered_client_id, 34));
+        const ReleaseCompatibilityView release_view = BuildReleaseCompatibilityView(runtime_status_);
+        TextColor("Release compatibility: " + Shorten(release_view.status_label, 38), RuntimeStatusToneColor(release_view.status_tone));
+        TextMuted("Release schema: " + Shorten(release_view.schema_label, 38));
+        if (!release_view.requirements_label.empty()) {
+            TextMuted(Shorten(release_view.requirements_label, 68));
+        }
+        if (!release_view.notice_label.empty()) {
+            if (release_view.notice_tone == RuntimeStatusTone::Good) {
+                TextMuted(Shorten(release_view.notice_label, 104));
+            } else {
+                TextColor(Shorten(release_view.notice_label, 104), RuntimeStatusToneColor(release_view.notice_tone));
+            }
+        }
+        TextMuted(
+            "Runtime nodes: " + std::to_string(runtime_status_.distributed_online_node_count) + "/" +
+                std::to_string(runtime_status_.distributed_node_count) + " online; " +
+                std::to_string(runtime_status_.distributed_active_workload_count) + " active, " +
+                std::to_string(runtime_status_.distributed_queued_workload_count) + " queued");
+        if (!runtime_status_.distributed_last_event.empty()) {
+            TextMuted("Runtime event: " + Shorten(runtime_status_.distributed_last_event, 38));
+        }
+        TextMuted(
+            "Live terminals: " + std::to_string(runtime_status_.runtime_terminal_count) + " terminal(s), " +
+                std::to_string(runtime_status_.runtime_active_terminal_job_count) + " active job(s), " +
+                std::to_string(runtime_status_.runtime_active_process_count) + " process(es)");
+        if (!runtime_status_.runtime_latest_event.empty()) {
+            TextMuted("Live runtime event: " + Shorten(runtime_status_.runtime_latest_event, 38));
+        }
+        if (!runtime_status_.runtime_voice_status.empty()) {
+            TextMuted("Voice runtime: " + Shorten(runtime_status_.runtime_voice_status, 38));
+        }
+        if (runtime_status_.runtime_session_count > 0) {
+            TextMuted("Shared sessions: " + std::to_string(runtime_status_.runtime_session_count));
+        }
+        TextMuted("First-run setup: " + Shorten(runtime_status_.onboarding_completed ? "complete" : (runtime_status_.onboarding_current_step.empty() ? "not checked" : runtime_status_.onboarding_current_step), 38));
+        if (runtime_status_.onboarding_warning_count > 0 || runtime_status_.onboarding_failure_count > 0) {
+            TextColor(
+                "Setup diagnostics: " + std::to_string(runtime_status_.onboarding_warning_count) + " warning(s), " +
+                    std::to_string(runtime_status_.onboarding_failure_count) + " blocker(s)",
+                runtime_status_.onboarding_failure_count > 0 ? Rgba(248, 113, 113) : Rgba(205, 154, 82));
+        }
+        TextMuted("Privacy: local-first; cloud routes require approval and visible provider context.");
+        TextMuted("Trust: secrets redacted, checkpoints required before Core applies workspace edits.");
+        TextMuted("Active workflow: " + Shorten(runtime_status_.active_workflow_id.empty() ? "none" : runtime_status_.active_workflow_id, 38));
+        TextMuted("Last operation: " + Shorten(runtime_status_.last_operation.empty() ? "none" : runtime_status_.last_operation, 44));
+        if (!runtime_status_.last_runtime.empty()) {
+            TextMuted("Handled by: " + Shorten(runtime_status_.last_runtime, 32));
+        }
+        if (!runtime_status_.last_error.empty() && runtime_status_.fallback_mode) {
+            TextColor("Fallback reason: " + Shorten(runtime_status_.last_error, 82), Rgba(205, 154, 82));
+        }
+
+        const int visible_logs = std::min(3, static_cast<int>(runtime_status_.recent_operations.size()));
+        if (visible_logs > 0) {
+            ImGui::Dummy(ImVec2(0.0f, 6.0f));
+            ImGui::Separator();
+            for (int i = 0; i < visible_logs; ++i) {
+                const RuntimeOperationLogEntry& entry = runtime_status_.recent_operations[static_cast<size_t>(i)];
+                TextMuted(Shorten(entry.time_label + " " + entry.operation + " / " + entry.runtime + " / " + entry.status, 82));
+            }
+        }
+    }
+    EndCard();
+}
+
+void AegisChatApp::RenderAgentSupervisionPanel()
+{
+    if (BeginCard("agent_supervision_card", ImVec2(0, 438.0f))) {
+        const auto supervision_color = [](const std::string& status) {
+            const std::string normalized = Lower(status);
+            if (normalized == "failed" || normalized == "cancelled" || normalized == "error") {
+                return Rgba(248, 113, 113);
+            }
+            if (normalized == "running" || normalized == "active" || normalized == "completed" || normalized == "passed") {
+                return Rgba(38, 221, 123);
+            }
+            return Rgba(205, 154, 82);
+        };
+        TextColor("Agent Supervision", Rgba(246, 248, 251));
+        ImGui::SameLine(ImGui::GetWindowWidth() - 126.0f);
+        Pill(agent_supervision_loaded_ ? "Core live" : "Offline",
+             agent_supervision_loaded_ ? Rgba(38, 221, 123) : Rgba(205, 154, 82));
+        ImGui::Separator();
+
+        if (!agent_supervision_error_.empty()) {
+            TextColor(Shorten(agent_supervision_error_, 94), Rgba(205, 154, 82));
+        }
+        if (!agent_supervision_loaded_) {
+            TextMuted("Load Core supervision to see active agents, workflow timeline, approvals, validation, and rollback state.");
+        }
+
+        ImGui::BeginDisabled(busy_);
+        if (ImGui::Button("Refresh Supervision", ImVec2(-1.0f, 30.0f))) {
+            RefreshAgentSupervision();
+        }
+        ImGui::EndDisabled();
+
+        if (agent_supervision_loaded_) {
+            ImGui::Dummy(ImVec2(0.0f, 6.0f));
+            ImGui::Columns(3, "agent_supervision_metrics", false);
+            TextMuted("Workflow");
+            TextColor(agent_supervision_.workflow_status.empty() ? "Idle" : Shorten(agent_supervision_.workflow_status, 18),
+                      supervision_color(agent_supervision_.workflow_status));
+            ImGui::NextColumn();
+            TextMuted("Agents");
+            TextColor(std::to_string(agent_supervision_.agents.size()), Rgba(246, 248, 251));
+            ImGui::NextColumn();
+            TextMuted("Approvals");
+            TextColor(std::to_string(agent_supervision_.approval_request_count), agent_supervision_.approval_request_count > 0 ? Rgba(205, 154, 82) : Rgba(38, 221, 123));
+            ImGui::Columns(1);
+
+            ImGui::Dummy(ImVec2(0.0f, 4.0f));
+            ImGui::Columns(3, "agent_supervision_trust_metrics", false);
+            TextMuted("Confidence");
+            TextColor(agent_supervision_.confidence_score > 0 ? std::to_string(agent_supervision_.confidence_score) + "%" : "pending",
+                      agent_supervision_.confidence_score >= 75 ? Rgba(38, 221, 123) : (agent_supervision_.confidence_score >= 50 ? Rgba(205, 154, 82) : Rgba(238, 102, 102)));
+            ImGui::NextColumn();
+            TextMuted("Risk");
+            TextColor(agent_supervision_.execution_risk_level.empty() ? "unknown" : Shorten(agent_supervision_.execution_risk_level, 18),
+                      agent_supervision_.execution_risk_level == "high" ? Rgba(238, 102, 102) : (agent_supervision_.execution_risk_level == "medium" ? Rgba(205, 154, 82) : Rgba(38, 221, 123)));
+            ImGui::NextColumn();
+            TextMuted("Rollback Ready");
+            TextColor(agent_supervision_.rollback_readiness > 0 ? std::to_string(agent_supervision_.rollback_readiness) + "%" : "pending",
+                      agent_supervision_.rollback_readiness >= 85 ? Rgba(38, 221, 123) : Rgba(205, 154, 82));
+            ImGui::Columns(1);
+
+            TextMuted("Workflow: " + Shorten(agent_supervision_.workflow_id.empty() ? "none" : agent_supervision_.workflow_id, 54));
+            TextMuted("Autopilot: " + Shorten(agent_supervision_.autopilot_specialization.empty() ? "standard" : agent_supervision_.autopilot_specialization, 54));
+            if (!agent_supervision_.autopilot_execution_strategy.empty() || !agent_supervision_.autopilot_validation_strategy.empty()) {
+                TextMuted("Strategy: " +
+                          Shorten(agent_supervision_.autopilot_execution_strategy.empty() ? "default" : agent_supervision_.autopilot_execution_strategy, 34) +
+                          " / " +
+                          Shorten(agent_supervision_.autopilot_validation_strategy.empty() ? "default validation" : agent_supervision_.autopilot_validation_strategy, 34));
+            }
+            if (!agent_supervision_.autopilot_repair_strategy.empty()) {
+                TextMuted("Repair strategy: " + Shorten(agent_supervision_.autopilot_repair_strategy, 74));
+            }
+            TextMuted("Collaboration: " +
+                      (agent_supervision_.collaboration_role.empty() ? std::string("owner") : agent_supervision_.collaboration_role) +
+                      " / " + std::to_string(agent_supervision_.collaboration_pending_approvals) +
+                      " approval(s) / " + std::to_string(agent_supervision_.collaboration_active_workflows) +
+                      " shared workflow(s)");
+            if (!agent_supervision_.collaboration_latest_event.empty()) {
+                TextMuted("Latest team event: " + Shorten(agent_supervision_.collaboration_latest_event, 74));
+            }
+            TextMuted("Governance: " +
+                      (agent_supervision_.governance_status.empty() ? std::string("unknown") : agent_supervision_.governance_status) +
+                      " / " + std::to_string(agent_supervision_.governance_policy_violations) +
+                      " violation(s) / " + std::to_string(agent_supervision_.governance_enabled_policies) +
+                      " policy rule(s)");
+            TextMuted("Current task: " + Shorten(agent_supervision_.current_task.empty() ? "none" : agent_supervision_.current_task, 74));
+            TextMuted("Validation: " + Shorten(agent_supervision_.latest_validation.empty() ? "pending" : agent_supervision_.latest_validation, 64));
+            if (agent_supervision_.validation_confidence > 0 || agent_supervision_.regression_risk > 0) {
+                TextMuted("Validation confidence: " + std::to_string(agent_supervision_.validation_confidence) +
+                          "% / regression risk: " + std::to_string(agent_supervision_.regression_risk));
+            }
+            TextMuted("Rollback: " + std::string(agent_supervision_.rollback_available ? "available" : "waiting for checkpoint"));
+
+            ImGui::Dummy(ImVec2(0.0f, 6.0f));
+            const float action_width = (ImGui::GetContentRegionAvail().x - 8.0f) * 0.5f;
+            const std::string approval_task_id = [&]() {
+                for (const AgentSupervisionTaskInfo& task : agent_supervision_.tasks) {
+                    if (task.approval_required) {
+                        return task.id;
+                    }
+                }
+                return std::string();
+            }();
+            ImGui::BeginDisabled(agent_supervision_.workflow_id.empty() || busy_);
+            if (ImGui::Button("Approve Step", ImVec2(action_width, 30.0f))) {
+                StepAgentSupervisionWorkflow("advance", approval_task_id, true);
+            }
+            ImGui::SameLine();
+            if (ImGui::Button(agent_supervision_.workflow_status == "paused" ? "Resume" : "Pause", ImVec2(-1.0f, 30.0f))) {
+                StepAgentSupervisionWorkflow(agent_supervision_.workflow_status == "paused" ? "resume" : "pause");
+            }
+            if (ImGui::Button("Request Revision", ImVec2(action_width, 30.0f))) {
+                StepAgentSupervisionWorkflow("record_log", "", false);
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel", ImVec2(-1.0f, 30.0f))) {
+                StepAgentSupervisionWorkflow("cancel");
+            }
+            ImGui::EndDisabled();
+            if (ImGui::Button("Rollback Browser", ImVec2(-1.0f, 30.0f))) {
+                RefreshCheckpoints();
+                pending_popup_ = "Aegis Checkpoints";
+            }
+
+            ImGui::Dummy(ImVec2(0.0f, 6.0f));
+            TextColor("Workflow Timeline", Rgba(246, 248, 251));
+            if (agent_supervision_.timeline.empty()) {
+                TextMuted("No Core workflow events are available yet.");
+            } else {
+                ImGui::BeginChild("agent_supervision_timeline", ImVec2(0, 86.0f), false);
+                const int start = std::max(0, static_cast<int>(agent_supervision_.timeline.size()) - 5);
+                for (int i = start; i < static_cast<int>(agent_supervision_.timeline.size()); ++i) {
+                    const ToolEvent& event = agent_supervision_.timeline[static_cast<size_t>(i)];
+                    TextColor(Shorten(event.kind.empty() ? "event" : event.kind, 18), supervision_color(event.status));
+                    ImGui::SameLine();
+                    TextMuted(Shorten(event.title.empty() ? event.detail : event.title, 76));
+                }
+                ImGui::EndChild();
+            }
+
+            TextColor("Agents", Rgba(246, 248, 251));
+            ImGui::BeginChild("agent_supervision_agents", ImVec2(0, 96.0f), false);
+            const int agent_count = std::min(4, static_cast<int>(agent_supervision_.agents.size()));
+            for (int i = 0; i < agent_count; ++i) {
+                const AgentSupervisionAgentInfo& agent = agent_supervision_.agents[static_cast<size_t>(i)];
+                TextColor(Shorten(agent.role.empty() ? agent.id : agent.role, 24), supervision_color(agent.status));
+                ImGui::SameLine();
+                TextMuted(Shorten(agent.assigned_task.empty() ? agent.status : agent.assigned_task, 72));
+                if (!agent.model_profile.empty()) {
+                    TextMuted("model: " + Shorten(agent.model_profile, 72));
+                }
+            }
+            if (agent_count == 0) {
+                TextMuted("No active agent cards are reported by Core yet.");
+            }
+            ImGui::EndChild();
+
+            if (!agent_supervision_.safety_warnings.empty()) {
+                TextColor("Safety: " + Shorten(agent_supervision_.safety_warnings.front(), 86), Rgba(205, 154, 82));
+            }
+        }
+    }
+    EndCard();
+}
+
+void AegisChatApp::RenderQualityGatePanel()
+{
+    if (BeginCard("quality_gate_card", ImVec2(0, 342.0f))) {
+        const auto quality_color = [](const std::string& status) {
+            const std::string normalized = Lower(status);
+            if (normalized == "failed" || normalized == "blocked" || normalized == "error") {
+                return Rgba(248, 113, 113);
+            }
+            if (normalized == "passed" || normalized == "completed" || normalized == "ok") {
+                return Rgba(38, 221, 123);
+            }
+            return Rgba(205, 154, 82);
+        };
+        TextColor("Quality Gates", Rgba(246, 248, 251));
+        ImGui::SameLine(ImGui::GetWindowWidth() - 126.0f);
+        Pill(quality_gates_loaded_ ? (quality_gates_.apply_allowed ? "Apply clear" : "Blocked") : "Not loaded",
+             quality_gates_loaded_ && quality_gates_.apply_allowed ? Rgba(38, 221, 123) : Rgba(205, 154, 82));
+        ImGui::Separator();
+
+        if (!quality_gates_error_.empty()) {
+            TextColor(Shorten(quality_gates_error_, 94), Rgba(205, 154, 82));
+        }
+        ImGui::BeginDisabled(busy_);
+        if (ImGui::Button("Refresh Quality", ImVec2(-1.0f, 30.0f))) {
+            RefreshQualityGates();
+        }
+        ImGui::EndDisabled();
+
+        if (!quality_gates_loaded_) {
+            TextMuted("Load Core quality gates to review apply blockers, validation confidence, risk, benchmark history, and rollback readiness.");
+            EndCard();
+            return;
+        }
+
+        ImGui::Dummy(ImVec2(0.0f, 6.0f));
+        ImGui::Columns(4, "quality_gate_metrics", false);
+        TextMuted("Confidence");
+        TextColor(std::to_string(quality_gates_.confidence_score) + "%", quality_color(quality_gates_.status));
+        ImGui::NextColumn();
+        TextMuted("Validation");
+        TextColor(std::to_string(quality_gates_.validation_score) + "%", Rgba(246, 248, 251));
+        ImGui::NextColumn();
+        TextMuted("Risk");
+        TextColor(std::to_string(quality_gates_.risk_score), quality_gates_.risk_score >= 50 ? Rgba(248, 113, 113) : Rgba(246, 248, 251));
+        ImGui::NextColumn();
+        TextMuted("Blockers");
+        TextColor(std::to_string(quality_gates_.blocker_count), quality_gates_.blocker_count > 0 ? Rgba(248, 113, 113) : Rgba(38, 221, 123));
+        ImGui::Columns(1);
+
+        TextMuted("Status: " + Shorten(quality_gates_.status.empty() ? "not run" : quality_gates_.status, 42));
+        TextMuted("Validation: " + Shorten(quality_gates_.latest_validation_command.empty() ? "no latest command" : quality_gates_.latest_validation_command, 74));
+        TextMuted("Benchmark: " + Shorten(quality_gates_.latest_benchmark_status.empty() ? "not run" : quality_gates_.latest_benchmark_status, 42) +
+                  " / " + std::to_string(static_cast<int>(quality_gates_.latest_benchmark_score * 100.0)) + "%");
+
+        ImGui::Dummy(ImVec2(0.0f, 6.0f));
+        TextColor("Gate Results", Rgba(246, 248, 251));
+        ImGui::BeginChild("quality_gate_results", ImVec2(0, 108.0f), false);
+        const int gate_count = std::min(5, static_cast<int>(quality_gates_.gates.size()));
+        for (int i = 0; i < gate_count; ++i) {
+            const QualityGateInfo& gate = quality_gates_.gates[static_cast<size_t>(i)];
+            TextColor(Shorten(gate.label.empty() ? gate.id : gate.label, 24), quality_color(gate.status));
+            ImGui::SameLine();
+            TextMuted(Shorten(gate.summary.empty() ? gate.status : gate.summary, 82));
+        }
+        if (gate_count == 0) {
+            TextMuted("No quality gate run is recorded yet.");
+        }
+        ImGui::EndChild();
+
+        if (!quality_gates_.blockers.empty()) {
+            TextColor("Blocker: " + Shorten(quality_gates_.blockers.front(), 88), Rgba(248, 113, 113));
+        } else if (!quality_gates_.warnings.empty()) {
+            TextColor("Warning: " + Shorten(quality_gates_.warnings.front(), 88), Rgba(205, 154, 82));
+        } else if (!quality_gates_.required_actions.empty()) {
+            TextMuted("Next: " + Shorten(quality_gates_.required_actions.front(), 88));
+        }
+    }
+    EndCard();
+}
+
 void AegisChatApp::RenderRightPanel()
 {
     ImGui::PushStyleColor(ImGuiCol_ChildBg, Rgba(0, 0, 0, 0));
@@ -9847,6 +10358,15 @@ void AegisChatApp::RenderRightPanel()
     ImGui::Dummy(ImVec2(0.0f, 2.0f));
 
     RenderEcosystemDashboardCard();
+    ImGui::Dummy(ImVec2(0.0f, 4.0f));
+
+    RenderRuntimeStatusPanel();
+    ImGui::Dummy(ImVec2(0.0f, 4.0f));
+
+    RenderAgentSupervisionPanel();
+    ImGui::Dummy(ImVec2(0.0f, 4.0f));
+
+    RenderQualityGatePanel();
     ImGui::Dummy(ImVec2(0.0f, 4.0f));
 
     RenderAgentActivityPanel();
@@ -9905,7 +10425,7 @@ void AegisChatApp::RenderRightPanel()
         if (RowButton("quick_image", IconGlyph::Image, "Creative Studio", "Images, video, GIF, PSD, beats")) {
             const std::string composer_prompt = Trim(std::string(message_buffer_.data()));
             const std::string prompt = composer_prompt.empty()
-                ? "Create a premium Aegis AI creative asset with a clean dark interface style."
+                ? "Create a premium Auralith OS creative asset with a clean dark interface style."
                 : composer_prompt;
             const std::string lower_prompt = Lower(prompt);
             const auto has = [&lower_prompt](const char* term) {
@@ -13074,6 +13594,15 @@ void AegisChatApp::RenderSetupCheckModal()
     DrawProgress(static_cast<float>(ready_count) / static_cast<float>(check_count), ImVec2(ImGui::GetContentRegionAvail().x, 8.0f), !required_ok);
     ImGui::Dummy(ImVec2(0.0f, 10.0f));
 
+    const std::string onboarding_step = runtime_status_.onboarding_completed
+        ? "complete"
+        : (runtime_status_.onboarding_current_step.empty() ? "not checked" : runtime_status_.onboarding_current_step);
+    TextColor("Core first-run contract", runtime_status_.onboarding_failure_count > 0 ? Rgba(248, 113, 113) : Rgba(246, 248, 251));
+    TextMuted(
+        "Setup step: " + onboarding_step + " | diagnostics: " +
+        std::to_string(runtime_status_.onboarding_warning_count) + " warning(s), " +
+        std::to_string(runtime_status_.onboarding_failure_count) + " blocker(s).");
+
     ImGui::BeginDisabled(busy_);
     if (ImGui::Button("Refresh Runtime")) {
         RefreshRuntime(true);
@@ -15024,6 +15553,18 @@ void AegisChatApp::RenderRoadmapModal()
         OpenExternalPath(ProjectDirectoryFromExecutable() / "PROJECT_TODO.md");
     }
     ImGui::SameLine();
+    if (ImGui::Button("Track In Core")) {
+        const std::string workspace = workspace_root_.empty() ? BufferString(workspace_buffer_.data()) : workspace_root_;
+        const std::string workflow_id = client_.StartRoadmapWorkflow(
+            workspace,
+            "Continue the Desktop build queue and project roadmap from the native client.",
+            {"PROJECT_TODO.md", "RUNTIME_CONSOLIDATION.md"});
+        runtime_status_ = client_.GetCachedRuntimeStatus();
+        status_ = workflow_id.empty()
+            ? "Core roadmap workflow unavailable; Desktop will keep using local roadmap actions."
+            : "Core roadmap workflow queued: " + Shorten(workflow_id, 36) + ".";
+    }
+    ImGui::SameLine();
     if (ImGui::Button("Refresh Runtime")) {
         RefreshRuntime(true);
     }
@@ -16402,7 +16943,7 @@ void AegisChatApp::RenderMessage(const ChatMessage& message)
             draw->AddRectFilled(avatar, ImVec2(avatar.x + 50.0f, avatar.y + 50.0f), Color(6, 13, 22), 8.0f);
             DrawBitmapIcon(draw, IconGlyph::Shield, ImVec2(avatar.x + 11.0f, avatar.y + 10.0f), 28.0f, Color(38, 221, 123));
             ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 66.0f);
-            TextColor(config_.assistant_name.empty() ? "Aegis AI" : config_.assistant_name, Rgba(38, 221, 123));
+            TextColor(config_.assistant_name.empty() ? "Auralith Prime" : config_.assistant_name, Rgba(38, 221, 123));
             if (!Trim(message.model_label).empty()) {
                 ImGui::SameLine();
                 TextMuted("via " + Shorten(message.model_label, 34));

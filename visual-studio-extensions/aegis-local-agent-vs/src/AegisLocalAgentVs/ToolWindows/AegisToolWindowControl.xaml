@@ -45,7 +45,7 @@
         <ColumnDefinition Width="180" />
       </Grid.ColumnDefinitions>
       <StackPanel Grid.Column="0">
-        <TextBlock Text="Aegis Local Agent" FontSize="18" FontWeight="Bold" Foreground="#29D3FF" />
+        <TextBlock Text="Auralith OS" FontSize="18" FontWeight="Bold" Foreground="#29D3FF" />
         <TextBlock x:Name="StatusText" Text="Starting..." Foreground="#FFB86C" Margin="0,2,0,4" FontWeight="Bold" />
         <TextBlock x:Name="ModelStatusText" Text="Model status: not checked" Foreground="#94A3B8" Margin="0,0,0,8" />
       </StackPanel>
@@ -64,6 +64,9 @@
             </GroupBox>
             <GroupBox Header="Active Project / Selection">
               <TextBox x:Name="ProjectInfoBox" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="130" VerticalScrollBarVisibility="Auto" />
+            </GroupBox>
+            <GroupBox Header="Runtime Authority">
+              <TextBox x:Name="RuntimeStatusBox" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="140" VerticalScrollBarVisibility="Auto" />
             </GroupBox>
             <GroupBox Header="Health / Build Status">
               <TextBox x:Name="BuildStatusBox" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="120" VerticalScrollBarVisibility="Auto" />

@@ -35,7 +35,7 @@ npm run package
 The packaged extension is created at:
 
 ```text
-release/aegis-local-autopilot-0.1.1.vsix
+release/aegis-local-autopilot-0.1.5.vsix
 ```
 
 ## Install
@@ -52,7 +52,7 @@ The package script also runs `lint:package` before creating the archive, so rele
 Manual VSIX install:
 
 ```powershell
-code --install-extension .\release\aegis-local-autopilot-0.1.1.vsix --force
+code --install-extension .\release\aegis-local-autopilot-0.1.5.vsix --force
 ```
 
 You can also install through VS Code's Extensions view by choosing **Install from VSIX...** and selecting the file in `release/`.
@@ -72,22 +72,37 @@ On first launch, Aegis runs a setup flow that:
 
 Run `Aegis: Run First-Run Setup` to repeat this flow.
 
-## Aegis Core Sync
+## Aegis Core Runtime
 
-When Aegis Core is running, the VS Code extension now treats `/v1` as the preferred shared runtime source for:
+When Aegis Core is running, the VS Code extension treats Core `/v1` as its primary runtime engine. VS Code still owns editor-native UI, diff preview, prompts, selections, and local fallback behavior, but shared runtime state now belongs to Core.
+
+VS Code delegates these workflows to Core first:
 
 - health, settings, models, memory, diagnostics, and validation health checks
-- local model inventory through `/v1/models`, with direct Ollama fallback
-- workspace scan metadata through `/v1/workspaces/scan`, with VS Code local scan fallback
-- project roadmap generation through `/v1/workspaces/roadmap`, with local model fallback
-- shared validation through `/v1/validation`, with terminal validation fallback
-- client registration and shared Agent Mode task records
+- model/provider registry, provider health, routing profiles, and route explanations through `/v1/models/registry` and `/v1/models/route`
+- client registration and heartbeat sync through `/v1/clients/sync`
+- active workflow/task graph records through `/v1/workflows`
+- workflow event updates through `/v1/workflows/{workflow_id}/events`
+- workspace scan metadata through `/v1/workspaces/scan`
+- project roadmap generation through `/v1/workspaces/roadmap`
+- proposed change metadata through `/v1/changes/propose`
+- approved apply through `/v1/changes/apply`
+- checkpoints and rollback through `/v1/checkpoints`
+- validation execution and result storage through `/v1/validation/run`
+- quality gate evaluation, blocker reporting, and benchmark/evaluation history through `/v1/quality-gates` and `/v1/benchmarks`
+- repair workflow tracking through `repair_project` workflows
 
-Those task records are visible to the Desktop App ecosystem dashboard and other Auralith clients that point at the same workspace.
+If Core is offline, VS Code degrades to its existing local logic for model calls, scans, proposal apply, backup rollback, and terminal validation. The sidebar Runtime Status and Quality Gates cards show Core connection, fallback mode, active workflow, latest validation result, checkpoint availability, gate scores, blockers, and recent Core/local operations.
+
+Core-owned apply remains approval gated. VS Code opens diffs first, checks file paths locally, shows the file count and risk metadata, asks Core to run quality gates, and only then calls Core apply. Core creates a checkpoint before writing. Unsafe paths, generated dependency folders, hidden runtime folders, failed gates, and secret-like filenames are rejected by Core and are not silently retried through local fallback.
 
 Set `aegisLocalAutopilot.coreUrl` if Core is not running on `http://127.0.0.1:8788`. The extension normalizes common local inputs such as `127.0.0.1:8788`, pasted `/v1/...` endpoint URLs, and legacy `/health` or `/models` endpoints. Reverse-proxy prefixes such as `https://proxy.local/aegis` are preserved. If Core is offline, VS Code stays usable in degraded local mode.
 
 Project-local `.aegis/` memory writes are best-effort. If a memory target is damaged, Aegis reports it in the output channel and keeps scans, recovery state, validation logs, decisions, and approved-change bookkeeping from crashing the workflow.
+
+### Fallbacks Still Local
+
+The extension still uses its local Ollama prompt flow for natural-language chat, explain/review/improve responses, and model-generated proposal content when Core cannot execute the model call. Core is now the preferred source for available models, provider status, route profiles, route explanations, and workflow/runtime operations. Future migration should move more planning/model execution into Core while keeping VS Code responsible for editor affordances and user approval.
 
 ## Update And Uninstall
 
@@ -165,6 +180,18 @@ Best results come from concrete requests like "add validation for this endpoint"
 3. Keep each approved change small.
 4. Use **Roll Back Last Change** if the result is not right.
 
+### Create A Small Project Or Feature
+
+1. Open the empty or existing project folder.
+2. Use **Create Feature** or type an implementation request in chat, such as "create a tiny browser test project."
+3. If you start from a selected Explorer folder or file, Aegis uses that selection as focused context while still writing paths relative to the workspace root.
+4. Review the generated diff, approve the proposal, and let Aegis create the files with a checkpoint backup.
+5. Run the suggested start or validation command.
+
+Selected folders are not treated as mandatory output folders. Aegis should place files where they fit the project layout: project config at the package root, source under existing `src` or app folders, components under component folders, routes under route/page folders, and tests near the code they cover.
+
+If the local model accidentally returns Markdown instructions with code blocks, Aegis attempts to infer safe file paths from the response and converts those blocks into a normal proposal for review.
+
 ### Explain Before Editing
 
 1. Open a source file.
@@ -179,10 +206,13 @@ Open **Aegis Local Agent** from the Activity Bar or run `Aegis: Chat With Local 
 The sidebar is organized as a local coding-agent cockpit:
 
 - Project Overview: workspace, language/framework, validation commands, active model, health, and last validation result.
+- Runtime Status: Core connectivity, fallback mode, active workflow, latest validation, checkpoint availability, and recent operations.
+- Autopilot Supervision: Core Autopilot mode, active run, active agent, approval queue, validation chain, repair history, replay links, and rollback availability when Core exposes `/v1/autopilot/*`.
 - Chat Panel: conversation history, model selector, clear chat, attach current file, and attach selected code.
 - Agent Actions: continue work, review project, fix errors, generate roadmap, continue from roadmap, review current file, improve selected code, and create a feature.
 - Active Plan: current task, planned steps, likely changed files, risk, and approval state.
 - Diff / Approval: proposed changes with approve all, approve selected, reject, regenerate plan, and open diffs.
+- Why Aegis chose these files: target path, new/existing status, placement source, risk, safety status, and selected-folder context for each proposed edit.
 - Validation Console: running command output, build/test result, and repair attempt count.
 - Memory Panel: one-click open buttons for `.aegis` memory files.
 - Dependency Graph Summary: import edges, indexed symbols, routes/APIs, components, tests, and configs.

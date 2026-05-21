@@ -1,10 +1,10 @@
 # Dogfooding Notes
 
-Last updated: 2026-05-09
+Last updated: 2026-05-18
 
 Phase: Daily Dogfooding and Long-Term Workflow Refinement
 
-Target stability release: `0.1.1`
+Target stability release: next small stabilization release
 
 Automation: `auralith-dogfooding-follow-up` now runs as a weekly workflow refinement review.
 
@@ -62,6 +62,40 @@ Track concrete examples of:
 - Extension bugs
 - Missing docs
 - Setup pain points
+
+## Weekly Review - 2026-05-18
+
+Scope:
+
+- Reviewed the human workflow notes plus generated local dogfooding state under `.aegis`.
+- Current generated dogfooding sample is still small: 2 events, production confidence `60`, status `needs_attention`.
+- The only measured generated pain point is `validation_pain`; the broader workflow notes repeatedly point to startup probes, validation clarity, rollback trust, command/package drift guards, and maintainability as the main stabilization themes.
+
+Repeated friction observed:
+
+| Area | Current evidence | Decision |
+| --- | --- | --- |
+| Startup speed and clarity | Prior Core and Website launch hardening focused on wrong-service ports, missing timeouts, and ambiguous readiness failures. | Keep measuring individual Core, Website, Ollama, and client startup steps; avoid architecture changes until a timed bottleneck repeats. |
+| Indexing speed | `.aegis/scan-cache.json`, file index, symbol index, and dependency graph are present; no new slow-index event was recorded in the latest sample. | Keep incremental indexing as the active approach; record explicit `indexing_slow` events before optimizing further. |
+| Roadmap usefulness | Core roadmap generation works, but notes still require roadmap items to stay tied to scan evidence, validation state, and small safe tasks. | Treat vague roadmap output as `roadmap_unhelpful` friction in future dogfooding events. |
+| Diff readability | VS Code destination reasoning improved trust, but repeated approval confidence depends on file-purpose grouping and path explanations. | Keep the “Why Aegis chose these files” panel as the current baseline; record unclear approvals as `diff_unclear` or `unclear_approval`. |
+| Validation clarity | Latest generated report flags `validation_pain`; earlier notes repeatedly hardened validation route names, timeouts, URL propagation, and command allowlists. | Prioritize remembered safe validation commands and concise failure summaries before expanding repair behavior. |
+| Rollback confidence | Rollback tests passed in Website and VS Code flows; confidence still depends on visible checkpoint names, affected files, and restore outcome. | No code change today; keep rollback in every release gate. |
+| Diagnostics and error messages | Startup and validation fixes show ambiguous errors are a real source of wasted time. | Added dogfooding tags for `diagnostics_unclear` and `error_message_unclear` so future notes can be categorized directly. |
+| Onboarding | First-run and setup friction remain important but no fresh blocking event was recorded. | Added `onboarding_friction` as a dogfooding category; defer UI changes until a concrete path repeats. |
+| Maintainability | Stabilization summary still lists large client/backend modules, especially Desktop, Website `App.tsx`, and VS Code `extension.js`. | Added `maintainability_drag` as a dogfooding category; prefer module extraction plus parity guards over broad rewrites. |
+
+Small fix shipped:
+
+- Extended Aegis Core dogfooding friction taxonomy so weekly reviews can record startup, roadmap, diff, diagnostics, error-message, onboarding, and maintainability friction without forcing those signals into generic categories.
+
+Validation:
+
+- `python -m pytest tests/test_dogfooding.py`: passed, 7 tests.
+
+Release note:
+
+- A small stable release note is warranted if this taxonomy change ships with the current stabilization batch because it improves workflow evidence quality without changing user-facing autonomy or safety behavior.
 
 ## Day 1 - 2026-05-09
 

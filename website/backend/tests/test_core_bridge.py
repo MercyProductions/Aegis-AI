@@ -78,6 +78,36 @@ def test_core_bridge_reads_shared_runtime_status(tmp_path: Path) -> None:
     assert status["errors"] == []
 
 
+def test_core_bridge_sends_local_auth_token(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    seen_authorization = ""
+    seen_local_token = ""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal seen_authorization, seen_local_token
+        seen_authorization = request.headers.get("authorization", "")
+        seen_local_token = request.headers.get("x-aegis-local-token", "")
+        return httpx.Response(
+            200,
+            json={
+                "ok": True,
+                "api_version": "v1",
+                "contract_version": "2026.05.12",
+                "kind": "security.status",
+                "workspace": str(workspace.resolve()),
+                "data": {"local_api": {"token_enforced": True}},
+            },
+        )
+
+    bridge = AegisCoreBridge("http://127.0.0.1:8788", transport=httpx.MockTransport(handler), local_auth_token="core-token")
+    result = asyncio.run(bridge.get("/v1/security/status", params={"workspace": str(workspace)}, expected_kind="security.status"))
+
+    assert result.ok is True
+    assert seen_authorization == "Bearer core-token"
+    assert seen_local_token == "core-token"
+
+
 def test_core_bridge_shared_runtime_status_redacts_returned_envelopes(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
